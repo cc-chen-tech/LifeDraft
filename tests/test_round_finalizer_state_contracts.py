@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from types import SimpleNamespace
 from typing import Any
 
@@ -69,7 +71,7 @@ def test_weekly_summary_empty_rounds_uses_localized_fallback_and_checks_attribut
 
 
 def test_weekly_summary_delegates_context_and_recovers_from_generator_failure() -> None:
-    player = PlayerState(week=3, wealth=250, character_settings={"role": "artist"})
+    player = PlayerState(week=3, character_settings={"role": "artist"})
     player.round_history.append({"week": 3, "story": "A studio opened."})
     generator = _SummaryGenerator(fails=True)
     finalizer = _finalizer(player, language="zh", summary_generator=generator)
@@ -78,7 +80,7 @@ def test_weekly_summary_delegates_context_and_recovers_from_generator_failure() 
 
     assert result == {"summary": "本周充实而忙碌。", "bonus_effects": {}}
     assert generator.calls[0]["rounds"] == player.get_current_week_rounds()
-    assert generator.calls[0]["wealth_context"]["current_balance"] == 250
+    assert "wealth_context" not in generator.calls[0]
 
 
 def test_compression_round_information_and_weekly_decay_use_current_state() -> None:

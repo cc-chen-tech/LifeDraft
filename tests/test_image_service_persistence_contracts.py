@@ -1,5 +1,7 @@
 """Provider-free persistence contracts for the ImageService facade."""
 
+from __future__ import annotations
+
 import base64
 from io import BytesIO
 from pathlib import Path

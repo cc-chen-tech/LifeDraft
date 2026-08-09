@@ -46,19 +46,7 @@ def test_era_generation_aligns_historical_response_to_explicit_modern_vision() -
     assert "独立游戏行业" in setting["era_name"]
 
 
-def test_wealth_generation_retries_zero_then_enforces_minimum_and_age_birth_year() -> None:
-    wealth_generator = _DeterministicCreatorGenerator(
-        [{"wealth": 0}, {"wealth": 500}], {}
-    )
-    creator = CharacterCreator(ai_generator=wealth_generator, language="zh")
-
-    wealth = creator.generate_setting(
-        "wealth", "林岚", "成为产品经理", previous_settings={}
-    )
-
-    assert wealth_generator.completion_calls == 2
-    assert wealth["wealth"] == 1000
-
+def test_age_generation_aligns_birth_year_to_selected_era() -> None:
     age_generator = _DeterministicCreatorGenerator(
         [{"age": 29, "birth_year": 1990}], {}
     )
@@ -72,7 +60,7 @@ def test_wealth_generation_retries_zero_then_enforces_minimum_and_age_birth_year
 
 def test_initial_attribute_generation_clamps_ai_values_to_supported_range() -> None:
     generator = _DeterministicCreatorGenerator(
-        [], {"energy": 150, "mood": -3, "knowledge": 101, "wealth": 2_000_000}
+        [], {"energy": 150, "mood": -3, "knowledge": 101}
     )
     creator = CharacterCreator(ai_generator=generator, language="zh")
 
@@ -80,4 +68,4 @@ def test_initial_attribute_generation_clamps_ai_values_to_supported_range() -> N
         {"age": {"age": 30}, "family": {"family_economy": "富裕"}}, language="zh"
     )
 
-    assert attributes == {"energy": 100, "mood": 0, "knowledge": 100, "wealth": 1_000_000}
+    assert attributes == {"energy": 100, "mood": 0, "knowledge": 100}

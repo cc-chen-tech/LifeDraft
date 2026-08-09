@@ -48,8 +48,8 @@ def test_fallback_events_preserve_localized_era_round_and_resource_contracts() -
 
     assert "未来城市" in weekly.event_description
     assert [option.effects for option in weekly.options] == [
-        {"energy": 5, "mood": 5, "knowledge": 0, "wealth": 0},
-        {"energy": -5, "mood": 0, "knowledge": 5, "wealth": 0},
+        {"energy": 5, "mood": 5, "knowledge": 0},
+        {"energy": -5, "mood": 0, "knowledge": 5},
     ]
     assert "平静的一天" in round_event.event_description
     assert round_event.options[0].effects["energy"] == 0

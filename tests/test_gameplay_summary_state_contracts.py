@@ -1,5 +1,7 @@
 """Provider-free contracts for gameplay state and summary responses."""
 
+from __future__ import annotations
+
 import pytest
 
 from src.ai.models import EventOption, GameEvent

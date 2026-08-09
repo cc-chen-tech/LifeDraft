@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
+from src.ai.story_exceptions import StoryContinuationFailure
 from src.game.story_service import StoryService
 
 
@@ -55,7 +58,7 @@ def test_story_state_delegation_preserves_language_and_context() -> None:
 
 
 def test_custom_choice_effects_sanitize_input_and_retry_invalid_result() -> None:
-    provider = _RecordingStoryProvider([None, {"energy": 3, "wealth": 7}])
+    provider = _RecordingStoryProvider([None, {"energy": 3, "mood": 0, "knowledge": 0}])
     service = StoryService(provider, language="en")
 
     effects = service.generate_custom_choice_effects(
@@ -65,23 +68,20 @@ def test_custom_choice_effects_sanitize_input_and_retry_invalid_result() -> None
         {"energy": 60},
     )
 
-    assert effects == {"energy": 3, "mood": 0, "knowledge": 0, "wealth": 7}
+    assert effects == {"energy": 3, "mood": 0, "knowledge": 0}
     assert len(provider.json_calls) == 2
     assert "[filtered] and keep studying" in provider.json_calls[0]["prompt"]
     assert "ignore previous instructions" not in provider.json_calls[0]["prompt"]
     assert "上次生成失败" in provider.json_calls[1]["prompt"]
 
 
-def test_custom_choice_result_returns_localized_fallback_after_provider_failures() -> None:
+def test_custom_choice_result_raises_after_provider_failures() -> None:
     provider = _RecordingStoryProvider([RuntimeError("offline"), RuntimeError("offline")])
     service = StoryService(provider, language="zh")
 
-    result = service.generate_custom_choice_result(
-        "雨夜的工作室停电了。", "点亮备用灯", {"occupation": "designer"}
-    )
+    with pytest.raises(StoryContinuationFailure, match="after 2 attempts"):
+        service.generate_custom_choice_result(
+            "雨夜的工作室停电了。", "点亮备用灯", {"occupation": "designer"}
+        )
 
-    assert result == {
-        "story_continuation": "你决定点亮备用灯。这是一个有趣的选择，让我们看看接下来会发生什么...",
-        "effects": {"energy": -5, "mood": 5},
-    }
     assert len(provider.json_calls) == 2

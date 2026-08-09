@@ -41,12 +41,10 @@ def _player_state(
             "completed_events": {},
             "mutable_states": {},
         },
-        wealth=1200,
-        wealth_ledger={},
     )
 
 
-def test_evidence_cap_keeps_authoritative_wealth_after_verbose_settings() -> None:
+def test_evidence_cap_bounds_verbose_character_settings() -> None:
     settings = {f"detail_{index}": f"value-{index}" for index in range(180)}
 
     evidence = AssistantEvidence.from_player_state(
@@ -54,11 +52,7 @@ def test_evidence_cap_keeps_authoritative_wealth_after_verbose_settings() -> Non
     )
 
     assert len(evidence.records) == MAX_EVIDENCE_RECORDS
-    assert "wealth:balance" in evidence.records
-    assert sum(key.startswith("setting:") for key in evidence.records) == (
-        MAX_EVIDENCE_RECORDS - 1
-    )
-    assert evidence.records["wealth:balance"].fact == "1,200元"
+    assert all(key.startswith("setting:") for key in evidence.records)
 
 
 def test_evidence_record_omits_unset_optional_fields_from_serialization() -> None:

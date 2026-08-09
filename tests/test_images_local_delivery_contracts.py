@@ -84,7 +84,7 @@ async def test_owned_scene_event_stream_preserves_cached_payload(db_session) -> 
         response = await scene_image_events(
             _request(), int(game.game_id), once=True, db=db_session, user=int(owner.user_id)
         )
-        chunk = await anext(response.body_iterator)
+        chunk = await response.body_iterator.__anext__()
         raw_event = chunk.decode() if isinstance(chunk, bytes) else chunk
         payload = json.loads(raw_event.removeprefix("data: ").strip())
 

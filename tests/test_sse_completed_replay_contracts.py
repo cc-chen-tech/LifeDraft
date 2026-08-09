@@ -1,5 +1,7 @@
 """Provider-free contracts for completed SSE operation replay."""
 
+from __future__ import annotations
+
 import json
 
 import pytest

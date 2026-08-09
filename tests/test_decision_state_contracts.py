@@ -5,21 +5,16 @@ from src.game.state import CharacterState, PlayerState
 
 
 class TestDecisionStateContracts:
-    def test_choice_updates_resources_ledger_and_history_once_for_same_event(self):
-        player = PlayerState(week=12, current_round=1, energy=95, mood=5, knowledge=98, wealth=100)
-        option = {"text": "支付报名费", "effects": {"energy": 20, "mood": -20, "knowledge": 10, "wealth": -160}}
+    def test_choice_updates_resources_and_history_once_for_same_event(self):
+        player = PlayerState(week=12, current_round=1, energy=95, mood=5, knowledge=98)
+        option = {"text": "支付报名费", "effects": {"energy": 20, "mood": -20, "knowledge": 10}}
 
         first = process_decision(player, "资格考试报名", 0, [option], generate_result_text=False)
         second = process_decision(player, "资格考试报名", 0, [option], generate_result_text=False)
 
         assert first["success"] is True
         assert second["result_text"] == ""
-        assert (player.energy, player.mood, player.knowledge, player.wealth) == (100, 0, 100, 0)
-        assert len(player.wealth_ledger["transactions"]) == 1
-        transaction = player.wealth_ledger["transactions"][0]
-        assert transaction["requested_delta"] == -160
-        assert transaction["applied_delta"] == -100
-        assert transaction["closing_balance"] == 0
+        assert (player.energy, player.mood, player.knowledge) == (100, 0, 100)
         assert len(player.decision_history) == 2
         assert player.decision_history[0]["effects"] == option["effects"]
 

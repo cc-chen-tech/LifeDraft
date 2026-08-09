@@ -86,7 +86,7 @@ class TestCharacterCreationPureContracts:
             },
         )
 
-        assert attributes == {"energy": 80, "mood": 85, "knowledge": 70, "wealth": 105000}
+        assert attributes == {"energy": 80, "mood": 85, "knowledge": 70}
 
     def test_rule_attributes_apply_lower_bounds_for_adverse_traits_and_background(self):
         creator = CharacterCreator.__new__(CharacterCreator)
@@ -100,7 +100,7 @@ class TestCharacterCreationPureContracts:
             },
         )
 
-        assert attributes == {"energy": 55, "mood": 45, "knowledge": 30, "wealth": 0}
+        assert attributes == {"energy": 55, "mood": 45, "knowledge": 30}
 
     def test_family_member_formatter_handles_structured_plain_and_empty_lists(self):
         assert CharacterCreator._format_family_members([], "zh") == "无"

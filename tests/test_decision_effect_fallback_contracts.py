@@ -71,10 +71,10 @@ def test_process_decision_rejects_invalid_option_indices() -> None:
 
 
 def test_provider_free_decision_returns_localized_effect_fallback() -> None:
-    player = PlayerState(week=2, current_round=1, wealth=300)
+    player = PlayerState(week=2, current_round=1)
     option = {
         "text": "Practice after work",
-        "effects": {"energy": -3, "mood": 2, "knowledge": 4, "wealth": 25},
+        "effects": {"energy": -3, "mood": 2, "knowledge": 4},
     }
 
     result = process_decision(player, "A quiet evening", 0, [option], language="en")
@@ -83,13 +83,12 @@ def test_provider_free_decision_returns_localized_effect_fallback() -> None:
     assert "Energy -3" in result["result_text"]
     assert "Mood +2" in result["result_text"]
     assert "Knowledge +4" in result["result_text"]
-    assert "Wealth +¥25" in result["result_text"]
     assert player.decision_history[-1]["choice"] == "Practice after work"
 
 
 def test_failing_result_provider_degrades_to_chinese_fallback() -> None:
-    player = PlayerState(week=3, wealth=100)
-    option = {"text": "帮助邻居", "effects": {"mood": -2, "wealth": -30}}
+    player = PlayerState(week=3)
+    option = {"text": "帮助邻居", "effects": {"mood": -2}}
 
     result = process_decision(
         player,
@@ -102,8 +101,6 @@ def test_failing_result_provider_degrades_to_chinese_fallback() -> None:
 
     assert result["success"] is True
     assert "情绪-2" in result["result_text"]
-    assert "财富¥30" in result["result_text"]
-    assert player.wealth == 70
 
 
 def test_fallback_result_omits_unchanged_resources() -> None:

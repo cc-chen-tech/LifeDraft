@@ -116,7 +116,7 @@ async def test_owned_game_list_and_delete_use_real_database_records() -> None:
 
 
 @pytest.mark.asyncio
-async def test_preplay_character_settings_merge_and_sync_opening_wealth() -> None:
+async def test_preplay_character_settings_merge_strips_legacy_wealth() -> None:
     user_id, game_id = _create_owned_game()
     try:
         response = await update_character_settings(
@@ -144,7 +144,8 @@ async def test_preplay_character_settings_merge_and_sync_opening_wealth() -> Non
             assert saved is not None
             assert saved.state_json["player_name"] == "林知夏"
             assert saved.state_json["life_vision"] == "在杭州做可持续教育"
-            assert saved.state_json["wealth"] == 68000
+            assert "wealth" not in saved.state_json
+            assert "wealth" not in saved.state_json["character_settings"]
             assert saved.state_json["character_settings"]["era"]["era_name"] == "2026年深圳"
             assert saved.state_json["character_settings"]["relationships"]["key_people"] == [
                 {"name": "陈晓雨", "role": "同事"}

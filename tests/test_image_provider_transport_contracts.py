@@ -1,5 +1,7 @@
 """Provider-free transport contracts for typed image generation failures."""
 
+from __future__ import annotations
+
 from typing import Any
 
 import pytest

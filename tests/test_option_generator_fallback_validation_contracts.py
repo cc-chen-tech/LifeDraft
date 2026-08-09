@@ -17,7 +17,7 @@ def test_contextual_fallback_options_select_story_specific_chinese_choices() -> 
 
         assert len(options) == 3
         assert options[0].text == expected_first_option
-        assert all("wealth" in option.effects for option in options)
+        assert all(set(option.effects) <= {"energy", "mood", "knowledge"} for option in options)
 
 
 def test_contextual_fallback_options_are_safe_for_english_stories() -> None:
@@ -30,7 +30,7 @@ def test_contextual_fallback_options_are_safe_for_english_stories() -> None:
         "Ask an ally to cross-check",
         "Identify the next risk",
     ]
-    assert options[1].effects == {"energy": -5, "mood": 4, "knowledge": 5, "wealth": 0}
+    assert options[1].effects == {"energy": -5, "mood": 4, "knowledge": 5}
 
 
 def test_relationship_normalization_and_quality_defaults_preserve_option_effects() -> None:
@@ -54,4 +54,3 @@ def test_relationship_normalization_and_quality_defaults_preserve_option_effects
     assert event.options[0].effects["relationships"] == {"Ada": 2}
     assert event.options[1].effects["relationships"] == {"Ada": 3}
     assert event.options[2].effects["relationships"] == {"新同事": 1}
-    assert all(option.effects["action_points"] == -1 for option in event.options)

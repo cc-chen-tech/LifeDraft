@@ -33,7 +33,7 @@ class _SynchronousFinalizer(RoundFinalizer):
         self.enrichment_weeks.append(new_week)
 
 
-def _state(*, week: int = 0, wealth: int = 100) -> PlayerState:
+def _state(*, week: int = 0) -> PlayerState:
     state = PlayerState(
         player_name="Lin",
         week=week,
@@ -42,7 +42,6 @@ def _state(*, week: int = 0, wealth: int = 100) -> PlayerState:
         energy=50,
         mood=60,
         knowledge=70,
-        wealth=wealth,
         character_settings={"occupation": "architect"},
     )
     state.round_history.append(
@@ -65,12 +64,12 @@ def _finalizer(
     )
 
 
-def test_finalization_records_wealth_bonus_summary_and_week_transition() -> None:
-    state = _state(wealth=100)
+def test_finalization_records_resource_bonus_summary_and_week_transition() -> None:
+    state = _state()
     provider = _WeeklySummaryProvider(
         {
             "summary": "The client review closed the week.",
-            "bonus_effects": {"energy": 3, "mood": 4, "knowledge": 2, "wealth": 25},
+            "bonus_effects": {"energy": 3, "mood": 4, "knowledge": 2},
         }
     )
     completer = _CharacterCompleter()
@@ -84,16 +83,11 @@ def test_finalization_records_wealth_bonus_summary_and_week_transition() -> None
     assert statuses == ["weekly_summary"]
     assert completer.checked == [state]
     assert provider.calls[0]["rounds"] == state.round_history
-    assert provider.calls[0]["wealth_context"]["current_balance"] == 100
+    assert "wealth_context" not in provider.calls[0]
     assert result == {
         "weekly_summary": "The client review closed the week.",
-        "bonus_effects": {"energy": 3, "mood": 4, "knowledge": 2, "wealth": 25},
+        "bonus_effects": {"energy": 3, "mood": 4, "knowledge": 2},
     }
-    assert state.wealth == 125
-    transaction = state.wealth_ledger["transactions"][-1]
-    assert transaction["transaction_id"] == "weekly-bonus:w0"
-    assert transaction["requested_delta"] == 25
-    assert transaction["closing_balance"] == 125
     assert (state.energy, state.mood, state.knowledge) == (53, 62, 72)
     assert state.week == 1
     assert state.current_round == 0
@@ -102,14 +96,14 @@ def test_finalization_records_wealth_bonus_summary_and_week_transition() -> None
         {
             "week": 0,
             "summary": "The client review closed the week.",
-            "bonus_effects": {"energy": 3, "mood": 4, "knowledge": 2, "wealth": 25},
+            "bonus_effects": {"energy": 3, "mood": 4, "knowledge": 2},
             "date_info": expected_date_info,
         }
     ]
 
 
-def test_finalization_without_wealth_bonus_persists_ledger_and_resources() -> None:
-    state = _state(wealth=210)
+def test_finalization_without_bonus_persists_resources() -> None:
+    state = _state()
     provider = _WeeklySummaryProvider(
         {"summary": "A quiet week.", "bonus_effects": {"energy": -2, "mood": 1}}
     )
@@ -118,9 +112,6 @@ def test_finalization_without_wealth_bonus_persists_ledger_and_resources() -> No
 
     finalizer.finalize_week(result)
 
-    assert state.wealth == 210
-    assert state.wealth_ledger["opening_balance"] == 210
-    assert state.wealth_ledger["balance_snapshot"] == 210
     assert (state.energy, state.mood, state.knowledge) == (48, 59, 70)
     assert result["bonus_effects"] == {"energy": -2, "mood": 1}
 
