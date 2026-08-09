@@ -3,12 +3,13 @@
  * Tests all interactive elements on the welcome/home page
  */
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import WelcomePage from '@/app/page';
 import { useUserStore } from '@/stores/useUserStore';
 import { useGameStore } from '@/stores/useGameStore';
 import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
+import * as utils from '@/lib/utils';
 
 // Mock useRouter
 const mockPush = jest.fn();
@@ -63,6 +64,7 @@ describe('WelcomePage', () => {
     setupDefaultState();
     userSpy = spyOnStoreMethods(useUserStore, USER_METHODS);
     gameSpy = spyOnStoreMethods(useGameStore, GAME_METHODS);
+    userSpy.spies.fetchMe.mockImplementation(() => new Promise(() => {}));
   });
 
   afterEach(() => {
@@ -71,17 +73,40 @@ describe('WelcomePage', () => {
   });
 
   describe('Page rendering', () => {
-    it('renders the page title', () => {
-      render(<WelcomePage />);
-      expect(screen.getByText('Story Life')).toBeInTheDocument();
-      expect(screen.getByText('AI驱动的沉浸式人生模拟')).toBeInTheDocument();
+    it('renders the lowercase story101 brand and keeps the Chinese name descriptive', () => {
+      const { container } = render(<WelcomePage />);
+
+      expect(screen.getByRole('heading', { level: 1, name: 'story101' })).toHaveClass('font-brand');
+      expect(screen.getByText('人生草稿本')).toBeInTheDocument();
+      expect(screen.queryByText('Story Life')).not.toBeInTheDocument();
+      expect(screen.queryByText(/AI驱动/)).not.toBeInTheDocument();
+      expect(container.querySelector('[class*="gradient"], [class*="glow"]')).toBeNull();
     });
 
-    it('renders main action buttons', () => {
+    it('keeps the main actions in one reading surface with explicit hierarchy and touch sizes', () => {
+      const { container } = render(<WelcomePage />);
+      const surfaces = container.querySelectorAll('[data-slot="surface"][data-variant="reading"]');
+      expect(surfaces).toHaveLength(1);
+
+      const surface = surfaces[0] as HTMLElement;
+      const newGame = within(surface).getByRole('button', { name: /新游戏/i });
+      const loadGame = within(surface).getByRole('button', { name: /加载存档/i });
+      const presets = within(surface).getByRole('button', { name: /角色预设/i });
+
+      expect(newGame).toHaveAttribute('data-variant', 'default');
+      expect(loadGame).toHaveAttribute('data-variant', 'narrative');
+      expect(presets).toHaveAttribute('data-variant', 'narrative');
+      for (const action of [newGame, loadGame, presets]) {
+        expect(action).toHaveAttribute('data-size', 'touch');
+      }
+      expect(container.querySelector('[data-slot="card"]')).toBeNull();
+    });
+
+    it('gives the unauthenticated portal actions touch-sized controls', () => {
       render(<WelcomePage />);
-      expect(screen.getByRole('button', { name: /新游戏/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /加载存档/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /角色预设/i })).toBeInTheDocument();
+
+      expect(screen.getByRole('button', { name: '登录' })).toHaveAttribute('data-size', 'touch');
+      expect(screen.getByRole('button', { name: '注册' })).toHaveAttribute('data-size', 'touch');
     });
   });
 
@@ -100,7 +125,7 @@ describe('WelcomePage', () => {
       expect(newGameButton).toBeInTheDocument();
 
       await user.click(newGameButton);
-      expect(screen.getByText('Story Life')).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: '创建账户' })).toBeInTheDocument();
     });
 
     it('opens login sheet when clicking "加载存档" while not authenticated', async () => {
@@ -149,6 +174,22 @@ describe('WelcomePage', () => {
   });
 
   describe('Registration flow', () => {
+    it('uses a real required form field with a visible label and description', async () => {
+      const user = userEvent.setup();
+      render(<WelcomePage />);
+
+      await user.click(screen.getByRole('button', { name: '注册' }));
+
+      const form = await screen.findByRole('form', { name: '创建账户' });
+      const input = within(form).getByRole('textbox', { name: '显示名称' });
+      const description = within(form).getByText('将在首页这样称呼你');
+
+      expect(input).toBeRequired();
+      expect(input).toHaveAttribute('aria-invalid', 'false');
+      expect(input).toHaveAttribute('aria-describedby', expect.stringContaining(description.id));
+      expect(within(form).getByRole('button', { name: '创建账户' })).toHaveAttribute('type', 'submit');
+    });
+
     it('allows user to input display name', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
@@ -230,6 +271,22 @@ describe('WelcomePage', () => {
   });
 
   describe('Login flow', () => {
+    it('uses a real required form field with a visible label and description', async () => {
+      const user = userEvent.setup();
+      render(<WelcomePage />);
+
+      await user.click(screen.getByRole('button', { name: '登录' }));
+
+      const form = await screen.findByRole('form', { name: '登录账户' });
+      const input = within(form).getByRole('textbox', { name: '私有密钥' });
+      const description = within(form).getByText('使用注册时保存的唯一密钥');
+
+      expect(input).toBeRequired();
+      expect(input).toHaveAttribute('aria-invalid', 'false');
+      expect(input).toHaveAttribute('aria-describedby', expect.stringContaining(description.id));
+      expect(within(form).getByRole('button', { name: '登录' })).toHaveAttribute('type', 'submit');
+    });
+
     it('allows user to input private ID', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
@@ -274,19 +331,46 @@ describe('WelcomePage', () => {
       });
     });
 
-    it('shows error message on login failure', async () => {
+    it('associates a single alert with the field on login failure', async () => {
       userSpy.spies.login.mockRejectedValue(new Error('Invalid key'));
 
       const user = userEvent.setup();
       render(<WelcomePage />);
 
       await user.click(screen.getByText('登录'));
-      await user.type(screen.getByPlaceholderText(/私有密钥/i), 'bad-key');
+      const input = screen.getByRole('textbox', { name: '私有密钥' });
+      await user.type(input, 'bad-key');
       await user.click(screen.getByRole('button', { name: '登录' }));
 
-      await waitFor(() => {
-        expect(screen.getByText('Invalid key')).toBeInTheDocument();
-      });
+      const alert = await screen.findByRole('alert');
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
+      expect(alert).toHaveTextContent('Invalid key');
+      expect(input).toHaveAttribute('aria-invalid', 'true');
+      expect(input).toHaveAttribute('aria-describedby', expect.stringContaining(alert.parentElement?.id));
+    });
+
+    it('marks the form busy and disables its controls while login is pending', async () => {
+      let resolveLogin: (value: { user_id: number; display_name: string }) => void = () => {};
+      userSpy.spies.login.mockImplementation(() => new Promise((resolve) => {
+        resolveLogin = resolve;
+      }));
+
+      const user = userEvent.setup();
+      render(<WelcomePage />);
+
+      await user.click(screen.getByRole('button', { name: '登录' }));
+      const form = screen.getByRole('form', { name: '登录账户' });
+      const input = within(form).getByRole('textbox', { name: '私有密钥' });
+      await user.type(input, 'test-key');
+      await user.click(within(form).getByRole('button', { name: '登录' }));
+
+      expect(form).toHaveAttribute('aria-busy', 'true');
+      expect(input).toBeDisabled();
+      expect(within(form).getByRole('button', { name: '登录' })).toBeDisabled();
+      expect(userSpy.spies.login).toHaveBeenCalledTimes(1);
+
+      resolveLogin({ user_id: 1, display_name: 'TestUser' });
+      await waitFor(() => expect(screen.queryByRole('form', { name: '登录账户' })).not.toBeInTheDocument());
     });
   });
 
@@ -325,7 +409,9 @@ describe('WelcomePage', () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
 
-      await user.click(screen.getByRole('button', { name: /新游戏/i }));
+      const newGameLink = screen.getByRole('button', { name: /新游戏/i });
+      newGameLink.addEventListener('click', (event) => event.preventDefault(), { once: true });
+      await user.click(newGameLink);
 
       expect(gameSpy.spies.resetCreation).toHaveBeenCalled();
       expect(screen.getByRole('button', { name: /新游戏/i })).toHaveAttribute('href', '/create');
@@ -348,6 +434,28 @@ describe('WelcomePage', () => {
       await user.click(screen.getByRole('button', { name: /角色预设/i }));
 
       expect(mockPush).toHaveBeenCalledWith('/presets');
+    });
+  });
+
+  describe('Session recovery and prefetch', () => {
+    it('validates the session once and keeps both authenticated prefetch calls', async () => {
+      useUserStore.setState({
+        isAuthenticated: true,
+        user: {
+          user_id: 1,
+          display_name: 'Test User',
+          public_id: 'pub-123',
+        },
+      });
+      userSpy.spies.fetchMe.mockResolvedValue(undefined);
+
+      render(<WelcomePage />);
+
+      await waitFor(() => expect(userSpy.spies.fetchMe).toHaveBeenCalledTimes(1));
+      await waitFor(() => {
+        expect(gameSpy.spies.fetchSavedGames).toHaveBeenCalledTimes(1);
+        expect(gameSpy.spies.fetchPresets).toHaveBeenCalledTimes(1);
+      });
     });
   });
 
@@ -442,7 +550,8 @@ describe('WelcomePage', () => {
   });
 
   describe('Copy private ID feature', () => {
-    it('has copy button in private ID display', async () => {
+    it('announces the one-time warning and copy success in one status region', async () => {
+      const copySpy = jest.spyOn(utils, 'copyToClipboard').mockResolvedValue(true);
       userSpy.spies.register.mockResolvedValue({
         user_id: 1,
         display_name: 'TestUser',
@@ -460,8 +569,19 @@ describe('WelcomePage', () => {
         expect(screen.getByText('priv-copy-test-123')).toBeInTheDocument();
       });
 
-      const buttons = screen.getAllByRole('button');
-      expect(buttons.length).toBeGreaterThan(0);
+      const warning = screen.getByRole('status');
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+      expect(warning).toHaveTextContent('此密钥仅显示一次，丢失后无法找回');
+
+      const copyButton = screen.getByRole('button', { name: '复制私有密钥' });
+      expect(copyButton).toHaveAttribute('data-size', 'icon-touch');
+      await user.click(copyButton);
+
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('私有密钥已复制'));
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+      expect(copySpy).toHaveBeenCalledTimes(1);
+      expect(copySpy).toHaveBeenCalledWith('priv-copy-test-123');
+      copySpy.mockRestore();
     });
   });
 

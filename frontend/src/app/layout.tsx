@@ -6,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "story101 - 人生模拟器",
-  description: "AI驱动的沉浸式人生模拟文字冒险游戏",
+  description: "人生草稿本，把一次人生写成一页页可继续的故事",
 };
 
 export const viewport: Viewport = {

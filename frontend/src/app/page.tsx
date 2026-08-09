@@ -11,7 +11,14 @@ import {
   SheetHeader,
   SheetTitle,
   SheetDescription,
+  SheetClose,
 } from "@/components/ui/sheet";
+import {
+  FeedbackNotice,
+  FormField,
+  PageTransition,
+  Surface,
+} from "@/components/story101";
 import { useUserStore } from "@/stores/useUserStore";
 import { useGameStore } from "@/stores/useGameStore";
 import { useHydration } from "@/hooks/useHydration";
@@ -25,6 +32,7 @@ import {
   Copy,
   Check,
   Play,
+  X,
 } from "lucide-react";
 
 type AuthMode = "login" | "register" | null;
@@ -111,122 +119,118 @@ export default function WelcomePage() {
     }
   };
 
+  const authFieldId = authMode === "register" ? "display-name-input" : "private-id-input";
+  const authErrorId = `${authFieldId}-server-error`;
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 animate-page-enter">
-      {/* Background gradient */}
-      <div className="fixed inset-0 bg-gradient-to-b from-background via-background to-secondary/30 -z-10" />
-
-      {/* Title */}
-      <div className="text-center mb-12">
-        <h1 className="text-4xl md:text-6xl font-serif font-bold text-foreground mb-3 tracking-tight">
-          Story Life
+    <PageTransition
+      aria-label="story101 首页"
+      className="mx-auto flex min-h-[100dvh] w-full max-w-3xl flex-col justify-center px-4 py-10 sm:px-6"
+    >
+      <header className="mb-7 text-center sm:mb-9">
+        <h1 className="font-brand text-4xl font-semibold tracking-[-0.04em] text-[var(--text-primary)] sm:text-5xl">
+          story101
         </h1>
-        <p className="text-lg text-muted-foreground">
-          AI驱动的沉浸式人生模拟
+        <p className="mt-2 text-sm tracking-[0.16em] text-[var(--text-secondary)]">
+          人生草稿本
         </p>
-      </div>
+      </header>
 
-      {/* Main actions */}
-      <div className="w-full max-w-sm space-y-3">
-        {/* Continue game — only if there's an active game */}
-        {hasActiveGame && (
-          <Button
-            className="w-full h-14 text-base touch-target bg-primary/90 hover:bg-primary"
-            onClick={() => router.push("/play")}
-          >
-            <Play className="w-5 h-5 mr-2" />
-            继续游戏
-          </Button>
-        )}
-
-        <Button
-          variant={hasActiveGame ? "outline" : "default"}
-          className="w-full h-14 text-base touch-target"
-          asChild={isAuthenticated}
-          onClick={isAuthenticated ? undefined : () => setAuthMode("register")}
-        >
-          {isAuthenticated ? (
-            <Link
-              href="/create"
-              role="button"
-              aria-label="新游戏"
-              onClick={resetCreation}
+      <Surface variant="reading" className="w-full p-4 sm:p-6">
+        <div className="grid gap-3">
+          {hasActiveGame && (
+            <Button
+              size="touch"
+              className="w-full text-base"
+              onClick={() => router.push("/play")}
             >
-              <Sparkles className="w-5 h-5 mr-2" />
-              新游戏
-            </Link>
-          ) : (
-            <>
-              <Sparkles className="w-5 h-5 mr-2" />
-              新游戏
-            </>
+              <Play className="size-5" />
+              继续游戏
+            </Button>
           )}
-        </Button>
 
-        <Button
-          variant="outline"
-          className="w-full h-14 text-base touch-target"
-          onClick={() => {
-            if (!isAuthenticated) {
-              setAuthMode("login");
-            } else {
-              router.push("/saves");
-            }
-          }}
-        >
-          <FolderOpen className="w-5 h-5 mr-2" />
-          加载存档
-        </Button>
+          <Button
+            variant={hasActiveGame ? "narrative" : "default"}
+            size="touch"
+            className="w-full text-base"
+            asChild={isAuthenticated}
+            onClick={isAuthenticated ? undefined : () => setAuthMode("register")}
+          >
+            {isAuthenticated ? (
+              <Link
+                href="/create"
+                role="button"
+                aria-label="新游戏"
+                onClick={resetCreation}
+              >
+                <Sparkles className="size-5" />
+                新游戏
+              </Link>
+            ) : (
+              <>
+                <Sparkles className="size-5" />
+                新游戏
+              </>
+            )}
+          </Button>
 
-        <Button
-          variant="outline"
-          className="w-full h-14 text-base touch-target"
-          onClick={() => {
-            if (!isAuthenticated) {
-              setAuthMode("login");
-            } else {
-              router.push("/presets");
-            }
-          }}
-        >
-          <BookOpen className="w-5 h-5 mr-2" />
-          角色预设
-        </Button>
-      </div>
-
-      {/* Auth status */}
-      <div className="mt-8 text-center">
-        {isAuthenticated ? (
-          <div className="text-sm text-muted-foreground">
-            <span>
-              欢迎回来，{user?.display_name || "旅行者"}
-            </span>
-            <button
-              className="ml-3 text-primary hover:underline"
-              onClick={logout}
+          <div className="grid gap-3 border-t border-[var(--border-default)] pt-3 sm:grid-cols-2">
+            <Button
+              variant="narrative"
+              size="touch"
+              className="w-full text-base"
+              onClick={() => {
+                if (!isAuthenticated) {
+                  setAuthMode("login");
+                } else {
+                  router.push("/saves");
+                }
+              }}
             >
-              登出
-            </button>
+              <FolderOpen className="size-5" />
+              加载存档
+            </Button>
+
+            <Button
+              variant="narrative"
+              size="touch"
+              className="w-full text-base"
+              onClick={() => {
+                if (!isAuthenticated) {
+                  setAuthMode("login");
+                } else {
+                  router.push("/presets");
+                }
+              }}
+            >
+              <BookOpen className="size-5" />
+              角色预设
+            </Button>
           </div>
-        ) : (
-          <div className="flex gap-4 justify-center text-sm">
-            <button
-              className="text-primary hover:underline flex items-center gap-1"
-              onClick={() => setAuthMode("login")}
-            >
-              <LogIn className="w-3 h-3" />
-              登录
-            </button>
-            <button
-              className="text-muted-foreground hover:text-foreground flex items-center gap-1"
-              onClick={() => setAuthMode("register")}
-            >
-              <UserPlus className="w-3 h-3" />
-              注册
-            </button>
-          </div>
-        )}
-      </div>
+        </div>
+
+        <div className="mt-4 border-t border-[var(--border-default)] pt-2 text-center">
+          {isAuthenticated ? (
+            <div className="flex flex-wrap items-center justify-center gap-1 text-sm text-[var(--text-secondary)]">
+              <span className="px-2">欢迎回来，{user?.display_name || "旅行者"}</span>
+              <Button variant="quiet" size="touch" onClick={logout}>
+                登出
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-center gap-1">
+              <Button variant="quiet" size="touch" onClick={() => setAuthMode("login")}>
+                <LogIn className="size-4" />
+                登录
+              </Button>
+              <Button variant="quiet" size="touch" onClick={() => setAuthMode("register")}>
+                <UserPlus className="size-4" />
+                注册
+              </Button>
+            </div>
+          )}
+        </div>
+      </Surface>
 
       {/* Auth Sheet */}
       <Sheet
@@ -238,83 +242,150 @@ export default function WelcomePage() {
           }
         }}
       >
-        <SheetContent side="bottom" className="bg-card border-t border-border">
-          <SheetHeader>
-            <SheetTitle className="text-foreground">
-              {authMode === "register" ? "创建账户" : "登录"}
-            </SheetTitle>
-            <SheetDescription className="text-muted-foreground">
-              {authMode === "register"
-                ? "输入一个显示名称开始你的人生旅程"
-                : "使用你的私有密钥登录"}
-            </SheetDescription>
-          </SheetHeader>
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          className="border-0 bg-transparent p-0 shadow-none"
+          overlayClassName="bg-black/60"
+        >
+          <Surface
+            variant="overlay"
+            className="relative mx-auto w-full max-w-2xl rounded-b-none border-b-0 px-4 pb-[calc(1rem+var(--safe-area-inset-bottom))] pt-4 sm:px-6"
+          >
+            <SheetClose asChild>
+              <Button
+                type="button"
+                variant="quiet"
+                size="icon-touch"
+                className="absolute right-2 top-2"
+                aria-label="关闭认证面板"
+              >
+                <X className="size-4" />
+              </Button>
+            </SheetClose>
 
-          <div className="space-y-4 mt-4">
-            {authMode === "register" ? (
-              <Input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="你的名字"
-                className="bg-secondary border-border h-12 text-base"
-                disabled={isLoading}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleRegister();
-                }}
-                autoFocus
-              />
-            ) : (
-              <Input
-                id="private-id-input"
-                name="privateId"
-                value={privateId}
-                onChange={(e) => setPrivateId(e.target.value)}
-                placeholder="私有密钥 (如: XXXX-XXXX-XXXX-...)"
-                className="bg-secondary border-border h-12 text-base font-mono"
-                disabled={isLoading}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleLogin();
-                }}
-                autoFocus
-                aria-label="私有密钥"
-                data-testid="private-id-input"
-              />
-            )}
+            <SheetHeader className="p-0 pr-12 text-left">
+              <SheetTitle className="text-[var(--text-primary)]">
+                {authMode === "register" ? "创建账户" : "登录"}
+              </SheetTitle>
+              <SheetDescription className="text-[var(--text-secondary)]">
+                {authMode === "register"
+                  ? "输入一个显示名称开始你的人生旅程"
+                  : "使用你的私有密钥登录"}
+              </SheetDescription>
+            </SheetHeader>
 
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
-
-            <Button
-              className="w-full h-12 touch-target"
-              disabled={
-                isLoading ||
-                (authMode === "register"
-                  ? !displayName.trim()
-                  : !privateId.trim())
-              }
-              onClick={
-                authMode === "register" ? handleRegister : handleLogin
-              }
-            >
-              {isLoading && (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              )}
-              {authMode === "register" ? "创建账户" : "登录"}
-            </Button>
-
-            <button
-              className="w-full text-center text-sm text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                setAuthMode(authMode === "register" ? "login" : "register");
-                setError("");
+            <form
+              className="mt-5 grid gap-4"
+              aria-label={authMode === "register" ? "创建账户" : "登录账户"}
+              aria-busy={isLoading}
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (authMode === "register") {
+                  void handleRegister();
+                } else {
+                  void handleLogin();
+                }
               }}
             >
-              {authMode === "register"
-                ? "已有账户？登录"
-                : "没有账户？注册"}
-            </button>
-          </div>
+              {authMode === "register" ? (
+                <FormField
+                  id="display-name-input"
+                  label="显示名称"
+                  description="将在首页这样称呼你"
+                  required
+                >
+                  {({ describedBy, required }) => (
+                    <Input
+                      id="display-name-input"
+                      name="displayName"
+                      value={displayName}
+                      onChange={(event) => setDisplayName(event.target.value)}
+                      placeholder="你的名字"
+                      surface="filled"
+                      controlSize="touch"
+                      className="text-base"
+                      disabled={isLoading}
+                      autoFocus
+                      required={required}
+                      aria-required={required}
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={[describedBy, error ? authErrorId : undefined].filter(Boolean).join(" ") || undefined}
+                    />
+                  )}
+                </FormField>
+              ) : (
+                <FormField
+                  id="private-id-input"
+                  label="私有密钥"
+                  description="使用注册时保存的唯一密钥"
+                  required
+                >
+                  {({ describedBy, required }) => (
+                    <Input
+                      id="private-id-input"
+                      name="privateId"
+                      value={privateId}
+                      onChange={(event) => setPrivateId(event.target.value)}
+                      placeholder="私有密钥 (如: XXXX-XXXX-XXXX-...)"
+                      surface="filled"
+                      controlSize="touch"
+                      className="font-mono text-base"
+                      disabled={isLoading}
+                      autoFocus
+                      required={required}
+                      aria-required={required}
+                      aria-label="私有密钥"
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={[describedBy, error ? authErrorId : undefined].filter(Boolean).join(" ") || undefined}
+                      data-testid="private-id-input"
+                    />
+                  )}
+                </FormField>
+              )}
+
+              {error && (
+                <div id={authErrorId}>
+                  <FeedbackNotice
+                    tone="danger"
+                    title={authMode === "register" ? "无法创建账户" : "无法登录"}
+                  >
+                    {error}
+                  </FeedbackNotice>
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                size="touch"
+                className="w-full text-base"
+                disabled={
+                  isLoading ||
+                  (authMode === "register"
+                    ? !displayName.trim()
+                    : !privateId.trim())
+                }
+              >
+                {isLoading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+                {authMode === "register" ? "创建账户" : "登录"}
+              </Button>
+
+              <Button
+                type="button"
+                variant="quiet"
+                size="touch"
+                className="w-full"
+                onClick={() => {
+                  setAuthMode(authMode === "register" ? "login" : "register");
+                  setError("");
+                }}
+              >
+                {authMode === "register"
+                  ? "已有账户？登录"
+                  : "没有账户？注册"}
+              </Button>
+            </form>
+          </Surface>
         </SheetContent>
       </Sheet>
 
@@ -328,50 +399,82 @@ export default function WelcomePage() {
           }
         }}
       >
-        <SheetContent side="bottom" className="bg-card border-t border-border">
-          <SheetHeader>
-            <SheetTitle className="text-foreground">
-              账户创建成功！
-            </SheetTitle>
-            <SheetDescription className="text-muted-foreground">
-              请务必保存以下私有密钥，这是你唯一的登录凭证
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="space-y-4 mt-4">
-            <div className="bg-secondary rounded-lg p-4 font-mono text-sm text-primary break-all flex items-center gap-2">
-              <span className="flex-1">{showPrivateId}</span>
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          className="border-0 bg-transparent p-0 shadow-none"
+          overlayClassName="bg-black/60"
+        >
+          <Surface
+            variant="overlay"
+            className="relative mx-auto w-full max-w-2xl rounded-b-none border-b-0 px-4 pb-[calc(1rem+var(--safe-area-inset-bottom))] pt-4 sm:px-6"
+          >
+            <SheetClose asChild>
               <Button
-                size="icon"
-                variant="ghost"
-                className="flex-shrink-0"
-                onClick={handleCopyPrivateId}
-                aria-label={copied ? "已复制私有密钥" : "复制私有密钥"}
+                type="button"
+                variant="quiet"
+                size="icon-touch"
+                className="absolute right-2 top-2"
+                aria-label="关闭私有密钥面板"
               >
-                {copied ? (
-                  <Check className="w-4 h-4 text-success" />
-                ) : (
-                  <Copy className="w-4 h-4" />
-                )}
+                <X className="size-4" />
+              </Button>
+            </SheetClose>
+
+            <SheetHeader className="p-0 pr-12 text-left">
+              <SheetTitle className="text-[var(--text-primary)]">
+                账户创建成功！
+              </SheetTitle>
+              <SheetDescription className="text-[var(--text-secondary)]">
+                请务必保存以下私有密钥，这是你唯一的登录凭证
+              </SheetDescription>
+            </SheetHeader>
+
+            <div className="mt-5 grid gap-4">
+              <Surface
+                variant="subtle"
+                className="flex items-center gap-2 p-3 font-mono text-sm text-[var(--text-primary)]"
+              >
+                <code className="min-w-0 flex-1 break-all">{showPrivateId}</code>
+                <Button
+                  type="button"
+                  size="icon-touch"
+                  variant="quiet"
+                  className="shrink-0"
+                  onClick={handleCopyPrivateId}
+                  aria-label={copied ? "已复制私有密钥" : "复制私有密钥"}
+                >
+                  {copied ? (
+                    <Check className="size-4 text-[var(--success-foreground)]" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
+                </Button>
+              </Surface>
+
+              <FeedbackNotice
+                tone={copied ? "success" : "warning"}
+                title={copied ? "私有密钥已复制" : "仅显示一次"}
+              >
+                {copied
+                  ? "请继续把密钥保存在只有你能访问的地方。"
+                  : "此密钥仅显示一次，丢失后无法找回"}
+              </FeedbackNotice>
+
+              <Button
+                size="touch"
+                className="w-full text-base"
+                onClick={() => {
+                  setShowPrivateId(null);
+                  setAuthMode(null);
+                }}
+              >
+                我已保存密钥，开始体验
               </Button>
             </div>
-
-            <p className="text-xs text-warning">
-              ⚠ 此密钥仅显示一次，丢失后无法找回
-            </p>
-
-            <Button
-              className="w-full h-12 touch-target"
-              onClick={() => {
-                setShowPrivateId(null);
-                setAuthMode(null);
-              }}
-            >
-              我已保存密钥，开始体验
-            </Button>
-          </div>
+          </Surface>
         </SheetContent>
       </Sheet>
-    </div>
+    </PageTransition>
   );
 }

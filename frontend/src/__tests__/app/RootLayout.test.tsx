@@ -43,6 +43,8 @@ describe("RootLayout AppShell boundary", () => {
 
   it("publishes the lowercase brand and enables safe-area viewport insets", () => {
     expect(metadata.title).toBe("story101 - 人生模拟器");
+    expect(metadata.description).toBe("人生草稿本，把一次人生写成一页页可继续的故事");
+    expect(metadata.description).not.toMatch(/AI驱动/);
     expect(viewport.viewportFit).toBe("cover");
   });
 });
