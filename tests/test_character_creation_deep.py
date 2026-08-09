@@ -545,6 +545,29 @@ class TestCharacterCreatorAttributes:
 class TestCharacterCreatorMisc:
     """Test miscellaneous CharacterCreator methods."""
 
+    def test_opening_story_disables_thinking(self):
+        """Removing the opening policy must expose DeepSeek's default thinking mode."""
+        from src.game.character_creation import CharacterCreator
+
+        class RecordingGenerator:
+            def __init__(self):
+                self.calls = []
+
+            def generate_stream(self, **kwargs):
+                self.calls.append(kwargs)
+                return iter(["opening"])
+
+        generator = RecordingGenerator()
+        result = CharacterCreator(generator, language="zh").generate_opening_story(
+            character_settings={},
+            player_name="林岚",
+            life_vision="经营社区影院",
+        )
+
+        assert list(result) == ["opening"]
+        assert len(generator.calls) == 1
+        assert generator.calls[0]["thinking"] is False
+
     def test_format_family_members_empty(self):
         from src.game.character_creation import CharacterCreator
 

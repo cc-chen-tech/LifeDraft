@@ -1235,6 +1235,7 @@ class CharacterCreator:
                 system_prompt="You are a skilled storyteller. Create engaging narrative openings based on character backgrounds.",
                 temperature=0.9,
                 max_tokens=4096,  # Maximum tokens - no truncation
+                thinking=False,
             )
 
             return response  # type: ignore[return-value, no-any-return]  # Return the stream object

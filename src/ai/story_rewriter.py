@@ -174,6 +174,7 @@ Please rewrite the specified segment according to the user's request:
                 stream_callback=stream_callback,
                 frequency_penalty=0.3,
                 presence_penalty=0.3,
+                thinking=False,
             )
 
             rewritten_story = self._quick_validate_and_retry_rewrite(
@@ -280,6 +281,7 @@ Please rewrite the specified segment according to the user's request:
             stream_callback=stream_callback,
             frequency_penalty=0.3,
             presence_penalty=0.3,
+            thinking=False,
         )
         retry_result = quick_validate_story(
             story_text=retry_story,
@@ -389,6 +391,7 @@ Please generate a brand new story based on the above context, ensuring logical c
                 stream_callback=stream_callback,
                 frequency_penalty=0.3,
                 presence_penalty=0.3,
+                thinking=False,
             )
 
             from config.prompts._helpers import _collect_available_people
@@ -437,6 +440,7 @@ Please generate a brand new story based on the above context, ensuring logical c
                     stream_callback=stream_callback,
                     frequency_penalty=0.3,
                     presence_penalty=0.3,
+                    thinking=False,
                 )
                 retry_result = quick_validate_story(
                     story_text=regenerated_story,
