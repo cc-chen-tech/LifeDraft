@@ -210,6 +210,7 @@ class ConsistencyValidator:
                 user_prompt=prompt,
                 temperature=0.3,
                 max_tokens=4096,
+                thinking=False,
             )
 
             # ★ 解析 AI 的验证结果（已移除硬性判断逻辑）
@@ -219,6 +220,33 @@ class ConsistencyValidator:
             logger.error(f"Consistency validation failed: {e}")
             # On error, pass through (don't block story generation)
             return ValidationResult(passed=True)
+
+    @staticmethod
+    def _invalid_response_result(language: str) -> ValidationResult:
+        """Reject validator output that cannot be interpreted as a JSON object."""
+        if language == "zh":
+            description = "一致性校验未返回可解析的 JSON"
+            fix_suggestion = "重新生成故事并再次执行一致性校验"
+            fix_instructions = "\n\n【一致性校验响应无效】请重新生成故事并再次校验。"
+        else:
+            description = "Consistency validation returned no parseable JSON"
+            fix_suggestion = "Regenerate the story and run consistency validation again"
+            fix_instructions = (
+                "\n\n[INVALID CONSISTENCY RESPONSE] Regenerate the story and validate again."
+            )
+
+        return ValidationResult(
+            passed=False,
+            issues=[
+                ConsistencyIssue(
+                    dimension="validation_response",
+                    severity="CRITICAL",
+                    description=description,
+                    fix_suggestion=fix_suggestion,
+                )
+            ],
+            fix_instructions=fix_instructions,
+        )
 
     def _parse_validation_response(self, response: str, language: str) -> ValidationResult:
         """
@@ -234,9 +262,9 @@ class ConsistencyValidator:
         """
         try:
             data = extract_json(response)
-            if not data:
-                logger.warning("Could not parse validation response as JSON, treating as pass")
-                return ValidationResult(passed=True)
+            if not isinstance(data, dict):
+                logger.warning("Could not parse validation response as a JSON object; rejecting")
+                return self._invalid_response_result(language)
 
             issues = []
             raw_issues = data.get("issues", [])
@@ -421,7 +449,7 @@ class ConsistencyValidator:
 
         except Exception as e:
             logger.error(f"Failed to parse validation response: {e}")
-            return ValidationResult(passed=True)
+            return self._invalid_response_result(language)
 
     def validate_with_history(
         self,
@@ -533,6 +561,7 @@ class ConsistencyValidator:
                 user_prompt=prompt,
                 temperature=0.3,
                 max_tokens=4096,
+                thinking=False,
             )
 
             return self._parse_validation_response(response, language)

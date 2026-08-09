@@ -272,12 +272,64 @@ class TestConsistencyValidator:
         assert result.passed is True
         assert len(result.warning_issues) == 1
 
-    def test_parse_invalid_json(self):
-        """Test parsing invalid JSON response passes through."""
+    @pytest.mark.parametrize("response", ["", "not json", "[]"])
+    def test_parse_invalid_validation_response_fails_closed(self, response):
+        """Malformed validator output must never masquerade as a successful judgment."""
         mock_client = Mock()
         validator = ConsistencyValidator(mock_client)
-        result = validator._parse_validation_response("not json", "zh")
+        result = validator._parse_validation_response(response, "zh")
+        assert result.passed is False
+        assert result.has_critical_issues is True
+        assert result.critical_issues[0].dimension == "validation_response"
+        assert result.fix_instructions
+
+    def test_parse_valid_empty_object_still_passes(self):
+        """A parseable empty JSON object is a valid no-issues response."""
+        validator = ConsistencyValidator(Mock())
+        result = validator._parse_validation_response("{}", "zh")
         assert result.passed is True
+        assert result.issues == []
+
+    def test_consistency_calls_disable_thinking_for_current_and_history_validation(self):
+        """Both JSON judge entry points must avoid exhausting the final-answer budget."""
+
+        class RecordingClient:
+            def __init__(self):
+                self.calls = []
+
+            def call(self, **kwargs):
+                self.calls.append(kwargs)
+                return "{}"
+
+        class WorldModel:
+            def build_constraints_text(self, language):
+                return "no contradictions"
+
+            def get_established_profile_names(self):
+                return []
+
+        client = RecordingClient()
+        validator = ConsistencyValidator(client)
+
+        current = validator.validate_story(
+            story_text="林岚继续经营社区影院。",
+            world_model=WorldModel(),
+            player_state_dict={},
+            character_settings={},
+            language="zh",
+        )
+        history = validator.validate_with_history(
+            story_text="林岚兑现了上周的承诺。",
+            story_history=[{"week": 1, "story": "林岚作出承诺。", "choice": "继续"}],
+            dynamic_facts=[],
+            character_settings={},
+            language="zh",
+        )
+
+        assert current.passed is True
+        assert history.passed is True
+        assert len(client.calls) == 2
+        assert all(call["thinking"] is False for call in client.calls)
 
     def test_ai_driven_should_retry(self):
         """★ 测试 AI 驱动的 should_retry 判断。"""
