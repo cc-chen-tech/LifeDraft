@@ -5,16 +5,18 @@ import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 
 const setters = {
   setPhase: jest.fn(), setConnectionStatus: jest.fn(), setReconnectAttempt: jest.fn(),
+  setTransport: jest.fn(), setLoadingOperation: jest.fn(), setLoadingIdentity: jest.fn(),
   setProcessing: jest.fn(), appendStoryText: jest.fn(), setCurrentEvent: jest.fn(),
   setGameOver: jest.fn(), setSummaryText: jest.fn(), setRoundSummary: jest.fn(),
   setOptions: jest.fn(), setStoryText: jest.fn(),
 };
 const abortRef: React.MutableRefObject<AbortController | null> = { current: null };
 const generatingRef: React.MutableRefObject<boolean> = { current: false };
+const runTokenRef: React.MutableRefObject<number> = { current: 0 };
 
 function renderChoiceHandler() {
   return renderHook(() => useChoiceHandler({
-    gameId: 44, abortRef, generatingRef, ...setters,
+    gameId: 44, runTokenRef, abortRef, generatingRef, ...setters,
   }));
 }
 
@@ -23,6 +25,7 @@ describe('useChoiceHandler recovery contracts', () => {
     jest.clearAllMocks();
     abortRef.current = null;
     generatingRef.current = false;
+    runTokenRef.current = 0;
     useGameStore.setState({
       storyText: 'Base story before choice.', currentEvent: { options: [{ text: '调查' }] },
       roundInfo: { current_round: 1 }, enableSceneImage: false,
