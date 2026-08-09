@@ -5,6 +5,8 @@
 import React from "react";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const mockUsePathname = jest.fn(() => "/");
 
@@ -133,6 +135,9 @@ describe("GlobalMusicPlayer", () => {
       const { container } = render(<GlobalMusicPlayer />);
       expect(container.firstChild).toBeNull();
       expect(container.querySelector("[data-app-shell-reserve]")).toBeNull();
+      expect(
+        container.querySelector('[data-app-shell-reserve-spacer="bottom"]'),
+      ).not.toBeInTheDocument();
     });
 
     it("renders when activeStoryText is set", () => {
@@ -501,6 +506,13 @@ describe("GlobalMusicPlayer", () => {
         render(<GlobalMusicPlayer />);
 
         const wrapper = screen.getByTestId("global-music-player");
+        const reserve = document.querySelector(
+          '[data-app-shell-reserve-spacer="bottom"]',
+        );
+        expect(reserve).toHaveAttribute("aria-hidden", "true");
+        expect(reserve).toHaveClass("app-shell-bottom-reserve");
+        expect(reserve?.parentElement).toBe(wrapper.parentElement);
+        expect(reserve?.nextElementSibling).toBe(wrapper);
         expect(wrapper).toHaveAttribute("data-app-shell-reserve", "bottom");
         expect(wrapper).toHaveClass("bottom-4", "safe-area-pb");
         expect(wrapper).not.toHaveClass("top-16");
@@ -516,11 +528,26 @@ describe("GlobalMusicPlayer", () => {
         render(<GlobalMusicPlayer />);
 
         const wrapper = screen.getByTestId("global-music-player");
+        expect(
+          document.querySelector('[data-app-shell-reserve-spacer="bottom"]'),
+        ).not.toBeInTheDocument();
         expect(wrapper).not.toHaveAttribute("data-app-shell-reserve");
         expect(wrapper).toHaveClass("top-16", "safe-area-pt");
         expect(wrapper).not.toHaveClass("bottom-4");
       },
     );
+
+    it("styles an explicit flow spacer without relying on :has support", () => {
+      const globalsCss = readFileSync(
+        resolve(__dirname, "../../app/globals.css"),
+        "utf8",
+      );
+
+      expect(globalsCss).not.toContain(":has(");
+      expect(globalsCss).toMatch(
+        /\.app-shell-bottom-reserve\s*\{[^}]*height:\s*var\(--app-shell-bottom-reserve\)/s,
+      );
+    });
 
     it("keeps the expanded MusicPlayer mounted while a route adopts the bottom dock", async () => {
       const user = userEvent.setup();
@@ -576,6 +603,45 @@ describe("GlobalMusicPlayer", () => {
 
       expect(collapsedPanel).toHaveAttribute("inert");
       expect(screen.getByTestId("sound-music-console")).toBe(mountedMusicPlayer);
+    });
+
+    it("exposes a stable disclosure relationship for the sound panel", async () => {
+      const user = userEvent.setup();
+      setStoreState({ activeStoryText: "story text" });
+
+      render(<GlobalMusicPlayer />);
+
+      const panel = screen.getByTestId("unified-sound-panel").parentElement;
+      const expandButton = screen.getByRole("button", { name: "展开声音" });
+      expect(panel).toHaveAttribute("id", "story101-global-sound-panel");
+      expect(expandButton).toHaveAttribute(
+        "aria-controls",
+        "story101-global-sound-panel",
+      );
+      expect(expandButton).toHaveAttribute("aria-expanded", "false");
+
+      await user.click(expandButton);
+
+      const collapseButton = screen.getByRole("button", { name: "收起声音" });
+      expect(collapseButton).toHaveAttribute(
+        "aria-controls",
+        "story101-global-sound-panel",
+      );
+      expect(collapseButton).toHaveAttribute("aria-expanded", "true");
+    });
+
+    it("moves focus between disclosure controls only after a user toggles the panel", async () => {
+      const user = userEvent.setup();
+      setStoreState({ activeStoryText: "story text" });
+
+      render(<GlobalMusicPlayer />);
+
+      expect(document.body).toHaveFocus();
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
+      expect(screen.getByRole("button", { name: "收起声音" })).toHaveFocus();
+
+      await user.click(screen.getByRole("button", { name: "收起声音" }));
+      expect(screen.getByRole("button", { name: "展开声音" })).toHaveFocus();
     });
 
     it("shows song name when currentSong is set", () => {

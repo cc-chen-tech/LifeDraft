@@ -178,9 +178,9 @@
   min-height: 100dvh;
 }
 
-.story101-app-shell:has([data-app-shell-reserve="bottom"])
-  > [data-slot="app-shell-content"] {
-  padding-bottom: var(--app-shell-bottom-reserve);
+.app-shell-bottom-reserve {
+  height: var(--app-shell-bottom-reserve);
+  pointer-events: none;
 }
 
 @layer base {

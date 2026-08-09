@@ -24,8 +24,13 @@ import {
   Volume2,
 } from "lucide-react";
 
+const SOUND_PANEL_ID = "story101-global-sound-panel";
+
 export function GlobalMusicPlayer() {
   const hasInitRef = useRef(false);
+  const expandButtonRef = useRef<HTMLButtonElement>(null);
+  const collapseButtonRef = useRef<HTMLButtonElement>(null);
+  const focusAfterToggleRef = useRef<"expand" | "collapse" | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const pathname = usePathname();
   const usesBottomAppShellDock =
@@ -79,11 +84,34 @@ export function GlobalMusicPlayer() {
     activeStoryText && effectiveGameId,
   );
 
+  const expandSoundPanel = () => {
+    focusAfterToggleRef.current = "collapse";
+    setIsExpanded(true);
+  };
+
+  const collapseSoundPanel = () => {
+    focusAfterToggleRef.current = "expand";
+    setIsExpanded(false);
+  };
+
+  useEffect(() => {
+    const focusTarget = focusAfterToggleRef.current;
+    if (focusTarget === null) return;
+
+    focusAfterToggleRef.current = null;
+    const button =
+      focusTarget === "collapse"
+        ? collapseButtonRef.current
+        : expandButtonRef.current;
+    button?.focus();
+  }, [isExpanded]);
+
   useEffect(() => {
     if (!isExpanded) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        focusAfterToggleRef.current = "expand";
         setIsExpanded(false);
       }
     };
@@ -128,7 +156,17 @@ export function GlobalMusicPlayer() {
     : "音乐和朗读";
 
   return (
+    <>
+      {usesBottomAppShellDock && (
+        <div
+          key="bottom-reserve"
+          aria-hidden="true"
+          data-app-shell-reserve-spacer="bottom"
+          className="app-shell-bottom-reserve"
+        />
+      )}
     <div
+      key="player"
       role="region"
       aria-label="声音"
       data-testid="global-music-player"
@@ -143,6 +181,7 @@ export function GlobalMusicPlayer() {
           Use opacity-0 + h-0 + overflow-hidden instead of display:none
           so the browser never pauses audio playback. */}
       <div
+        id={SOUND_PANEL_ID}
         className={
           isExpanded
             ? "story101-sound-panel max-h-[68vh] overflow-y-auto rounded-[var(--radius-overlay)] border border-[var(--border-default)] bg-[var(--surface-overlay)] shadow-[var(--shadow-overlay)]"
@@ -173,10 +212,13 @@ export function GlobalMusicPlayer() {
               </div>
             </div>
             <button
+              ref={collapseButtonRef}
               type="button"
               aria-label="收起声音"
+              aria-controls={SOUND_PANEL_ID}
+              aria-expanded={isExpanded}
               title="收起声音"
-              onClick={() => setIsExpanded(false)}
+              onClick={collapseSoundPanel}
               className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <ChevronUp className="h-4 w-4" />
@@ -265,8 +307,10 @@ export function GlobalMusicPlayer() {
                   togglePlay();
                   return;
                 }
-                setIsExpanded(true);
+                expandSoundPanel();
               }}
+              aria-controls={!hasPlayableMusic ? SOUND_PANEL_ID : undefined}
+              aria-expanded={!hasPlayableMusic ? isExpanded : undefined}
               className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {isPlaying ? (
@@ -296,11 +340,15 @@ export function GlobalMusicPlayer() {
           </div>
 
           <button
+            ref={expandButtonRef}
+            type="button"
             aria-label="展开声音"
+            aria-controls={SOUND_PANEL_ID}
+            aria-expanded={isExpanded}
             title="展开声音"
             onClick={(e) => {
               e.stopPropagation();
-              setIsExpanded(true);
+              expandSoundPanel();
             }}
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[var(--radius-control)] text-muted-foreground hover:bg-muted hover:text-foreground"
           >
@@ -309,5 +357,6 @@ export function GlobalMusicPlayer() {
         </div>
       )}
     </div>
+    </>
   );
 }
