@@ -29,6 +29,7 @@ maintained_tests=(
   tests/test_story_music_recommendation_db.py
   tests/test_music_degradation_no_mock.py
   tests/test_character_wealth_boundary_contract.py
+  tests/test_world_model_lifecycle_contracts.py
 )
 
 case "$mode" in
