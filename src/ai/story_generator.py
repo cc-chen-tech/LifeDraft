@@ -42,7 +42,7 @@ from src.ai.long_story_context import (
 )
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
-from src.ai.prompt_sanitizer import sanitize_player_name
+from src.ai.prompt_sanitizer import sanitize_persisted_player_name
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.ai.system_prompts import get_system_prompt
 from src.ai.text_quality import normalize_generated_story, validate_narrative_quality
@@ -247,7 +247,7 @@ class StoryGenerator:
         name = resolve_protagonist_name(
             player_state, player_state.get("character_settings"), None
         )
-        return sanitize_player_name(name)
+        return sanitize_persisted_player_name(name)
 
     @staticmethod
     def _canonical_story_for_repeat_check(story: str) -> str:

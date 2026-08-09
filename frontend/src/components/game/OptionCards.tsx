@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Send, Loader2, ChevronRight } from "lucide-react";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 
 interface OptionCardsProps {
   options: { text: string; potential_effects?: Record<string, unknown> }[];
@@ -44,7 +47,11 @@ export function OptionCards({
   };
 
   const handleCustomSubmit = async () => {
-    if (!customText.trim() || controlsDisabled) return;
+    if (
+      !customText.trim() ||
+      controlsDisabled ||
+      !isWithinInputLimit(customText, INPUT_LIMITS.customAction)
+    ) return;
     const submittedText = customText.trim();
     setSelectedIndex(-1); // -1 = custom
     setCustomText("");
@@ -147,6 +154,7 @@ export function OptionCards({
                 }
               }}
             />
+            <LengthIndicator value={customText} limit={INPUT_LIMITS.customAction} />
           </div>
           <Button
             size="icon"
@@ -158,7 +166,11 @@ export function OptionCards({
               "transition-all duration-200",
               customText.trim() && "text-primary"
             )}
-            disabled={controlsDisabled || !customText.trim()}
+            disabled={
+              controlsDisabled ||
+              !customText.trim() ||
+              !isWithinInputLimit(customText, INPUT_LIMITS.customAction)
+            }
             onClick={() => void handleCustomSubmit()}
           >
             {isSubmitting && selectedIndex === -1 ? (

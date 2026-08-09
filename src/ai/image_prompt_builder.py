@@ -148,9 +148,9 @@ class ImagePromptBuilder:
         safe_era = self._sanitize_era_for_image(era)
 
         # ★ 消毒人物名称，防止 prompt 注入
-        from src.ai.prompt_sanitizer import sanitize_player_name
+        from src.ai.prompt_sanitizer import sanitize_persisted_player_name
 
-        safe_name = sanitize_player_name(name)
+        safe_name = sanitize_persisted_player_name(name)
 
         parts = []
 

@@ -25,6 +25,9 @@ import { games } from "@/lib/api";
 import { streamOpeningStory } from "@/lib/sse";
 import { Loader2, Home, ImageIcon, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 
 export default function OpeningStoryPage() {
   const router = useRouter();
@@ -555,17 +558,26 @@ export default function OpeningStoryPage() {
                       placeholder="想修改插画？描述你的想法，如：换成夜晚场景、增加 rain 效果..."
                       className="bg-secondary border-border text-sm"
                     />
+                    <LengthIndicator value={illustrationPrompt} limit={INPUT_LIMITS.feedback} />
                     <Button
                       variant="outline"
                       size="sm"
                       className="w-full"
                       onClick={() => {
-                        if (illustrationPrompt.trim() && gameId) {
+                        if (
+                          illustrationPrompt.trim() &&
+                          gameId &&
+                          isWithinInputLimit(illustrationPrompt, INPUT_LIMITS.feedback)
+                        ) {
                           regenerateOpeningIllustration(gameId, openingStory || storyText, characterSettings, playerName, illustrationPrompt);
                           setIllustrationPrompt("");
                         }
                       }}
-                      disabled={!illustrationPrompt.trim() || isGeneratingIllustration}
+                      disabled={
+                        !illustrationPrompt.trim() ||
+                        isGeneratingIllustration ||
+                        !isWithinInputLimit(illustrationPrompt, INPUT_LIMITS.feedback)
+                      }
                     >
                       <RefreshCw className="w-4 h-4 mr-2" />
                       根据描述重新生成

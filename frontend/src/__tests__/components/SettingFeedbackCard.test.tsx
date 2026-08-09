@@ -6,6 +6,7 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingFeedbackCard } from "@/components/create/SettingFeedbackCard";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 
 describe("SettingFeedbackCard", () => {
   const baseProps = {
@@ -69,6 +70,8 @@ describe("SettingFeedbackCard", () => {
 
       expect(screen.getByTestId("background-feedback-input")).toBeInTheDocument();
       expect(screen.getByText("重新生成")).toBeInTheDocument();
+      expect(screen.getByTestId("background-feedback-input")).not.toHaveAttribute("maxlength");
+      expect(screen.getByText(`还可输入 ${INPUT_LIMITS.feedback} 字`)).toBeInTheDocument();
     });
 
     it("changes feedback trigger button text to reflect editing state", async () => {
@@ -128,6 +131,19 @@ describe("SettingFeedbackCard", () => {
 
       const regenerateButton = screen.getByText("重新生成").closest("button");
       expect(regenerateButton).toBeDisabled();
+    });
+
+    it("blocks injected overlimit feedback without clearing it", async () => {
+      const onRegenerate = jest.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      render(<SettingFeedbackCard {...baseProps} onRegenerate={onRegenerate} />);
+      await user.click(screen.getByTestId("background-feedback-button"));
+      const input = screen.getByTestId("background-feedback-input");
+      await user.type(input, "😀".repeat(INPUT_LIMITS.feedback + 1));
+      expect(screen.getByRole("alert")).toHaveTextContent("已超出 1 字");
+      expect(screen.getByRole("button", { name: "重新生成家庭背景" })).toBeDisabled();
+      expect(input).toHaveValue("😀".repeat(INPUT_LIMITS.feedback + 1));
+      expect(onRegenerate).not.toHaveBeenCalled();
     });
 
     it("clears feedback after successful regeneration", async () => {

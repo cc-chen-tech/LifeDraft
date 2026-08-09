@@ -343,10 +343,13 @@ run_preflight() {
     local openapi_check_dir="$TEST_RUN_DIR/openapi-check"
     local generated_openapi_schema="$openapi_check_dir/openapi-schema.json"
     local generated_openapi_types="$openapi_check_dir/api-generated.d.ts"
+    local generated_input_limits="$openapi_check_dir/input-limits.generated.ts"
     rm -rf "$openapi_check_dir"
     mkdir -p "$openapi_check_dir"
     python scripts/export_openapi.py "$generated_openapi_schema"
     local openapi_export_code=$?
+    python scripts/export_input_limits.py "$generated_input_limits"
+    local input_limits_export_code=$?
     cd "$PROJECT_DIR/frontend"
     npx openapi-typescript "$generated_openapi_schema" -o "$generated_openapi_types"
     local openapi_ts_code=$?
@@ -355,8 +358,10 @@ run_preflight() {
     local openapi_schema_diff_code=$?
     cmp -s "$generated_openapi_types" frontend/src/types/api-generated.d.ts
     local openapi_types_diff_code=$?
+    cmp -s "$generated_input_limits" frontend/src/types/input-limits.generated.ts
+    local input_limits_diff_code=$?
     local openapi_diff_code=0
-    if [ $openapi_schema_diff_code -ne 0 ] || [ $openapi_types_diff_code -ne 0 ]; then
+    if [ $openapi_schema_diff_code -ne 0 ] || [ $openapi_types_diff_code -ne 0 ] || [ $input_limits_export_code -ne 0 ] || [ $input_limits_diff_code -ne 0 ]; then
         echo -e "${RED}OpenAPI 生成物与受版本控制的前端类型不一致。${NC}" >&2
         echo -e "${YELLOW}请执行 npm run sync:api-types 后提交生成物。${NC}" >&2
         openapi_diff_code=1
@@ -480,6 +485,7 @@ run_contract() {
     echo -e "${YELLOW}运行 API 契约测试...${NC}"
     python -m pytest \
         tests/test_api_contract.py \
+        tests/test_input_limits_contract.py \
         tests/test_player_name_in_prompts_contract.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_music_playlist_contract.py \

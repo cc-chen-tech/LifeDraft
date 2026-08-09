@@ -2,12 +2,30 @@
 
 import re
 
-# 最大用户输入长度
-MAX_USER_INPUT_LENGTH = 500
-MAX_NAME_LENGTH = 50
+from src.api.input_limits import LIFE_VISION_MAX_CHARS, NAME_MAX_CHARS
+
+MAX_USER_INPUT_LENGTH = LIFE_VISION_MAX_CHARS
+MAX_NAME_LENGTH = NAME_MAX_CHARS
 
 
-def sanitize_user_input(text: str, max_length: int = MAX_USER_INPUT_LENGTH) -> str:
+class PromptInputTooLongError(ValueError):
+    """Raised when sanitization would otherwise change input by truncation."""
+
+    def __init__(self, original_text: str, limit: int) -> None:
+        self.original_text = original_text
+        self.limit = limit
+        self.actual_length = len(original_text)
+        super().__init__(
+            f"user input exceeds {limit} characters (actual: {self.actual_length})"
+        )
+
+
+def sanitize_user_input(
+    text: str,
+    max_length: int = MAX_USER_INPUT_LENGTH,
+    *,
+    enforce_length: bool = True,
+) -> str:
     """清洗用户输入，防止 prompt 注入
 
     Args:
@@ -20,8 +38,9 @@ def sanitize_user_input(text: str, max_length: int = MAX_USER_INPUT_LENGTH) -> s
     if not text:
         return text
 
-    # 1. 长度限制
-    text = text[:max_length]
+    # 1. Never change user meaning by silently slicing the submitted value.
+    if enforce_length and len(text) > max_length:
+        raise PromptInputTooLongError(text, max_length)
 
     # 2. 移除可能的系统指令注入模式
     # 移除试图覆盖系统角色的模式
@@ -53,6 +72,19 @@ def sanitize_player_name(name: str) -> str:
         清洗后的名称
     """
     return sanitize_user_input(name, max_length=MAX_NAME_LENGTH)
+
+
+def sanitize_persisted_player_name(name: str) -> str:
+    """Sanitize a trusted saved name without applying new-write limits.
+
+    Existing saves are intentionally not migrated or truncated. New requests are
+    still constrained by the API model before persistence.
+    """
+    return sanitize_user_input(
+        name,
+        max_length=MAX_NAME_LENGTH,
+        enforce_length=False,
+    )
 
 
 def wrap_user_input(text: str, label: str = "用户输入") -> str:

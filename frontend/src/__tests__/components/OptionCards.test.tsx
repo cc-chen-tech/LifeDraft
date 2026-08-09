@@ -6,6 +6,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OptionCards } from '@/components/game/OptionCards';
+import { INPUT_LIMITS } from '@/types/input-limits.generated';
 
 describe('OptionCards', () => {
   const mockOptions = [
@@ -22,6 +23,17 @@ describe('OptionCards', () => {
   });
 
   describe('Rendering', () => {
+    it('shows the generated limit without a UTF-16 native maxlength', () => {
+      render(
+        <OptionCards
+          options={mockOptions}
+          onSelect={mockOnSelect}
+          onCustomChoice={mockOnCustomChoice}
+        />
+      );
+      expect(screen.getByPlaceholderText(/或者，描述你想做的事情/i)).not.toHaveAttribute('maxlength');
+      expect(screen.getByText(`还可输入 ${INPUT_LIMITS.customAction} 字`)).toBeInTheDocument();
+    });
     it('renders all options', () => {
       render(
         <OptionCards
@@ -203,6 +215,22 @@ describe('OptionCards', () => {
   });
 
   describe('Custom choice input', () => {
+    it('keeps an injected overlimit value visible and blocks submission', async () => {
+      const user = userEvent.setup();
+      render(
+        <OptionCards
+          options={mockOptions}
+          onSelect={mockOnSelect}
+          onCustomChoice={mockOnCustomChoice}
+        />
+      );
+      const textarea = screen.getByPlaceholderText(/或者，描述你想做的事情/i);
+      await user.type(textarea, '😀'.repeat(INPUT_LIMITS.customAction + 1));
+      expect(screen.getByRole('alert')).toHaveTextContent('已超出 1 字');
+      expect(screen.getByRole('button', { name: '提交自定义选择' })).toBeDisabled();
+      expect(mockOnCustomChoice).not.toHaveBeenCalled();
+    });
+
     it('allows typing in custom input', async () => {
       const user = userEvent.setup();
       render(

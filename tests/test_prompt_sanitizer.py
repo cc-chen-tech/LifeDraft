@@ -1,6 +1,9 @@
 """Tests for prompt sanitizer module."""
 
+import pytest
+
 from src.ai.prompt_sanitizer import (MAX_NAME_LENGTH, MAX_USER_INPUT_LENGTH,
+                                     PromptInputTooLongError,
                                      sanitize_custom_action,
                                      sanitize_life_vision,
                                      sanitize_player_name,
@@ -33,17 +36,22 @@ class TestSanitizeUserInput:
         """Whitespace only should return empty after strip."""
         assert sanitize_user_input("   ") == ""
 
-    def test_truncates_long_input(self):
-        """Input longer than max_length should be truncated."""
+    def test_rejects_long_input_without_truncating_it(self):
+        """Input longer than max_length is rejected with explicit measurements."""
         long_text = "a" * 1000
-        result = sanitize_user_input(long_text)
-        assert len(result) == MAX_USER_INPUT_LENGTH
+        with pytest.raises(PromptInputTooLongError) as exc_info:
+            sanitize_user_input(long_text)
+        assert exc_info.value.limit == MAX_USER_INPUT_LENGTH
+        assert exc_info.value.actual_length == len(long_text)
+        assert exc_info.value.original_text == long_text
 
-    def test_custom_max_length(self):
-        """Custom max_length should be respected."""
+    def test_custom_max_length_is_rejected_explicitly(self):
+        """Custom max_length should be reported rather than silently applied."""
         text = "a" * 100
-        result = sanitize_user_input(text, max_length=50)
-        assert len(result) == 50
+        with pytest.raises(PromptInputTooLongError) as exc_info:
+            sanitize_user_input(text, max_length=50)
+        assert exc_info.value.limit == 50
+        assert exc_info.value.actual_length == 100
 
     def test_filters_ignore_instructions_pattern(self):
         """Should filter 'ignore previous instructions' pattern."""
@@ -160,11 +168,13 @@ class TestSanitizePlayerName:
         name = "John Doe"
         assert sanitize_player_name(name) == name
 
-    def test_truncates_long_name(self):
-        """Name longer than MAX_NAME_LENGTH should be truncated."""
+    def test_rejects_long_name(self):
+        """Name longer than MAX_NAME_LENGTH should be rejected."""
         long_name = "a" * 100
-        result = sanitize_player_name(long_name)
-        assert len(result) == MAX_NAME_LENGTH
+        with pytest.raises(PromptInputTooLongError) as exc_info:
+            sanitize_player_name(long_name)
+        assert exc_info.value.limit == MAX_NAME_LENGTH
+        assert exc_info.value.actual_length == 100
 
     def test_filters_injection_in_name(self):
         """Injection patterns in name should be filtered."""

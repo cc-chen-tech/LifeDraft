@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Loader2, RefreshCw, RotateCcw, User } from "lucide-react";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 
 interface StepPortraitProps {
   playerImages: Array<{ image_id: number; image_url: string }>;
@@ -193,11 +196,15 @@ export function StepPortrait({
             placeholder="不满意？描述你想要的修改...（会保留之前的角色设定）"
             className="bg-secondary border-border"
           />
+          <LengthIndicator value={imageFeedback} limit={INPUT_LIMITS.feedback} />
           <Button
             variant="outline"
             className="w-full"
             onClick={async () => {
-              if (imageFeedback.trim()) {
+              if (
+                imageFeedback.trim() &&
+                isWithinInputLimit(imageFeedback, INPUT_LIMITS.feedback)
+              ) {
                 try {
                   await onRegenerate();
                   onFeedbackChange("");
@@ -207,7 +214,10 @@ export function StepPortrait({
                 }
               }
             }}
-            disabled={!imageFeedback.trim()}
+            disabled={
+              !imageFeedback.trim() ||
+              !isWithinInputLimit(imageFeedback, INPUT_LIMITS.feedback)
+            }
           >
             <RefreshCw className="w-4 h-4 mr-2" />
             根据修改意见重新生成

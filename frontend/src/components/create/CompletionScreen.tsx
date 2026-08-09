@@ -3,6 +3,9 @@
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 import {
   Sheet,
   SheetContent,
@@ -130,6 +133,7 @@ export function CompletionScreen({
   };
 
   const handleRegenerateImage = async () => {
+    if (!isWithinInputLimit(imageFeedback, INPUT_LIMITS.feedback)) return;
     setIsRegeneratingImage(true);
     try {
       await onRegenerateImage();
@@ -204,12 +208,17 @@ export function CompletionScreen({
                   placeholder="不满意？描述你想要的修改..."
                   className="bg-secondary border-border text-sm h-9"
                 />
+                <LengthIndicator value={imageFeedback} limit={INPUT_LIMITS.feedback} />
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     className="flex-1 h-8 text-xs"
-                    disabled={!imageFeedback.trim() || isRegeneratingImage}
+                    disabled={
+                      !imageFeedback.trim() ||
+                      isRegeneratingImage ||
+                      !isWithinInputLimit(imageFeedback, INPUT_LIMITS.feedback)
+                    }
                     title={!imageFeedback.trim() ? "请先输入修改意见" : undefined}
                     onClick={handleRegenerateImage}
                   >
@@ -323,13 +332,18 @@ export function CompletionScreen({
               className="bg-secondary border-border h-12"
               autoFocus
             />
+            <LengthIndicator value={presetName} limit={INPUT_LIMITS.name} />
             <PresetSaveInlineStatus
               status={presetSaveStatus}
               message={presetSaveMessage}
             />
             <Button
               className="w-full touch-target"
-              disabled={!presetName.trim() || isSavingPreset}
+              disabled={
+                !presetName.trim() ||
+                isSavingPreset ||
+                !isWithinInputLimit(presetName, INPUT_LIMITS.name)
+              }
               onClick={onSavePreset}
             >
               {isSavingPreset && (
