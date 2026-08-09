@@ -845,13 +845,13 @@ class StoryGenerator:
                             "Story shape retry completed with diagnostics: %s",
                             retry_shape_issues,
                         )
-                        if self._soft_narrative_lengths:
-                            _set_best_story(story_text)
-                        else:
+                        if not self._soft_narrative_lengths:
                             raise ValueError(
                                 "Story shape validation failed: "
                                 + "; ".join(retry_shape_issues)
                             )
+                    if self._soft_narrative_lengths and retry_quick_result.passed:
+                        _set_best_story(story_text)
                 elif hard_shape_issues:
                     logger.warning(
                         "Story shape issues recorded without another provider retry: %s",
@@ -962,10 +962,18 @@ class StoryGenerator:
                         profile=self._quality_profile,
                     )
 
+                    validation_failures = (
+                        validation_result.critical_failures
+                        + validation_result.high_warnings
+                        + validation_result.medium_notes
+                        + validation_result.low_notes
+                        if self._soft_narrative_lengths
+                        else validation_result.critical_failures
+                    )
                     terminal_continuity_failures = (
                         [
                             failure
-                            for failure in validation_result.critical_failures
+                            for failure in validation_failures
                             if failure.constraint_type in _TERMINAL_CONTINUITY_CONSTRAINTS
                         ]
                         if self._soft_narrative_lengths
@@ -1010,7 +1018,7 @@ class StoryGenerator:
                             "Non-terminal Harness diagnostics retained: %s",
                             [
                                 failure.constraint_type
-                                for failure in validation_result.critical_failures
+                                for failure in validation_failures
                                 if failure not in terminal_continuity_failures
                             ],
                         )
@@ -1058,7 +1066,8 @@ class StoryGenerator:
                 return event
 
             except _EmptyStoryProviderOutput as e:
-                best_valid_story_text = best_story_before_attempt
+                if not self._soft_narrative_lengths:
+                    best_valid_story_text = best_story_before_attempt
                 logger.warning(f"Round event attempt {attempt + 1} failed: {e}")
                 last_generation_error = e
             except (ValueError, ValidationError, json.JSONDecodeError) as e:

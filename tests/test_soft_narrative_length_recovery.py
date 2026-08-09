@@ -67,6 +67,32 @@ class SequenceThenFailClient:
             raise TimeoutError("generation deadline exhausted") from exc
 
 
+class BlankAfterFirstStoryClient:
+    def __init__(self, story: str):
+        self.story = story
+        self.calls = 0
+
+    def call(self, **_kwargs: Any) -> str:
+        self.calls += 1
+        return self.story if self.calls == 1 else "  \n\t"
+
+
+class BlankConsistencyRewriteClient:
+    def __init__(self, story: str):
+        self.story = story
+
+    def call(self, **kwargs: Any) -> str:
+        if kwargs.get("temperature") == 0.3:
+            return (
+                '{"should_retry": true, "retry_reason": "fixture", "issues": ['
+                '{"dimension": "temporal", "severity": "CRITICAL", '
+                '"description": "fixture conflict", "fix_suggestion": "repair"}]}'
+            )
+        if kwargs.get("temperature") == 0.7:
+            return "  \n\t"
+        return self.story
+
+
 class ThreeOptionGenerator:
     def generate_options_only(self, **kwargs: Any) -> GameEvent:
         story = str(kwargs["story_description"])
@@ -103,20 +129,26 @@ class PassingPipeline:
 @dataclass
 class SingleFailurePipeline:
     constraint_type: str
+    priority: str = "CRITICAL"
 
     def validate(self, **_kwargs: Any) -> ValidationResult:
-        return ValidationResult(
+        failure = ConstraintCheckResult(
+            constraint_type=self.constraint_type,
+            priority=self.priority,
             passed=False,
+            evidence="deterministic contract fixture",
+        )
+        failure_buckets = {
+            "CRITICAL": {"critical_failures": [failure]},
+            "HIGH": {"high_warnings": [failure]},
+            "MEDIUM": {"medium_notes": [failure]},
+            "LOW": {"low_notes": [failure]},
+        }
+        return ValidationResult(
+            passed=self.priority != "CRITICAL",
             score=55.0,
-            critical_failures=[
-                ConstraintCheckResult(
-                    constraint_type=self.constraint_type,
-                    priority="CRITICAL",
-                    passed=False,
-                    evidence="deterministic contract fixture",
-                )
-            ],
             total_checked=1,
+            **failure_buckets[self.priority],
         )
 
 
@@ -182,6 +214,77 @@ def test_failed_shape_repair_recovers_latest_story_and_three_options(
 
     assert client.calls == 2
     assert event.event_description == story
+    assert len(event.options) == 3
+
+
+def test_blank_shape_repair_recovers_complete_story_and_three_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "false")
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    story = _story_with_length(1329)
+
+    event = StoryGenerator(
+        BlankAfterFirstStoryClient(story),
+        quality_level=QualityLevel.EXPERT,
+    ).generate_round_event(
+        player_state={"game_id": 13, "week": 4, "current_round": 0},
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings={},
+        option_generator=ThreeOptionGenerator(),
+    )
+
+    assert event.event_description == story
+    assert len(event.options) == 3
+
+
+def test_blank_consistency_rewrite_recovers_complete_story_and_three_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "false")
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    story = _story_with_length(900)
+
+    event = StoryGenerator(
+        BlankConsistencyRewriteClient(story),
+        quality_level=QualityLevel.EXPERT,
+    ).generate_round_event(
+        player_state={"game_id": 14, "week": 4, "current_round": 0},
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings={},
+        option_generator=ThreeOptionGenerator(),
+        world_model=MinimalWorldModel(),
+    )
+
+    assert event.event_description == story
+    assert len(event.options) == 3
+
+
+def test_successful_shape_repair_becomes_latest_fallback_story(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "false")
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    overlong_story = _story_with_length(1329)
+    repaired_story = _story_with_length(900).replace("林岚", "周宁", 1)
+
+    event = StoryGenerator(
+        SequenceThenFailClient([overlong_story, repaired_story]),
+        quality_level=QualityLevel.EXPERT,
+    ).generate_round_event(
+        player_state={"game_id": 15, "week": 4, "current_round": 0},
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings={},
+        option_generator=FailingOptionGenerator(),
+    )
+
+    assert event.event_description == repaired_story
     assert len(event.options) == 3
 
 
@@ -278,6 +381,47 @@ def test_severe_continuity_harness_failure_remains_terminal(
     ):
         generator.generate_round_event(
             player_state={"game_id": 11, "week": 4, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings={},
+            option_generator=ThreeOptionGenerator(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("constraint_type", "priority"),
+    [
+        ("item_continuity", "HIGH"),
+        ("spatial_movement", "HIGH"),
+        ("npc_attribute_stability", "HIGH"),
+        ("information_barrier", "HIGH"),
+        ("cause_effect_consistency", "MEDIUM"),
+    ],
+)
+def test_severe_continuity_is_terminal_in_its_production_priority_bucket(
+    monkeypatch: pytest.MonkeyPatch,
+    constraint_type: str,
+    priority: str,
+) -> None:
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    story = _story_with_length(900)
+    generator = StoryGenerator(
+        LengthDriftClient(story),
+        quality_level=QualityLevel.EXPERT,
+    )
+    generator._validation_pipeline = SingleFailurePipeline(
+        constraint_type,
+        priority,
+    )
+
+    with pytest.raises(
+        StoryGenerationFailure,
+        match="Story harness validation failed after final attempt",
+    ):
+        generator.generate_round_event(
+            player_state={"game_id": 16, "week": 4, "current_round": 0},
             language="zh",
             round_number=0,
             round_context="",
