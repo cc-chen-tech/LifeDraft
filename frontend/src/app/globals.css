@@ -1,3 +1,4 @@
+@import "@fontsource-variable/spline-sans/wght.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -10,6 +11,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans-sc);
+  --font-brand: var(--font-brand);
   --font-serif: var(--font-serif-sc);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -43,6 +45,18 @@
   --color-card: var(--card);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-subtle: var(--success-subtle);
+  --color-success-border: var(--success-border);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-warning-border: var(--warning-border);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-danger-border: var(--danger-border);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-subtle: var(--info-subtle);
+  --color-info-border: var(--info-border);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -52,70 +66,93 @@
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
-/* Always dark - Cinematic Cold palette */
+/* Always dark - Story101 ink palette */
 :root {
-  --radius: 0.625rem;
+  --font-brand: "Spline Sans Variable", var(--font-sans-sc);
   --font-sans-sc: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Arial, sans-serif;
   --font-serif-sc: "Songti SC", "STSong", "Noto Serif SC", Georgia, serif;
   --font-geist-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 
-  /* Cinematic Cold 深藏青底色 */
-  --background: #0a0f1a;
-  --foreground: #e8edf5;
+  --surface-canvas: #0D0C0B;
+  --surface-reading: #11100F;
+  --surface-raised: #171513;
+  --surface-overlay: #1D1A17;
+  --surface-subtle: #141210;
 
-  /* Card: 略亮的卡片底色 */
-  --card: #1a2332;
-  --card-foreground: #e8edf5;
+  --text-primary: #F0ECE6;
+  --text-secondary: #8F8881;
+  --text-subtle: #8F8881;
 
-  /* Popover */
-  --popover: #1a2332;
-  --popover-foreground: #e8edf5;
+  --border-default: #34302C;
+  --border-strong: #71675D;
+  --border-interactive: #71675D;
 
-  /* Primary: 冰蓝高光 */
-  --primary: #60a5fa;
-  --primary-foreground: #0a0f1a;
+  --success-foreground: #9AAF98;
+  --success-subtle: #182019;
+  --success-border: #425044;
+  --danger-foreground: #C58F8A;
+  --danger-subtle: #231716;
+  --danger-border: #67433F;
+  --warning-foreground: #C2A26E;
+  --warning-subtle: #241E14;
+  --warning-border: #665536;
+  --info-foreground: #B7C0C5;
+  --info-subtle: #181B1D;
+  --info-border: #4B5357;
 
-  /* Secondary: 暗灰蓝 */
-  --secondary: #111827;
-  --secondary-foreground: #e8edf5;
+  --radius-control: 6px;
+  --radius-surface: 4px;
+  --radius-overlay: 10px;
+  --radius-pill: 9999px;
+  --radius: var(--radius-control);
 
-  /* Muted: 柔和灰 */
-  --muted: #111827;
-  --muted-foreground: #8896ab;
+  --shadow-raised: none;
+  --shadow-overlay: 0 24px 70px rgba(0, 0, 0, 0.44);
+  --shadow-floating: 0 12px 32px rgba(0, 0, 0, 0.36);
 
-  /* Accent: 冰蓝 */
-  --accent: #1e293b;
-  --accent-foreground: #e8edf5;
+  --safe-area-inset-top: env(safe-area-inset-top);
+  --safe-area-inset-right: env(safe-area-inset-right);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom);
+  --safe-area-inset-left: env(safe-area-inset-left);
 
-  /* Destructive */
-  --destructive: #ef4444;
+  /* Compatibility aliases */
+  --background: var(--surface-canvas);
+  --foreground: var(--text-primary);
+  --card: var(--surface-reading);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-overlay);
+  --popover-foreground: var(--text-primary);
+  --primary: #F0ECE6;
+  --primary-foreground: #0D0C0B;
+  --secondary: var(--surface-raised);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-raised);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--surface-overlay);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--danger-foreground);
+  --success: var(--success-foreground);
+  --warning: var(--warning-foreground);
+  --info: var(--info-foreground);
+  --border: var(--border-default);
+  --input: var(--border-default);
+  --ring: #F0ECE6;
 
-  /* Borders & Input */
-  --border: #1e293b;
-  --input: #1e293b;
-  --ring: #60a5fa;
+  --chart-1: var(--text-primary);
+  --chart-2: var(--success-foreground);
+  --chart-3: var(--warning-foreground);
+  --chart-4: var(--info-foreground);
+  --chart-5: var(--danger-foreground);
 
-  /* Semantic */
-  --success: #34d399;
-  --warning: #fbbf24;
-
-  /* Charts */
-  --chart-1: #60a5fa;
-  --chart-2: #34d399;
-  --chart-3: #fbbf24;
-  --chart-4: #a78bfa;
-  --chart-5: #f472b6;
-
-  /* Sidebar */
-  --sidebar: #0d1320;
-  --sidebar-foreground: #e8edf5;
-  --sidebar-primary: #60a5fa;
-  --sidebar-primary-foreground: #0a0f1a;
-  --sidebar-accent: #1e293b;
-  --sidebar-accent-foreground: #e8edf5;
-  --sidebar-border: #1e293b;
-  --sidebar-ring: #60a5fa;
+  --sidebar: var(--surface-reading);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--surface-overlay);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border-default);
+  --sidebar-ring: var(--ring);
 }
 
 @layer base {
@@ -223,11 +260,11 @@
 }
 
 .safe-area-pt {
-  padding-top: env(safe-area-inset-top);
+  padding-top: var(--safe-area-inset-top);
 }
 
 .safe-area-pb {
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--safe-area-inset-bottom);
 }
 
 /* ===== 减少动效偏好 ===== */

@@ -19,6 +19,14 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",
+        chrome:
+          "border border-[var(--border-default)] bg-[var(--surface-raised)] text-[var(--text-primary)] hover:bg-[var(--surface-overlay)]",
+        quiet:
+          "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--surface-subtle)] hover:text-[var(--text-primary)]",
+        narrative:
+          "rounded-[var(--radius-surface)] border border-[var(--border-strong)] bg-[var(--surface-reading)] text-[var(--text-primary)] hover:bg-[var(--surface-raised)]",
+        floating:
+          "border border-[var(--border-default)] bg-[var(--surface-overlay)] text-[var(--text-primary)] shadow-[var(--shadow-floating)] hover:bg-[var(--surface-raised)]",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",
@@ -29,6 +37,8 @@ const buttonVariants = cva(
         "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
         "icon-sm": "size-8",
         "icon-lg": "size-10",
+        touch: "min-h-11 min-w-11 px-4 py-2.5",
+        "icon-touch": "size-11",
       },
     },
     defaultVariants: {
