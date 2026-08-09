@@ -130,6 +130,7 @@ class PassingPipeline:
 class SingleFailurePipeline:
     constraint_type: str
     priority: str = "CRITICAL"
+    score: float = 55.0
 
     def validate(self, **_kwargs: Any) -> ValidationResult:
         failure = ConstraintCheckResult(
@@ -146,7 +147,7 @@ class SingleFailurePipeline:
         }
         return ValidationResult(
             passed=self.priority != "CRITICAL",
-            score=55.0,
+            score=self.score,
             total_checked=1,
             **failure_buckets[self.priority],
         )
@@ -162,9 +163,7 @@ class MinimalWorldModel:
         return []
 
 
-@pytest.mark.parametrize(
-    "harness_enabled", [False, True], ids=["harness-off", "harness-on"]
-)
+@pytest.mark.parametrize("harness_enabled", [False, True], ids=["harness-off", "harness-on"])
 @pytest.mark.parametrize("story_length", [1329, 1710, 2315])
 def test_expert_length_drift_keeps_story_and_three_options(
     monkeypatch: pytest.MonkeyPatch,
@@ -201,9 +200,7 @@ def test_failed_shape_repair_recovers_latest_story_and_three_options(
     story = _story_with_length(1329)
     client = FailAfterFirstStoryClient(story)
 
-    event = StoryGenerator(
-        client, quality_level=QualityLevel.EXPERT
-    ).generate_round_event(
+    event = StoryGenerator(client, quality_level=QualityLevel.EXPERT).generate_round_event(
         player_state={"game_id": 8, "week": 4, "current_round": 0},
         language="zh",
         round_number=0,
@@ -390,19 +387,20 @@ def test_severe_continuity_harness_failure_remains_terminal(
 
 
 @pytest.mark.parametrize(
-    ("constraint_type", "priority"),
+    ("constraint_type", "priority", "production_score"),
     [
-        ("item_continuity", "HIGH"),
-        ("spatial_movement", "HIGH"),
-        ("npc_attribute_stability", "HIGH"),
-        ("information_barrier", "HIGH"),
-        ("cause_effect_consistency", "MEDIUM"),
+        ("item_continuity", "HIGH", 80.0),
+        ("spatial_movement", "HIGH", 84.0),
+        ("npc_attribute_stability", "HIGH", 84.0),
+        ("information_barrier", "HIGH", 84.0),
+        ("cause_effect_consistency", "MEDIUM", 94.0),
     ],
 )
 def test_severe_continuity_is_terminal_in_its_production_priority_bucket(
     monkeypatch: pytest.MonkeyPatch,
     constraint_type: str,
     priority: str,
+    production_score: float,
 ) -> None:
     monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
     monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
@@ -414,6 +412,7 @@ def test_severe_continuity_is_terminal_in_its_production_priority_bucket(
     generator._validation_pipeline = SingleFailurePipeline(
         constraint_type,
         priority,
+        production_score,
     )
 
     with pytest.raises(
@@ -428,3 +427,8 @@ def test_severe_continuity_is_terminal_in_its_production_priority_bucket(
             character_settings={},
             option_generator=ThreeOptionGenerator(),
         )
+
+    assert len(generator.client.calls) == 3
+    retry_prompts = [call["user_prompt"] for call in generator.client.calls[1:]]
+    assert all("[Retry Hint]" in prompt for prompt in retry_prompts)
+    assert all(constraint_type in prompt for prompt in retry_prompts)

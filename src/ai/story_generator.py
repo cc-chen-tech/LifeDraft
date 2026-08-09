@@ -663,6 +663,27 @@ class StoryGenerator:
                 "using 2-5 coherent paragraphs."
             )
 
+        def _build_terminal_continuity_retry_instruction(
+            failures: list[Any],
+        ) -> str:
+            issue_lines = []
+            for failure in failures[:5]:
+                evidence = str(failure.evidence or "").strip()
+                detail = f" ({evidence[:120]})" if evidence else ""
+                issue_lines.append(f"- {failure.constraint_type}{detail}")
+            issues = "\n".join(issue_lines)
+            if language == "zh":
+                return (
+                    "【严重连续性修正 - 必须重写】\n"
+                    f"上一版违反以下连续性约束：\n{issues}\n"
+                    "请依据既有事实、人物状态和因果关系重新生成，不得绕过这些约束。"
+                )
+            return (
+                "[Severe Continuity Fix - Regenerate Required]\n"
+                f"The previous draft violated these continuity constraints:\n{issues}\n"
+                "Regenerate from established facts, character state, and causal history."
+            )
+
         # 初始化 Harness 组件（延迟初始化，避免每次构建时重复创建）
         if self._harness_enabled and self._validation_pipeline is None:
             from src.ai.harness import default_registry
@@ -997,13 +1018,21 @@ class StoryGenerator:
                     )
 
                     should_retry = False
-                    if terminal_validation_failed and self._retry_controller is not None:
-                        should_retry, hint = self._retry_controller.should_retry(
+                    if terminal_validation_failed and self._soft_narrative_lengths:
+                        should_retry = attempt < self._quality_profile.max_retries
+                        retry_hint = (
+                            _build_terminal_continuity_retry_instruction(
+                                terminal_continuity_failures
+                            )
+                            if should_retry
+                            else None
+                        )
+                    elif terminal_validation_failed and self._retry_controller is not None:
+                        should_retry, retry_hint = self._retry_controller.should_retry(
                             validation_result=validation_result,
                             diagnostic_report=diagnostic_report,
                             attempt=attempt,
                         )
-                        retry_hint = hint
                     if should_retry:
                         if status_callback:
                             status_callback("retry")
