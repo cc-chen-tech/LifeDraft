@@ -23,4 +23,4 @@
 - [x] 4.1 Run focused budget, prompt, generation, rewrite, Harness, truncation, opening, and continuation unit/contract tests with unified budgets both enabled and disabled.
 - [x] 4.2 Run mypy, import, contract, DB, strict TypeScript, lint, production build, deterministic Playwright desktop/mobile, and final `./test.sh all` in the isolated worktree.
 - [x] 4.3 Obtain a read-only code review with no unresolved Critical/Important findings; validate OpenSpec strictly; confirm the worktree diff contains no phase-2 option-display, input-limit, summary, long-context, CI, or DB-cleanup changes.
-- [ ] 4.4 Push the stacked branch and open a separate Draft PR targeting `codex/preserve-story-on-length-drift`, recording pending remote checks and leaving the rollout flag disabled by default.
+- [x] 4.4 Push the stacked branch and open a separate Draft PR targeting `codex/preserve-story-on-length-drift`, recording pending remote checks and leaving the rollout flag disabled by default.
