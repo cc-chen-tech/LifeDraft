@@ -15,7 +15,7 @@ export function LengthIndicator({ value, limit, className }: LengthIndicatorProp
     <p
       className={cn(
         "mt-1 text-right text-xs",
-        isOver ? "text-destructive" : "text-muted-foreground/70",
+        isOver ? "text-destructive" : "text-[var(--text-secondary)]",
         className,
       )}
       role={isOver ? "alert" : undefined}

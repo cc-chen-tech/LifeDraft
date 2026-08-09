@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LengthIndicator } from "@/components/ui/length-indicator";
 import {
   Sheet,
   SheetContent,
@@ -22,6 +23,11 @@ import {
 import { useUserStore } from "@/stores/useUserStore";
 import { useGameStore } from "@/stores/useGameStore";
 import { useHydration } from "@/hooks/useHydration";
+import {
+  isWithinInputLimit,
+  unicodeCharacterLength,
+} from "@/lib/inputLimits";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import {
   Sparkles,
   FolderOpen,
@@ -66,6 +72,8 @@ export default function WelcomePage() {
   const [error, setError] = useState("");
   const [showPrivateId, setShowPrivateId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const displayNameWithinLimit = isWithinInputLimit(displayName, INPUT_LIMITS.name);
+  const displayNameRemaining = INPUT_LIMITS.name - unicodeCharacterLength(displayName);
 
   // Prefetch data if authenticated (only after auth check completes)
   useEffect(() => {
@@ -76,7 +84,7 @@ export default function WelcomePage() {
   }, [authChecked, isAuthenticated, fetchSavedGames, fetchPresets]);
 
   const handleRegister = async () => {
-    if (!displayName.trim()) return;
+    if (!displayName.trim() || !displayNameWithinLimit) return;
     setIsLoading(true);
     setError("");
     try {
@@ -121,6 +129,7 @@ export default function WelcomePage() {
 
   const authFieldId = authMode === "register" ? "display-name-input" : "private-id-input";
   const authErrorId = `${authFieldId}-server-error`;
+  const displayNameLengthId = "display-name-input-length";
 
   return (
     <PageTransition
@@ -296,22 +305,44 @@ export default function WelcomePage() {
                   required
                 >
                   {({ describedBy, required }) => (
-                    <Input
-                      id="display-name-input"
-                      name="displayName"
-                      value={displayName}
-                      onChange={(event) => setDisplayName(event.target.value)}
-                      placeholder="你的名字"
-                      surface="filled"
-                      controlSize="touch"
-                      className="text-base"
-                      disabled={isLoading}
-                      autoFocus
-                      required={required}
-                      aria-required={required}
-                      aria-invalid={Boolean(error)}
-                      aria-describedby={[describedBy, error ? authErrorId : undefined].filter(Boolean).join(" ") || undefined}
-                    />
+                    <>
+                      <Input
+                        id="display-name-input"
+                        name="displayName"
+                        value={displayName}
+                        onChange={(event) => setDisplayName(event.target.value)}
+                        placeholder="你的名字"
+                        surface="filled"
+                        controlSize="touch"
+                        className="text-base"
+                        disabled={isLoading}
+                        autoFocus
+                        required={required}
+                        aria-required={required}
+                        aria-invalid={Boolean(error) || !displayNameWithinLimit}
+                        aria-describedby={[describedBy, displayNameLengthId, error ? authErrorId : undefined].filter(Boolean).join(" ") || undefined}
+                      />
+                      <div id={displayNameLengthId}>
+                        {error ? (
+                          <p
+                            className={
+                              displayNameRemaining < 0
+                                ? "mt-1 text-right text-xs text-[var(--danger-foreground)]"
+                                : "mt-1 text-right text-xs text-[var(--text-secondary)]"
+                            }
+                          >
+                            {displayNameRemaining < 0
+                              ? `已超出 ${Math.abs(displayNameRemaining)} 字`
+                              : `还可输入 ${displayNameRemaining} 字`}
+                          </p>
+                        ) : (
+                          <LengthIndicator
+                            value={displayName}
+                            limit={INPUT_LIMITS.name}
+                          />
+                        )}
+                      </div>
+                    </>
                   )}
                 </FormField>
               ) : (
@@ -362,7 +393,7 @@ export default function WelcomePage() {
                 disabled={
                   isLoading ||
                   (authMode === "register"
-                    ? !displayName.trim()
+                    ? !displayName.trim() || !displayNameWithinLimit
                     : !privateId.trim())
                 }
               >

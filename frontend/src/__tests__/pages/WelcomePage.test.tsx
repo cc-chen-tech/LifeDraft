@@ -3,7 +3,7 @@
  * Tests all interactive elements on the welcome/home page
  */
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import WelcomePage from '@/app/page';
 import { useUserStore } from '@/stores/useUserStore';
@@ -188,6 +188,124 @@ describe('WelcomePage', () => {
       expect(input).toHaveAttribute('aria-invalid', 'false');
       expect(input).toHaveAttribute('aria-describedby', expect.stringContaining(description.id));
       expect(within(form).getByRole('button', { name: '创建账户' })).toHaveAttribute('type', 'submit');
+    });
+
+    it('describes the Unicode limit without a UTF-16 native maxlength', async () => {
+      const user = userEvent.setup();
+      render(<WelcomePage />);
+
+      await user.click(screen.getByRole('button', { name: '注册' }));
+
+      const form = await screen.findByRole('form', { name: '创建账户' });
+      const input = within(form).getByRole('textbox', { name: '显示名称' });
+      const limit = within(form).getByText('还可输入 50 字');
+      const describedByTokens = input.getAttribute('aria-describedby')?.split(/\s+/) ?? [];
+
+      expect(input).not.toHaveAttribute('maxlength');
+      expect(document.getElementById('display-name-input-length')).toContainElement(limit);
+      expect(limit).toHaveClass('text-[var(--text-secondary)]');
+      expect(describedByTokens).toContain('display-name-input-description');
+      expect(describedByTokens).toContain('display-name-input-length');
+      expect(document.querySelectorAll('[aria-live]')).toHaveLength(1);
+    });
+
+    it('accepts exactly 50 emoji as 50 Unicode code points', async () => {
+      const emojiName = '😀'.repeat(50);
+      userSpy.spies.register.mockResolvedValue({
+        user_id: 1,
+        display_name: emojiName,
+        public_id: 'pub-emoji',
+      });
+      const user = userEvent.setup();
+      render(<WelcomePage />);
+
+      await user.click(screen.getByRole('button', { name: '注册' }));
+      const form = await screen.findByRole('form', { name: '创建账户' });
+      const input = within(form).getByRole('textbox', { name: '显示名称' });
+      await user.click(input);
+      await user.paste(emojiName);
+
+      expect(input).toHaveValue(emojiName);
+      expect(within(form).getByText('还可输入 0 字')).toBeInTheDocument();
+      await user.click(within(form).getByRole('button', { name: '创建账户' }));
+
+      await waitFor(() => {
+        expect(userSpy.spies.register).toHaveBeenCalledTimes(1);
+        expect(userSpy.spies.register).toHaveBeenCalledWith(emojiName);
+      });
+    });
+
+    it('keeps a pasted 51-character Chinese name visible and blocks registration', async () => {
+      const overlimitName = '名'.repeat(51);
+      const user = userEvent.setup();
+      render(<WelcomePage />);
+
+      await user.click(screen.getByRole('button', { name: '注册' }));
+      const form = await screen.findByRole('form', { name: '创建账户' });
+      const input = within(form).getByRole('textbox', { name: '显示名称' });
+      await user.click(input);
+      await user.paste(overlimitName);
+
+      expect(input).toHaveValue(overlimitName);
+      expect(input).toHaveAttribute('aria-invalid', 'true');
+      expect(within(form).getByRole('alert')).toHaveTextContent('已超出 1 字');
+      expect(within(form).getByRole('button', { name: '创建账户' })).toBeDisabled();
+
+      fireEvent.submit(form);
+      expect(userSpy.spies.register).not.toHaveBeenCalled();
+    });
+
+    it('keeps a programmatic 51-emoji name visible and blocks registration', async () => {
+      const overlimitName = '😀'.repeat(51);
+      const user = userEvent.setup();
+      render(<WelcomePage />);
+
+      await user.click(screen.getByRole('button', { name: '注册' }));
+      const form = await screen.findByRole('form', { name: '创建账户' });
+      const input = within(form).getByRole('textbox', { name: '显示名称' });
+      fireEvent.change(input, { target: { value: overlimitName } });
+
+      expect(input).toHaveValue(overlimitName);
+      expect(input).toHaveAttribute('aria-invalid', 'true');
+      expect(within(form).getByRole('alert')).toHaveTextContent('已超出 1 字');
+      expect(within(form).getByRole('button', { name: '创建账户' })).toBeDisabled();
+
+      fireEvent.submit(form);
+      expect(userSpy.spies.register).not.toHaveBeenCalled();
+    });
+
+    it('associates a registration failure with the description and static count in one live region', async () => {
+      userSpy.spies.register.mockRejectedValue(new Error('显示名称已存在'));
+      const user = userEvent.setup();
+      render(<WelcomePage />);
+
+      await user.click(screen.getByRole('button', { name: '注册' }));
+      const form = await screen.findByRole('form', { name: '创建账户' });
+      const input = within(form).getByRole('textbox', { name: '显示名称' });
+      await user.type(input, 'TestUser');
+      await user.click(within(form).getByRole('button', { name: '创建账户' }));
+
+      const alert = await within(form).findByRole('alert');
+      const describedByTokens = input.getAttribute('aria-describedby')?.split(/\s+/) ?? [];
+      const liveRegions = document.querySelectorAll('[aria-live], [role="alert"], [role="status"]');
+
+      expect(alert).toHaveTextContent('显示名称已存在');
+      expect(liveRegions).toHaveLength(1);
+      expect(describedByTokens).toEqual(expect.arrayContaining([
+        'display-name-input-description',
+        'display-name-input-length',
+        'display-name-input-server-error',
+      ]));
+      const count = document.getElementById('display-name-input-length');
+      expect(count).toHaveTextContent('还可输入 42 字');
+      expect(within(count as HTMLElement).getByText('还可输入 42 字')).toHaveClass(
+        'text-[var(--text-secondary)]',
+      );
+
+      fireEvent.change(input, { target: { value: '名'.repeat(51) } });
+      expect(within(count as HTMLElement).getByText('已超出 1 字')).toHaveClass(
+        'text-[var(--danger-foreground)]',
+      );
     });
 
     it('allows user to input display name', async () => {
