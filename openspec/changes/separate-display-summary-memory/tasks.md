@@ -20,6 +20,6 @@
 ## 4. Verification and review
 
 - [x] 4.1 Run focused summary, ledger, finalizer, and compatibility tests plus strict OpenSpec validation.
-- [ ] 4.2 Run mypy, imports, contract, DB, strict TypeScript, lint, production build, deterministic Playwright desktop/mobile, and `./test.sh all`.
-- [ ] 4.3 Complete read-only review with no unresolved Critical/Important findings.
-- [ ] 4.4 Push a separate stacked branch and open a Draft PR targeting `codex/make-input-limits-explicit`.
+- [x] 4.2 Run mypy, imports, contract, DB, strict TypeScript, lint, production build, deterministic Playwright desktop/mobile, and `./test.sh all`.
+- [x] 4.3 Complete read-only review with no unresolved Critical/Important findings.
+- [x] 4.4 Push a separate stacked branch and open a Draft PR targeting `codex/make-input-limits-explicit`.
