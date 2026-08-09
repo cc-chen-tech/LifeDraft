@@ -883,7 +883,7 @@ class RoundEventGenerator:
                 data = extract_json(response)
 
                 if data:
-                    from src.ai.models import EventOption, GameEvent
+                    from src.ai.models import GameEvent
 
                     raw_event_desc = data.get("event_description", "")
                     event_desc = (
