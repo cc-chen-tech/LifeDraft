@@ -205,7 +205,7 @@ def test_frontend_layout_does_not_depend_on_google_font_network() -> None:
     assert "--font-serif-sc" in globals_css
 
 
-def test_global_music_player_uses_save_page_safe_positioning() -> None:
+def test_global_music_player_uses_app_shell_route_safe_positioning() -> None:
     play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
         encoding="utf-8"
     )
@@ -221,9 +221,43 @@ def test_global_music_player_uses_save_page_safe_positioning() -> None:
 
     assert collection_sheet is not None
     assert 'className="z-[60] w-[400px] sm:w-[540px] p-0"' in collection_sheet.group(0)
-    assert 'const isSavesPage = pathname === "/saves";' in music_player
-    assert 'top-16 left-0 right-0 safe-area-pt mt-2' in music_player
-    assert 'bottom-4 left-4 right-4 safe-area-pb' in music_player
+    bottom_route_guard = re.search(
+        r"const usesBottomAppShellDock\s*=\s*(.*?);",
+        music_player,
+        re.DOTALL,
+    )
+
+    assert bottom_route_guard is not None
+    bottom_routes = re.findall(
+        r'pathname\s*===\s*"([^"]+)"',
+        bottom_route_guard.group(1),
+    )
+    assert len(bottom_routes) == 3
+    assert set(bottom_routes) == {"/", "/saves", "/presets"}
+
+    spacer_branch = re.search(
+        r"\{usesBottomAppShellDock\s*&&\s*\(.*?"
+        r'data-app-shell-reserve-spacer="bottom".*?\)\}',
+        music_player,
+        re.DOTALL,
+    )
+    class_branch = re.search(
+        r"className=\{\s*usesBottomAppShellDock\s*\?\s*"
+        r'"([^"]+)"\s*:\s*"([^"]+)"\s*\}',
+        music_player,
+        re.DOTALL,
+    )
+
+    assert spacer_branch is not None
+    assert (
+        'data-app-shell-reserve={usesBottomAppShellDock ? "bottom" : undefined}'
+        in music_player
+    )
+    assert class_branch is not None
+    bottom_classes, top_classes = class_branch.groups()
+    assert "app-shell-bottom-dock" in bottom_classes
+    assert "left-4 right-4 safe-area-pb" in bottom_classes
+    assert "top-16 left-0 right-0 safe-area-pt mt-2" in top_classes
 
 
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:

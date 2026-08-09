@@ -81,5 +81,6 @@ describe("GlobalMusicPlayer keyboard dismissal", () => {
     fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
 
     expect(screen.queryByRole("button", { name: "下一首" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开声音" })).toHaveFocus();
   });
 });
