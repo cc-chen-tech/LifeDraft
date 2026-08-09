@@ -32,7 +32,6 @@ export default function OpeningStoryPage() {
   const openingStory = useGameStore((s) => s.openingStory);
   const setOpeningStory = useGameStore((s) => s.setOpeningStory);
   const playerName = useGameStore((s) => s.playerName);
-  const lifeVision = useGameStore((s) => s.lifeVision);
   const characterSettings = useGameStore((s) => s.characterSettings);
   const constraintLevel = useGameStore((s) => s.constraintLevel);
   // ★ 图片相关状态从 useImageStore 获取
@@ -51,8 +50,13 @@ export default function OpeningStoryPage() {
   const [streamingIdentity, setStreamingIdentity] = useState(0);
   const [storyDisplayIdentity, setStoryDisplayIdentity] = useState(0);
   const [illustrationPrompt, setIllustrationPrompt] = useState("");
+  const [isStarting, setIsStarting] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const activeAttemptRef = useRef(0);
+  const openingPersistenceRef = useRef<{
+    key: string;
+    promise: Promise<void>;
+  } | null>(null);
   const hydrated = useHydration();
   const showHydrationLoading = useDelayedLoading({
     isLoading: !hydrated,
@@ -74,13 +78,73 @@ export default function OpeningStoryPage() {
     console.log(`[OpeningStory] Render #${renderCountRef.current}, hydrated=${hydrated}`);
   });
 
+  const ensureOpeningContinuityPersisted = useCallback(({
+    persistenceGameId,
+    persistenceStory,
+    persistenceCharacterSettings,
+    persistencePlayerName,
+    persistenceLifeVision,
+  }: {
+    persistenceGameId: number;
+    persistenceStory: string;
+    persistenceCharacterSettings: Record<string, unknown>;
+    persistencePlayerName: string;
+    persistenceLifeVision: string;
+  }): Promise<void> => {
+    const normalizedStory = persistenceStory.trim();
+    if (!normalizedStory) return Promise.resolve();
+
+    const key = `${persistenceGameId}:${normalizedStory}`;
+    if (openingPersistenceRef.current?.key === key) {
+      return openingPersistenceRef.current.promise;
+    }
+
+    const promise = (async () => {
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          await games.patchCharacterSettings(
+            persistenceGameId,
+            { ...persistenceCharacterSettings, opening_story: normalizedStory },
+            {
+              player_name: persistencePlayerName.trim(),
+              life_vision: persistenceLifeVision,
+            },
+          );
+          return;
+        } catch (err) {
+          console.warn("[OpeningStory] Opening continuity persistence failed", {
+            gameId: persistenceGameId,
+            attempt,
+            willRetry: attempt === 1,
+            errorType: err instanceof Error ? err.name : typeof err,
+          });
+        }
+      }
+    })();
+
+    openingPersistenceRef.current = { key, promise };
+    return promise;
+  }, []);
+
+  const waitForPersistenceBounded = useCallback((persistence: Promise<void>) => (
+    new Promise<void>((resolve) => {
+      const timeoutId = window.setTimeout(resolve, 2000);
+      void persistence.then(() => {
+        window.clearTimeout(timeoutId);
+        resolve();
+      });
+    })
+  ), []);
+
   const startOpeningStream = useCallback(({
+    attemptGameId,
     attemptCharacterSettings,
     attemptPlayerName,
     attemptLifeVision,
     attemptLanguage,
     generateIllustrationOnComplete,
   }: {
+    attemptGameId: number | null;
     attemptCharacterSettings: Record<string, unknown>;
     attemptPlayerName: string;
     attemptLifeVision: string;
@@ -165,9 +229,19 @@ export default function OpeningStoryPage() {
             setIsStreaming(false);
             setError("");
 
+            const currentGameId = attemptGameId;
+            if (currentGameId) {
+              void ensureOpeningContinuityPersisted({
+                persistenceGameId: currentGameId,
+                persistenceStory: finalText,
+                persistenceCharacterSettings: attemptCharacterSettings,
+                persistencePlayerName: attemptPlayerName,
+                persistenceLifeVision: attemptLifeVision,
+              });
+            }
+
             if (generateIllustrationOnComplete) {
               // ★ 故事生成完成后，触发插画生成
-              const currentGameId = useGameStore.getState().gameId;
               if (!illustrationGeneratedRef.current && currentGameId) {
                 illustrationGeneratedRef.current = true;
                 console.log("[OpeningStory] Story complete, triggering illustration generation...");
@@ -196,7 +270,7 @@ export default function OpeningStoryPage() {
     } catch (streamError) {
       failAttempt(streamError);
     }
-  }, [generateOpeningIllustration, setOpeningStory]);
+  }, [ensureOpeningContinuityPersisted, generateOpeningIllustration, setOpeningStory]);
 
   // Defer initialization by one microtask so StrictMode can replay the effect
   // without issuing and immediately aborting a duplicate backend request.
@@ -256,6 +330,15 @@ export default function OpeningStoryPage() {
         console.log("[OpeningStory] Using existing story");
         setStoryText(state.openingStory);
         setIsComplete(true);
+        if (state.gameId) {
+          void ensureOpeningContinuityPersisted({
+            persistenceGameId: state.gameId,
+            persistenceStory: state.openingStory,
+            persistenceCharacterSettings: resolvedCharacterSettings,
+            persistencePlayerName: resolvedPlayerName,
+            persistenceLifeVision: resolvedLifeVision,
+          });
+        }
         return;
       }
 
@@ -272,6 +355,7 @@ export default function OpeningStoryPage() {
       // 开始生成故事
       console.log("[OpeningStory] Starting generation...");
       startOpeningStream({
+        attemptGameId: state.gameId,
         attemptCharacterSettings: resolvedCharacterSettings,
         attemptPlayerName: resolvedPlayerName,
         attemptLifeVision: resolvedLifeVision,
@@ -287,12 +371,13 @@ export default function OpeningStoryPage() {
       console.log("[OpeningStory] Cleanup: aborting SSE");
       abortRef.current?.abort();
     };
-  }, [hydrated, language, startOpeningStream]);
+  }, [ensureOpeningContinuityPersisted, hydrated, language, startOpeningStream]);
 
   const handleRetry = () => {
     console.log("[OpeningStory] Retrying generation...");
     const state = useGameStore.getState();
     startOpeningStream({
+      attemptGameId: state.gameId,
       attemptCharacterSettings: state.characterSettings,
       attemptPlayerName: state.playerName,
       attemptLifeVision: state.lifeVision,
@@ -302,24 +387,23 @@ export default function OpeningStoryPage() {
   };
 
   const handleStart = async () => {
-    if (!isComplete || displayedCompleteText !== storyText) return;
+    if (!isComplete || displayedCompleteText !== storyText || isStarting) return;
 
-    const currentGameId = useGameStore.getState().gameId;
+    const state = useGameStore.getState();
+    const currentGameId = state.gameId;
     
     console.log("[OpeningStory] Starting game, gameId:", currentGameId);
     
     if (currentGameId) {
-      const openingForContinuity = (openingStory || storyText).trim();
-
-      try {
-        await games.patchCharacterSettings(
-          currentGameId,
-          { ...characterSettings, opening_story: openingForContinuity },
-          { player_name: playerName.trim(), life_vision: lifeVision },
-        );
-      } catch (err) {
-        console.warn("[OpeningStory] Failed to persist opening continuity:", err);
-      }
+      setIsStarting(true);
+      const persistence = ensureOpeningContinuityPersisted({
+        persistenceGameId: currentGameId,
+        persistenceStory: (state.openingStory || storyText).trim(),
+        persistenceCharacterSettings: state.characterSettings,
+        persistencePlayerName: state.playerName,
+        persistenceLifeVision: state.lifeVision,
+      });
+      await waitForPersistenceBounded(persistence);
 
       router.push("/play");
     } else {
@@ -499,6 +583,7 @@ export default function OpeningStoryPage() {
           <OpeningCompletionGate
             backendComplete={isComplete}
             visibleComplete={Boolean(storyText) && displayedCompleteText === storyText}
+            pending={isStarting}
             onStart={handleStart}
           />
         ) : !isStreaming && !error ? (

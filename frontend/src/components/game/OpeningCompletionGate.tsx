@@ -1,21 +1,28 @@
 "use client";
 
-import { Play } from "lucide-react";
+import { Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface OpeningCompletionGateProps {
   backendComplete: boolean;
   visibleComplete: boolean;
+  pending?: boolean;
   onStart: () => void;
 }
 
 export function OpeningCompletionGate({
   backendComplete,
   visibleComplete,
+  pending = false,
   onStart,
 }: OpeningCompletionGateProps) {
-  const ready = backendComplete && visibleComplete;
-  const waitingMessage = backendComplete ? "正在显示完整故事..." : "故事正在展开...";
+  const ready = backendComplete && visibleComplete && !pending;
+  const waitingMessage = pending
+    ? "正在保存人生起点..."
+    : backendComplete
+      ? "正在显示完整故事..."
+      : "故事正在展开...";
+  const buttonLabel = pending ? "正在进入" : "开始我的人生";
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -27,11 +34,15 @@ export function OpeningCompletionGate({
         aria-busy={!ready}
         aria-describedby={!ready ? "opening-start-status" : undefined}
         aria-disabled={!ready}
-        aria-label="开始我的人生"
-        title="开始我的人生"
+        aria-label={buttonLabel}
+        title={buttonLabel}
       >
-        <Play className="w-5 h-5 mr-2" />
-        开始我的人生
+        {pending ? (
+          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+        ) : (
+          <Play className="w-5 h-5 mr-2" />
+        )}
+        {buttonLabel}
       </Button>
       {!ready && (
         <p

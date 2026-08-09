@@ -579,6 +579,59 @@ describe('OpeningStoryPage', () => {
   });
 
   describe('Start game button', () => {
+    it('pre-persists a restored opening before the player clicks start', async () => {
+      render(<OpeningStoryPage />);
+
+      await waitFor(() => {
+        expect(mockPatchCharacterSettings).toHaveBeenCalledWith(
+          123,
+          expect.objectContaining({ opening_story: 'Test opening story content.' }),
+          expect.objectContaining({ player_name: 'TestHero', life_vision: 'Be great' }),
+        );
+      });
+    });
+
+    it('pre-persists a newly completed streamed opening', async () => {
+      useGameStore.setState({
+        gameId: 123,
+        openingStory: '',
+        characterSettings: { era: { era_name: '现代' } },
+        playerName: 'StreamHero',
+        lifeVision: 'Keep going',
+      });
+      (window as any).__TEST_DATA__ = {
+        playerName: 'StreamHero',
+        lifeVision: 'Keep going',
+        characterSettings: { era: { era_name: '现代' } },
+      };
+      mockStreamOpeningStory.mockImplementation(
+        (_settings, _name, _vision, _language, handlers) => {
+          handlers.onComplete({ full_story: '刚刚完成的开场。' });
+          return Promise.resolve();
+        },
+      );
+
+      render(<OpeningStoryPage />);
+
+      await waitFor(() => {
+        expect(mockPatchCharacterSettings).toHaveBeenCalledWith(
+          123,
+          expect.objectContaining({ opening_story: '刚刚完成的开场。' }),
+          expect.objectContaining({ player_name: 'StreamHero', life_vision: 'Keep going' }),
+        );
+      });
+    });
+
+    it('retries opening persistence once without creating a second operation', async () => {
+      mockPatchCharacterSettings
+        .mockRejectedValueOnce(new Error('temporary failure'))
+        .mockResolvedValueOnce({} as never);
+
+      render(<OpeningStoryPage />);
+
+      await waitFor(() => expect(mockPatchCharacterSettings).toHaveBeenCalledTimes(2));
+    });
+
     it('shows start game button when story is complete', () => {
       render(<OpeningStoryPage />);
       expect(screen.getByText('开始我的人生')).toBeInTheDocument();
@@ -656,6 +709,50 @@ describe('OpeningStoryPage', () => {
         expect.objectContaining({ opening_story: 'Test opening story content.' }),
         expect.objectContaining({ player_name: 'TestHero', life_vision: 'Be great' }),
       );
+      expect(mockPush).toHaveBeenCalledWith('/play');
+    });
+
+    it('shows an entering state and navigates after the two-second persistence bound', async () => {
+      jest.useFakeTimers();
+      mockPatchCharacterSettings.mockImplementation(() => new Promise(() => undefined));
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+
+      render(<OpeningStoryPage />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      const startButton = screen.getByRole('button', { name: '开始我的人生' });
+      await user.click(startButton);
+
+      const enteringButton = screen.getByRole('button', { name: '正在进入' });
+      expect(enteringButton).toBeDisabled();
+      fireEvent.click(enteringButton);
+      expect(mockPatchCharacterSettings).toHaveBeenCalledTimes(1);
+      expect(mockPush).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(1999);
+        await Promise.resolve();
+      });
+      expect(mockPush).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+        await Promise.resolve();
+      });
+      expect(mockPush).toHaveBeenCalledWith('/play');
+    });
+
+    it('allows entry after the single persistence retry also fails', async () => {
+      mockPatchCharacterSettings.mockRejectedValue(new Error('persistent failure'));
+      const user = userEvent.setup();
+      render(<OpeningStoryPage />);
+
+      await waitFor(() => expect(mockPatchCharacterSettings).toHaveBeenCalledTimes(2));
+      await user.click(screen.getByRole('button', { name: '开始我的人生' }));
+
+      expect(mockPatchCharacterSettings).toHaveBeenCalledTimes(2);
       expect(mockPush).toHaveBeenCalledWith('/play');
     });
 
