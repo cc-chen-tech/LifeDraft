@@ -28,6 +28,7 @@ class FeatureFlags(TypedDict, total=False):
     generation_state_tracking: bool
     story_voice_reading: bool
     soft_narrative_lengths: bool
+    unified_narrative_budgets: bool
 
 
 # Mapping from feature flag name -> environment variable name
@@ -43,6 +44,7 @@ _ENV_VAR_MAP: Dict[str, str] = {
     "generation_state_tracking": "ENABLE_GENERATION_STATE_TRACKING",
     "story_voice_reading": "ENABLE_STORY_VOICE_READING",
     "soft_narrative_lengths": "ENABLE_SOFT_NARRATIVE_LENGTHS",
+    "unified_narrative_budgets": "ENABLE_UNIFIED_NARRATIVE_BUDGETS",
 }
 
 FEATURE_DEFAULTS: FeatureFlags = {
@@ -57,6 +59,7 @@ FEATURE_DEFAULTS: FeatureFlags = {
     "generation_state_tracking": False,
     "story_voice_reading": True,
     "soft_narrative_lengths": False,
+    "unified_narrative_budgets": False,
 }
 
 

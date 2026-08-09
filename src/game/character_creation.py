@@ -6,11 +6,15 @@ import random
 import re
 from typing import Any, Dict, List, Optional
 
+from config.feature_flags import get_feature
 from config.prompts import (get_character_setting_prompt,
                             get_initial_attributes_prompt,
                             get_opening_story_prompt,
                             get_relationship_person_prompt,
                             get_relationships_summary_prompt)
+from src.ai.budgets import (GenerationCallTracker, GenerationOperation,
+                            NarrativeKind, format_length_requirement,
+                            resolve_narrative_budget)
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
@@ -183,8 +187,7 @@ def _preserve_title_only_relationship_names(
 def _family_role_label(member: Dict[str, Any]) -> str:
     """Return a stable family-role label without inferring a legal name."""
     role = " ".join(
-        str(member.get(field) or "")
-        for field in ("role", "relationship", "relationship_desc")
+        str(member.get(field) or "") for field in ("role", "relationship", "relationship_desc")
     )
     if "父" in role:
         return "父亲"
@@ -289,8 +292,7 @@ def _era_setting_is_historical_conflict(era_setting: Dict[str, Any]) -> bool:
         return True
 
     text = " ".join(
-        str(era_setting.get(key) or "")
-        for key in ["era_name", "era_description", "world_context"]
+        str(era_setting.get(key) or "") for key in ["era_name", "era_description", "world_context"]
     )
     return any(cue in text for cue in ANCIENT_ERA_CUES)
 
@@ -301,10 +303,11 @@ def _era_setting_has_modern_markers(era_setting: Dict[str, Any]) -> bool:
         return True
 
     text = " ".join(
-        str(era_setting.get(key) or "")
-        for key in ["era_name", "era_description", "world_context"]
+        str(era_setting.get(key) or "") for key in ["era_name", "era_description", "world_context"]
     )
-    return any(cue in text for cue in ("现代", "当代", "互联网", "AI", "产品经理", "公司", "创业", "科技"))
+    return any(
+        cue in text for cue in ("现代", "当代", "互联网", "AI", "产品经理", "公司", "创业", "科技")
+    )
 
 
 def _era_setting_conflicts_with_modern_life_vision(
@@ -324,8 +327,7 @@ def _classical_alignment_profile(year: int) -> Dict[str, str]:
     return {
         "era_name": f"{max(year, 800)}年前后的古代中国",
         "era_description": (
-            "古代中国，围绕家族、师承与乡土关系展开，"
-            "人物在秩序、道德与责任中成长。"
+            "古代中国，围绕家族、师承与乡土关系展开，" "人物在秩序、道德与责任中成长。"
         ),
         "world_context": (
             "乡里结构、行会网络与家族责任主导的社会环境。"
@@ -1121,12 +1123,27 @@ class CharacterCreator:
         formatted_members = self._format_family_members(
             family.get("family_members", []), self.language
         )
+        narrative_budget = None
+        generation_tracker = None
+        length_requirement = None
+        if get_feature("unified_narrative_budgets"):
+            quality_level = str(getattr(self.ai_generator, "quality_level", None) or "expert")
+            narrative_budget = resolve_narrative_budget(
+                NarrativeKind.OPENING,
+                GenerationOperation.GENERATE,
+                quality_level,
+                self.language,
+            )
+            generation_tracker = GenerationCallTracker(narrative_budget)
+            length_requirement = format_length_requirement(narrative_budget)
+
         prompt = get_opening_story_prompt(
             character_settings=character_settings,
             player_name=player_name,
             life_vision=life_vision,
             formatted_family_members=formatted_members,
             language=self.language,
+            length_requirement=length_requirement,
         )
 
         try:
@@ -1135,8 +1152,16 @@ class CharacterCreator:
                 prompt=prompt,
                 system_prompt="You are a skilled storyteller. Create engaging narrative openings based on character backgrounds.",
                 temperature=0.9,
-                max_tokens=4096,  # Maximum tokens - no truncation
+                max_tokens=(
+                    narrative_budget.max_output_tokens if narrative_budget is not None else 4096
+                ),
                 thinking=False,
+                generation_tracker=generation_tracker,
+                request_timeout=(
+                    max(0.001, generation_tracker.remaining_seconds)
+                    if generation_tracker is not None
+                    else None
+                ),
             )
 
             return response  # type: ignore[return-value, no-any-return]  # Return the stream object

@@ -9,9 +9,9 @@ import openai
 import pytest
 
 from config.feature_flags import reset_features, set_feature
+from src.ai.budgets import GenerationCallTracker, resolve_narrative_budget
 from src.ai.client import AIClient
 from src.ai.generator import EventGenerator
-
 
 STREAM_RESPONSE = (
     'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":0,'
@@ -20,7 +20,7 @@ STREAM_RESPONSE = (
     'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":0,'
     '"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{},'
     '"finish_reason":"stop"}]}\n\n'
-    'data: [DONE]\n\n'
+    "data: [DONE]\n\n"
 )
 
 STREAM_LENGTH_RESPONSE = (
@@ -30,7 +30,7 @@ STREAM_LENGTH_RESPONSE = (
     'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":0,'
     '"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{},'
     '"finish_reason":"length"}]}\n\n'
-    'data: [DONE]\n\n'
+    "data: [DONE]\n\n"
 )
 
 
@@ -139,12 +139,15 @@ def test_non_false_thinking_preserves_deepseek_payload(
     with httpx.Client(transport=_capture_transport(seen)) as http_client:
         client = _ai_client("deepseek-v4-flash", http_client)
         callback: Optional[Callable[[str], None]] = chunks.append if streaming else None
-        assert client.call(
-            "system",
-            "user",
-            stream_callback=callback,
-            **thinking_kwargs,
-        ) == "story"
+        assert (
+            client.call(
+                "system",
+                "user",
+                stream_callback=callback,
+                **thinking_kwargs,
+            )
+            == "story"
+        )
 
     assert "thinking" not in seen[0]
     if streaming:
@@ -163,6 +166,8 @@ def test_non_deepseek_v4_ignores_false_thinking(model: str) -> None:
 
 def test_model_fallback_preserves_disabled_thinking_for_each_deepseek_model() -> None:
     seen: list[dict[str, Any]] = []
+    tracker = GenerationCallTracker(resolve_narrative_budget("round", "generate", "master", "zh"))
+    tracker.consume("prose")
 
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
@@ -184,7 +189,15 @@ def test_model_fallback_preserves_disabled_thinking_for_each_deepseek_model() ->
     set_feature("model_fallback", True)
     with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
         client = _ai_client("deepseek-v4-flash", http_client)
-        assert client.call("system", "user", thinking=False) == "story"
+        assert (
+            client.call(
+                "system",
+                "user",
+                thinking=False,
+                generation_tracker=tracker,
+            )
+            == "story"
+        )
 
     assert [body["model"] for body in seen] == [
         "deepseek-v4-flash",
@@ -193,6 +206,7 @@ def test_model_fallback_preserves_disabled_thinking_for_each_deepseek_model() ->
     ]
     assert all(body["thinking"] == {"type": "disabled"} for body in seen[:2])
     assert "thinking" not in seen[2]
+    assert tracker.prose_calls == 3
 
 
 def test_truncation_recovery_preserves_disabled_thinking() -> None:
