@@ -803,6 +803,7 @@ def test_scheduled_event_generation_retries_when_story_replaces_preset_cast() ->
     )
 
     assert len(client.calls) == 2
+    assert all(call["thinking"] is False for call in client.calls)
     assert event is not None
     assert "没有使用预设关键人物" in client.calls[1]["user_prompt"]
     assert "陆昊然" in event.event_description

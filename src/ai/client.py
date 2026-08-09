@@ -468,6 +468,7 @@ class AIClient:
         temperature: float = 0.8,
         max_tokens: int = 2000,
         model: Optional[str] = None,
+        thinking: Optional[bool] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Call AI and parse response as JSON.
@@ -478,6 +479,7 @@ class AIClient:
             temperature: Generation temperature
             max_tokens: Maximum tokens to generate
             model: Optional model override
+            thinking: Disable thinking for DeepSeek V4 when False
 
         Returns:
             Parsed JSON dict, or None if extraction fails
@@ -488,6 +490,7 @@ class AIClient:
             temperature=temperature,
             max_tokens=max_tokens,
             model=model,
+            thinking=thinking,
         )
         return extract_json(content)
 
@@ -504,6 +507,7 @@ class AIClient:
         model: Optional[str] = None,
         language: str = "zh",
         request_timeout: Optional[float] = None,
+        thinking: Optional[bool] = None,
     ) -> str:
         """
         Call AI with retry and error feedback injection.
@@ -520,6 +524,7 @@ class AIClient:
             stream_callback: Optional streaming callback (only used on first attempt)
             model: Optional model override
             language: Language code for error feedback message
+            thinking: Disable thinking for DeepSeek V4 when False
 
         Returns:
             AI generated text
@@ -556,6 +561,7 @@ class AIClient:
                     stream_callback=cb,
                     model=model,
                     request_timeout=request_timeout,
+                    thinking=thinking,
                 )
 
             except openai.APIError as e:

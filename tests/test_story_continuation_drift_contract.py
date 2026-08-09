@@ -194,6 +194,7 @@ def test_regenerate_story_retries_when_story_drifts_from_character_settings() ->
     )
 
     assert len(client.calls) == 2
+    assert all(call["thinking"] is False for call in client.calls)
     assert "快速一致性修正" in client.calls[1]["user_prompt"]
     assert "陆昊然" in regenerated
     assert "陈晓雨" in regenerated
@@ -265,6 +266,7 @@ def test_rewrite_story_retries_when_rewritten_story_drifts_from_character_settin
     )
 
     assert len(client.calls) == 2
+    assert all(call["thinking"] is False for call in client.calls)
     assert "改写一致性修正" in client.calls[1]["user_prompt"]
     assert "陆昊然" in rewritten
     assert "陈晓雨" in rewritten

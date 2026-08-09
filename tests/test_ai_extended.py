@@ -60,6 +60,47 @@ class TestOptionGenerator:
         assert len(event.options) == 3
         assert event.options[0].text == "选项A"
 
+    def test_generate_options_disables_thinking_on_every_attempt(self):
+        """An option retry must not fall back to DeepSeek's default thinking mode."""
+
+        class SequentialClient:
+            def __init__(self):
+                self.calls = []
+                self.responses = iter(
+                    [
+                        "not json",
+                        json.dumps(
+                            {
+                                "options": [
+                                    {"text": "细读合作条款", "effects": {"knowledge": 5}},
+                                    {"text": "请伙伴一起把关", "effects": {"mood": 3}},
+                                    {"text": "先锁定关键风险", "effects": {"energy": -3}},
+                                ]
+                            }
+                        ),
+                    ]
+                )
+
+            def call(self, **kwargs):
+                self.calls.append(kwargs)
+                return next(self.responses)
+
+        client = SequentialClient()
+        event = self._make_generator(client).generate_options_only(
+            "林岚需要决定是否签署新的合作协议。",
+            {},
+            language="zh",
+            retry_count=2,
+        )
+
+        assert [option.text for option in event.options] == [
+            "细读合作条款",
+            "请伙伴一起把关",
+            "先锁定关键风险",
+        ]
+        assert len(client.calls) == 2
+        assert all(call["thinking"] is False for call in client.calls)
+
     def test_generate_options_uses_one_bounded_provider_attempt_before_fallback(self):
         """A stalled option provider must not keep a completed story in generation forever."""
         mock_client = Mock()

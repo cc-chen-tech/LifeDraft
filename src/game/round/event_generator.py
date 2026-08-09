@@ -782,6 +782,7 @@ class RoundEventGenerator:
                     temperature=0.85 if attempt == 0 else 0.65,
                     max_tokens=8192,
                     stream_callback=stream_callback if attempt == 0 else None,
+                    thinking=False,
                 )
 
                 data = extract_json(response)
