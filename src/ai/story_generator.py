@@ -36,6 +36,7 @@ from src.ai.harness.quality_level import PROFILES, QualityLevel
 from src.ai.harness.retry_controller import RetryController
 from src.ai.harness.validation_pipeline import ValidationPipeline
 from src.ai.long_story_context import (
+    DynamicContextParts,
     LongStoryContextBuilder,
     is_deepseek_v4_model,
     prepend_history_prefix,
@@ -320,7 +321,10 @@ class StoryGenerator:
             return ""
         builder = LongStoryContextBuilder()
         context = (
-            builder.build_for_request(player_state, dynamic_tail)
+            builder.build_for_request(
+                player_state,
+                DynamicContextParts(current_request=dynamic_tail),
+            )
             if dynamic_tail
             else builder.build(player_state)
         )

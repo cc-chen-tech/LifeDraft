@@ -16,6 +16,7 @@ from src.ai.budgets import (
 )
 from src.ai.client import AIClient
 from src.ai.long_story_context import (
+    DynamicContextParts,
     LongStoryContextBuilder,
     is_deepseek_v4_model,
     prepend_history_prefix,
@@ -78,17 +79,22 @@ class OptionGenerator:
         prompt = get_options_only_prompt(
             story_description, player_state, character_settings, language
         )
+        sys_prompt = get_system_prompt("option_generator", language)
         if history_prefix is None and is_deepseek_v4_model(
             getattr(self.client, "model", None)
         ):
             history_prefix = (
-                LongStoryContextBuilder().build(player_state).history_prefix
+                LongStoryContextBuilder()
+                .build_for_request(
+                    player_state,
+                    DynamicContextParts(current_request=sys_prompt + prompt),
+                )
+                .history_prefix
             )
         prompt = prepend_history_prefix(history_prefix or "", prompt)
         logger.info(f"Prompt length: {len(prompt)} characters")
         logger.debug(f"Prompt preview (first 500 chars):\n{prompt[:500]}...")
 
-        sys_prompt = get_system_prompt("option_generator", language)
         last_error: Optional[str] = None
         allowed_option_calls = min(
             2,
@@ -344,7 +350,10 @@ class OptionGenerator:
                 ("Set boundaries before responding", {"mood": 1, "knowledge": 2}),
                 ("Accept the manageable risk", {"energy": -4, "mood": 3}),
                 ("Decline and explain practical concerns", {"energy": 2, "mood": -1}),
-                ("Negotiate a workable compromise", {"energy": -2, "mood": 2, "knowledge": 2}),
+                (
+                    "Negotiate a workable compromise",
+                    {"energy": -2, "mood": 2, "knowledge": 2},
+                ),
                 ("Confirm their real intentions first", {"mood": 1, "knowledge": 3}),
                 ("Record the disagreement and wait", {"energy": 2, "knowledge": 1}),
                 ("Raise the key question openly", {"energy": -2, "knowledge": 5}),
