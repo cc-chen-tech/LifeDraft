@@ -248,15 +248,13 @@ test.describe('Auth - Sheet Interactions', () => {
     await newGameButton.click();
     await page.waitForLoadState('domcontentloaded');
     
-    // Sheet should be open
-    const sheet = page.locator('[role="dialog"], [class*="sheet"]');
-    
-    // Click outside to close (on background overlay)
-    const overlay = page.locator('[class*="overlay"], [class*="backdrop"]');
-    if (await overlay.count() > 0) {
-      await overlay.first().click({ force: true });
-      await page.waitForLoadState('domcontentloaded');
-    }
+    const sheet = page.locator('[data-slot="sheet-content"]');
+    const overlay = page.locator('[data-slot="sheet-overlay"]');
+
+    await expect(sheet).toBeVisible();
+    await expect(overlay).toBeVisible();
+    await overlay.click({ position: { x: 8, y: 8 } });
+    await expect(sheet).toBeHidden();
   });
 
   test('should close sheet when pressing escape', async ({ page }) => {
@@ -267,8 +265,10 @@ test.describe('Auth - Sheet Interactions', () => {
     await page.waitForLoadState('domcontentloaded');
     
     // Press escape
+    const sheet = page.locator('[data-slot="sheet-content"]');
+    await expect(sheet).toBeVisible();
     await page.keyboard.press('Escape');
-    await page.waitForLoadState('domcontentloaded');
+    await expect(sheet).toBeHidden();
   });
 });
 
