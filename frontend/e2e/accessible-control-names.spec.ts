@@ -31,7 +31,7 @@ test('credential and save icon controls expose stable names', async ({ page }) =
   await page.goto('/saves');
   await expect(
     page.getByRole('button', {
-      name: `删除存档 无障碍存档（存档 ${created.game_id}）`,
+      name: `删除存档“无障碍存档”（存档 ${created.game_id}）`,
     }),
   ).toBeVisible();
 });

@@ -13,15 +13,15 @@ test.describe('Auth - Welcome Page', () => {
   });
 
   test('should display welcome page with title', async ({ page }) => {
-    await expect(page).toHaveTitle(/人生草稿本|Life Draft|Story Life/);
+    await expect(page).toHaveTitle('story101 - 人生模拟器');
   });
 
   test('should show app title and description', async ({ page }) => {
-    const title = page.locator('text=/Story Life|人生草稿本/');
-    await expect(title).toBeVisible();
-    
-    const description = page.locator('text=/AI.*人生|沉浸式/');
-    await expect(description).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'story101' }),
+    ).toBeVisible();
+    await expect(page.getByText('人生草稿本', { exact: true })).toBeVisible();
+    await expect(page.locator('body')).not.toContainText(/Story Life|AI驱动|沉浸式/);
   });
 
   test('should have new game button', async ({ page }) => {
