@@ -1,5 +1,8 @@
 """Tests for images router - simplified version."""
 
+import asyncio
+import threading
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -72,6 +75,240 @@ async def test_round_scene_generation_runs_outside_the_event_loop(
 
     assert offloaded == [service.generate_round_scene_image]
     assert response.scene_id == 7
+
+
+@pytest.mark.asyncio
+async def test_opening_illustration_provider_wait_does_not_block_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A slow synchronous provider must yield so unrelated async work can run."""
+    from src.api.routers import images
+    from src.api.schemas import GenerateOpeningIllustrationRequest
+
+    release_provider = threading.Event()
+    provider_timed_out = False
+
+    class SlowImageService:
+        def __init__(self, _db):
+            pass
+
+        def generate_opening_illustration(self, **_kwargs):
+            nonlocal provider_timed_out
+            if not release_provider.wait(timeout=0.2):
+                provider_timed_out = True
+            return SimpleNamespace(
+                image_id=9,
+                game_id=1,
+                metadata_json={"scene_description": "窗边的第一幕"},
+                prompt_text="opening prompt",
+                created_at=None,
+            )
+
+        @staticmethod
+        def get_image_url(_image):
+            return "/api/images/file/1/opening/9.png"
+
+    async def release_on_next_event_loop_turn() -> None:
+        await asyncio.sleep(0.01)
+        release_provider.set()
+
+    monkeypatch.setattr(images, "ImageService", SlowImageService)
+    monkeypatch.setattr(images, "verify_game_ownership", MagicMock())
+
+    release_task = asyncio.create_task(release_on_next_event_loop_turn())
+    response = await images.generate_opening_illustration(
+        GenerateOpeningIllustrationRequest(
+            game_id=1,
+            story_text="沈言站在窗边，准备走进新的人生。",
+            character_settings={},
+            player_name="沈言",
+        ),
+        db=MagicMock(),
+        user=1,
+    )
+    await release_task
+
+    assert provider_timed_out is False
+    assert response.image_id == 9
+
+
+@pytest.mark.asyncio
+async def test_character_image_provider_wait_does_not_block_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The general image route must not run a provider on the event loop."""
+    from src.api.routers import images
+    from src.api.schemas import GenerateImageRequest
+
+    release_provider = threading.Event()
+    provider_timed_out = False
+
+    class SlowImageService:
+        def __init__(self, _db):
+            pass
+
+        def generate_character_image(self, **_kwargs):
+            nonlocal provider_timed_out
+            if not release_provider.wait(timeout=0.2):
+                provider_timed_out = True
+            return [
+                SimpleNamespace(
+                    image_id=10,
+                    game_id=1,
+                    image_type="character",
+                    entity_name="沈言",
+                    entity_key="player",
+                    prompt_text="portrait prompt",
+                    version=1,
+                    created_at=None,
+                )
+            ]
+
+        @staticmethod
+        def get_image_url(_image):
+            return "/api/images/file/1/character/10.png"
+
+    async def release_on_next_event_loop_turn() -> None:
+        await asyncio.sleep(0.01)
+        release_provider.set()
+
+    monkeypatch.setattr(images, "ImageService", SlowImageService)
+    monkeypatch.setattr(images, "verify_game_ownership", MagicMock())
+
+    release_task = asyncio.create_task(release_on_next_event_loop_turn())
+    response = await images.generate_image(
+        GenerateImageRequest(
+            game_id=1,
+            image_type="character",
+            entity_name="沈言",
+            description="调查记者",
+        ),
+        db=MagicMock(),
+        user=1,
+    )
+    await release_task
+
+    assert provider_timed_out is False
+    assert response.total == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_character_provider_wait_does_not_block_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Batch generation must offload each synchronous provider request."""
+    from src.api.routers import images
+    from src.api.schemas import BatchGenerateCharactersRequest
+
+    release_provider = threading.Event()
+    provider_timed_out = False
+
+    class SlowImageService:
+        def __init__(self, _db):
+            pass
+
+        def generate_character_image(self, **_kwargs):
+            nonlocal provider_timed_out
+            if not release_provider.wait(timeout=0.2):
+                provider_timed_out = True
+            return [
+                SimpleNamespace(
+                    image_id=11,
+                    game_id=1,
+                    image_type="character",
+                    entity_name="林岚",
+                    entity_key="npc_林岚",
+                    prompt_text="family portrait prompt",
+                    version=1,
+                    created_at=None,
+                )
+            ]
+
+        @staticmethod
+        def get_image_url(_image):
+            return "/api/images/file/1/character/11.png"
+
+    async def release_on_next_event_loop_turn() -> None:
+        await asyncio.sleep(0.01)
+        release_provider.set()
+
+    monkeypatch.setattr(images, "ImageService", SlowImageService)
+    monkeypatch.setattr(images, "verify_game_ownership", MagicMock())
+
+    release_task = asyncio.create_task(release_on_next_event_loop_turn())
+    response = await images.batch_generate_character_images(
+        BatchGenerateCharactersRequest(
+            game_id=1,
+            character_settings={
+                "family": {"family_members": [{"name": "林岚", "role": "姐姐"}]}
+            },
+        ),
+        db=MagicMock(),
+        user=1,
+    )
+    await release_task
+
+    assert provider_timed_out is False
+    assert response.total == 1
+
+
+@pytest.mark.asyncio
+async def test_round_scene_regeneration_wait_does_not_block_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Scene regeneration must use the same non-blocking provider boundary."""
+    from src.api.routers import images
+    from src.api.schemas import RegenerateRoundSceneRequest
+
+    release_provider = threading.Event()
+    provider_timed_out = False
+
+    class SlowImageService:
+        def __init__(self, _db):
+            self.storage_service = SimpleNamespace(
+                get_image_url=lambda _path, _storage_type: "/api/images/file/1/scene/12.png"
+            )
+
+        def regenerate_round_scene_image(self, **_kwargs):
+            nonlocal provider_timed_out
+            if not release_provider.wait(timeout=0.2):
+                provider_timed_out = True
+            return SimpleNamespace(
+                scene_id=12,
+                game_id=1,
+                week=0,
+                round_number=1,
+                stage="event",
+                storage_path="/tmp/scene-12.png",
+                storage_type="local",
+                scene_description="窗边的采访",
+                created_at=None,
+            )
+
+    async def release_on_next_event_loop_turn() -> None:
+        await asyncio.sleep(0.01)
+        release_provider.set()
+
+    monkeypatch.setattr(images, "ImageService", SlowImageService)
+    monkeypatch.setattr(images, "verify_game_ownership", MagicMock())
+
+    release_task = asyncio.create_task(release_on_next_event_loop_turn())
+    response = await images.regenerate_round_scene_image(
+        RegenerateRoundSceneRequest(
+            game_id=1,
+            round_number=1,
+            story_text="沈言完成了采访。",
+            player_name="沈言",
+            user_prompt="改成黄昏",
+            current_scene_id=2,
+        ),
+        db=MagicMock(),
+        user=1,
+    )
+    await release_task
+
+    assert provider_timed_out is False
+    assert response.scene_id == 12
 
 
 @pytest.fixture
