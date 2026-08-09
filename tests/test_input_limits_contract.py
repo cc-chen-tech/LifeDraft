@@ -168,6 +168,23 @@ def test_api_422_reports_field_limit_and_actual_length_without_echoing_input() -
     assert "input" not in error
 
 
+def test_unrelated_api_validation_errors_keep_standard_fastapi_shape() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/api/games",
+        json={"life_vision": "愿景", "character_settings": {"era": "现代"}},
+    )
+
+    assert response.status_code == 422
+    error = next(item for item in response.json()["detail"] if item["loc"][-1] == "player_name")
+    assert error["type"] == "missing"
+    assert error["input"] == {
+        "life_vision": "愿景",
+        "character_settings": {"era": "现代"},
+    }
+    assert "field" not in error
+
+
 def test_openapi_publishes_named_limits_and_field_max_lengths() -> None:
     schema = app.openapi()
     assert schema["x-input-limits"] == {

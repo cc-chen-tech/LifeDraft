@@ -190,9 +190,16 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
 
     details = []
     for raw_error in exc.errors():
-        error = {key: value for key, value in raw_error.items() if key not in {"input", "url"}}
         error_type = raw_error.get("type")
         ctx = dict(raw_error.get("ctx") or {})
+        if error_type in {"string_too_long", "json_too_large"}:
+            error = {
+                key: value
+                for key, value in raw_error.items()
+                if key not in {"input", "url"}
+            }
+        else:
+            error = dict(raw_error)
         if error_type == "string_too_long":
             input_value = raw_error.get("input")
             error.update(
