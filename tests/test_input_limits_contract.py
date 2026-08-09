@@ -25,9 +25,12 @@ from src.api.input_limits import (
 from src.api.main import app
 from src.api.routers.music import MusicGenerationRequest, MusicRecommendationRequest
 from src.api.schemas import (
+    AddEntitiesRequest,
     BatchGenerateCharactersRequest,
     CreateGameRequest,
+    CreateItemRequest,
     CreatePresetRequest,
+    CreateSavePointRequest,
     CustomChoiceRequest,
     GenerateOpeningIllustrationRequest,
     GenerateImageRequest,
@@ -37,15 +40,17 @@ from src.api.schemas import (
     OpeningStoryRequest,
     PresetInfo,
     ReadingContext,
+    RecognizedEntity,
+    RegenerateCharacterImageRequest,
     RegenerateItemImageRequest,
     RegenerateImageRequest,
     RegenerateOpeningIllustrationRequest,
     RegenerateRoundSceneRequest,
-    RegenerateCharacterImageRequest,
     RelationshipsSummaryRequest,
     RewriteStoryRequest,
     StoryChatRequest,
     UpdateCharacterSettingsRequest,
+    VoiceUploadConsentRequest,
 )
 
 
@@ -255,6 +260,11 @@ def test_legacy_response_models_do_not_reject_or_truncate_saved_text() -> None:
         (RelationshipsSummaryRequest, "life_vision", LIFE_VISION_MAX_CHARS),
         (CreatePresetRequest, "player_name", NAME_MAX_CHARS),
         (CreatePresetRequest, "life_vision", LIFE_VISION_MAX_CHARS),
+        (CreatePresetRequest, "preset_name", NAME_MAX_CHARS),
+        (VoiceUploadConsentRequest, "sample_name", NAME_MAX_CHARS),
+        (GenerateImageRequest, "entity_name", NAME_MAX_CHARS),
+        (CreateSavePointRequest, "save_name", NAME_MAX_CHARS),
+        (CreateItemRequest, "name", NAME_MAX_CHARS),
         (CustomChoiceRequest, "custom_text", CUSTOM_ACTION_MAX_CHARS),
         (ReadingContext, "text", VOICE_TEXT_MAX_CHARS),
         (RewriteStoryRequest, "full_story", FULL_STORY_MAX_CHARS),
@@ -319,4 +329,25 @@ def test_all_character_setting_request_fields_publish_byte_limit(model: type, fi
             candidate for candidate in property_schema["anyOf"] if candidate.get("type") == "object"
         )
     assert property_schema["x-maxBytes"] == CHARACTER_SETTINGS_MAX_BYTES
-    RegenerateImageRequest,
+
+
+def test_nested_entity_writes_reject_long_names_without_constraining_legacy_response() -> None:
+    payload = {
+        "name": "新" * (NAME_MAX_CHARS + 1),
+        "description": "新实体",
+    }
+    with pytest.raises(ValidationError) as exc_info:
+        AddEntitiesRequest.model_validate({"items": [payload]})
+    assert exc_info.value.errors()[0]["loc"] == ("items", 0, "name")
+
+    legacy_name = "旧" * (NAME_MAX_CHARS + 1)
+    assert RecognizedEntity(name=legacy_name, description="旧记录").name == legacy_name
+
+
+def test_add_entities_route_uses_the_constrained_request_model() -> None:
+    route_schema = app.openapi()["paths"]["/api/collection/{game_id}/add-entities"]["post"]
+    body_schema = route_schema["requestBody"]["content"]["application/json"]["schema"]
+    assert body_schema["$ref"] == "#/components/schemas/AddEntitiesRequest"
+
+    write_schema = app.openapi()["components"]["schemas"]["RecognizedEntityWrite"]
+    assert write_schema["properties"]["name"]["maxLength"] == NAME_MAX_CHARS

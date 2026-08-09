@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { LengthIndicator } from "@/components/ui/length-indicator";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 import { api } from "@/lib/api";
 import { streamRewrite } from "@/lib/sse";
 import { useGameStore } from "@/stores/useGameStore";
@@ -178,7 +179,7 @@ export function ChatBar({
       !text ||
       !gameId ||
       isSending ||
-      Array.from(text).length > INPUT_LIMITS.storyDialogue
+      !isWithinInputLimit(text, INPUT_LIMITS.storyDialogue)
     ) return;
 
     // Add user message
@@ -243,8 +244,8 @@ export function ChatBar({
       !fullStory ||
       isRewriting ||
       isStoryBusy ||
-      Array.from(instruction).length > INPUT_LIMITS.rewriteInstruction ||
-      Array.from(fullStory).length > INPUT_LIMITS.fullStory
+      !isWithinInputLimit(instruction, INPUT_LIMITS.rewriteInstruction) ||
+      !isWithinInputLimit(fullStory, INPUT_LIMITS.fullStory)
     ) return;
 
     setIsRewriting(true);
@@ -354,7 +355,7 @@ export function ChatBar({
 
   const storyBusyTitle = "故事生成完成后可用";
   const storyActionDisabled = isViewingHistory || isStoryBusy;
-  const fullStoryOverLimit = Array.from(storyText).length > INPUT_LIMITS.fullStory;
+  const fullStoryOverLimit = !isWithinInputLimit(storyText, INPUT_LIMITS.fullStory);
   const rewriteDisabled = storyActionDisabled || !storyText.trim() || fullStoryOverLimit;
   const summaryDisabled = isGeneratingSummary || isSending || isStoryBusy;
 
@@ -379,7 +380,6 @@ export function ChatBar({
             placeholder="描述你想要的修改，例如：让场景更加温馨、增加一些对话、改变结局..."
             className="min-h-[120px] bg-secondary border-border text-sm"
             disabled={isRewriting}
-            maxLength={INPUT_LIMITS.rewriteInstruction}
           />
           <LengthIndicator
             value={rewriteInstruction}
@@ -387,7 +387,13 @@ export function ChatBar({
           />
           <Button
             onClick={() => handleRewrite()}
-            disabled={!rewriteInstruction.trim() || isRewriting || !storyText.trim() || isStoryBusy}
+            disabled={
+              !rewriteInstruction.trim() ||
+              isRewriting ||
+              !storyText.trim() ||
+              isStoryBusy ||
+              !isWithinInputLimit(rewriteInstruction, INPUT_LIMITS.rewriteInstruction)
+            }
             className="w-full touch-target"
           >
             {isRewriting ? (
@@ -678,7 +684,6 @@ export function ChatBar({
           placeholder="向剧情助手提问..."
           className="flex-1 bg-secondary border-border text-sm h-10"
           disabled={isSending}
-          maxLength={INPUT_LIMITS.storyDialogue}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.nativeEvent.isComposing && message.trim()) {
               handleSend();
@@ -688,7 +693,11 @@ export function ChatBar({
         <Button
           size="icon"
           className="h-10 w-10"
-          disabled={!message.trim() || isSending}
+          disabled={
+            !message.trim() ||
+            isSending ||
+            !isWithinInputLimit(message, INPUT_LIMITS.storyDialogue)
+          }
           onClick={handleSend}
           aria-label="发送消息"
           title="发送消息"

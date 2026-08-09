@@ -214,7 +214,7 @@ class RelationshipsSummaryRequest(BaseModel):
 
 
 class CreatePresetRequest(BaseModel):
-    preset_name: str = Field(..., min_length=1, max_length=100)
+    preset_name: str = Field(..., min_length=1, max_length=NAME_MAX_CHARS)
     player_name: str = Field(..., max_length=NAME_MAX_CHARS)
     life_vision: str = Field("", max_length=LIFE_VISION_MAX_CHARS)
     character_settings: CharacterSettingsPayload = Field(default_factory=dict)
@@ -277,7 +277,7 @@ class VoiceReadingSettingsUpdateRequest(BaseModel):
 
 class VoiceUploadConsentRequest(BaseModel):
     consent_confirmed: bool = False
-    sample_name: Optional[str] = None
+    sample_name: Optional[str] = Field(None, max_length=NAME_MAX_CHARS)
 
 
 class ReadingContext(BaseModel):
@@ -387,7 +387,9 @@ class GenerateImageRequest(BaseModel):
 
     game_id: int
     image_type: str = Field(..., description="character|location|item")
-    entity_name: str = Field(..., description="人物名/地点名/物品名")
+    entity_name: str = Field(
+        ..., max_length=NAME_MAX_CHARS, description="人物名/地点名/物品名"
+    )
     description: str = Field(..., description="描述文本")
     entity_key: Optional[str] = Field(None, description="实体唯一标识")
     era: str = Field(default="现代", description="时代背景")
@@ -451,7 +453,9 @@ class ImageListResponse(BaseModel):
 class CreateSavePointRequest(BaseModel):
     """创建存档点请求"""
 
-    save_name: Optional[str] = Field(None, description="存档名称（可选）")
+    save_name: Optional[str] = Field(
+        None, max_length=NAME_MAX_CHARS, description="存档名称（可选）"
+    )
 
 
 class SavePointItem(BaseModel):
@@ -676,6 +680,17 @@ class RecognizedEntity(BaseModel):
     appear_contexts: List[str] = Field(default_factory=list, description="出现的上下文片段")
 
 
+class RecognizedEntityWrite(BaseModel):
+    """New entity write payload; response and stored entity models stay permissive."""
+
+    name: str = Field(..., max_length=NAME_MAX_CHARS, description="实体名称")
+    description: str = Field(..., description="详细描述")
+    category: str = Field(default="other", description="类别")
+    importance: str = Field(default="normal", description="重要程度")
+    appear_count: int = Field(default=1, description="出现次数")
+    appear_contexts: List[str] = Field(default_factory=list, description="出现的上下文片段")
+
+
 class EntityRecognitionResponse(BaseModel):
     """实体识别响应"""
 
@@ -687,9 +702,9 @@ class EntityRecognitionResponse(BaseModel):
 class AddEntitiesRequest(BaseModel):
     """批量添加实体请求"""
 
-    items: List[RecognizedEntity] = Field(default_factory=list)
-    characters: List[RecognizedEntity] = Field(default_factory=list)
-    landmarks: List[RecognizedEntity] = Field(default_factory=list)
+    items: List[RecognizedEntityWrite] = Field(default_factory=list)
+    characters: List[RecognizedEntityWrite] = Field(default_factory=list)
+    landmarks: List[RecognizedEntityWrite] = Field(default_factory=list)
 
 
 class AddEntitiesResponse(BaseModel):
@@ -705,7 +720,9 @@ class AddEntitiesResponse(BaseModel):
 class CreateItemRequest(BaseModel):
     """手动创建物品请求"""
 
-    name: str = Field(..., min_length=1, max_length=100, description="物品名称")
+    name: str = Field(
+        ..., min_length=1, max_length=NAME_MAX_CHARS, description="物品名称"
+    )
     generate_description: bool = Field(default=True, description="是否从历史中生成描述")
 
 

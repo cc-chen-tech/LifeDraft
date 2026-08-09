@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CompletionScreen } from "@/components/create/CompletionScreen";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 
 const defaultProps = {
   playerName: "测试角色",
@@ -63,6 +64,21 @@ describe("CompletionScreen - Loading Feedback", () => {
     render(<CompletionScreen {...defaultProps} showPresetSheet={true} />);
 
     expect(screen.getByRole("button", { name: "确认保存" })).toBeInTheDocument();
+  });
+
+  test("sheet blocks an injected overlimit preset name", () => {
+    const onSavePreset = jest.fn();
+    render(
+      <CompletionScreen
+        {...defaultProps}
+        showPresetSheet={true}
+        presetName={"😀".repeat(INPUT_LIMITS.name + 1)}
+        onSavePreset={onSavePreset}
+      />
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("已超出 1 字");
+    expect(screen.getByRole("button", { name: "确认保存" })).toBeDisabled();
+    expect(onSavePreset).not.toHaveBeenCalled();
   });
 
   test("完全重生成按钮点击后进入加载状态", async () => {

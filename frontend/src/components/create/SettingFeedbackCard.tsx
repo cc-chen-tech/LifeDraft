@@ -8,6 +8,7 @@ import { RefreshCw, Loader2 } from "lucide-react";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
 import { LengthIndicator } from "@/components/ui/length-indicator";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 
 interface SettingFeedbackCardProps {
   stepKey: string;
@@ -28,7 +29,7 @@ export function SettingFeedbackCard({
   const [regenerationError, setRegenerationError] = useState("");
 
   const handleRegenerate = async () => {
-    if (!feedback.trim() || Array.from(feedback).length > INPUT_LIMITS.feedback) return;
+    if (!feedback.trim() || !isWithinInputLimit(feedback, INPUT_LIMITS.feedback)) return;
     setIsGenerating(true);
     setRegenerationError("");
     try {
@@ -78,7 +79,6 @@ export function SettingFeedbackCard({
             placeholder="告诉AI你想怎么改..."
             disabled={isGenerating}
             data-testid={`${stepKey}-feedback-input`}
-            maxLength={INPUT_LIMITS.feedback}
           />
           <LengthIndicator value={feedback} limit={INPUT_LIMITS.feedback} />
           {regenerationError && (
@@ -90,7 +90,11 @@ export function SettingFeedbackCard({
             <Button
               size="sm"
               onClick={handleRegenerate}
-              disabled={isGenerating || !feedback.trim()}
+              disabled={
+                isGenerating ||
+                !feedback.trim() ||
+                !isWithinInputLimit(feedback, INPUT_LIMITS.feedback)
+              }
               aria-label={`重新生成${stepLabel}`}
             >
               {isGenerating ? (

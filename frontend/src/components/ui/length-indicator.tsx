@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { unicodeCharacterLength } from "@/lib/inputLimits";
 
 interface LengthIndicatorProps {
   value: string;
@@ -7,7 +8,7 @@ interface LengthIndicatorProps {
 }
 
 export function LengthIndicator({ value, limit, className }: LengthIndicatorProps) {
-  const remaining = limit - Array.from(value).length;
+  const remaining = limit - unicodeCharacterLength(value);
   const isOver = remaining < 0;
 
   return (

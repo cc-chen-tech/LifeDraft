@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Send, Loader2, ChevronRight } from "lucide-react";
 import { LengthIndicator } from "@/components/ui/length-indicator";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 
 interface OptionCardsProps {
   options: { text: string; potential_effects?: Record<string, unknown> }[];
@@ -49,7 +50,7 @@ export function OptionCards({
     if (
       !customText.trim() ||
       controlsDisabled ||
-      Array.from(customText).length > INPUT_LIMITS.customAction
+      !isWithinInputLimit(customText, INPUT_LIMITS.customAction)
     ) return;
     const submittedText = customText.trim();
     setSelectedIndex(-1); // -1 = custom
@@ -146,7 +147,6 @@ export function OptionCards({
                 "transition-colors duration-200"
               )}
               disabled={controlsDisabled}
-              maxLength={INPUT_LIMITS.customAction}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -166,7 +166,11 @@ export function OptionCards({
               "transition-all duration-200",
               customText.trim() && "text-primary"
             )}
-            disabled={controlsDisabled || !customText.trim()}
+            disabled={
+              controlsDisabled ||
+              !customText.trim() ||
+              !isWithinInputLimit(customText, INPUT_LIMITS.customAction)
+            }
             onClick={() => void handleCustomSubmit()}
           >
             {isSubmitting && selectedIndex === -1 ? (

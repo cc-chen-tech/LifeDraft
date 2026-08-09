@@ -417,10 +417,7 @@ describe('ChatBar', () => {
 
       await user.click(screen.getByLabelText('打开聊天'));
 
-      expect(screen.getByPlaceholderText('向剧情助手提问...')).toHaveAttribute(
-        'maxlength',
-        String(INPUT_LIMITS.storyDialogue),
-      );
+      expect(screen.getByPlaceholderText('向剧情助手提问...')).not.toHaveAttribute('maxlength');
       expect(screen.getByText(`还可输入 ${INPUT_LIMITS.storyDialogue} 字`)).toBeInTheDocument();
     });
     it('expands when clicking the expand button', async () => {
@@ -509,10 +506,7 @@ describe('ChatBar', () => {
       await user.click(rewriteButton!);
 
       const instruction = await screen.findByPlaceholderText(/描述你想要的修改/);
-      expect(instruction).toHaveAttribute(
-        'maxlength',
-        String(INPUT_LIMITS.rewriteInstruction),
-      );
+      expect(instruction).not.toHaveAttribute('maxlength');
       expect(
         within(screen.getByTestId('inline-rewrite-sheet')).getByText(
           `还可输入 ${INPUT_LIMITS.rewriteInstruction} 字`,

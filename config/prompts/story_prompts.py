@@ -22,7 +22,7 @@ from config.prompts._helpers import (_build_available_people_constraint,
                                      _format_people_names,
                                      build_realistic_modern_world_boundary)
 from src.ai.budgets import NarrativeKind, resolve_prompt_length_requirement
-from src.ai.prompt_sanitizer import sanitize_player_name, sanitize_user_choice
+from src.ai.prompt_sanitizer import sanitize_persisted_player_name, sanitize_user_choice
 from src.game.relationship_authority import build_required_cast_constraints
 
 _LEGACY_EVENT_PARAGRAPH_ZH = (
@@ -48,7 +48,7 @@ _PROTAGONIST_MARKER_RE = re.compile(r"([\u4e00-\u9fff]{2,4})[（(]\s*玩家角�
 def _clean_protagonist_name(raw_name: Any) -> str:
     if not raw_name:
         return ""
-    return sanitize_player_name(str(raw_name)).strip()
+    return sanitize_persisted_player_name(str(raw_name)).strip()
 
 
 def _looks_like_generated_session_name(name: str) -> bool:

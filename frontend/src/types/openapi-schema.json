@@ -3665,9 +3665,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": true,
-                "title": "Request"
+                "$ref": "#/components/schemas/AddEntitiesRequest"
               }
             }
           }
@@ -4792,6 +4790,34 @@
   },
   "components": {
     "schemas": {
+      "AddEntitiesRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecognizedEntityWrite"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "characters": {
+            "items": {
+              "$ref": "#/components/schemas/RecognizedEntityWrite"
+            },
+            "type": "array",
+            "title": "Characters"
+          },
+          "landmarks": {
+            "items": {
+              "$ref": "#/components/schemas/RecognizedEntityWrite"
+            },
+            "type": "array",
+            "title": "Landmarks"
+          }
+        },
+        "type": "object",
+        "title": "AddEntitiesRequest",
+        "description": "批量添加实体请求"
+      },
       "AuthResponse": {
         "properties": {
           "token": {
@@ -5071,7 +5097,7 @@
         "properties": {
           "preset_name": {
             "type": "string",
-            "maxLength": 100,
+            "maxLength": 50,
             "minLength": 1,
             "title": "Preset Name"
           },
@@ -5105,7 +5131,8 @@
           "save_name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 50
               },
               {
                 "type": "null"
@@ -5292,6 +5319,7 @@
           },
           "entity_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Entity Name",
             "description": "人物名/地点名/物品名"
           },
@@ -6434,6 +6462,54 @@
           "text"
         ],
         "title": "ReadingContext"
+      },
+      "RecognizedEntityWrite": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "title": "Name",
+            "description": "实体名称"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "详细描述"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "类别",
+            "default": "other"
+          },
+          "importance": {
+            "type": "string",
+            "title": "Importance",
+            "description": "重要程度",
+            "default": "normal"
+          },
+          "appear_count": {
+            "type": "integer",
+            "title": "Appear Count",
+            "description": "出现次数",
+            "default": 1
+          },
+          "appear_contexts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Appear Contexts",
+            "description": "出现的上下文片段"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "RecognizedEntityWrite",
+        "description": "New entity write payload; response and stored entity models stay permissive."
       },
       "RegenerateCharacterImageRequest": {
         "properties": {
@@ -7601,7 +7677,8 @@
           "sample_name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 50
               },
               {
                 "type": "null"

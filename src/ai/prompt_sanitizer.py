@@ -20,7 +20,12 @@ class PromptInputTooLongError(ValueError):
         )
 
 
-def sanitize_user_input(text: str, max_length: int = MAX_USER_INPUT_LENGTH) -> str:
+def sanitize_user_input(
+    text: str,
+    max_length: int = MAX_USER_INPUT_LENGTH,
+    *,
+    enforce_length: bool = True,
+) -> str:
     """清洗用户输入，防止 prompt 注入
 
     Args:
@@ -34,7 +39,7 @@ def sanitize_user_input(text: str, max_length: int = MAX_USER_INPUT_LENGTH) -> s
         return text
 
     # 1. Never change user meaning by silently slicing the submitted value.
-    if len(text) > max_length:
+    if enforce_length and len(text) > max_length:
         raise PromptInputTooLongError(text, max_length)
 
     # 2. 移除可能的系统指令注入模式
@@ -67,6 +72,19 @@ def sanitize_player_name(name: str) -> str:
         清洗后的名称
     """
     return sanitize_user_input(name, max_length=MAX_NAME_LENGTH)
+
+
+def sanitize_persisted_player_name(name: str) -> str:
+    """Sanitize a trusted saved name without applying new-write limits.
+
+    Existing saves are intentionally not migrated or truncated. New requests are
+    still constrained by the API model before persistence.
+    """
+    return sanitize_user_input(
+        name,
+        max_length=MAX_NAME_LENGTH,
+        enforce_length=False,
+    )
 
 
 def wrap_user_input(text: str, label: str = "用户输入") -> str:

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LengthIndicator } from "@/components/ui/length-indicator";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 import {
   Sheet,
   SheetContent,
@@ -314,7 +315,6 @@ export default function CreatePage() {
                     onChange={(e) => setFeedback(e.target.value)}
                     placeholder="不满意？告诉AI你的想法..."
                     className="bg-secondary border-border text-sm h-10"
-                    maxLength={INPUT_LIMITS.feedback}
                   />
                   <LengthIndicator value={feedback} limit={INPUT_LIMITS.feedback} />
                 </div>
@@ -323,7 +323,9 @@ export default function CreatePage() {
                   size="icon"
                   className="h-10 w-10"
                   onClick={handleRegenerate}
-                  disabled={isGenerating}
+                  disabled={
+                    isGenerating || !isWithinInputLimit(feedback, INPUT_LIMITS.feedback)
+                  }
                   aria-label={`重新生成${STEP_LABELS[currentStepKey]}`}
                   title={`重新生成${STEP_LABELS[currentStepKey]}`}
                 >

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user_optional
 from src.api.routers.image_failures import image_failure_http_exception
-from src.api.schemas import (CollectionResponse, MessageResponse,
+from src.api.schemas import (AddEntitiesRequest, CollectionResponse, MessageResponse,
                              RegenerateCharacterImageRequest,
                              RegenerateItemImageRequest)
 from src.api.services.session_service import session_service
@@ -634,7 +634,7 @@ async def recognize_entities(  # type: ignore
 @router.post("/{game_id}/add-entities")
 async def add_entities(  # type: ignore
     game_id: int,
-    request: dict,
+    request: AddEntitiesRequest,
     user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """批量添加识别出的实体到收集系统"""
@@ -646,9 +646,9 @@ async def add_entities(  # type: ignore
         service = CollectionService(db)
         result = service.add_entities(
             player_state,
-            request.get("items", []),
-            request.get("landmarks", []),
-            request.get("characters", []),
+            [entity.model_dump() for entity in request.items],
+            [entity.model_dump() for entity in request.landmarks],
+            [entity.model_dump() for entity in request.characters],
         )
 
         # 持久化状态变更

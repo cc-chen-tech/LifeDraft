@@ -1880,6 +1880,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AddEntitiesRequest
+         * @description 批量添加实体请求
+         */
+        AddEntitiesRequest: {
+            /** Items */
+            items?: components["schemas"]["RecognizedEntityWrite"][];
+            /** Characters */
+            characters?: components["schemas"]["RecognizedEntityWrite"][];
+            /** Landmarks */
+            landmarks?: components["schemas"]["RecognizedEntityWrite"][];
+        };
         /** AuthResponse */
         AuthResponse: {
             /** Token */
@@ -2676,6 +2688,45 @@ export interface components {
             text_hash: string;
             /** Text */
             text: string;
+        };
+        /**
+         * RecognizedEntityWrite
+         * @description New entity write payload; response and stored entity models stay permissive.
+         */
+        RecognizedEntityWrite: {
+            /**
+             * Name
+             * @description 实体名称
+             */
+            name: string;
+            /**
+             * Description
+             * @description 详细描述
+             */
+            description: string;
+            /**
+             * Category
+             * @description 类别
+             * @default other
+             */
+            category: string;
+            /**
+             * Importance
+             * @description 重要程度
+             * @default normal
+             */
+            importance: string;
+            /**
+             * Appear Count
+             * @description 出现次数
+             * @default 1
+             */
+            appear_count: number;
+            /**
+             * Appear Contexts
+             * @description 出现的上下文片段
+             */
+            appear_contexts?: string[];
         };
         /**
          * RegenerateCharacterImageRequest
@@ -5575,9 +5626,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["AddEntitiesRequest"];
             };
         };
         responses: {
