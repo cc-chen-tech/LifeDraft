@@ -22,6 +22,7 @@ interface StreamingTextProps {
    */
   frameInterval?: number;
   onDisplayComplete?: (text: string) => void;
+  showCursor?: boolean;
 }
 
 /**
@@ -38,6 +39,7 @@ export function StreamingText({
   charsPerFrame = 2,
   frameInterval = 30,
   onDisplayComplete,
+  showCursor = true,
 }: StreamingTextProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [displayedText, setDisplayedText] = useState("");
@@ -167,7 +169,7 @@ export function StreamingText({
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {narrativeMarkdown}
           </ReactMarkdown>
-          {isStreaming && <span className="typewriter-cursor" />}
+          {isStreaming && showCursor && <span className="typewriter-cursor" />}
         </div>
       ) : (
         <>
@@ -175,7 +177,7 @@ export function StreamingText({
           {displayedText.split("\n\n").filter(Boolean).map((para, i, arr) => (
             <p key={i} className="animate-fade-in-word">
               {para}
-              {i === arr.length - 1 && isStreaming && (
+              {i === arr.length - 1 && isStreaming && showCursor && (
                 <span className="typewriter-cursor" />
               )}
             </p>

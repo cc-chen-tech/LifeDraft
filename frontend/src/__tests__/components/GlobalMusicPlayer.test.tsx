@@ -371,9 +371,10 @@ describe("GlobalMusicPlayer", () => {
 
       const miniBar = within(screen.getByTestId("global-music-mini-bar"));
       expect(miniBar.getByText("声音")).toBeInTheDocument();
-      expect(miniBar.getByTestId("collapsed-sound-status")).toHaveTextContent(
-        "音乐播放中 · 朗读中",
-      );
+      const collapsedStatus = miniBar.getByTestId("collapsed-sound-status");
+      expect(collapsedStatus).toHaveTextContent("音乐播放中 · 朗读中");
+      expect(collapsedStatus).toHaveClass("text-xs");
+      expect(collapsedStatus).not.toHaveClass("text-[11px]");
       expect(miniBar.queryByTestId("collapsed-sound-summary")).not.toBeInTheDocument();
       expect(miniBar.queryByText("背景音乐")).not.toBeInTheDocument();
       expect(miniBar.queryByText("故事朗读")).not.toBeInTheDocument();
@@ -497,7 +498,14 @@ describe("GlobalMusicPlayer", () => {
       ).toBeInTheDocument();
     });
 
-    it.each(["/", "/saves", "/presets"])(
+    it.each([
+      "/",
+      "/saves",
+      "/presets",
+      "/create",
+      "/story/opening",
+      "/ending",
+    ])(
       "uses the reserved bottom dock on migrated route %s",
       (pathname) => {
         mockUsePathname.mockReturnValue(pathname);

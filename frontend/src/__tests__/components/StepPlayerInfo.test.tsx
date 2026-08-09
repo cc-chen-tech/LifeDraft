@@ -21,6 +21,26 @@ describe("StepPlayerInfo", () => {
   });
 
   describe("Basic rendering", () => {
+    it("connects both visible labels and descriptions to their controls", () => {
+      render(<StepPlayerInfo {...baseProps} />);
+
+      const name = screen.getByRole("textbox", { name: /角色姓名/ });
+      const vision = screen.getByRole("textbox", { name: /人生愿景/ });
+
+      expect(name).toBeRequired();
+      expect(vision).not.toBeRequired();
+      expect(name).toHaveAttribute("aria-describedby");
+      expect(vision).toHaveAttribute("aria-describedby");
+      expect(name.getAttribute("aria-describedby")).toContain("player-name-count");
+      expect(vision.getAttribute("aria-describedby")).toContain("life-vision-count");
+    });
+
+    it("keeps both counters static so the page owns the only live region", () => {
+      const { container } = render(<StepPlayerInfo {...baseProps} />);
+
+      expect(container.querySelectorAll("[aria-live]")).toHaveLength(0);
+    });
+
     it("renders the player name input", () => {
       render(<StepPlayerInfo {...baseProps} />);
       expect(
@@ -91,7 +111,13 @@ describe("StepPlayerInfo", () => {
         />,
       );
       expect(screen.getByPlaceholderText("描述你希望的人生方向...")).not.toHaveAttribute("maxlength");
-      expect(screen.getByRole("alert")).toHaveTextContent("已超出 1 字");
+      expect(screen.getByText("已超出 1 字")).toHaveAttribute(
+        "id",
+        "life-vision-count",
+      );
+      expect(
+        screen.getByRole("textbox", { name: /人生愿景/ }),
+      ).toHaveAttribute("aria-invalid", "true");
     });
     it("displays the provided life vision", () => {
       render(

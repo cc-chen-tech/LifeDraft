@@ -219,5 +219,13 @@ Second paragraph`;
 
       expect(container.firstChild).not.toHaveClass('prose-story');
     });
+
+    it('allows calm narrative pages to suppress the typewriter cursor', () => {
+      const { container } = render(
+        <StreamingText text="Test" isStreaming showCursor={false} />
+      );
+
+      expect(container.querySelector('.typewriter-cursor')).not.toBeInTheDocument();
+    });
   });
 });

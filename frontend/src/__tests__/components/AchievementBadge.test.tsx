@@ -3,7 +3,7 @@
  * Tests rendering with different rarities, animation, and edge cases
  */
 import React from "react";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { AchievementBadge } from "@/components/game/AchievementBadge";
 
 describe("AchievementBadge", () => {
@@ -49,7 +49,8 @@ describe("AchievementBadge", () => {
       render(<AchievementBadge {...baseProps} rarity="common" />);
       expect(screen.getByText("普通")).toBeInTheDocument();
       const badge = screen.getByTestId("achievement-badge");
-      expect(badge.className).toContain("border-slate-300");
+      expect(badge).toHaveAttribute("data-rarity", "common");
+      expect(badge.className).toContain("border-[var(--border-default)]");
     });
 
     it("renders rare variant", () => {
@@ -62,7 +63,8 @@ describe("AchievementBadge", () => {
       );
       expect(screen.getByText("稀有")).toBeInTheDocument();
       const badge = screen.getByTestId("achievement-badge");
-      expect(badge.className).toContain("border-sky-300");
+      expect(badge).toHaveAttribute("data-rarity", "rare");
+      expect(badge.className).toContain("border-[var(--border-default)]");
     });
 
     it("renders epic variant", () => {
@@ -75,7 +77,8 @@ describe("AchievementBadge", () => {
       );
       expect(screen.getByText("史诗")).toBeInTheDocument();
       const badge = screen.getByTestId("achievement-badge");
-      expect(badge.className).toContain("border-violet-300");
+      expect(badge).toHaveAttribute("data-rarity", "epic");
+      expect(badge.className).toContain("border-[var(--border-default)]");
     });
 
     it("renders legendary variant", () => {
@@ -88,44 +91,29 @@ describe("AchievementBadge", () => {
       );
       expect(screen.getByText("传说")).toBeInTheDocument();
       const badge = screen.getByTestId("achievement-badge");
-      expect(badge.className).toContain("border-amber-300");
+      expect(badge).toHaveAttribute("data-rarity", "legendary");
+      expect(badge.className).toContain("border-[var(--border-default)]");
     });
+
+    it.each(["common", "rare", "epic", "legendary"] as const)(
+      "keeps the %s badge on one neutral ink row without glow",
+      (rarity) => {
+        render(<AchievementBadge {...baseProps} rarity={rarity} />);
+        const badge = screen.getByTestId("achievement-badge");
+
+        expect(badge.className).not.toMatch(/bg-(?:slate|sky|violet|amber)-/);
+        expect(badge.className).not.toMatch(/shadow(?:-|\b)/);
+      },
+    );
   });
 
-  describe("Animation", () => {
-    it("starts invisible when animate is true", () => {
-      render(<AchievementBadge {...baseProps} animate={true} delay={100} />);
+  describe("Static presentation", () => {
+    it("is immediately visible without its own timer, opacity, transform, or transition", () => {
+      render(<AchievementBadge {...baseProps} />);
       const badge = screen.getByTestId("achievement-badge");
-      expect(badge.className).toContain("opacity-0");
-    });
 
-    it("becomes visible after delay", () => {
-      render(<AchievementBadge {...baseProps} animate={true} delay={100} />);
-
-      act(() => {
-        jest.advanceTimersByTime(100);
-      });
-
-      const badge = screen.getByTestId("achievement-badge");
-      expect(badge.className).toContain("opacity-100");
-    });
-
-    it("starts visible when animate is false", () => {
-      render(<AchievementBadge {...baseProps} animate={false} />);
-      const badge = screen.getByTestId("achievement-badge");
-      expect(badge.className).toContain("opacity-100");
-    });
-
-    it("cleans up timer on unmount", () => {
-      const { unmount } = render(
-        <AchievementBadge {...baseProps} animate={true} delay={5000} />
-      );
-
-      unmount();
-      // Should not throw error from timer firing after unmount
-      act(() => {
-        jest.advanceTimersByTime(5000);
-      });
+      expect(jest.getTimerCount()).toBe(0);
+      expect(badge.className).not.toMatch(/(?:opacity|translate|scale|transition|duration)-/);
     });
   });
 

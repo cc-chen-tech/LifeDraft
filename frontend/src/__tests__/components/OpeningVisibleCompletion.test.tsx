@@ -70,8 +70,8 @@ describe('opening visible completion', () => {
     expect(startButton).toHaveAttribute('aria-disabled', 'true');
     expect(startButton).toHaveAttribute('aria-busy', 'true');
     expect(startButton).toHaveClass(
-      'disabled:bg-muted',
-      'disabled:text-muted-foreground',
+      'disabled:bg-[var(--surface-raised)]',
+      'disabled:text-[var(--text-secondary)]',
       'disabled:cursor-not-allowed',
     );
     expect(screen.getByRole('status')).toHaveTextContent('正在显示完整故事...');

@@ -16,4 +16,19 @@ describe("OpeningCompletionGate", () => {
     expect(status).not.toHaveClass("animate-pulse");
     expect(screen.getByRole("button", { name: "开始我的人生" })).toBeDisabled();
   });
+
+  it("uses a touch-sized non-submit action without replaying a word animation", () => {
+    render(
+      <OpeningCompletionGate
+        backendComplete
+        visibleComplete
+        onStart={jest.fn()}
+      />
+    );
+
+    const start = screen.getByRole("button", { name: "开始我的人生" });
+    expect(start).toHaveAttribute("type", "button");
+    expect(start).toHaveAttribute("data-size", "touch");
+    expect(start).not.toHaveClass("animate-fade-in-word");
+  });
 });

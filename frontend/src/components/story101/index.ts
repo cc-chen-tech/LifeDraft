@@ -10,6 +10,8 @@ export { GlobalStatePage } from "./GlobalStatePage";
 export type { GlobalStatePageProps } from "./GlobalStatePage";
 export { PageTransition } from "./PageTransition";
 export type { PageTransitionProps } from "./PageTransition";
+export { PageEdgeBookmark } from "./PageEdgeBookmark";
+export type { PageEdgeBookmarkProps } from "./PageEdgeBookmark";
 export { RouteLoadingState } from "./RouteLoadingState";
 export { Surface } from "./Surface";
 export type { SurfaceProps } from "./Surface";

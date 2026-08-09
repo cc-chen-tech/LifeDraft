@@ -90,8 +90,18 @@ describe('OpeningStoryPage', () => {
     });
 
     it('displays opening story when available', () => {
-      render(<OpeningStoryPage />);
+      const { container } = render(<OpeningStoryPage />);
       expect(screen.getByText('Test opening story content.')).toBeInTheDocument();
+      expect(container.querySelector('[data-slot="page-transition"]')).toBeInTheDocument();
+      expect(
+        container.querySelectorAll('[data-slot="surface"][data-variant="reading"]'),
+      ).toHaveLength(1);
+      expect(screen.getByRole('heading', { level: 1, name: '人生开篇' })).toBeVisible();
+      expect(container.querySelector('[data-slot="page-transition"]')).not.toHaveClass(
+        'items-center',
+        'justify-center',
+        'animate-page-enter',
+      );
     });
 
     it('displays continue button', () => {
@@ -147,7 +157,7 @@ describe('OpeningStoryPage', () => {
         return Promise.resolve();
       });
 
-      render(<OpeningStoryPage />);
+      const { container } = render(<OpeningStoryPage />);
 
       await waitFor(() => expect(handlers).toBeDefined());
       expect(screen.getByTestId('narrative-loading-screen')).toHaveTextContent('人生开篇，正在落笔');
@@ -159,7 +169,17 @@ describe('OpeningStoryPage', () => {
 
       expect(await screen.findByText('首段人生故事。')).toBeInTheDocument();
       expect(screen.queryByTestId('narrative-loading-screen')).not.toBeInTheDocument();
-      expect(screen.getByTestId('narrative-loading-inline')).toBeInTheDocument();
+      const inlineState = screen.getByTestId('narrative-loading-inline');
+      const story = container.querySelector('.prose-story');
+      expect(inlineState).toBeInTheDocument();
+      expect(container.querySelector('[data-slot="page-transition"]')).toBeInTheDocument();
+      expect(
+        container.querySelectorAll('[data-slot="surface"][data-variant="reading"]'),
+      ).toHaveLength(1);
+      expect(story).not.toBeNull();
+      expect(
+        story!.compareDocumentPosition(inlineState) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
       expect(document.querySelectorAll('[aria-live]')).toHaveLength(1);
 
       act(() => {
@@ -377,6 +397,46 @@ describe('OpeningStoryPage', () => {
       expect(screen.getByTestId('narrative-loading-inline')).toBeInTheDocument();
     });
 
+    it('keeps one live region while completed text catches up beside the illustration form', async () => {
+      jest.useFakeTimers();
+      useGameStore.setState({ gameId: null, openingStory: '' });
+      useImageStore.setState({
+        openingIllustration: {
+          image_url: 'http://test.url/illustration.png',
+          scene_description: '一段安静的开场画面',
+        },
+      });
+      let handlers: Parameters<typeof streamOpeningStory>[4] | undefined;
+      mockStreamOpeningStory.mockImplementation((...args) => {
+        handlers = args[4];
+        return new Promise(() => undefined);
+      });
+
+      render(<OpeningStoryPage />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(handlers).toBeDefined();
+
+      act(() => {
+        handlers?.onStory('先写下开场的一小段。');
+      });
+      act(() => {
+        jest.advanceTimersByTime(30);
+      });
+      act(() => {
+        handlers?.onComplete({
+          full_story: '先写下开场的一小段。随后故事继续展开，直到这一句完整显示。',
+        });
+      });
+
+      expect(screen.getByRole('status')).toHaveTextContent('正在显示完整故事');
+      expect(screen.getByRole('textbox', { name: '调整开场插画' })).toBeInTheDocument();
+      expect(
+        document.querySelectorAll('[aria-live], [role="status"], [role="alert"]'),
+      ).toHaveLength(1);
+    });
+
     it.each([
       ['fast', 45_000],
       ['expert', 90_000],
@@ -552,8 +612,11 @@ describe('OpeningStoryPage', () => {
   describe('Illustration display', () => {
     it('shows illustration loading state', () => {
       useImageStore.setState({ isGeneratingIllustration: true });
-      render(<OpeningStoryPage />);
-      expect(screen.getByText(/AI正在为你绘制人生插画/)).toBeInTheDocument();
+      const { container } = render(<OpeningStoryPage />);
+      expect(screen.getByText('正在绘制人生插画')).toBeInTheDocument();
+      expect(container).not.toHaveTextContent(/AI/i);
+      expect(container.querySelector('.animate-pulse')).not.toBeInTheDocument();
+      expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
     });
 
     it('shows illustration when available', () => {
@@ -574,7 +637,89 @@ describe('OpeningStoryPage', () => {
     it('shows retry button on illustration error', () => {
       useImageStore.setState({ illustrationError: 'Failed to generate' });
       render(<OpeningStoryPage />);
-      expect(screen.getByText('重新生成插画')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '重新生成插画' })).toHaveAttribute(
+        'data-size',
+        'touch',
+      );
+    });
+
+    it('labels and describes the illustration instruction without a UTF-16 maxlength', () => {
+      useImageStore.setState({
+        openingIllustration: {
+          image_url: 'http://test.url/illustration.png',
+          scene_description: 'A beautiful scene',
+        },
+      });
+
+      render(<OpeningStoryPage />);
+
+      const instruction = screen.getByRole('textbox', { name: '调整开场插画' });
+      const describedBy = instruction.getAttribute('aria-describedby')?.split(/\s+/) ?? [];
+      expect(instruction.tagName).toBe('TEXTAREA');
+      expect(instruction).toHaveAttribute('id', 'opening-illustration-instruction');
+      expect(instruction).not.toHaveAttribute('maxlength');
+      expect(instruction).toHaveAttribute('data-control-size', 'touch');
+      expect(describedBy).toEqual(expect.arrayContaining([
+        'opening-illustration-instruction-description',
+        'opening-illustration-instruction-count',
+      ]));
+      expect(screen.getByText('还可输入 500 字')).not.toHaveAttribute('aria-live');
+    });
+
+    it('accepts exactly 500 emoji as Unicode code points for illustration regeneration', async () => {
+      const regenerateOpeningIllustration = jest.fn();
+      useImageStore.setState({
+        openingIllustration: {
+          image_url: 'http://test.url/illustration.png',
+          scene_description: 'A beautiful scene',
+        },
+        regenerateOpeningIllustration,
+      });
+      const instructionText = '😀'.repeat(500);
+      const user = userEvent.setup();
+      render(<OpeningStoryPage />);
+
+      const instruction = screen.getByRole('textbox', { name: '调整开场插画' });
+      fireEvent.change(instruction, { target: { value: instructionText } });
+
+      expect(instruction).toHaveValue(instructionText);
+      expect(instruction).toHaveAttribute('aria-invalid', 'false');
+      expect(screen.getByText('还可输入 0 字')).toBeInTheDocument();
+      const regenerate = screen.getByRole('button', { name: '根据描述重新生成' });
+      expect(regenerate).toBeEnabled();
+      expect(regenerate).toHaveAttribute('data-size', 'touch');
+      await user.click(regenerate);
+
+      expect(regenerateOpeningIllustration).toHaveBeenCalledTimes(1);
+      expect(regenerateOpeningIllustration).toHaveBeenCalledWith(
+        123,
+        'Test opening story content.',
+        expect.any(Object),
+        'TestHero',
+        instructionText,
+      );
+    });
+
+    it('keeps 501 emoji visible while blocking illustration regeneration', () => {
+      const regenerateOpeningIllustration = jest.fn();
+      useImageStore.setState({
+        openingIllustration: {
+          image_url: 'http://test.url/illustration.png',
+          scene_description: 'A beautiful scene',
+        },
+        regenerateOpeningIllustration,
+      });
+      const overLimitText = '😀'.repeat(501);
+      render(<OpeningStoryPage />);
+
+      const instruction = screen.getByRole('textbox', { name: '调整开场插画' });
+      fireEvent.change(instruction, { target: { value: overLimitText } });
+
+      expect(instruction).toHaveValue(overLimitText);
+      expect(instruction).toHaveAttribute('aria-invalid', 'true');
+      expect(screen.getByText('已超出 1 字')).not.toHaveAttribute('aria-live');
+      expect(screen.getByRole('button', { name: '根据描述重新生成' })).toBeDisabled();
+      expect(regenerateOpeningIllustration).not.toHaveBeenCalled();
     });
   });
 

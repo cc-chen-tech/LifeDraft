@@ -10,8 +10,10 @@ declare global {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { StreamingText } from "@/components/game/StreamingText";
 import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
+import { FormField, PageTransition, Surface } from "@/components/story101";
 import {
   NarrativeLoadingState,
   getNarrativeLoadingDelay,
@@ -24,10 +26,8 @@ import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { games } from "@/lib/api";
 import { streamOpeningStory } from "@/lib/sse";
 import { Loader2, Home, ImageIcon, RefreshCw } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { LengthIndicator } from "@/components/ui/length-indicator";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
-import { isWithinInputLimit } from "@/lib/inputLimits";
+import { isWithinInputLimit, unicodeCharacterLength } from "@/lib/inputLimits";
 
 export default function OpeningStoryPage() {
   const router = useRouter();
@@ -72,6 +72,12 @@ export default function OpeningStoryPage() {
     loadingIdentity: streamingIdentity,
   });
   const illustrationGeneratedRef = useRef(false);
+  const illustrationPromptRemaining =
+    INPUT_LIMITS.feedback - unicodeCharacterLength(illustrationPrompt);
+  const illustrationPromptWithinLimit = isWithinInputLimit(
+    illustrationPrompt,
+    INPUT_LIMITS.feedback,
+  );
   
   // ★ 添加渲染计数器来诊断问题
   const renderCountRef = useRef(0);
@@ -430,7 +436,7 @@ export default function OpeningStoryPage() {
   // 错误状态
   if (error && !storyText) {
     return (
-      <div className="min-h-screen">
+      <div className="relative min-h-[100dvh]">
         <NarrativeLoadingState
           context="opening"
           layout="screen"
@@ -439,8 +445,13 @@ export default function OpeningStoryPage() {
           onAction={handleRetry}
         />
         <div className="absolute inset-x-0 bottom-8 flex flex-col items-center gap-3 px-4">
-          <p className="text-destructive">{error}</p>
-          <Button variant="outline" onClick={() => router.push("/")}>
+          <p className="text-center text-sm text-[var(--danger-foreground)]">{error}</p>
+          <Button
+            type="button"
+            variant="quiet"
+            size="touch"
+            onClick={() => router.push("/")}
+          >
             <Home className="w-4 h-4 mr-2" />
             返回首页
           </Button>
@@ -461,15 +472,23 @@ export default function OpeningStoryPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background animate-page-enter">
-      <div className="flex-1 flex items-center justify-center p-6 md:p-12">
-        <div className="w-full max-w-[65ch] space-y-8">
+    <PageTransition className="min-h-[100dvh] bg-[var(--surface-canvas)] px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto w-full max-w-[70ch]">
+        <header className="mb-5 border-b border-[var(--border-default)] pb-4">
+          <h1 className="font-serif text-2xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-3xl">
+            人生开篇
+          </h1>
+        </header>
+
+        <Surface variant="reading" className="px-4 py-6 sm:px-8 sm:py-9">
+          <div className="space-y-8">
           {storyText && (
             <StreamingText
               key={storyDisplayIdentity}
               text={storyText}
               isStreaming={isStreaming}
               narrative
+              showCursor={false}
               onDisplayComplete={setDisplayedCompleteText}
             />
           )}
@@ -492,37 +511,31 @@ export default function OpeningStoryPage() {
               onAction={handleRetry}
             />
           )}
-          
-          {/* ★ 开场插画展示区 */}
+
           {isComplete && (
-            <div className="flex flex-col items-center space-y-4 animate-fade-in">
-              {/* 插画生成中 */}
+            <div className="space-y-5 border-t border-[var(--border-default)] pt-7">
               {isGeneratingIllustration && (
-                <div className="flex flex-col items-center gap-3 py-8">
-                  <div className="relative">
-                    <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-                    <ImageIcon className="absolute inset-0 m-auto w-6 h-6 text-primary" />
-                  </div>
-                  <div className="text-center space-y-1">
-                    <p className="text-sm text-muted-foreground animate-pulse">
-                      AI正在为你绘制人生插画...
-                    </p>
-                    <p className="text-xs text-muted-foreground/60">
-                      从故事中选择一个重要场景进行创作
-                    </p>
-                  </div>
+                <div className="flex flex-col items-center gap-3 py-6 text-center">
+                  <ImageIcon
+                    aria-hidden="true"
+                    className="h-6 w-6 text-[var(--text-secondary)]"
+                  />
+                  <p className="text-sm text-[var(--text-primary)]">正在绘制人生插画</p>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    从故事中选择一个重要场景
+                  </p>
                 </div>
               )}
-              
-              {/* 插画生成错误 */}
+
               {illustrationError && !isGeneratingIllustration && (
-                <div className="text-center py-4 space-y-3">
-                  <p className="text-xs text-muted-foreground/60">
+                <div className="space-y-3 py-4 text-center">
+                  <p className="text-sm text-[var(--danger-foreground)]">
                     插画生成失败，但不影响游戏体验
                   </p>
                   <Button
-                    variant="outline"
-                    size="sm"
+                    type="button"
+                    variant="narrative"
+                    size="touch"
                     onClick={() => {
                       console.log("[OpeningStory] Retrying illustration generation...");
                       if (gameId) {
@@ -535,39 +548,68 @@ export default function OpeningStoryPage() {
                   </Button>
                 </div>
               )}
-              
-              {/* 插画展示 */}
+
               {openingIllustration && !isGeneratingIllustration && (
-                <div className="w-full space-y-4">
-                  <div className="w-full aspect-video max-w-2xl mx-auto bg-secondary rounded-lg overflow-hidden shadow-lg">
-                    <img 
-                      src={openingIllustration.image_url} 
+                <div className="w-full space-y-5">
+                  <div className="mx-auto aspect-video w-full max-w-2xl overflow-hidden rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)]">
+                    <img
+                      src={openingIllustration.image_url}
                       alt="开场插画"
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover"
                     />
                   </div>
-                  <p className="text-xs text-center text-muted-foreground/60">
+                  <p className="text-center text-xs text-[var(--text-secondary)]">
                     {openingIllustration.scene_description}
                   </p>
-                  
-                  {/* ★ 用户输入提示词重新生成 */}
-                  <div className="w-full max-w-2xl mx-auto space-y-2 pt-2">
-                    <Input
-                      value={illustrationPrompt}
-                      onChange={(e) => setIllustrationPrompt(e.target.value)}
-                      placeholder="想修改插画？描述你的想法，如：换成夜晚场景、增加 rain 效果..."
-                      className="bg-secondary border-border text-sm"
-                    />
-                    <LengthIndicator value={illustrationPrompt} limit={INPUT_LIMITS.feedback} />
+
+                  <div className="mx-auto w-full max-w-2xl space-y-3 pt-2">
+                    <FormField
+                      id="opening-illustration-instruction"
+                      label="调整开场插画"
+                      description="写下希望改变的画面细节。"
+                    >
+                      {({ describedBy }) => (
+                        <>
+                          <Textarea
+                            id="opening-illustration-instruction"
+                            name="opening-illustration-instruction"
+                            value={illustrationPrompt}
+                            onChange={(event) => setIllustrationPrompt(event.target.value)}
+                            placeholder="例如：换成夜晚，增加雨景"
+                            surface="filled"
+                            controlSize="touch"
+                            disabled={isGeneratingIllustration}
+                            aria-invalid={!illustrationPromptWithinLimit}
+                            aria-describedby={[
+                              describedBy,
+                              "opening-illustration-instruction-count",
+                            ].filter(Boolean).join(" ")}
+                          />
+                          <p
+                            id="opening-illustration-instruction-count"
+                            className={
+                              illustrationPromptRemaining < 0
+                                ? "text-right text-xs text-[var(--danger-foreground)]"
+                                : "text-right text-xs text-[var(--text-secondary)]"
+                            }
+                          >
+                            {illustrationPromptRemaining < 0
+                              ? `已超出 ${Math.abs(illustrationPromptRemaining)} 字`
+                              : `还可输入 ${illustrationPromptRemaining} 字`}
+                          </p>
+                        </>
+                      )}
+                    </FormField>
                     <Button
-                      variant="outline"
-                      size="sm"
+                      type="button"
+                      variant="narrative"
+                      size="touch"
                       className="w-full"
                       onClick={() => {
                         if (
                           illustrationPrompt.trim() &&
                           gameId &&
-                          isWithinInputLimit(illustrationPrompt, INPUT_LIMITS.feedback)
+                          illustrationPromptWithinLimit
                         ) {
                           regenerateOpeningIllustration(gameId, openingStory || storyText, characterSettings, playerName, illustrationPrompt);
                           setIllustrationPrompt("");
@@ -576,7 +618,7 @@ export default function OpeningStoryPage() {
                       disabled={
                         !illustrationPrompt.trim() ||
                         isGeneratingIllustration ||
-                        !isWithinInputLimit(illustrationPrompt, INPUT_LIMITS.feedback)
+                        !illustrationPromptWithinLimit
                       }
                     >
                       <RefreshCw className="w-4 h-4 mr-2" />
@@ -587,28 +629,30 @@ export default function OpeningStoryPage() {
               )}
             </div>
           )}
-        </div>
-      </div>
 
-      <div className="p-6 flex justify-center">
-        {isComplete ? (
-          <OpeningCompletionGate
-            backendComplete={isComplete}
-            visibleComplete={Boolean(storyText) && displayedCompleteText === storyText}
-            pending={isStarting}
-            onStart={handleStart}
-          />
-        ) : !isStreaming && !error ? (
-          <Button
-            variant="outline"
-            className="touch-target"
-            onClick={handleRetry}
-          >
-            <Loader2 className="w-4 h-4 mr-2" />
-            重新加载
-          </Button>
-        ) : null}
+            <div className="flex justify-center border-t border-[var(--border-default)] pt-7">
+              {isComplete ? (
+                <OpeningCompletionGate
+                  backendComplete={isComplete}
+                  visibleComplete={Boolean(storyText) && displayedCompleteText === storyText}
+                  pending={isStarting}
+                  onStart={handleStart}
+                />
+              ) : !isStreaming && !error ? (
+                <Button
+                  type="button"
+                  variant="narrative"
+                  size="touch"
+                  onClick={handleRetry}
+                >
+                  <Loader2 className="w-4 h-4 mr-2" />
+                  重新加载
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </Surface>
       </div>
-    </div>
+    </PageTransition>
   );
 }

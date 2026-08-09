@@ -427,6 +427,8 @@
   cursor: pointer;
   font-size: 0.875rem;
   margin-top: 1.5rem;
+  min-height: 44px;
+  min-width: 44px;
   padding: 0.6rem 1rem;
 }
 
