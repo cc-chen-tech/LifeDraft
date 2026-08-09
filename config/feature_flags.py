@@ -27,6 +27,7 @@ class FeatureFlags(TypedDict, total=False):
     parallel_postprocessing: bool
     generation_state_tracking: bool
     story_voice_reading: bool
+    soft_narrative_lengths: bool
 
 
 # Mapping from feature flag name -> environment variable name
@@ -41,6 +42,7 @@ _ENV_VAR_MAP: Dict[str, str] = {
     "parallel_postprocessing": "ENABLE_PARALLEL_POSTPROCESSING",
     "generation_state_tracking": "ENABLE_GENERATION_STATE_TRACKING",
     "story_voice_reading": "ENABLE_STORY_VOICE_READING",
+    "soft_narrative_lengths": "ENABLE_SOFT_NARRATIVE_LENGTHS",
 }
 
 FEATURE_DEFAULTS: FeatureFlags = {
@@ -54,6 +56,7 @@ FEATURE_DEFAULTS: FeatureFlags = {
     "parallel_postprocessing": False,
     "generation_state_tracking": False,
     "story_voice_reading": True,
+    "soft_narrative_lengths": False,
 }
 
 

@@ -3,8 +3,12 @@
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.ai.story_generator import StoryGenerator
 from src.game.state.player_state import PlayerState
+
+pytestmark = pytest.mark.usefixtures("constraint_harness_disabled")
 
 
 class TestNarrativeSystemInitialization:

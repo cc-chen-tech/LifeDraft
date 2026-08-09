@@ -430,7 +430,9 @@ def test_round_event_generation_surfaces_failure_when_provider_is_unavailable() 
         )
 
 
-def test_round_event_retries_when_ai_story_is_too_short_for_quality_budget() -> None:
+def test_round_event_retries_when_ai_story_is_too_short_for_quality_budget(
+    constraint_harness_disabled,
+) -> None:
     short_story = (
         "顾晨曦推开会议室的门，发现陆昊然已经把访谈记录贴在白板上。"
         "陈晓雨递来一杯咖啡，提醒她今天必须先决定需求优先级。"
@@ -529,7 +531,10 @@ def test_round_event_retries_when_ai_story_is_too_short_for_quality_budget() -> 
     assert event.event_description == expected_story
 
 
-def test_round_event_repairs_length_after_a_quick_validation_retry(monkeypatch) -> None:
+def test_round_event_repairs_length_after_a_quick_validation_retry(
+    monkeypatch,
+    constraint_harness_disabled,
+) -> None:
     """A quick retry must not bypass the configured story-length contract."""
     quick_failure = "林清忽略了预设关系网。"
     overlong_retry = "林清在会议室整理项目风险。" * 100
@@ -591,7 +596,9 @@ def test_round_event_repairs_length_after_a_quick_validation_retry(monkeypatch) 
     assert event.event_description == repaired_story
 
 
-def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_new_cast() -> None:
+def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_new_cast(
+    constraint_harness_disabled,
+) -> None:
     class DriftClient:
         def __init__(self):
             self.calls = []

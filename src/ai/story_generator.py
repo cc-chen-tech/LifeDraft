@@ -38,6 +38,26 @@ from src.ai.text_quality import normalize_generated_story, validate_narrative_qu
 logger = logging.getLogger(__name__)
 
 
+_TERMINAL_CONTINUITY_CONSTRAINTS = frozenset(
+    {
+        "available_people",
+        "established_facts",
+        "world_model_position",
+        "world_model_commitment",
+        "no_fabrication",
+        "era_consistency",
+        "temporal_consistency",
+        "commitment_fulfillment",
+        "character_state_continuity",
+        "item_continuity",
+        "spatial_movement",
+        "npc_attribute_stability",
+        "information_barrier",
+        "cause_effect_consistency",
+    }
+)
+
+
 class _EmptyStoryProviderOutput(ValueError):
     """A round-prose provider call returned no normalized text."""
 
@@ -55,6 +75,9 @@ class StoryGenerator:
         self._quality_profile = PROFILES[self.quality_level]
         self._validated_round_keys: set[tuple[Any, Any, Any]] = set()
         self._harness_enabled = self._env_enabled("ENABLE_CONSTRAINT_HARNESS")
+        self._soft_narrative_lengths = self._env_enabled(
+            "ENABLE_SOFT_NARRATIVE_LENGTHS"
+        )
         self._narrative_systems_initialized = False
         self._validation_pipeline = None
         self._retry_controller = None
@@ -597,7 +620,9 @@ class StoryGenerator:
             if not candidate:
                 return
             nonlocal best_valid_story_text
-            if len(candidate) > len(best_valid_story_text):
+            if self._soft_narrative_lengths:
+                best_valid_story_text = candidate
+            elif len(candidate) > len(best_valid_story_text):
                 best_valid_story_text = candidate
 
         def _hard_shape_issues(candidate: str) -> list[str]:
@@ -636,6 +661,27 @@ class StoryGenerator:
                 f"{issue_text}. Regenerate this round within "
                 f"{generation_budget.min_length}-{generation_budget.max_length} words, "
                 "using 2-5 coherent paragraphs."
+            )
+
+        def _build_terminal_continuity_retry_instruction(
+            failures: list[Any],
+        ) -> str:
+            issue_lines = []
+            for failure in failures[:5]:
+                evidence = str(failure.evidence or "").strip()
+                detail = f" ({evidence[:120]})" if evidence else ""
+                issue_lines.append(f"- {failure.constraint_type}{detail}")
+            issues = "\n".join(issue_lines)
+            if language == "zh":
+                return (
+                    "【严重连续性修正 - 必须重写】\n"
+                    f"上一版违反以下连续性约束：\n{issues}\n"
+                    "请依据既有事实、人物状态和因果关系重新生成，不得绕过这些约束。"
+                )
+            return (
+                "[Severe Continuity Fix - Regenerate Required]\n"
+                f"The previous draft violated these continuity constraints:\n{issues}\n"
+                "Regenerate from established facts, character state, and causal history."
             )
 
         # 初始化 Harness 组件（延迟初始化，避免每次构建时重复创建）
@@ -689,6 +735,7 @@ class StoryGenerator:
                     language=language,
                 )
                 quick_retry_used = False
+                locally_usable_story = quick_result.passed
 
                 if not quick_result.passed and generation_budget.allow_quick_regeneration:
                     logger.warning(f"Quick validation failed: {quick_result.issues}")
@@ -739,7 +786,15 @@ class StoryGenerator:
                             "Quick validation retry still failed: %s",
                             retry_result.issues,
                         )
-                        break
+                        locally_usable_story = False
+                        if not (
+                            self._soft_narrative_lengths
+                            and len(best_valid_story_text) > 20
+                        ):
+                            break
+                        story_text = best_valid_story_text
+                    else:
+                        locally_usable_story = True
                     if retry_result.warnings:
                         logger.info(
                             "Quick validation retry warnings: %s",
@@ -747,12 +802,16 @@ class StoryGenerator:
                         )
 
                 elif not quick_result.passed:
+                    locally_usable_story = False
                     logger.warning(
                         "Fast generation records local validation issues without a second provider call: %s",
                         quick_result.issues,
                     )
                 elif quick_result.warnings:
                     logger.info(f"Quick validation warnings: {quick_result.warnings}")
+
+                if self._soft_narrative_lengths and locally_usable_story:
+                    _set_best_story(story_text)
 
                 hard_shape_issues = _hard_shape_issues(story_text)
                 requires_shape_retry = (
@@ -789,16 +848,31 @@ class StoryGenerator:
                         available_people=available_people_names,
                         language=language,
                     )
-                    if retry_shape_issues or not retry_quick_result.passed:
+                    if not retry_quick_result.passed:
                         logger.warning(
                             "Story shape retry still failed: shape=%s quick=%s",
                             retry_shape_issues,
                             retry_quick_result.issues,
                         )
-                        raise ValueError(
-                            "Story shape validation failed: "
-                            + "; ".join(retry_shape_issues + retry_quick_result.issues)
+                        if self._soft_narrative_lengths and len(best_valid_story_text) > 20:
+                            story_text = best_valid_story_text
+                        else:
+                            raise ValueError(
+                                "Story shape validation failed: "
+                                + "; ".join(retry_shape_issues + retry_quick_result.issues)
+                            )
+                    elif retry_shape_issues:
+                        logger.warning(
+                            "Story shape retry completed with diagnostics: %s",
+                            retry_shape_issues,
                         )
+                        if not self._soft_narrative_lengths:
+                            raise ValueError(
+                                "Story shape validation failed: "
+                                + "; ".join(retry_shape_issues)
+                            )
+                    if self._soft_narrative_lengths and retry_quick_result.passed:
+                        _set_best_story(story_text)
                 elif hard_shape_issues:
                     logger.warning(
                         "Story shape issues recorded without another provider retry: %s",
@@ -843,11 +917,21 @@ class StoryGenerator:
                         language=language,
                     )
                     repeat_retry_shape_issues = _hard_shape_issues(story_text)
-                    if not repeat_retry_validation.passed or repeat_retry_shape_issues:
+                    if not repeat_retry_validation.passed:
                         issues = repeat_retry_validation.issues + repeat_retry_shape_issues
                         raise ValueError(
                             "Repeated-story retry failed validation: " + "; ".join(issues)
                         )
+                    if repeat_retry_shape_issues:
+                        logger.warning(
+                            "Repeated-story retry shape diagnostics: %s",
+                            repeat_retry_shape_issues,
+                        )
+                        if not self._soft_narrative_lengths:
+                            raise ValueError(
+                                "Repeated-story retry failed validation: "
+                                + "; ".join(repeat_retry_shape_issues)
+                            )
                     if self._repeats_committed_story(story_text, committed_stories):
                         raise ValueError("Round story repeats committed story after retry")
                     _set_best_story(story_text)
@@ -867,11 +951,16 @@ class StoryGenerator:
                     )
                     post_validation_shape_issues = _hard_shape_issues(story_text)
                     if post_validation_shape_issues:
-                        best_valid_story_text = ""
-                        raise ValueError(
-                            "Story consistency retry failed shape validation: "
-                            + "; ".join(post_validation_shape_issues)
+                        logger.warning(
+                            "Story consistency retry shape diagnostics: %s",
+                            post_validation_shape_issues,
                         )
+                        if not self._soft_narrative_lengths:
+                            best_valid_story_text = ""
+                            raise ValueError(
+                                "Story consistency retry failed shape validation: "
+                                + "; ".join(post_validation_shape_issues)
+                            )
                     _set_best_story(story_text)
 
                 # Harness 检查（仅在开启时执行），支持在无效内容上继续 retry
@@ -894,7 +983,30 @@ class StoryGenerator:
                         profile=self._quality_profile,
                     )
 
-                    if not validation_result.passed:
+                    validation_failures = (
+                        validation_result.critical_failures
+                        + validation_result.high_warnings
+                        + validation_result.medium_notes
+                        + validation_result.low_notes
+                        if self._soft_narrative_lengths
+                        else validation_result.critical_failures
+                    )
+                    terminal_continuity_failures = (
+                        [
+                            failure
+                            for failure in validation_failures
+                            if failure.constraint_type in _TERMINAL_CONTINUITY_CONSTRAINTS
+                        ]
+                        if self._soft_narrative_lengths
+                        else []
+                    )
+                    terminal_validation_failed = (
+                        bool(terminal_continuity_failures)
+                        if self._soft_narrative_lengths
+                        else not validation_result.passed
+                    )
+
+                    if terminal_validation_failed:
                         best_valid_story_text = best_story_before_attempt
 
                     diagnostic_report = ConstraintViolationDiagnostic().generate_report(
@@ -906,13 +1018,21 @@ class StoryGenerator:
                     )
 
                     should_retry = False
-                    if self._retry_controller is not None:
-                        should_retry, hint = self._retry_controller.should_retry(
+                    if terminal_validation_failed and self._soft_narrative_lengths:
+                        should_retry = attempt < self._quality_profile.max_retries
+                        retry_hint = (
+                            _build_terminal_continuity_retry_instruction(
+                                terminal_continuity_failures
+                            )
+                            if should_retry
+                            else None
+                        )
+                    elif terminal_validation_failed and self._retry_controller is not None:
+                        should_retry, retry_hint = self._retry_controller.should_retry(
                             validation_result=validation_result,
                             diagnostic_report=diagnostic_report,
                             attempt=attempt,
                         )
-                        retry_hint = hint
                     if should_retry:
                         if status_callback:
                             status_callback("retry")
@@ -922,8 +1042,18 @@ class StoryGenerator:
                         )
                         continue
 
+                    if self._soft_narrative_lengths and not validation_result.passed:
+                        logger.warning(
+                            "Non-terminal Harness diagnostics retained: %s",
+                            [
+                                failure.constraint_type
+                                for failure in validation_failures
+                                if failure not in terminal_continuity_failures
+                            ],
+                        )
+
                     if (
-                        not validation_result.passed
+                        terminal_validation_failed
                         and self._quality_profile.enforce_validation_on_all_attempts
                     ):
                         raise ValueError("Story harness validation failed after final attempt")
@@ -965,7 +1095,8 @@ class StoryGenerator:
                 return event
 
             except _EmptyStoryProviderOutput as e:
-                best_valid_story_text = best_story_before_attempt
+                if not self._soft_narrative_lengths:
+                    best_valid_story_text = best_story_before_attempt
                 logger.warning(f"Round event attempt {attempt + 1} failed: {e}")
                 last_generation_error = e
             except (ValueError, ValidationError, json.JSONDecodeError) as e:
@@ -1240,7 +1371,7 @@ class StoryGenerator:
                 system_prompt=sys_prompt,
                 user_prompt=retry_prompt,
                 temperature=0.7,  # 固定低温度，确保严格遵守约束
-                max_tokens=8192,
+                max_tokens=get_generation_budget(self.quality_level.value).max_tokens,
                 stream_callback=stream_callback,
                 frequency_penalty=0.3,  # ★ 重试时也保持反重复
                 presence_penalty=0.3,

@@ -212,7 +212,10 @@ def test_rewrite_rejects_output_without_a_player_visible_change(provider_story: 
             language="zh",
         )
 
-def test_round_generation_retries_when_provider_repeats_committed_story(monkeypatch) -> None:
+def test_round_generation_retries_when_provider_repeats_committed_story(
+    monkeypatch,
+    constraint_harness_disabled,
+) -> None:
     from src.ai.models import EventOption, GameEvent
 
     repeated_story = "林岚在小影院核对测量费与预算表，陈越记录每一笔待确认支出。" * 32
@@ -252,7 +255,10 @@ def test_round_generation_retries_when_provider_repeats_committed_story(monkeypa
     assert "重复" in client.call.call_args_list[1].kwargs["user_prompt"]
 
 
-def test_round_generation_retries_when_provider_repeats_persisted_opening(monkeypatch) -> None:
+def test_round_generation_retries_when_provider_repeats_persisted_opening(
+    monkeypatch,
+    constraint_harness_disabled,
+) -> None:
     from src.ai.models import EventOption, GameEvent
 
     opening_story = "林澈在上海的咖啡馆与王天成讨论独立创作的第一步，并决定开始用户调研。" * 18
@@ -344,7 +350,10 @@ def test_first_round_receives_persisted_opening_as_non_repeating_context() -> No
     assert "不得复述" in context
 
 
-def test_round_generation_rejects_provider_output_repeated_after_retry(monkeypatch) -> None:
+def test_round_generation_rejects_provider_output_repeated_after_retry(
+    monkeypatch,
+    constraint_harness_disabled,
+) -> None:
     repeated_story = "林岚在小影院核对测量费与预算表，陈越记录每一笔待确认支出。" * 32
     client = Mock()
     client.call.side_effect = [repeated_story, repeated_story]
@@ -375,6 +384,7 @@ def test_round_generation_rejects_provider_output_repeated_after_retry(monkeypat
 
 def test_round_generation_disables_thinking_for_quick_consistency_rewrite(
     monkeypatch,
+    constraint_harness_disabled,
 ) -> None:
     initial_story = "林岚和陈越在影院办公室核对预算，并暂时搁置了施工报价。" * 20
     repaired_story = "林岚和陈越重新核对预算，并确认本周先请周师傅复核施工报价。" * 20
@@ -410,6 +420,7 @@ def test_round_generation_disables_thinking_for_quick_consistency_rewrite(
 
 def test_round_generation_rejects_blank_ai_consistency_rewrite(
     monkeypatch,
+    constraint_harness_disabled,
 ) -> None:
     story = "林岚和陈越在影院办公室核对预算，并确认本周先请周师傅复核施工报价。" * 20
     client = SequenceStoryClient([story, "  \n\t"])
@@ -526,7 +537,10 @@ def test_round_event_generation_does_not_persist_fallback_after_provider_failure
     assert state.current_event_data is None
 
 
-def test_round_generation_uses_a_bounded_provider_timeout(monkeypatch) -> None:
+def test_round_generation_uses_a_bounded_provider_timeout(
+    monkeypatch,
+    constraint_harness_disabled,
+) -> None:
     """A stalled story request must not inherit the five-minute client default."""
     from src.ai.models import EventOption, GameEvent
 
@@ -563,7 +577,10 @@ def test_round_generation_uses_a_bounded_provider_timeout(monkeypatch) -> None:
     assert client.call.call_args.kwargs["request_timeout"] == 120.0
 
 
-def test_round_generation_rejects_an_overlong_story_after_shape_retry(monkeypatch) -> None:
+def test_round_generation_rejects_an_overlong_story_after_shape_retry(
+    monkeypatch,
+    constraint_harness_disabled,
+) -> None:
     """An overlong retry must not become the persisted fallback event."""
     overlong_story = "林岚和陈越核对影院改造预算，并逐项确认本周的施工安排。" * 50
     client = Mock()
@@ -589,7 +606,10 @@ def test_round_generation_rejects_an_overlong_story_after_shape_retry(monkeypatc
     option_generator.generate_options_only.assert_not_called()
 
 
-def test_round_generation_rejects_an_overlong_consistency_retry(monkeypatch) -> None:
+def test_round_generation_rejects_an_overlong_consistency_retry(
+    monkeypatch,
+    constraint_harness_disabled,
+) -> None:
     """A consistency rewrite must obey the same shape budget as its first draft."""
     valid_story = "林岚和陈越核对影院改造预算，并确认本周先去居委会咨询补贴条件。" * 32
     overlong_retry = "林岚和陈越继续逐项讨论影院改造预算和施工安排，反复核对每个细节。" * 50
