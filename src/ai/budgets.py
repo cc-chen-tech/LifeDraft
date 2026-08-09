@@ -159,6 +159,10 @@ _LEGACY_GENERATION_BUDGETS = {
     "expert": GenerationBudget("expert", 800, 1200, 4096, True, True, 45, 90),
     "master": GenerationBudget("master", 1500, 2000, 8192, True, True, 90, 180),
 }
+_LEGACY_PROMPT_BANDS = {
+    NarrativeKind.OPENING: {"zh": (300, 400), "en": (300, 400)},
+    NarrativeKind.CONTINUATION: {"zh": (500, 800), "en": (500, 800)},
+}
 
 
 def _normalized_quality(quality_level: str) -> str:
@@ -243,6 +247,39 @@ def format_length_requirement(budget: NarrativeBudget) -> str:
     return f"Story should be {budget.length.target_min}-{budget.length.target_max} words"
 
 
+def resolve_prompt_length_requirement(
+    kind: NarrativeKind | str,
+    quality_level: str,
+    language: str,
+    *,
+    operation: GenerationOperation | str = GenerationOperation.GENERATE,
+    original_length: Optional[int] = None,
+) -> str:
+    """Resolve prompt wording without duplicating product ranges in templates."""
+    from config.feature_flags import get_feature
+
+    resolved_kind = NarrativeKind(kind)
+    localized_language = _normalized_language(language)
+    if get_feature("unified_narrative_budgets"):
+        return format_length_requirement(
+            resolve_narrative_budget(
+                resolved_kind,
+                operation,
+                quality_level,
+                localized_language,
+                original_length=original_length,
+            )
+        )
+
+    if resolved_kind == NarrativeKind.ROUND:
+        return get_generation_budget(quality_level).length_requirement(localized_language)
+
+    target_min, target_max = _LEGACY_PROMPT_BANDS[resolved_kind][localized_language]
+    if localized_language == "zh":
+        return f"故事应该{target_min}-{target_max}字"
+    return f"Story should be {target_min}-{target_max} words"
+
+
 def get_generation_budget(level: str) -> GenerationBudget:
     """Return the compatibility round budget for migrated and legacy callers."""
     from config.feature_flags import get_feature
@@ -285,6 +322,7 @@ class GenerationCallTracker:
         self.validation_calls = 0
         self.option_calls = 0
         self._recovery_active = False
+        self._last_category: Optional[CallCategory] = None
 
     @property
     def total_calls(self) -> int:
@@ -293,6 +331,11 @@ class GenerationCallTracker:
     @property
     def elapsed_seconds(self) -> float:
         return self._clock() - self._started_at
+
+    @property
+    def remaining_seconds(self) -> float:
+        """Wall-clock time still available to the whole narrative request."""
+        return max(0.0, self.budget.total_deadline_seconds - self.elapsed_seconds)
 
     def _assert_before_deadline(self) -> None:
         if self.elapsed_seconds >= self.budget.total_deadline_seconds:
@@ -321,7 +364,14 @@ class GenerationCallTracker:
             )
         current += 1
         setattr(self, attribute, current)
+        self._last_category = category
         return current
+
+    def consume_retry(self) -> int:
+        """Charge a provider retry to the category of the preceding call."""
+        if self._last_category is None:
+            raise GenerationBudgetError("Cannot charge retry before an initial provider call")
+        return self.consume(self._last_category)
 
     @contextmanager
     def recovery_scope(self) -> Iterator[None]:

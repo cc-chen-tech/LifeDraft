@@ -11,7 +11,8 @@ from src.ai.budgets import (DisplayBudget, GenerationBudget,
                             LocalizedLengthBand, NarrativeBudget,
                             NarrativeKind, RecursiveRecoveryError,
                             format_length_requirement, get_generation_budget,
-                            measure_narrative_length, resolve_narrative_budget)
+                            measure_narrative_length, resolve_narrative_budget,
+                            resolve_prompt_length_requirement)
 
 __all__ = [
     "DisplayBudget",
@@ -30,4 +31,5 @@ __all__ = [
     "get_generation_budget",
     "measure_narrative_length",
     "resolve_narrative_budget",
+    "resolve_prompt_length_requirement",
 ]

@@ -15,25 +15,28 @@ from typing import Any, Callable, Dict, Optional, Union
 from pydantic import ValidationError
 
 from config.prompts import get_round_event_prompt, get_story_only_prompt
-from config.prompts._helpers import _build_style_constraints_text, extract_overused_phrases
+from config.prompts._helpers import (_build_style_constraints_text,
+                                     extract_overused_phrases)
 from config.prompts.story_prompts import resolve_protagonist_name
+from src.ai.budgets import (GenerationBudgetError, GenerationCallTracker,
+                            GenerationOperation, NarrativeBudget,
+                            NarrativeKind, resolve_narrative_budget)
 from src.ai.client import AIClient
-from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
-from src.ai.harness.validation_pipeline import ValidationPipeline
-from src.ai.harness.retry_controller import RetryController
-from src.ai.harness.quality_level import PROFILES, QualityLevel
 from src.ai.generation_budget import get_generation_budget
-from src.ai.long_story_context import (
-    LongStoryContextBuilder,
-    is_deepseek_v4_model,
-    prepend_history_prefix,
-)
+from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
+from src.ai.harness.quality_level import PROFILES, QualityLevel
+from src.ai.harness.retry_controller import RetryController
+from src.ai.harness.validation_pipeline import ValidationPipeline
+from src.ai.long_story_context import (LongStoryContextBuilder,
+                                       is_deepseek_v4_model,
+                                       prepend_history_prefix)
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
-from src.ai.system_prompts import get_system_prompt
 from src.ai.prompt_sanitizer import sanitize_player_name
 from src.ai.story_exceptions import StoryGenerationFailure
-from src.ai.text_quality import normalize_generated_story, validate_narrative_quality
+from src.ai.system_prompts import get_system_prompt
+from src.ai.text_quality import (normalize_generated_story,
+                                 validate_narrative_quality)
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +78,8 @@ class StoryGenerator:
         self._quality_profile = PROFILES[self.quality_level]
         self._validated_round_keys: set[tuple[Any, Any, Any]] = set()
         self._harness_enabled = self._env_enabled("ENABLE_CONSTRAINT_HARNESS")
-        self._soft_narrative_lengths = self._env_enabled(
-            "ENABLE_SOFT_NARRATIVE_LENGTHS"
-        )
+        self._soft_narrative_lengths = self._env_enabled("ENABLE_SOFT_NARRATIVE_LENGTHS")
+        self._unified_narrative_budgets = self._env_enabled("ENABLE_UNIFIED_NARRATIVE_BUDGETS")
         self._narrative_systems_initialized = False
         self._validation_pipeline = None
         self._retry_controller = None
@@ -121,7 +123,9 @@ class StoryGenerator:
         normalized = "".join(converted_chars)
 
         # Preserve existing conversion semantics for commas, periods, question marks and spaces.
-        normalized = normalized.replace(".", "。").replace("?", "？").replace("!", "！").replace(",", "，")
+        normalized = (
+            normalized.replace(".", "。").replace("?", "？").replace("!", "！").replace(",", "，")
+        )
         normalized = normalized.replace("；", "；").replace(":", "：").replace(";", "；")
 
         return normalized
@@ -143,8 +147,16 @@ class StoryGenerator:
             return base_temperature
         return max(min_temperature, base_temperature - attempt * decay)
 
-    def _story_request_timeout_seconds(self) -> float:
+    def _story_request_timeout_seconds(
+        self,
+        narrative_budget: Optional[NarrativeBudget] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
+    ) -> float:
         """Keep interactive story requests inside the selected quality budget."""
+        if generation_tracker is not None:
+            return max(0.001, generation_tracker.remaining_seconds)
+        if narrative_budget is not None:
+            return float(narrative_budget.total_deadline_seconds)
         budget = get_generation_budget(self.quality_level.value)
         return float(budget.expected_seconds + 30)
 
@@ -152,10 +164,17 @@ class StoryGenerator:
         self,
         *,
         language: str,
+        generation_tracker: Optional[GenerationCallTracker] = None,
         **call_kwargs: Any,
     ) -> str:
         """Generate required round prose in non-thinking mode and reject blanks."""
-        provider_story = self.client.call(thinking=False, **call_kwargs)
+        if generation_tracker is not None:
+            generation_tracker.consume("prose")
+        provider_story = self.client.call(
+            thinking=False,
+            generation_tracker=generation_tracker,
+            **call_kwargs,
+        )
         story_text = normalize_generated_story(
             provider_story or "",
             language=language,
@@ -234,9 +253,7 @@ class StoryGenerator:
                     break
         return stories
 
-    def _long_history_prefix(
-        self, player_state: Dict[str, Any], dynamic_tail: str = ""
-    ) -> str:
+    def _long_history_prefix(self, player_state: Dict[str, Any], dynamic_tail: str = "") -> str:
         """Return cache-stable history only when the active model supports it."""
         model = getattr(self.client, "model", None)
         if not is_deepseek_v4_model(model):
@@ -274,6 +291,8 @@ class StoryGenerator:
         option_generator=None,
         cache=None,
         status_callback: Optional[Callable[[str], None]] = None,
+        narrative_budget: Optional[NarrativeBudget] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> GameEvent:
         """
         Generate a game event (story + options) based on player state.
@@ -308,6 +327,16 @@ class StoryGenerator:
         Raises:
             ValueError: If generation fails after retries
         """
+        if self._unified_narrative_budgets or narrative_budget is not None:
+            narrative_budget = narrative_budget or resolve_narrative_budget(
+                NarrativeKind.ROUND,
+                GenerationOperation.GENERATE,
+                self.quality_level.value,
+                language,
+            )
+            generation_tracker = generation_tracker or GenerationCallTracker(narrative_budget)
+            retry_count = min(retry_count, narrative_budget.prose_call_limit)
+
         style_id = str(
             player_state.get("narrative_style_id")
             or (character_settings or {}).get("narrative_style_id")
@@ -382,15 +411,24 @@ class StoryGenerator:
 
                 # Only stream on first attempt
                 cb = stream_callback if attempt == 0 else None
+                if generation_tracker is not None:
+                    generation_tracker.consume("prose")
                 story_text = self.client.call(
                     system_prompt=sys_prompt,
                     user_prompt=prompt,
                     temperature=current_temp,  # ★ 动态调整温度
-                    max_tokens=8192,
+                    max_tokens=(
+                        narrative_budget.max_output_tokens
+                        if narrative_budget is not None
+                        else get_generation_budget(self.quality_level.value).max_tokens
+                    ),
                     stream_callback=cb,
                     frequency_penalty=0.3,  # ★ 惩罚重复词汇，减少车轲辘话
                     presence_penalty=0.3,  # ★ 鼓励使用新词汇/新主题
-                    request_timeout=self._story_request_timeout_seconds(),
+                    request_timeout=self._story_request_timeout_seconds(
+                        narrative_budget, generation_tracker
+                    ),
+                    generation_tracker=generation_tracker,
                 )
 
                 story_text = normalize_generated_story(story_text, language=language)
@@ -430,6 +468,7 @@ class StoryGenerator:
                     language=language,
                     retry_count=retry_count,
                     history_prefix=history_prefix,
+                    generation_tracker=generation_tracker,
                 )
                 logger.info(f"Generated {len(event.options)} options")
                 for i, opt in enumerate(event.options):
@@ -494,6 +533,8 @@ class StoryGenerator:
         option_generator=None,
         new_character: Optional[Dict[str, Any]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        narrative_budget: Optional[NarrativeBudget] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> GameEvent:
         """
         Generate a single round's story and options.
@@ -521,6 +562,15 @@ class StoryGenerator:
         Returns:
             GameEvent with story and options
         """
+        if self._unified_narrative_budgets or narrative_budget is not None:
+            narrative_budget = narrative_budget or resolve_narrative_budget(
+                NarrativeKind.ROUND,
+                GenerationOperation.GENERATE,
+                self.quality_level.value,
+                language,
+            )
+            generation_tracker = generation_tracker or GenerationCallTracker(narrative_budget)
+
         logger.info(
             f"Generating round event: round={round_number}, "
             f"context_length={len(round_context)}, "
@@ -595,9 +645,9 @@ class StoryGenerator:
         # - 无 harness：避免影响现有契约测试（一次主生成 + 一次 quick 重试）
         # - 有 harness：沿用 quality_profile 的重试预算，用于高风险修复。
         max_attempts = (
-            self._quality_profile.max_retries + 1
-            if self._harness_enabled
-            else 1
+            narrative_budget.prose_call_limit
+            if narrative_budget is not None
+            else (self._quality_profile.max_retries + 1 if self._harness_enabled else 1)
         )
 
         available_people_names = [
@@ -716,6 +766,7 @@ class StoryGenerator:
 
                 story_text = self._call_required_round_story(
                     language=language,
+                    generation_tracker=generation_tracker,
                     system_prompt=sys_prompt,
                     user_prompt=attempt_prompt,
                     temperature=current_temp,
@@ -723,7 +774,9 @@ class StoryGenerator:
                     stream_callback=stream_callback if attempt == 0 else None,
                     frequency_penalty=0.4,  # ★ 轮次级别更强的反重复，因为同周多轮更容易重复
                     presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
-                    request_timeout=self._story_request_timeout_seconds(),
+                    request_timeout=self._story_request_timeout_seconds(
+                        narrative_budget, generation_tracker
+                    ),
                 )
                 logger.info(f"Generated round story with {len(story_text)} characters")
 
@@ -759,6 +812,7 @@ class StoryGenerator:
 
                     story_text = self._call_required_round_story(
                         language=language,
+                        generation_tracker=generation_tracker,
                         system_prompt=sys_prompt,
                         user_prompt=retry_prompt,
                         temperature=0.65,
@@ -766,7 +820,9 @@ class StoryGenerator:
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.4,
                         presence_penalty=0.4,
-                        request_timeout=self._story_request_timeout_seconds(),
+                        request_timeout=self._story_request_timeout_seconds(
+                            narrative_budget, generation_tracker
+                        ),
                     )
                     quick_retry_used = True
                     logger.info(
@@ -787,10 +843,7 @@ class StoryGenerator:
                             retry_result.issues,
                         )
                         locally_usable_story = False
-                        if not (
-                            self._soft_narrative_lengths
-                            and len(best_valid_story_text) > 20
-                        ):
+                        if not (self._soft_narrative_lengths and len(best_valid_story_text) > 20):
                             break
                         story_text = best_valid_story_text
                     else:
@@ -814,9 +867,7 @@ class StoryGenerator:
                     _set_best_story(story_text)
 
                 hard_shape_issues = _hard_shape_issues(story_text)
-                requires_shape_retry = (
-                    not quick_retry_used or "story_too_long" in hard_shape_issues
-                )
+                requires_shape_retry = not quick_retry_used or "story_too_long" in hard_shape_issues
                 if (
                     hard_shape_issues
                     and generation_budget.allow_quick_regeneration
@@ -828,14 +879,18 @@ class StoryGenerator:
                         status_callback("retry")
                     story_text = self._call_required_round_story(
                         language=language,
+                        generation_tracker=generation_tracker,
                         system_prompt=sys_prompt,
-                        user_prompt=attempt_prompt + _build_shape_retry_instruction(hard_shape_issues),
+                        user_prompt=attempt_prompt
+                        + _build_shape_retry_instruction(hard_shape_issues),
                         temperature=0.65,
                         max_tokens=generation_budget.max_tokens,
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.4,
                         presence_penalty=0.4,
-                        request_timeout=self._story_request_timeout_seconds(),
+                        request_timeout=self._story_request_timeout_seconds(
+                            narrative_budget, generation_tracker
+                        ),
                     )
                     logger.info(
                         "Story shape retry completed with %d characters",
@@ -868,8 +923,7 @@ class StoryGenerator:
                         )
                         if not self._soft_narrative_lengths:
                             raise ValueError(
-                                "Story shape validation failed: "
-                                + "; ".join(retry_shape_issues)
+                                "Story shape validation failed: " + "; ".join(retry_shape_issues)
                             )
                     if self._soft_narrative_lengths and retry_quick_result.passed:
                         _set_best_story(story_text)
@@ -901,6 +955,7 @@ class StoryGenerator:
                     )
                     story_text = self._call_required_round_story(
                         language=language,
+                        generation_tracker=generation_tracker,
                         system_prompt=sys_prompt,
                         user_prompt=repeat_retry_prompt,
                         temperature=0.65,
@@ -908,7 +963,9 @@ class StoryGenerator:
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.5,
                         presence_penalty=0.5,
-                        request_timeout=self._story_request_timeout_seconds(),
+                        request_timeout=self._story_request_timeout_seconds(
+                            narrative_budget, generation_tracker
+                        ),
                     )
                     repeat_retry_validation = quick_validate_story(
                         story_text=story_text,
@@ -948,6 +1005,8 @@ class StoryGenerator:
                         sys_prompt=sys_prompt,
                         stream_callback=stream_callback if attempt == 0 else None,
                         status_callback=status_callback,
+                        narrative_budget=narrative_budget,
+                        generation_tracker=generation_tracker,
                     )
                     post_validation_shape_issues = _hard_shape_issues(story_text)
                     if post_validation_shape_issues:
@@ -1009,17 +1068,24 @@ class StoryGenerator:
                     if terminal_validation_failed:
                         best_valid_story_text = best_story_before_attempt
 
-                    diagnostic_report = ConstraintViolationDiagnostic().generate_report(
-                        story_text=story_text,
-                        validation_result=validation_result,
-                    ) if self._diagnostics is None else self._diagnostics.generate_report(
-                        story_text=story_text,
-                        validation_result=validation_result,
+                    diagnostic_report = (
+                        ConstraintViolationDiagnostic().generate_report(
+                            story_text=story_text,
+                            validation_result=validation_result,
+                        )
+                        if self._diagnostics is None
+                        else self._diagnostics.generate_report(
+                            story_text=story_text,
+                            validation_result=validation_result,
+                        )
                     )
 
                     should_retry = False
                     if terminal_validation_failed and self._soft_narrative_lengths:
-                        should_retry = attempt < self._quality_profile.max_retries
+                        should_retry = (
+                            attempt < self._quality_profile.max_retries
+                            and attempt < max_attempts - 1
+                        )
                         retry_hint = (
                             _build_terminal_continuity_retry_instruction(
                                 terminal_continuity_failures
@@ -1071,6 +1137,7 @@ class StoryGenerator:
                     character_settings=character_settings,
                     language=language,
                     history_prefix=history_prefix,
+                    generation_tracker=generation_tracker,
                 )
 
                 # Validate relationships
@@ -1099,6 +1166,10 @@ class StoryGenerator:
                     best_valid_story_text = best_story_before_attempt
                 logger.warning(f"Round event attempt {attempt + 1} failed: {e}")
                 last_generation_error = e
+            except GenerationBudgetError as e:
+                logger.warning("Round request budget exhausted: %s", e)
+                last_generation_error = e
+                break
             except (ValueError, ValidationError, json.JSONDecodeError) as e:
                 logger.warning(f"Round event attempt {attempt + 1} failed: {e}")
                 last_generation_error = e
@@ -1151,10 +1222,7 @@ class StoryGenerator:
         """Initialize or refresh narrative style systems for the selected style."""
         del player_state
         requested_style_id = style_id or "magical_realism"
-        if (
-            self._narrative_systems_initialized
-            and self._initialized_style_id == requested_style_id
-        ):
+        if self._narrative_systems_initialized and self._initialized_style_id == requested_style_id:
             return
 
         self._style_manifest = None
@@ -1163,7 +1231,8 @@ class StoryGenerator:
 
         try:
             from src.ai.narrative.style_manifest import get_style
-            from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
+            from src.ai.narrative.style_prompt_builder import \
+                StyleAwarePromptBuilder
             from src.ai.narrative.style_validator import StyleAwareValidator
 
             self._style_manifest = get_style(requested_style_id)
@@ -1226,7 +1295,9 @@ class StoryGenerator:
             era = ""
             era_setting = character_settings.get("era")
             if isinstance(era_setting, dict):
-                era = str(era_setting.get("era_description") or era_setting.get("description") or "")
+                era = str(
+                    era_setting.get("era_description") or era_setting.get("description") or ""
+                )
 
             trait = ""
             trait_setting = character_settings.get("traits")
@@ -1238,7 +1309,9 @@ class StoryGenerator:
                 )
 
             round_names = ["周初", "周中", "周末"]
-            round_name = round_names[round_number] if 0 <= round_number < len(round_names) else "这一天"
+            round_name = (
+                round_names[round_number] if 0 <= round_number < len(round_names) else "这一天"
+            )
             setting_clause = f"在{era}的背景下，" if era else ""
             trait_clause = f"你把{trait}放在心里，" if trait else "你把眼前的线索重新梳理，"
             cast_clause = ""
@@ -1282,6 +1355,8 @@ class StoryGenerator:
         sys_prompt: str,
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        narrative_budget: Optional[NarrativeBudget] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> str:
         """
         Validate story consistency and retry once if CRITICAL issues found.
@@ -1324,6 +1399,12 @@ class StoryGenerator:
                 character_settings=character_settings,
                 language=language,
                 run_ai_validation=not self._quality_profile.skip_ai_consistency_check,
+                generation_tracker=generation_tracker,
+                max_output_tokens=(
+                    narrative_budget.max_output_tokens
+                    if narrative_budget is not None
+                    else get_generation_budget(self.quality_level.value).max_tokens
+                ),
             )
 
             if validation.passed:
@@ -1368,14 +1449,21 @@ class StoryGenerator:
 
             retry_story = self._call_required_round_story(
                 language=language,
+                generation_tracker=generation_tracker,
                 system_prompt=sys_prompt,
                 user_prompt=retry_prompt,
                 temperature=0.7,  # 固定低温度，确保严格遵守约束
-                max_tokens=get_generation_budget(self.quality_level.value).max_tokens,
+                max_tokens=(
+                    narrative_budget.max_output_tokens
+                    if narrative_budget is not None
+                    else get_generation_budget(self.quality_level.value).max_tokens
+                ),
                 stream_callback=stream_callback,
                 frequency_penalty=0.3,  # ★ 重试时也保持反重复
                 presence_penalty=0.3,
-                request_timeout=self._story_request_timeout_seconds(),
+                request_timeout=self._story_request_timeout_seconds(
+                    narrative_budget, generation_tracker
+                ),
             )
 
             if retry_story:
@@ -1425,7 +1513,8 @@ class StoryGenerator:
                 week=player_state.get("week", 0),
                 current_round=player_state.get("current_round", 0),
                 age=player_state.get("age"),
-                player_name=resolve_protagonist_name(player_state, character_settings, None) or "主角",
+                player_name=resolve_protagonist_name(player_state, character_settings, None)
+                or "主角",
                 character_settings=character_settings,
                 established_facts=player_state.get("established_facts", []),
                 world_model_data=player_state.get("world_model_data", {}),

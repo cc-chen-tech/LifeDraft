@@ -6,8 +6,11 @@ Inspired by Claude Code's max_output_tokens escalation and multi-turn recovery.
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
+
+from src.ai.budgets import GenerationBudgetError, GenerationCallTracker
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +77,7 @@ class TruncationRecovery:
         original_prompt: str,
         partial_response: str,
         language: str = "zh",
+        generation_tracker: Optional[GenerationCallTracker] = None,
         **call_kwargs: Any,
     ) -> str:
         """Attempt to recover from truncation by issuing continuation calls.
@@ -84,27 +88,43 @@ class TruncationRecovery:
         full_text = partial_response
         terminal_puncts = set("。！？.!?")
 
-        for i in range(self._config.max_continuations):
-            logger.info(
-                "Truncation recovery: continuation attempt %d/%d",
-                i + 1,
-                self._config.max_continuations,
-            )
-            continuation_prompt = self.build_continuation_prompt(
-                original_prompt, full_text, language
-            )
-            # Remove stream_callback for continuation calls
-            kwargs = {k: v for k, v in call_kwargs.items() if k != "stream_callback"}
-            continuation_text: str = client_call(
-                system_prompt=system_prompt,
-                user_prompt=continuation_prompt,
-                **kwargs,
-            )
-            full_text += continuation_text
-            # Check if continuation ends with a complete sentence
-            stripped = continuation_text.rstrip()
-            if stripped and stripped[-1] in terminal_puncts:
-                logger.info("Truncation recovery: complete sentence detected, stopping.")
-                break
+        recovery_scope = (
+            generation_tracker.recovery_scope() if generation_tracker is not None else nullcontext()
+        )
+        with recovery_scope:
+            for i in range(self._config.max_continuations):
+                logger.info(
+                    "Truncation recovery: continuation attempt %d/%d",
+                    i + 1,
+                    self._config.max_continuations,
+                )
+                try:
+                    if generation_tracker is not None:
+                        generation_tracker.consume("prose")
+                except GenerationBudgetError as exc:
+                    logger.warning(
+                        "Truncation recovery stopped by original request budget: %s",
+                        exc,
+                    )
+                    break
+                continuation_prompt = self.build_continuation_prompt(
+                    original_prompt, full_text, language
+                )
+                # Remove stream_callback for continuation calls and prohibit re-entry.
+                kwargs = {k: v for k, v in call_kwargs.items() if k != "stream_callback"}
+                kwargs["_allow_truncation_recovery"] = False
+                if generation_tracker is not None:
+                    kwargs["request_timeout"] = max(0.001, generation_tracker.remaining_seconds)
+                continuation_text: str = client_call(
+                    system_prompt=system_prompt,
+                    user_prompt=continuation_prompt,
+                    **kwargs,
+                )
+                full_text += continuation_text
+                # Check if continuation ends with a complete sentence
+                stripped = continuation_text.rstrip()
+                if stripped and stripped[-1] in terminal_puncts:
+                    logger.info("Truncation recovery: complete sentence detected, stopping.")
+                    break
 
         return full_text

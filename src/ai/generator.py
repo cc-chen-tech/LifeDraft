@@ -15,6 +15,7 @@ import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from config.settings import PRESETS_DIR, settings
+from src.ai.budgets import GenerationCallTracker
 from src.ai.cache import EventCache
 from src.ai.client import AIClient, _thinking_request_params
 from src.ai.models import GameEvent
@@ -63,7 +64,11 @@ class EventGenerator:
         self.story_gen = StoryGenerator(self.ai_client, quality_level=quality_level)
         self.option_gen = OptionGenerator(self.ai_client)
         self.summary_gen = SummaryGenerator(self.ai_client)
-        self.rewriter = StoryRewriter(self.ai_client)
+        self.quality_level = str(quality_level or "expert")
+        self.rewriter = StoryRewriter(
+            self.ai_client,
+            quality_level=self.quality_level,
+        )
 
     # ==================== Backward-Compatible AI Calling ====================
 
@@ -100,6 +105,7 @@ class EventGenerator:
         language: str = "zh",
         request_timeout: Optional[float] = None,
         thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> str:
         """Public AI text generation interface.
 
@@ -126,7 +132,10 @@ class EventGenerator:
                 language=language,
                 request_timeout=request_timeout,
                 thinking=thinking,
+                generation_tracker=generation_tracker,
             )
+        if generation_tracker is not None:
+            generation_tracker.consume("prose")
         return self.ai_client.call(
             system_prompt=system_prompt,
             user_prompt=prompt,
@@ -136,6 +145,7 @@ class EventGenerator:
             model=model,
             request_timeout=request_timeout,
             thinking=thinking,
+            generation_tracker=generation_tracker,
         )
 
     def generate_completion_json(
@@ -146,8 +156,11 @@ class EventGenerator:
         max_tokens: int = 2000,
         model: Optional[str] = None,
         thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> Optional[Dict[str, Any]]:
         """Public AI JSON generation interface."""
+        if generation_tracker is not None:
+            generation_tracker.consume("prose")
         return self.ai_client.call_json(
             system_prompt=system_prompt,
             user_prompt=prompt,
@@ -155,6 +168,7 @@ class EventGenerator:
             max_tokens=max_tokens,
             model=model,
             thinking=thinking,
+            generation_tracker=generation_tracker,
         )
 
     def generate_stream(
@@ -165,6 +179,8 @@ class EventGenerator:
         max_tokens: int = 2000,
         model: Optional[str] = None,
         thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
+        request_timeout: Optional[float] = None,
     ):
         """Public AI streaming interface - returns raw stream object.
 
@@ -174,6 +190,8 @@ class EventGenerator:
         Returns:
             OpenAI stream object that yields chunks
         """
+        if generation_tracker is not None:
+            generation_tracker.consume("prose")
         use_model = model or self.ai_client.model
         client = self.ai_client.require_openai_client()
         request_params = _thinking_request_params(use_model, thinking)
@@ -186,6 +204,7 @@ class EventGenerator:
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True,
+            **({"timeout": request_timeout} if request_timeout is not None else {}),
             **request_params,
         )
 

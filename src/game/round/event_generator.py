@@ -5,30 +5,28 @@ Handles the generation of events for each round in the game.
 
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, Callable, Dict, Optional
 
-from config.prompts._helpers import (
-    _build_available_people_constraint,
-    _build_era_anachronism_constraints,
-    _build_full_character_context,
-    _collect_available_people,
-    build_realistic_modern_world_boundary,
-)
+from config.feature_flags import get_feature
+from config.prompts._helpers import (_build_available_people_constraint,
+                                     _build_era_anachronism_constraints,
+                                     _build_full_character_context,
+                                     _collect_available_people,
+                                     build_realistic_modern_world_boundary)
 from config.prompts.story_prompts import (
-    _build_zh_chapter_constraint,
-    _build_protagonist_identity_instruction,
-    _extract_gender_text,
-    resolve_protagonist_name,
-)
+    _build_protagonist_identity_instruction, _build_zh_chapter_constraint,
+    _extract_gender_text, resolve_protagonist_name)
+from src.ai.budgets import (GenerationCallTracker, GenerationOperation,
+                            NarrativeKind, resolve_narrative_budget)
+from src.ai.generation_budget import get_generation_budget
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.narrative_manager import NarrativeManager
-from src.game.relationship_authority import (
-    build_required_cast_constraints,
-    extract_required_key_people,
-)
+from src.game.relationship_authority import (build_required_cast_constraints,
+                                             extract_required_key_people)
 
 logger = logging.getLogger(__name__)
 
@@ -333,9 +331,7 @@ class RoundEventGenerator:
 
         # Get round context from player state
         round_context = player_state.get_round_context()
-        opening_story = (getattr(player_state, "character_settings", {}) or {}).get(
-            "opening_story"
-        )
+        opening_story = (getattr(player_state, "character_settings", {}) or {}).get("opening_story")
         if (
             current_week == 0
             and current_round == 0
@@ -647,7 +643,9 @@ class RoundEventGenerator:
                         text=f"Check in with {anchor_person['name']}",
                         effects={"knowledge": 3, "relationships": {anchor_person["name"]: 2}},
                     ),
-                    EventOption(text="Organize the current clues", effects={"energy": -3, "knowledge": 2}),
+                    EventOption(
+                        text="Organize the current clues", effects={"energy": -3, "knowledge": 2}
+                    ),
                     EventOption(text="Slow down and recover", effects={"mood": 3, "energy": 2}),
                 ]
 
@@ -748,8 +746,8 @@ class RoundEventGenerator:
 
             sys_prompt = get_system_prompt("story_novelist", self.language)
 
-            from src.ai.utils import extract_json
             from src.ai.quick_validator import quick_validate_story
+            from src.ai.utils import extract_json
 
             available_people_names = [
                 p.get("name", "")
@@ -757,8 +755,26 @@ class RoundEventGenerator:
                 if p.get("name")
             ]
             last_validation_error = ""
+            quality_level = str(getattr(self.ai_generator, "quality_level", None) or "expert")
+            narrative_budget = (
+                resolve_narrative_budget(
+                    NarrativeKind.ROUND,
+                    GenerationOperation.GENERATE,
+                    quality_level,
+                    self.language,
+                )
+                if get_feature("unified_narrative_budgets")
+                else None
+            )
+            generation_tracker = (
+                GenerationCallTracker(narrative_budget) if narrative_budget is not None else None
+            )
+            max_attempts = min(
+                2,
+                narrative_budget.prose_call_limit if narrative_budget is not None else 2,
+            )
 
-            for attempt in range(2):
+            for attempt in range(max_attempts):
                 prompt_for_attempt = prompt
                 if attempt > 0 and last_validation_error:
                     if self.language == "zh":
@@ -776,13 +792,25 @@ class RoundEventGenerator:
                     if status_callback:
                         status_callback("retry")
 
+                if generation_tracker is not None:
+                    generation_tracker.consume("prose")
                 response = self.ai_generator.ai_client.call(
                     system_prompt=sys_prompt,
                     user_prompt=prompt_for_attempt,
                     temperature=0.85 if attempt == 0 else 0.65,
-                    max_tokens=8192,
+                    max_tokens=(
+                        narrative_budget.max_output_tokens
+                        if narrative_budget is not None
+                        else get_generation_budget(quality_level).max_tokens
+                    ),
                     stream_callback=stream_callback if attempt == 0 else None,
                     thinking=False,
+                    request_timeout=(
+                        max(0.001, generation_tracker.remaining_seconds)
+                        if generation_tracker is not None
+                        else None
+                    ),
+                    generation_tracker=generation_tracker,
                 )
 
                 data = extract_json(response)
@@ -898,6 +926,8 @@ class RoundEventGenerator:
             else ""
         )
         zh_timeline_title = f"第{week + 1}周·{round_name}" if language == "zh" else ""
+        quality_level = str(getattr(self.ai_generator, "quality_level", None) or "expert")
+        length_requirement = get_generation_budget(quality_level).length_requirement(language)
 
         if language == "zh":
             return f"""【强制事件】角色之前做出的承诺必须在本轮兑现。
@@ -919,14 +949,14 @@ class RoundEventGenerator:
 1. 事件必须围绕兑现上述承诺展开
 2. 必须涉及上述人物
 3. 事件开头要自然衔接之前的承诺（如"记得之前答应过..."）
-4. 事件描述应800-1200字，生动有深度
+4. {length_requirement}，生动有深度
 5. 提供3-4个选项，每个选项都要与承诺相关
 6. 选项应呈现真实的权衡取舍
 
 【输出格式】
 返回JSON格式：
 {{
-  "event_description": "事件描述（800-1200字）",
+  "event_description": "事件描述（{length_requirement}）",
   "options": [
     {{"text": "选项文本（最多15字）", "effects": {{"energy": -10, "mood": 5, ...}}}},
     ...
@@ -952,14 +982,14 @@ Player name: {player_name}
 1. The event must center on fulfilling the above commitment
 2. Must involve the listed characters
 3. Start naturally by referencing the previous promise (e.g., "Remembering the promise to...")
-4. Event description: 800-1200 words, vivid and deep
+4. {length_requirement}, vivid and deep
 5. Provide 3-4 options, each related to the commitment
 6. Options should present real trade-offs
 
 [Output Format]
 Return JSON:
 {{
-  "event_description": "Event description (800-1200 words)",
+  "event_description": "Event description ({length_requirement})",
   "options": [
     {{"text": "Option text (max 15 chars)", "effects": {{"energy": -10, "mood": 5, ...}}}},
     ...

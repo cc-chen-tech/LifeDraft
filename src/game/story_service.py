@@ -4,8 +4,14 @@ import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
+from config.feature_flags import get_feature
+from src.ai.budgets import (GenerationBudgetError, GenerationCallTracker,
+                            GenerationOperation, NarrativeBudget,
+                            NarrativeKind, format_length_requirement,
+                            resolve_narrative_budget)
 from src.ai.generator import EventGenerator
-from src.ai.prompt_sanitizer import sanitize_custom_action, sanitize_user_choice
+from src.ai.prompt_sanitizer import (sanitize_custom_action,
+                                     sanitize_user_choice)
 from src.ai.story_exceptions import StoryContinuationFailure
 from src.ai.system_prompts import get_system_prompt
 from src.ai.text_quality import normalize_generated_story
@@ -63,6 +69,20 @@ class StoryService:
         from config.prompts import get_result_generation_prompt
 
         try:
+            narrative_budget = None
+            generation_tracker = None
+            length_requirement = None
+            if get_feature("unified_narrative_budgets"):
+                quality_level = str(getattr(self.ai_generator, "quality_level", None) or "expert")
+                narrative_budget = resolve_narrative_budget(
+                    NarrativeKind.CONTINUATION,
+                    GenerationOperation.GENERATE,
+                    quality_level,
+                    self.language,
+                )
+                generation_tracker = GenerationCallTracker(narrative_budget)
+                length_requirement = format_length_requirement(narrative_budget)
+
             prompt = get_result_generation_prompt(
                 event_description=event_description,
                 chosen_option=sanitized_chosen_option,
@@ -70,6 +90,7 @@ class StoryService:
                 language=self.language,
                 character_settings=character_settings or {},  # type: ignore[arg-type]
                 is_custom=is_custom,
+                length_requirement=length_requirement,
             )
 
             sys_prompt = get_system_prompt("story_continuation", self.language)
@@ -77,11 +98,18 @@ class StoryService:
                 prompt=prompt,
                 system_prompt=sys_prompt,
                 temperature=0.8,
-                max_tokens=4096,
+                max_tokens=(
+                    narrative_budget.max_output_tokens if narrative_budget is not None else 4096
+                ),
                 stream_callback=stream_callback,
                 retry_count=1,
                 language=self.language,
-                request_timeout=STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS,
+                request_timeout=(
+                    max(0.001, generation_tracker.remaining_seconds)
+                    if generation_tracker is not None
+                    else STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS
+                ),
+                generation_tracker=generation_tracker,
             )
             logger.debug(f"Generated story continuation: {len(continuation)} chars")
 
@@ -93,6 +121,8 @@ class StoryService:
                 sys_prompt=sys_prompt,
                 stream_callback=stream_callback,
                 status_callback=status_callback,
+                narrative_budget=narrative_budget,
+                generation_tracker=generation_tracker,
             )
 
             # ★ 一致性校验：检查结果故事是否与世界模型一致
@@ -105,6 +135,8 @@ class StoryService:
                     sys_prompt=sys_prompt,
                     stream_callback=stream_callback,
                     status_callback=status_callback,
+                    narrative_budget=narrative_budget,
+                    generation_tracker=generation_tracker,
                 )
 
             return normalize_generated_story(continuation, language=self.language)
@@ -113,14 +145,10 @@ class StoryService:
             raise
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"Failed to generate story continuation: {e}")
-            raise StoryContinuationFailure(
-                f"Story continuation generation failed: {e}"
-            ) from e
+            raise StoryContinuationFailure(f"Story continuation generation failed: {e}") from e
         except Exception as e:
             logger.exception(f"Unexpected error generating story continuation: {e}")
-            raise StoryContinuationFailure(
-                f"Story continuation generation failed: {e}"
-            ) from e
+            raise StoryContinuationFailure(f"Story continuation generation failed: {e}") from e
 
     def _quick_validate_and_retry_continuation(
         self,
@@ -131,6 +159,8 @@ class StoryService:
         sys_prompt: str,
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        narrative_budget: Optional[NarrativeBudget] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> str:
         """Fast local validation for post-choice story continuations."""
         if not continuation:
@@ -178,16 +208,30 @@ class StoryService:
                 + "\nRewrite the continuation after the player's choice, strictly following the character setup, world boundary, and preset key people relationships."
             )
 
-        retry_continuation = self.ai_generator.generate_completion(
-            prompt=retry_prompt,
-            system_prompt=sys_prompt,
-            temperature=0.65,
-            max_tokens=4096,
-            stream_callback=stream_callback,
-            retry_count=1,
-            language=self.language,
-            request_timeout=STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS,
-        )
+        try:
+            retry_continuation = self.ai_generator.generate_completion(
+                prompt=retry_prompt,
+                system_prompt=sys_prompt,
+                temperature=0.65,
+                max_tokens=(
+                    narrative_budget.max_output_tokens if narrative_budget is not None else 4096
+                ),
+                stream_callback=stream_callback,
+                retry_count=1,
+                language=self.language,
+                request_timeout=(
+                    max(0.001, generation_tracker.remaining_seconds)
+                    if generation_tracker is not None
+                    else STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS
+                ),
+                generation_tracker=generation_tracker,
+            )
+        except GenerationBudgetError as exc:
+            logger.warning(
+                "[StoryContinuation] Keeping complete prose after budget exhaustion: %s",
+                exc,
+            )
+            return continuation
         retry_result = quick_validate_story(
             story_text=retry_continuation,
             character_settings=character_settings,
@@ -205,13 +249,10 @@ class StoryService:
             # A committed choice must not be stranded because the model used a
             # first-person sentence after an otherwise successful retry. Keep
             # the continuation visible and preserve the diagnostic in logs.
-            logger.warning(
-                "[StoryContinuation] Accepting retry with perspective-only issues"
-            )
+            logger.warning("[StoryContinuation] Accepting retry with perspective-only issues")
             return retry_continuation
         raise ValueError(
-            "Choice continuation quick validation failed: "
-            + "; ".join(retry_result.issues)
+            "Choice continuation quick validation failed: " + "; ".join(retry_result.issues)
         )
 
     @staticmethod
@@ -222,9 +263,7 @@ class StoryService:
         perspective_markers = ("第一人称", "first-person")
         return all(any(marker in issue for marker in perspective_markers) for issue in issues)
 
-    def generate_fallback_continuation(
-        self, chosen_option: str, effects: Dict[str, Any]
-    ) -> str:
+    def generate_fallback_continuation(self, chosen_option: str, effects: Dict[str, Any]) -> str:
         """
         Generate a simple fallback continuation when AI generation fails.
 
@@ -276,6 +315,8 @@ class StoryService:
         sys_prompt: str,
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        narrative_budget: Optional[NarrativeBudget] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> str:
         """
         Validate story continuation consistency and retry if CRITICAL issues found.
@@ -314,9 +355,7 @@ class StoryService:
                 logger.warning(f"[StoryContinuation] Failed to build WorldModel: {e}")
                 return continuation
             except Exception as e:
-                logger.exception(
-                    f"[StoryContinuation] Unexpected error building WorldModel: {e}"
-                )
+                logger.exception(f"[StoryContinuation] Unexpected error building WorldModel: {e}")
                 return continuation
 
             if not world_model:
@@ -327,12 +366,14 @@ class StoryService:
                 story_text=continuation,
                 world_model=world_model,
                 player_state_dict=(
-                    player_state
-                    if isinstance(player_state, dict)
-                    else player_state.to_dict()
+                    player_state if isinstance(player_state, dict) else player_state.to_dict()
                 ),
                 character_settings=character_settings,
                 language=self.language,
+                generation_tracker=generation_tracker,
+                max_output_tokens=(
+                    narrative_budget.max_output_tokens if narrative_budget is not None else 4096
+                ),
             )
 
             if validation.passed:
@@ -363,11 +404,18 @@ class StoryService:
                 prompt=retry_prompt,
                 system_prompt=sys_prompt,
                 temperature=0.7,  # 降低温度确保更保守
-                max_tokens=4096,
+                max_tokens=(
+                    narrative_budget.max_output_tokens if narrative_budget is not None else 4096
+                ),
                 stream_callback=stream_callback,
                 retry_count=1,
                 language=self.language,
-                request_timeout=STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS,
+                request_timeout=(
+                    max(0.001, generation_tracker.remaining_seconds)
+                    if generation_tracker is not None
+                    else STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS
+                ),
+                generation_tracker=generation_tracker,
             )
 
             if retry_continuation:
@@ -382,9 +430,7 @@ class StoryService:
             logger.warning(f"[StoryContinuation] Validation/retry failed: {e}")
             return continuation
         except Exception as e:
-            logger.exception(
-                f"[StoryContinuation] Unexpected error during validation/retry: {e}"
-            )
+            logger.exception(f"[StoryContinuation] Unexpected error during validation/retry: {e}")
             return continuation
 
     def compress_story(
@@ -459,9 +505,7 @@ class StoryService:
             Dictionary with effects: {"energy": int, "mood": int, "knowledge": int}
         """
         from config.prompts.story_prompts import (
-            get_custom_choice_effects_prompt,
-            get_custom_choice_user_prompt,
-        )
+            get_custom_choice_effects_prompt, get_custom_choice_user_prompt)
 
         current_state = current_state or {}
 
@@ -538,16 +582,29 @@ class StoryService:
             Dictionary with 'effects' and 'story_continuation'
         """
         from config.prompts.story_prompts import (
-            get_custom_choice_result_prompt,
-            get_custom_choice_user_prompt,
-        )
+            get_custom_choice_result_prompt, get_custom_choice_user_prompt)
 
         current_state = current_state or {}
+
+        narrative_budget = None
+        generation_tracker = None
+        length_requirement = None
+        if get_feature("unified_narrative_budgets"):
+            quality_level = str(getattr(self.ai_generator, "quality_level", None) or "expert")
+            narrative_budget = resolve_narrative_budget(
+                NarrativeKind.CONTINUATION,
+                GenerationOperation.GENERATE,
+                quality_level,
+                self.language,
+            )
+            generation_tracker = GenerationCallTracker(narrative_budget)
+            length_requirement = format_length_requirement(narrative_budget)
 
         system_prompt = get_custom_choice_result_prompt(
             character_settings=character_settings or {},
             current_state=current_state,
             language=self.language,
+            length_requirement=length_requirement,
         )
 
         # 清洗用户自定义输入，防止 prompt 注入
@@ -569,7 +626,10 @@ class StoryService:
                     prompt=prompt,
                     system_prompt=system_prompt,
                     temperature=0.8,
-                    max_tokens=4096,  # ★ 增加以避免截断
+                    max_tokens=(
+                        narrative_budget.max_output_tokens if narrative_budget is not None else 4096
+                    ),
+                    generation_tracker=generation_tracker,
                 )
                 if result:
                     validation_error = self._validate_custom_choice_result_story(

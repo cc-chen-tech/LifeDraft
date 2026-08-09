@@ -226,6 +226,16 @@ def test_call_tracker_enforces_one_monotonic_deadline() -> None:
     assert tracker.total_calls == 0
 
 
+def test_call_tracker_exposes_remaining_total_deadline() -> None:
+    now = [10.0]
+    budget = resolve_narrative_budget("round", "generate", "expert", "zh")
+    tracker = GenerationCallTracker(budget, clock=lambda: now[0])
+
+    now[0] += 25.5
+
+    assert tracker.remaining_seconds == pytest.approx(94.5)
+
+
 def test_recovery_scope_rejects_recursive_entry() -> None:
     budget = resolve_narrative_budget(
         NarrativeKind.CONTINUATION,
@@ -239,6 +249,24 @@ def test_recovery_scope_rejects_recursive_entry() -> None:
         with pytest.raises(RecursiveRecoveryError):
             with tracker.recovery_scope():
                 pass
+
+
+def test_provider_retry_consumes_the_preceding_call_category() -> None:
+    tracker = GenerationCallTracker(resolve_narrative_budget("round", "generate", "master", "zh"))
+
+    tracker.consume("validation")
+    tracker.consume_retry()
+
+    assert tracker.validation_calls == 2
+    assert tracker.prose_calls == 0
+
+
+def test_provider_retry_cannot_bypass_category_limit() -> None:
+    tracker = GenerationCallTracker(resolve_narrative_budget("round", "generate", "fast", "zh"))
+    tracker.consume("prose")
+
+    with pytest.raises(GenerationBudgetExceeded):
+        tracker.consume_retry()
 
 
 def test_legacy_budget_import_keeps_flag_off_contract(

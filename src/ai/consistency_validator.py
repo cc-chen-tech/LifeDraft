@@ -4,6 +4,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from src.ai.budgets import GenerationCallTracker
+from src.ai.generation_budget import get_generation_budget
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
 
@@ -68,6 +70,8 @@ class ConsistencyValidator:
         language: str,
         story_history: Optional[List[Dict[str, Any]]] = None,
         run_ai_validation: bool = True,
+        generation_tracker: Optional[GenerationCallTracker] = None,
+        max_output_tokens: int = 4096,
     ) -> ValidationResult:
         """
         Validate a generated story for consistency with the world model.
@@ -158,11 +162,13 @@ class ConsistencyValidator:
 
             system_prompt = get_system_prompt("consistency_validator", language)
 
+            if generation_tracker is not None:
+                generation_tracker.consume("validation")
             response = self.client.call(
                 system_prompt=system_prompt,
                 user_prompt=prompt,
                 temperature=0.3,
-                max_tokens=4096,
+                max_tokens=max_output_tokens,
                 thinking=False,
             )
 
@@ -411,6 +417,8 @@ class ConsistencyValidator:
         dynamic_facts: List[Any],
         character_settings: Dict[str, Any],
         language: str,
+        generation_tracker: Optional[GenerationCallTracker] = None,
+        max_output_tokens: Optional[int] = None,
     ) -> ValidationResult:
         """
         ★ 增强验证：结合数据库历史故事进行交叉验证。
@@ -509,12 +517,19 @@ class ConsistencyValidator:
 
             system_prompt = get_system_prompt("consistency_validator", language)
 
+            if generation_tracker is not None:
+                generation_tracker.consume("validation")
             response = self.client.call(
                 system_prompt=system_prompt,
                 user_prompt=prompt,
                 temperature=0.3,
-                max_tokens=4096,
+                max_tokens=(
+                    max_output_tokens
+                    if max_output_tokens is not None
+                    else get_generation_budget("expert").max_tokens
+                ),
                 thinking=False,
+                generation_tracker=generation_tracker,
             )
 
             return self._parse_validation_response(response, language)

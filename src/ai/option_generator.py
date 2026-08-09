@@ -8,12 +8,11 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from src.ai.budgets import GenerationCallTracker
 from src.ai.client import AIClient
-from src.ai.long_story_context import (
-    LongStoryContextBuilder,
-    is_deepseek_v4_model,
-    prepend_history_prefix,
-)
+from src.ai.long_story_context import (LongStoryContextBuilder,
+                                       is_deepseek_v4_model,
+                                       prepend_history_prefix)
 from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
@@ -46,6 +45,7 @@ class OptionGenerator:
         language: str = "zh",
         retry_count: int = 1,
         history_prefix: Optional[str] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> GameEvent:
         """
         Generate options for an existing story (used for opening story).
@@ -98,6 +98,8 @@ class OptionGenerator:
                             f"Please avoid the same issue and ensure correct format.]"
                         )
 
+                if generation_tracker is not None:
+                    generation_tracker.consume("option")
                 content = self.client.call(
                     system_prompt=sys_prompt,
                     user_prompt=user_prompt,
@@ -255,9 +257,7 @@ class OptionGenerator:
         return OptionGenerator.options_repeat_recent_history(options, decision_history)
 
     @staticmethod
-    def options_repeat_recent_history(
-        options: List[EventOption], decision_history: Any
-    ) -> bool:
+    def options_repeat_recent_history(options: List[EventOption], decision_history: Any) -> bool:
         """Return whether every candidate option replays a recent committed choice."""
         if not isinstance(decision_history, list) or not options:
             return False
