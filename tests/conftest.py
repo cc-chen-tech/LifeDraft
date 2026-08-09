@@ -42,11 +42,11 @@ def _patched_iter_lines(self):
 httpx.Response.iter_lines = _patched_iter_lines
 
 
-@pytest.fixture(autouse=True)
-def _disable_constraint_harness_in_tests(monkeypatch):
-    """Keep harness behavior deterministic for regular unit tests."""
+@pytest.fixture
+def constraint_harness_disabled(monkeypatch):
+    """Explicitly select the non-Harness production configuration."""
     monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "false")
-    yield
+
 
 # ==================== FastAPI Client Fixtures ====================
 

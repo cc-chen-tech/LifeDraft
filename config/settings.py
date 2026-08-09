@@ -176,6 +176,7 @@ class Settings:
 # 通过 feature_flags 模块统一管理实验性功能开关。
 # 每个 flag 可通过对应环境变量控制（默认均为 False）：
 #   ENABLE_CONSTRAINT_HARNESS       — 约束评估引擎
+#   ENABLE_SOFT_NARRATIVE_LENGTHS   — 篇幅偏差仅诊断并保留完整正文
 #   ENABLE_NARRATIVE_STYLE_ENGINE   — 叙事风格引擎
 #   ENABLE_CREATIVE_ENHANCEMENT     — 创意增强
 #   ENABLE_EPIC_NARRATIVE           — 史诗叙事
