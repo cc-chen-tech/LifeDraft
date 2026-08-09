@@ -124,6 +124,10 @@
   --safe-area-inset-bottom: env(safe-area-inset-bottom);
   --safe-area-inset-left: env(safe-area-inset-left);
 
+  --app-shell-fixed-gap: 1rem;
+  --app-shell-bottom-reserve: calc(5.5rem + var(--safe-area-inset-bottom));
+  --app-shell-feedback-bottom: calc(var(--app-shell-bottom-reserve) + 0.75rem);
+
   /* Compatibility aliases */
   --background: var(--surface-canvas);
   --foreground: var(--text-primary);
@@ -161,6 +165,22 @@
   --sidebar-accent-foreground: var(--text-primary);
   --sidebar-border: var(--border-default);
   --sidebar-ring: var(--ring);
+}
+
+.story101-app-shell {
+  min-height: 100dvh;
+  background: var(--surface-canvas);
+  padding-right: var(--safe-area-inset-right);
+  padding-left: var(--safe-area-inset-left);
+}
+
+.story101-app-shell > [data-slot="app-shell-content"] {
+  min-height: 100dvh;
+}
+
+.story101-app-shell:has([data-app-shell-reserve="bottom"])
+  > [data-slot="app-shell-content"] {
+  padding-bottom: var(--app-shell-bottom-reserve);
 }
 
 @layer base {
@@ -288,6 +308,20 @@
 
 .safe-area-pb {
   padding-bottom: var(--safe-area-inset-bottom);
+}
+
+@media (max-width: 767px) {
+  .safe-area-fixed-inline {
+    right: max(1rem, var(--safe-area-inset-right));
+    left: max(1rem, var(--safe-area-inset-left));
+  }
+}
+
+.story101-sound-panel {
+  max-height: min(
+    68vh,
+    calc(100dvh - var(--safe-area-inset-top) - var(--safe-area-inset-bottom) - 6rem)
+  );
 }
 
 /* ===== 减少动效偏好 ===== */

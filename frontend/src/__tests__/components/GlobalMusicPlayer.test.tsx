@@ -6,6 +6,12 @@ import React from "react";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+const mockUsePathname = jest.fn(() => "/");
+
+jest.mock("next/navigation", () => ({
+  usePathname: () => mockUsePathname(),
+}));
+
 // Mock API-calling functions from music store to avoid real HTTP calls
 jest.mock("@/stores/useMusicStore", () => {
   const actual = jest.requireActual("@/stores/useMusicStore");
@@ -58,6 +64,7 @@ describe("GlobalMusicPlayer", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUsePathname.mockReturnValue("/");
     localStorage.clear();
     (global.fetch as jest.Mock).mockImplementation((url: string) => {
       if (url.includes("/voice-reading/settings")) {
@@ -125,6 +132,7 @@ describe("GlobalMusicPlayer", () => {
 
       const { container } = render(<GlobalMusicPlayer />);
       expect(container.firstChild).toBeNull();
+      expect(container.querySelector("[data-app-shell-reserve]")).toBeNull();
     });
 
     it("renders when activeStoryText is set", () => {
@@ -484,15 +492,90 @@ describe("GlobalMusicPlayer", () => {
       ).toBeInTheDocument();
     });
 
-    it("keeps the top position outside the save page so it cannot cover chat actions", () => {
-      setStoreState({ activeStoryText: "story text" });
+    it.each(["/", "/saves", "/presets"])(
+      "uses the reserved bottom dock on migrated route %s",
+      (pathname) => {
+        mockUsePathname.mockReturnValue(pathname);
+        setStoreState({ activeStoryText: "story text" });
+
+        render(<GlobalMusicPlayer />);
+
+        const wrapper = screen.getByTestId("global-music-player");
+        expect(wrapper).toHaveAttribute("data-app-shell-reserve", "bottom");
+        expect(wrapper).toHaveClass("bottom-4", "safe-area-pb");
+        expect(wrapper).not.toHaveClass("top-16");
+      },
+    );
+
+    it.each(["/play", "/e2e-regression"])(
+      "keeps the legacy top dock on unmigrated route %s",
+      (pathname) => {
+        mockUsePathname.mockReturnValue(pathname);
+        setStoreState({ activeStoryText: "story text" });
+
+        render(<GlobalMusicPlayer />);
+
+        const wrapper = screen.getByTestId("global-music-player");
+        expect(wrapper).not.toHaveAttribute("data-app-shell-reserve");
+        expect(wrapper).toHaveClass("top-16", "safe-area-pt");
+        expect(wrapper).not.toHaveClass("bottom-4");
+      },
+    );
+
+    it("keeps the expanded MusicPlayer mounted while a route adopts the bottom dock", async () => {
+      const user = userEvent.setup();
+      mockUsePathname.mockReturnValue("/play");
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { name: "Persistent Song", artists: ["Artist"] },
+      });
+
+      const { rerender } = render(<GlobalMusicPlayer />);
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
+      const mountedMusicPlayer = screen.getByTestId("sound-music-console");
+
+      mockUsePathname.mockReturnValue("/");
+      rerender(<GlobalMusicPlayer />);
+
+      expect(screen.getByTestId("global-music-player")).toHaveAttribute(
+        "data-app-shell-reserve",
+        "bottom",
+      );
+      expect(screen.getByRole("group", { name: "音乐和朗读" })).toBeInTheDocument();
+      expect(screen.getByTestId("sound-music-console")).toBe(mountedMusicPlayer);
+    });
+
+    it("uses 44px outer controls without unmounting MusicPlayer on collapse", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { name: "Touch Song", artists: ["Artist"] },
+      });
 
       render(<GlobalMusicPlayer />);
 
-      const wrapper = screen.getByTestId("global-music-player");
-      expect(wrapper).toHaveClass("top-16");
-      expect(wrapper).toHaveClass("safe-area-pt");
-      expect(wrapper).not.toHaveClass("bottom-4");
+      const mountedMusicPlayer = screen.getByTestId("sound-music-console");
+      const collapsedPanel = screen.getByTestId("unified-sound-panel").parentElement;
+      expect(screen.getByTestId("global-music-mini-bar")).toHaveClass(
+        "bg-[var(--surface-overlay)]",
+        "rounded-[var(--radius-overlay)]",
+      );
+      expect(collapsedPanel).toHaveAttribute("aria-hidden", "true");
+      expect(collapsedPanel).toHaveAttribute("inert");
+      expect(screen.getByRole("button", { name: "打开音乐" })).toHaveClass("h-11", "w-11");
+      expect(screen.getByRole("button", { name: "展开声音" })).toHaveClass("h-11", "w-11");
+
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
+      expect(screen.getByRole("group", { name: "音乐和朗读" })).toHaveClass(
+        "bg-[var(--surface-overlay)]",
+        "rounded-[var(--radius-overlay)]",
+      );
+      expect(collapsedPanel).not.toHaveAttribute("inert");
+      expect(screen.getByRole("button", { name: "收起声音" })).toHaveClass("h-11", "w-11");
+      await user.click(screen.getByRole("button", { name: "收起声音" }));
+
+      expect(collapsedPanel).toHaveAttribute("inert");
+      expect(screen.getByTestId("sound-music-console")).toBe(mountedMusicPlayer);
     });
 
     it("shows song name when currentSong is set", () => {

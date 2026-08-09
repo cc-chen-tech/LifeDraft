@@ -1,3 +1,5 @@
+export { AppShell } from "./AppShell";
+export type { AppShellProps } from "./AppShell";
 export { FeedbackNotice } from "./FeedbackNotice";
 export type { FeedbackNoticeProps } from "./FeedbackNotice";
 export { FormField } from "./FormField";
