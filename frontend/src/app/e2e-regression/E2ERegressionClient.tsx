@@ -109,6 +109,7 @@ export function VisualFoundationFixture() {
                 data-touch-target="true"
                 id="foundation-context-note"
                 placeholder="例如：让人物先观察，再作决定"
+                surface="filled"
               />
             )}
           </FormField>

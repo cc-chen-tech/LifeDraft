@@ -169,6 +169,8 @@ describe("Story101 visual foundation primitives", () => {
 
     for (const control of filledControls) {
       expect(control).toHaveClass("bg-[var(--surface-raised)]")
+      expect(control).toHaveClass("border-[var(--border-interactive)]")
+      expect(control).not.toHaveClass("border-transparent")
       expect(control).not.toHaveClass("dark:bg-input/30")
     }
     for (const control of underlineControls) {

@@ -73,7 +73,7 @@ test("renders the approved visual tokens, accessible states, and responsive evid
   );
   await expect(
     fixture(page).getByRole("textbox", { name: "补充这一页的方向" }),
-  ).toBeVisible();
+  ).toHaveAttribute("data-surface", "filled");
 
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#0D0C0B");
   const fontLoaded = await page.evaluate(async () => {
@@ -110,6 +110,7 @@ test("renders the approved visual tokens, accessible states, and responsive evid
     return {
       canvas: root.getPropertyValue("--surface-canvas").trim(),
       reading: root.getPropertyValue("--surface-reading").trim(),
+      raised: root.getPropertyValue("--surface-raised").trim(),
       primary: root.getPropertyValue("--text-primary").trim(),
       rule: root.getPropertyValue("--border-default").trim(),
       inputFill: root.getPropertyValue("--input").trim(),
@@ -119,6 +120,9 @@ test("renders the approved visual tokens, accessible states, and responsive evid
       touchButtonBorder: touchButton ? getComputedStyle(touchButton).borderColor : "",
       touchButtonRadius: touchButton ? getComputedStyle(touchButton).borderRadius : "",
       normalTextareaBorder: normalTextarea ? getComputedStyle(normalTextarea).borderColor : "",
+      normalTextareaBackground: normalTextarea
+        ? getComputedStyle(normalTextarea).backgroundColor
+        : "",
       normalTextareaRadius: normalTextarea ? getComputedStyle(normalTextarea).borderRadius : "",
       invalidInputRadius: invalidInput ? getComputedStyle(invalidInput).borderRadius : "",
     };
@@ -127,6 +131,7 @@ test("renders the approved visual tokens, accessible states, and responsive evid
   expect(visualValues).toMatchObject({
     canvas: "#0d0c0b",
     reading: "#11100f",
+    raised: "#171513",
     primary: "#f0ece6",
     rule: "#34302c",
     inputFill: "#34302c",
@@ -135,6 +140,7 @@ test("renders the approved visual tokens, accessible states, and responsive evid
     touchButtonBorder: "rgb(113, 103, 93)",
     touchButtonRadius: "6px",
     normalTextareaBorder: "rgb(113, 103, 93)",
+    normalTextareaBackground: "rgb(23, 21, 19)",
     normalTextareaRadius: "6px",
     invalidInputRadius: "6px",
   });
