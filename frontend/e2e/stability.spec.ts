@@ -4,8 +4,9 @@
  * E2E Test: Stability Validation
  * Tests for system stability under various conditions
  */
-import { test, expect, Page, BrowserContext } from '@playwright/test';
-import { ensureAuthenticated } from './helpers/auth';
+import { test, expect } from '@playwright/test';
+import { ensureActiveGame, ensureAuthenticated } from './helpers/auth';
+import { openPlayTools } from './helpers/play-tools';
 import { waitForApiResponse, waitForPageReady, waitForStableDOM, waitForNetworkIdle } from './helpers/wait-helpers';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
@@ -141,7 +142,7 @@ test.describe('Stability E2E', () => {
   });
 
   test('collection panel renders without freeze when data exists', async ({ page, context }) => {
-    await ensureAuthenticated(page, context);
+    await ensureActiveGame(page, context, { player_name: '收集稳定性测试角色' });
 
     const startTime = Date.now();
 
@@ -157,16 +158,20 @@ test.describe('Stability E2E', () => {
     const bodyContent = page.locator('body');
     await expect(bodyContent).toBeVisible();
 
-    // 如果收集面板存在，验证其渲染不卡顿
-    const collectionPanel = page.locator('[class*="collection"], [class*="collect"]').first();
-    if (await collectionPanel.isVisible({ timeout: 3000 }).catch(() => false)) {
-      // 面板已渲染，验证无卡顿
-      await expect(collectionPanel).toBeVisible();
-    }
+    // 从真实工具入口打开收集面板并验证内容完成渲染。
+    const tools = await openPlayTools(page);
+    await tools.getByRole('button', { name: '打开收集', exact: true }).click();
+
+    const collectionPanel = page.getByRole('dialog', { name: '收集', exact: true });
+    await expect(collectionPanel).toBeVisible({ timeout: 10000 });
+    await expect(
+      collectionPanel.getByText('人物、物品和标志物收集记录', { exact: true })
+    ).toBeVisible({ timeout: 10000 });
+    await expect(collectionPanel.getByRole('tab', { name: /人物.*\(/ })).toBeVisible();
   });
 
-  test('game save during AI generation succeeds', async ({ page, context }) => {
-    await ensureAuthenticated(page, context);
+  test('game save from the play tools succeeds', async ({ page, context }) => {
+    await ensureActiveGame(page, context, { player_name: '保存稳定性测试角色' });
 
     // 记录保存请求的响应
     let saveRequestSent = false;
@@ -179,25 +184,20 @@ test.describe('Stability E2E', () => {
       }
     });
 
-    await page.goto(`${BASE_URL}/create`);
+    await page.goto(`${BASE_URL}/play`);
     await page.waitForLoadState('domcontentloaded');
 
-    // 填写角色名触发 AI 生成
-    const nameInput = page.getByPlaceholder(/角色名|姓名|Name/i);
-    await nameInput.fill('保存测试角色');
+    const tools = await openPlayTools(page);
+    const saveResponsePromise = page.waitForResponse(response =>
+      /\/api\/games\/\d+\/save$/.test(response.url()) &&
+      response.request().method() === 'POST'
+    );
+    await tools.getByRole('button', { name: '保存游戏', exact: true }).click();
+    const saveResponse = await saveResponsePromise;
 
-    // 立即尝试查找保存按钮（如果存在）
-    const saveButton = page.getByRole('button', { name: /保存|Save/i }).first();
-
-    if (await saveButton.isVisible().catch(() => false)) {
-      await saveButton.click();
-      await page.waitForLoadState('domcontentloaded');
-
-      // 如果发送了保存请求，应该成功或返回合理的错误
-      if (saveRequestSent) {
-        expect([200, 201, 400, 422]).toContain(saveResponseStatus);
-      }
-    }
+    expect(saveRequestSent).toBe(true);
+    expect([200, 201, 400, 422]).toContain(saveResponseStatus);
+    expect(saveResponse.ok()).toBeTruthy();
 
     // 页面不应该崩溃
     const bodyContent = page.locator('body');

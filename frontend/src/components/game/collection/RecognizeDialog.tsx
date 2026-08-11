@@ -25,6 +25,7 @@ import type { RecognizeDialogProps } from "./types";
 export function RecognizeDialog({
   open,
   onClose,
+  onCloseAutoFocus,
   onSubmit,
   isRecognizing,
   isLoading,
@@ -40,7 +41,11 @@ export function RecognizeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+      <DialogContent
+        className="z-[81] max-w-lg max-h-[80vh] flex flex-col"
+        overlayClassName="z-[80]"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wand2 className="w-5 h-5" />

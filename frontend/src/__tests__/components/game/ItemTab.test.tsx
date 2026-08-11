@@ -3,7 +3,7 @@
  * Tests for the item tab section of CollectionPanel.
  */
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CollectionPanel } from '@/components/game/CollectionPanel';
 import { useCollectionStore } from '@/stores/useCollectionStore';
@@ -152,7 +152,7 @@ describe('ItemTab', () => {
     it('shows importance label in detail dialog', () => {
       useCollectionStore.setState({ selectedItem: mockItems[0] });
       render(<CollectionPanel gameId={1} />);
-      expect(screen.getByText(/关键/)).toBeInTheDocument();
+      expect(within(screen.getByRole('dialog')).getByText(/关键/)).toBeInTheDocument();
     });
   });
 

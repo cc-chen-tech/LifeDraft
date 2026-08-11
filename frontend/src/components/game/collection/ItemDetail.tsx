@@ -29,6 +29,7 @@ import type { ItemDetailProps } from "./types";
 export function ItemDetail({
   item,
   onClose,
+  onCloseAutoFocus,
   onGenerateImage,
   onGenerateDescription,
   onStartRegenerate,
@@ -51,7 +52,11 @@ export function ItemDetail({
 
   return (
     <Dialog open={!!item} onOpenChange={onClose}>
-      <DialogContent className="max-w-md h-[85vh] flex flex-col p-0 gap-0">
+      <DialogContent
+        className="z-[81] max-w-md h-[85vh] flex flex-col p-0 gap-0"
+        overlayClassName="z-[80]"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <DialogHeader className="px-6 pt-6 pb-2 flex-shrink-0">
           <div className="flex items-start justify-between">
             <div>

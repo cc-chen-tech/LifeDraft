@@ -1,8 +1,7 @@
 "use client";
 
 import { memo, useState, useCallback } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Package, Sparkles, Loader2 } from "lucide-react";
+import { Package, Loader2 } from "lucide-react";
 import { CATEGORY_LABELS } from "./types";
 import type { ItemListProps } from "./types";
 
@@ -21,7 +20,11 @@ export const ItemList = memo(function ItemList({
   }, []);
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-8">
+      <div
+        className="flex items-center justify-center py-8"
+        role="status"
+        aria-label="正在加载物品收集"
+      >
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -36,58 +39,59 @@ export const ItemList = memo(function ItemList({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <ul
+      aria-label="物品目录"
+      className="w-full min-w-0 divide-y divide-[var(--border-default)] border-y border-[var(--border-default)]"
+    >
       {items.map((item) => (
-        <button
-          key={item.name}
-          onClick={() => onItemClick(item)}
-          className="text-left p-3 rounded-lg border bg-card hover:bg-accent transition-colors"
-        >
-          {/* 图片区域 */}
-          <div className="aspect-square rounded-md bg-muted mb-2 overflow-hidden flex items-center justify-center">
-            {item.image_url && !imageErrors.has(item.name) ? (
-              <img
-                src={item.image_url}
-                alt={item.name}
-                loading="lazy"
-                onError={() => handleImageError(item.name)}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                <Package className="w-8 h-8" />
-                <span className="text-xs">无图片</span>
-              </div>
-            )}
-          </div>
+        <li key={item.name} className="min-w-0">
+          <button
+            type="button"
+            aria-label={`查看物品：${item.name}`}
+            onClick={() => onItemClick(item)}
+            className="grid min-h-11 w-full min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-3 rounded-none py-3 text-left transition-colors hover:bg-[var(--surface-subtle)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--text-primary)]"
+          >
+            <div className="flex h-14 w-14 items-center justify-center overflow-hidden bg-[var(--surface-subtle)]">
+              {item.image_url && !imageErrors.has(item.name) ? (
+                <img
+                  src={item.image_url}
+                  alt={item.name}
+                  loading="lazy"
+                  onError={() => handleImageError(item.name)}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <Package className="h-6 w-6 text-[var(--text-muted)]" />
+              )}
+            </div>
 
-          {/* 信息 */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-sm truncate">
-                {item.name}
-              </span>
-              {item.is_key_item && (
-                <Sparkles className="w-3 h-3 text-amber-500" />
-              )}
+            <div className="min-w-0 space-y-1">
+              <div className="flex min-w-0 items-baseline justify-between gap-3">
+                <span className="truncate text-sm font-medium text-[var(--text-primary)]">
+                  {item.name}
+                </span>
+                {item.is_key_item && (
+                  <span className="shrink-0 text-xs text-[var(--text-secondary)]">
+                    关键物品
+                  </span>
+                )}
+              </div>
+              <div className="flex min-w-0 items-center gap-1 text-xs text-[var(--text-secondary)]">
+                <span className="truncate">
+                  {CATEGORY_LABELS[item.category] || item.category}
+                </span>
+                {!item.image_generated && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="shrink-0">待生成</span>
+                  </>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              <Badge
-                variant="outline"
-                className="text-xs px-1.5 py-0"
-              >
-                {CATEGORY_LABELS[item.category] || item.category}
-              </Badge>
-              {!item.image_generated && (
-                <Badge variant="secondary" className="text-xs px-1.5 py-0">
-                  待生成
-                </Badge>
-              )}
-            </div>
-          </div>
-        </button>
+          </button>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 });
 

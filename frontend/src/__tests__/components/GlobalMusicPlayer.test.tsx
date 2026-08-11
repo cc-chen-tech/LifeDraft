@@ -3,7 +3,7 @@
  * Tests the global music player wrapper with store integration
  */
 import React from "react";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -29,7 +29,12 @@ import {
   useMusicStore,
 } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
-import { GlobalMusicPlayer } from "@/components/game/GlobalMusicPlayer";
+import {
+  CLOSE_SOUND_PANEL_EVENT,
+  GlobalMusicPlayer,
+  OPEN_SOUND_PANEL_EVENT,
+  SOUND_PANEL_STATE_EVENT,
+} from "@/components/game/GlobalMusicPlayer";
 import type { ReadingContext } from "@/lib/types";
 import { jsonResponse } from "@/__tests__/helpers/fetch";
 
@@ -584,7 +589,7 @@ describe("GlobalMusicPlayer", () => {
 
     it("keeps the expanded MusicPlayer mounted while a route adopts the bottom dock", async () => {
       const user = userEvent.setup();
-      mockUsePathname.mockReturnValue("/play");
+      mockUsePathname.mockReturnValue("/e2e-regression");
       setStoreState({
         activeStoryText: "story text",
         currentSong: { name: "Persistent Song", artists: ["Artist"] },
@@ -602,6 +607,206 @@ describe("GlobalMusicPlayer", () => {
         "bottom",
       );
       expect(screen.getByRole("group", { name: "音乐和朗读" })).toBeInTheDocument();
+      expect(screen.getByTestId("sound-music-console")).toBe(mountedMusicPlayer);
+    });
+
+    it("opens the persistent sound panel from the shared play-tools event", () => {
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { name: "Persistent Tool Song", artists: ["Artist"] },
+      });
+
+      render(<GlobalMusicPlayer />);
+      const mountedMusicPlayer = screen.getByTestId("sound-music-console");
+
+      fireEvent(window, new Event(OPEN_SOUND_PANEL_EVENT));
+
+      expect(screen.getByRole("group", { name: "音乐和朗读" })).toBeInTheDocument();
+      expect(screen.getByTestId("sound-music-console")).toBe(mountedMusicPlayer);
+    });
+
+    it("keeps the play-route mini bar visually hidden while preserving the persistent player for tools", async () => {
+      const user = userEvent.setup();
+      mockUsePathname.mockReturnValue("/play");
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { name: "Tool-only Song", artists: ["Artist"] },
+      });
+      render(
+        <>
+          <button type="button">游戏工具入口</button>
+          <GlobalMusicPlayer />
+        </>,
+      );
+      const returnTarget = screen.getByRole("button", { name: "游戏工具入口" });
+      returnTarget.focus();
+      const mountedMusicPlayer = screen.getByTestId("sound-music-console");
+
+      expect(screen.queryByTestId("global-music-mini-bar")).not.toBeInTheDocument();
+      expect(screen.getByTestId("global-music-player")).toHaveAttribute(
+        "data-play-tools-only",
+        "true",
+      );
+
+      fireEvent(window, new Event(OPEN_SOUND_PANEL_EVENT));
+      expect(screen.getByRole("button", { name: "收起声音" })).toHaveFocus();
+      expect(screen.getByTestId("sound-music-console")).toBe(mountedMusicPlayer);
+
+      await user.click(screen.getByRole("button", { name: "收起声音" }));
+      expect(screen.queryByTestId("global-music-mini-bar")).not.toBeInTheDocument();
+      expect(screen.getByTestId("sound-music-console")).toBe(mountedMusicPlayer);
+      expect(returnTarget).toHaveFocus();
+    });
+
+    it("closes the play sound panel before a competing surface without unmounting or stealing focus", () => {
+      mockUsePathname.mockReturnValue("/play");
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { name: "Persistent Tool Song", artists: ["Artist"] },
+      });
+      render(
+        <>
+          <button type="button">原声音入口</button>
+          <button type="button">新打开的工具</button>
+          <GlobalMusicPlayer />
+        </>,
+      );
+      const originalTrigger = screen.getByRole("button", { name: "原声音入口" });
+      const competingTrigger = screen.getByRole("button", { name: "新打开的工具" });
+      originalTrigger.focus();
+      const mountedMusicPlayer = screen.getByTestId("sound-music-console");
+
+      fireEvent(window, new Event(OPEN_SOUND_PANEL_EVENT));
+      expect(screen.getByRole("group", { name: "音乐和朗读" })).toBeInTheDocument();
+
+      competingTrigger.focus();
+      fireEvent(window, new Event(CLOSE_SOUND_PANEL_EVENT));
+
+      expect(screen.queryByRole("group", { name: "音乐和朗读" })).not.toBeInTheDocument();
+      expect(screen.getByTestId("sound-music-console")).toBe(mountedMusicPlayer);
+      expect(competingTrigger).toHaveFocus();
+    });
+
+    it("returns focus to the captured tools trigger when an external close hides the focused sound panel", () => {
+      mockUsePathname.mockReturnValue("/play");
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { name: "Persistent Tool Song", artists: ["Artist"] },
+      });
+      render(
+        <>
+          <button type="button">游戏工具入口</button>
+          <GlobalMusicPlayer />
+        </>,
+      );
+      const returnTarget = screen.getByRole("button", { name: "游戏工具入口" });
+      returnTarget.focus();
+
+      fireEvent(window, new Event(OPEN_SOUND_PANEL_EVENT));
+      expect(screen.getByRole("button", { name: "收起声音" })).toHaveFocus();
+      fireEvent(window, new Event(CLOSE_SOUND_PANEL_EVENT));
+
+      expect(screen.queryByRole("group", { name: "音乐和朗读" })).not.toBeInTheDocument();
+      expect(returnTarget).toHaveFocus();
+    });
+
+    it("reports the play sound surface lifetime for page-level overlap arbitration", async () => {
+      mockUsePathname.mockReturnValue("/play");
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { name: "Persistent Tool Song", artists: ["Artist"] },
+      });
+      const states: boolean[] = [];
+      const observeState = (event: Event) => {
+        states.push((event as CustomEvent<{ open: boolean }>).detail.open);
+      };
+      window.addEventListener(SOUND_PANEL_STATE_EVENT, observeState);
+      render(<GlobalMusicPlayer />);
+
+      fireEvent(window, new Event(OPEN_SOUND_PANEL_EVENT));
+      await waitFor(() => expect(states).toContain(true));
+      await userEvent.click(screen.getByRole("button", { name: "收起声音" }));
+      await waitFor(() => expect(states.at(-1)).toBe(false));
+
+      window.removeEventListener(SOUND_PANEL_STATE_EVENT, observeState);
+    });
+
+    it("never reports an open sound surface when no sound context can render", () => {
+      mockUsePathname.mockReturnValue("/play");
+      setStoreState({
+        activeStoryText: null,
+        currentSong: null,
+        recommendation: null,
+        queue: [],
+      });
+      const states: boolean[] = [];
+      const observeState = (event: Event) => {
+        states.push((event as CustomEvent<{ open: boolean }>).detail.open);
+      };
+      window.addEventListener(SOUND_PANEL_STATE_EVENT, observeState);
+      render(<GlobalMusicPlayer />);
+
+      fireEvent(window, new Event(OPEN_SOUND_PANEL_EVENT));
+
+      expect(screen.queryByTestId("global-music-player")).not.toBeInTheDocument();
+      expect(states).not.toContain(true);
+      window.removeEventListener(SOUND_PANEL_STATE_EVENT, observeState);
+    });
+
+    it("reports closed and restores the tools trigger when expanded sound context disappears", async () => {
+      mockUsePathname.mockReturnValue("/play");
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { name: "Temporary Song", artists: ["Artist"] },
+      });
+      const states: boolean[] = [];
+      const observeState = (event: Event) => {
+        states.push((event as CustomEvent<{ open: boolean }>).detail.open);
+      };
+      window.addEventListener(SOUND_PANEL_STATE_EVENT, observeState);
+      render(
+        <>
+          <button type="button">游戏工具入口</button>
+          <GlobalMusicPlayer />
+        </>,
+      );
+      const returnTarget = screen.getByRole("button", { name: "游戏工具入口" });
+      returnTarget.focus();
+      fireEvent(window, new Event(OPEN_SOUND_PANEL_EVENT));
+      expect(screen.getByRole("button", { name: "收起声音" })).toHaveFocus();
+
+      act(() => {
+        useMusicStore.setState({
+          activeStoryText: null,
+          currentSong: null,
+          recommendation: null,
+          queue: [],
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("global-music-player")).not.toBeInTheDocument();
+        expect(states.at(-1)).toBe(false);
+        expect(returnTarget).toHaveFocus();
+      });
+      window.removeEventListener(SOUND_PANEL_STATE_EVENT, observeState);
+    });
+
+    it("enters the play route with the persistent sound panel collapsed", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { name: "Route Song", artists: ["Artist"] },
+      });
+      const { rerender } = render(<GlobalMusicPlayer />);
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
+      const mountedMusicPlayer = screen.getByTestId("sound-music-console");
+
+      mockUsePathname.mockReturnValue("/play");
+      rerender(<GlobalMusicPlayer />);
+
+      expect(screen.queryByRole("group", { name: "音乐和朗读" })).not.toBeInTheDocument();
+      expect(screen.queryByTestId("global-music-mini-bar")).not.toBeInTheDocument();
       expect(screen.getByTestId("sound-music-console")).toBe(mountedMusicPlayer);
     });
 

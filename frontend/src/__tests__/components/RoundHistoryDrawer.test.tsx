@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { RoundHistoryDrawer, RoundHistoryItem } from '@/components/game/RoundHistoryDrawer';
 
 describe('RoundHistoryDrawer', () => {
@@ -39,6 +40,18 @@ describe('RoundHistoryDrawer', () => {
 
       expect(screen.getByText('历史回顾')).toBeInTheDocument();
       expect(screen.getByText('查看之前轮次的故事（只读模式）')).toBeInTheDocument();
+    });
+
+    it('uses the responsive drawer width above persistent sound controls', () => {
+      render(<RoundHistoryDrawer {...defaultProps} />);
+
+      const content = document.querySelector('[data-slot="sheet-content"]');
+      expect(content).toHaveClass(
+        'w-full',
+        'max-w-[min(100vw,24rem)]',
+        'z-[71]',
+      );
+      expect(content).not.toHaveClass('w-80', 'sm:w-96', 'z-50');
     });
 
     it('groups rounds by week', () => {
@@ -98,13 +111,57 @@ describe('RoundHistoryDrawer', () => {
 
       expect(screen.getByText('(2024-01-01)')).toBeInTheDocument();
     });
+
+    it('renders rounds as flat archive rows without badge pills or nested cards', () => {
+      render(
+        <RoundHistoryDrawer {...defaultProps} selectedIndex={0} />
+      );
+
+      const firstRound = screen.getByRole('button', {
+        name: '第 1 周 周一：阅读正文',
+      });
+      expect(firstRound).toHaveAttribute('data-slot', 'history-round-row');
+      expect(firstRound).toHaveClass(
+        'min-h-11',
+        'rounded-none',
+        'border-x-0',
+        'border-t-0',
+        'bg-transparent',
+        'shadow-none',
+      );
+      expect(firstRound.getAttribute('class')).not.toMatch(
+        /(?:rounded-(?:lg|xl|2xl)|shadow-(?!none)|bg-card|bg-primary|drop-shadow)/,
+      );
+
+      const recorded = firstRound.querySelector('[data-slot="history-recorded"]');
+      expect(recorded).toHaveTextContent('已记录');
+      expect(recorded).toHaveClass('text-xs');
+      expect(recorded).not.toHaveClass('text-[11px]');
+      expect(firstRound.querySelector('[data-slot="badge"]')).toBeNull();
+
+      const selectedBody = document.querySelector('[data-slot="history-round-body"]');
+      expect(selectedBody).toHaveClass(
+        'rounded-none',
+        'bg-transparent',
+        'shadow-none',
+        'text-sm',
+      );
+      expect(selectedBody).not.toHaveClass('text-xs');
+      expect(selectedBody?.getAttribute('class')).not.toMatch(
+        /(?:rounded-(?:md|lg|xl)|shadow-(?!none)|bg-primary|drop-shadow)/,
+      );
+    });
   });
 
   describe('interactions', () => {
-    it('calls onOpenChange(false) when clicking the close button', () => {
+    it('provides a Chinese-labelled 44px close action and preserves onOpenChange', () => {
       render(<RoundHistoryDrawer {...defaultProps} />);
 
-      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      const closeButton = screen.getByRole('button', { name: '关闭历史回顾' });
+      expect(closeButton).toHaveAttribute('data-size', 'icon-touch');
+      expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
+
+      fireEvent.click(closeButton);
 
       expect(mockOnOpenChange).toHaveBeenCalledWith(false);
     });
@@ -117,14 +174,22 @@ describe('RoundHistoryDrawer', () => {
       expect(mockOnOpenChange).toHaveBeenCalledWith(false);
     });
 
-    it('does not render a blocking overlay and keeps closing content non-interactive', () => {
+    it('uses a transparent modal overlay so keyboard focus cannot reach the reading page', async () => {
+      const user = userEvent.setup();
       render(<RoundHistoryDrawer {...defaultProps} />);
 
       const overlay = document.querySelector('[data-slot="sheet-overlay"]');
       const content = document.querySelector('[data-slot="sheet-content"]');
+      const closeButton = screen.getByRole('button', { name: '关闭历史回顾' });
 
-      expect(overlay).toBeNull();
+      expect(overlay).toHaveClass('bg-transparent');
+      expect(overlay).not.toHaveClass('pointer-events-none');
       expect(content).toHaveClass('data-[state=closed]:pointer-events-none');
+
+      closeButton.focus();
+      await user.tab({ shift: true });
+      expect(document.activeElement).not.toBe(document.body);
+      expect(content).toContainElement(document.activeElement as HTMLElement);
     });
 
     it('calls onSelect when clicking a round', () => {
@@ -149,7 +214,10 @@ describe('RoundHistoryDrawer', () => {
     it('shows back button when viewing history', () => {
       render(<RoundHistoryDrawer {...defaultProps} isViewingHistory={true} />);
 
-      expect(screen.getByText('返回当前轮次')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '返回当前轮次' })).toHaveAttribute(
+        'data-size',
+        'touch',
+      );
     });
 
     it('calls onBackToCurrent when clicking back button', () => {

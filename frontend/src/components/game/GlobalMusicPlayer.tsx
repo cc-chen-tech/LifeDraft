@@ -10,7 +10,7 @@
  * We use opacity-0 + h-0 + overflow-hidden (NOT display:none / hidden) so the
  * browser never pauses the audio.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { MusicPlayer } from "./MusicPlayer";
 import { StoryVoiceControls } from "./StoryVoiceControls";
@@ -25,14 +25,19 @@ import {
 } from "lucide-react";
 
 const SOUND_PANEL_ID = "story101-global-sound-panel";
+export const OPEN_SOUND_PANEL_EVENT = "story101:open-sound-panel";
+export const CLOSE_SOUND_PANEL_EVENT = "story101:close-sound-panel";
+export const SOUND_PANEL_STATE_EVENT = "story101:sound-panel-state";
 
 export function GlobalMusicPlayer() {
   const hasInitRef = useRef(false);
   const expandButtonRef = useRef<HTMLButtonElement>(null);
   const collapseButtonRef = useRef<HTMLButtonElement>(null);
   const focusAfterToggleRef = useRef<"expand" | "collapse" | null>(null);
+  const externalReturnFocusRef = useRef<HTMLElement | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const pathname = usePathname();
+  const usesPlayToolsOnly = pathname === "/play";
   const usesBottomAppShellDock =
     pathname === "/" ||
     pathname === "/saves" ||
@@ -85,21 +90,103 @@ export function GlobalMusicPlayer() {
   const storyText =
     activeStoryText ||
     (recommendation || currentSong || queue.length > 0 ? "persisted" : "");
+  const hasSoundContext = Boolean(storyText || activeReadingContext);
   const shouldAutoFetchRecommendation = Boolean(
     activeStoryText && effectiveGameId,
   );
 
-  const expandSoundPanel = () => {
+  const expandSoundPanel = useCallback(() => {
     focusAfterToggleRef.current = "collapse";
     setIsExpanded(true);
-  };
+  }, []);
 
-  const collapseSoundPanel = () => {
-    focusAfterToggleRef.current = "expand";
+  const collapseSoundPanel = useCallback(() => {
+    focusAfterToggleRef.current = usesPlayToolsOnly ? null : "expand";
     setIsExpanded(false);
-  };
+  }, [usesPlayToolsOnly]);
 
   useEffect(() => {
+    const handleExternalOpen = () => {
+      if (!hasSoundContext) {
+        setIsExpanded(false);
+        window.dispatchEvent(
+          new CustomEvent(SOUND_PANEL_STATE_EVENT, {
+            detail: { open: false },
+          }),
+        );
+        return;
+      }
+      const activeElement = document.activeElement;
+      if (
+        usesPlayToolsOnly &&
+        activeElement instanceof HTMLElement &&
+        activeElement !== document.body
+      ) {
+        externalReturnFocusRef.current = activeElement;
+      }
+      focusAfterToggleRef.current = "collapse";
+      window.dispatchEvent(
+        new CustomEvent(SOUND_PANEL_STATE_EVENT, {
+          detail: { open: true },
+        }),
+      );
+      setIsExpanded(true);
+      queueMicrotask(() => collapseButtonRef.current?.focus());
+    };
+
+    const handleExternalClose = () => {
+      const activeElement = document.activeElement;
+      const soundPanel = document.getElementById(SOUND_PANEL_ID);
+      const focusIsInsideSoundPanel =
+        activeElement instanceof HTMLElement &&
+        Boolean(soundPanel?.contains(activeElement));
+      if (!focusIsInsideSoundPanel) {
+        externalReturnFocusRef.current = null;
+      }
+      focusAfterToggleRef.current = null;
+      window.dispatchEvent(
+        new CustomEvent(SOUND_PANEL_STATE_EVENT, {
+          detail: { open: false },
+        }),
+      );
+      setIsExpanded(false);
+    };
+
+    window.addEventListener(OPEN_SOUND_PANEL_EVENT, handleExternalOpen);
+    window.addEventListener(CLOSE_SOUND_PANEL_EVENT, handleExternalClose);
+    return () => {
+      window.removeEventListener(OPEN_SOUND_PANEL_EVENT, handleExternalOpen);
+      window.removeEventListener(CLOSE_SOUND_PANEL_EVENT, handleExternalClose);
+    };
+  }, [hasSoundContext, usesPlayToolsOnly]);
+
+  useEffect(() => {
+    if (!usesPlayToolsOnly) return;
+    externalReturnFocusRef.current = null;
+    focusAfterToggleRef.current = null;
+    setIsExpanded(false);
+  }, [usesPlayToolsOnly]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent(SOUND_PANEL_STATE_EVENT, {
+        detail: { open: hasSoundContext && isExpanded },
+      }),
+    );
+  }, [hasSoundContext, isExpanded]);
+
+  useEffect(() => {
+    if (
+      !isExpanded &&
+      usesPlayToolsOnly &&
+      externalReturnFocusRef.current
+    ) {
+      const returnTarget = externalReturnFocusRef.current;
+      externalReturnFocusRef.current = null;
+      returnTarget.focus();
+      return;
+    }
+
     const focusTarget = focusAfterToggleRef.current;
     if (focusTarget === null) return;
 
@@ -109,24 +196,29 @@ export function GlobalMusicPlayer() {
         ? collapseButtonRef.current
         : expandButtonRef.current;
     button?.focus();
-  }, [isExpanded]);
+  }, [isExpanded, usesPlayToolsOnly]);
 
   useEffect(() => {
     if (!isExpanded) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        focusAfterToggleRef.current = "expand";
-        setIsExpanded(false);
+        collapseSoundPanel();
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isExpanded]);
+  }, [collapseSoundPanel, hasSoundContext, isExpanded]);
+
+  useEffect(() => {
+    if (hasSoundContext) return;
+    focusAfterToggleRef.current = null;
+    setIsExpanded(false);
+  }, [hasSoundContext]);
 
   // Only render when at least one sound surface has context.
-  if (!storyText && !activeReadingContext) return null;
+  if (!hasSoundContext) return null;
 
   const songName = currentSong?.name || recommendation?.songs?.[0]?.name || "";
   const artistName = currentSong?.artists?.join(", ") || "";
@@ -175,7 +267,10 @@ export function GlobalMusicPlayer() {
       role="region"
       aria-label="声音"
       data-testid="global-music-player"
+      data-play-tools-only={usesPlayToolsOnly ? "true" : undefined}
       data-app-shell-reserve={usesBottomAppShellDock ? "bottom" : undefined}
+      aria-hidden={usesPlayToolsOnly && !isExpanded ? true : undefined}
+      inert={usesPlayToolsOnly && !isExpanded ? true : undefined}
       className={
         usesBottomAppShellDock
           ? "app-shell-bottom-dock safe-area-fixed-inline fixed z-50 left-4 right-4 safe-area-pb md:left-auto md:right-4 md:w-[28rem]"
@@ -275,7 +370,7 @@ export function GlobalMusicPlayer() {
         </div>
       </div>
 
-      {!isExpanded && (
+      {!isExpanded && !usesPlayToolsOnly && (
         <div
           data-testid="global-music-mini-bar"
           className="relative flex items-center gap-2 rounded-[var(--radius-overlay)] border border-[var(--border-default)] bg-[var(--surface-overlay)] px-3 py-2 shadow-[var(--shadow-floating)] backdrop-blur-sm"

@@ -38,18 +38,30 @@ describe('RoundSceneImageDisplay', () => {
 
   describe('loading state', () => {
     it('shows loading indicator when loading and no image', () => {
-      render(<RoundSceneImageDisplay {...defaultProps} isLoading={true} />);
+      const { container } = render(
+        <RoundSceneImageDisplay {...defaultProps} isLoading={true} />
+      );
 
       expect(screen.getByText('正在生成场景插画...')).toBeInTheDocument();
+      expect(container.querySelector('[data-slot="card"]')).toBeNull();
+      expect(container.querySelector('[data-slot="round-scene-state"]')).toHaveClass(
+        'border-y',
+        'bg-transparent',
+        'shadow-none',
+      );
     });
   });
 
   describe('no image state', () => {
     it('shows placeholder when no image', () => {
-      render(<RoundSceneImageDisplay {...defaultProps} />);
+      const { container } = render(<RoundSceneImageDisplay {...defaultProps} />);
 
       expect(screen.getByText('暂无场景插画')).toBeInTheDocument();
-      expect(screen.getByText('生成场景插画')).toBeInTheDocument();
+      expect(container.querySelector('[data-slot="card"]')).toBeNull();
+      expect(screen.getByRole('button', { name: '生成场景插画' })).toHaveAttribute(
+        'data-size',
+        'touch',
+      );
     });
 
     it('shows a terminal error with an explicit retry action', () => {
@@ -84,6 +96,76 @@ describe('RoundSceneImageDisplay', () => {
       created_at: '2024-01-01',
     };
 
+    it('renders a scene generation error once with one standalone live region', () => {
+      const { container } = render(
+        <RoundSceneImageDisplay
+          {...defaultProps}
+          sceneImage={mockSceneImage}
+          error="场景插画暂时无法更新"
+        />,
+      );
+
+      expect(screen.getAllByText('场景插画暂时无法更新')).toHaveLength(1);
+      expect(container.querySelectorAll('[aria-live], [role="status"], [role="alert"]')).toHaveLength(1);
+    });
+
+    it('can defer scene error announcements to the page live owner', () => {
+      const { container } = render(
+        <RoundSceneImageDisplay
+          {...defaultProps}
+          sceneImage={mockSceneImage}
+          error="场景插画暂时无法更新"
+          announceError={false}
+        />,
+      );
+
+      expect(screen.getAllByText('场景插画暂时无法更新')).toHaveLength(1);
+      expect(container.querySelectorAll('[aria-live], [role="status"], [role="alert"]')).toHaveLength(0);
+    });
+
+    it('renders a flat editorial figure instead of a card or image-overlay pill', () => {
+      const { container } = render(
+        <RoundSceneImageDisplay
+          {...defaultProps}
+          sceneImage={mockSceneImage as any}
+          label="事件场景"
+        />
+      );
+
+      const figure = container.querySelector('figure[data-slot="round-scene-figure"]');
+      expect(figure).toBeInTheDocument();
+      expect(figure).toHaveClass(
+        'rounded-none',
+        'border-y',
+        'bg-transparent',
+        'shadow-none',
+      );
+      expect(container.querySelector('[data-slot="card"]')).toBeNull();
+      expect(figure?.querySelector('figcaption')).toHaveTextContent('事件场景');
+      expect(figure?.querySelector('figcaption')).toHaveTextContent('第 2 轮');
+
+      const roundLabel = screen.getByText('第 2 轮');
+      expect(roundLabel).not.toHaveClass('rounded', 'bg-black/50', 'text-white');
+      expect(figure?.getAttribute('class')).not.toMatch(
+        /(?:rounded-(?:lg|xl|2xl)|shadow-(?!none)|bg-card|drop-shadow)/,
+      );
+    });
+
+    it('keeps every visible scene action at a 44px touch target', () => {
+      render(
+        <RoundSceneImageDisplay {...defaultProps} sceneImage={mockSceneImage as any} />
+      );
+
+      expect(screen.getByRole('button', { name: '重新生成插画' })).toHaveAttribute(
+        'data-size',
+        'touch',
+      );
+      expect(screen.getByRole('button', { name: '刷新' })).toHaveAttribute(
+        'data-size',
+        'touch',
+      );
+    });
+
     it('displays scene image', () => {
       render(
         <RoundSceneImageDisplay {...defaultProps} sceneImage={mockSceneImage as any} />
@@ -110,7 +192,9 @@ describe('RoundSceneImageDisplay', () => {
         <RoundSceneImageDisplay {...defaultProps} sceneImage={mockSceneImage as any} />
       );
 
-      expect(screen.getByText('A beautiful scene')).toBeInTheDocument();
+      const description = screen.getByText('A beautiful scene');
+      expect(description).toHaveClass('whitespace-normal', 'break-words');
+      expect(description).not.toHaveClass('line-clamp-2', 'truncate');
     });
 
     it('calls onRefresh when refresh button clicked', () => {
@@ -144,8 +228,14 @@ describe('RoundSceneImageDisplay', () => {
       fireEvent.click(screen.getByRole('button', { name: '重新生成插画' }));
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(/让场景更明亮/)).toBeInTheDocument();
+        expect(screen.getByRole('textbox', { name: '插画修改要求' })).toHaveAttribute(
+          'data-control-size',
+          'touch',
+        );
       });
+
+      expect(screen.getByRole('button', { name: '确认生成' })).not.toHaveClass('text-xs');
+      expect(screen.getByRole('button', { name: '取消' })).not.toHaveClass('text-xs');
     });
 
     it('calls onRegenerate with prompt', async () => {

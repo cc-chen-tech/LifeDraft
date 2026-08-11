@@ -214,15 +214,72 @@ def test_global_music_player_uses_app_shell_route_safe_positioning() -> None:
     ).read_text(encoding="utf-8")
 
     collection_sheet = re.search(
-        r"<Sheet modal=\{false\} open=\{collectionPanelOpen\}.*?<CollectionPanel",
+        r'<Sheet(?P<attrs>[^>]*\bopen=\{collectionPanelOpen\}[^>]*)>'
+        r'(?P<body>.*?)</Sheet>',
         play_page,
         re.DOTALL,
     )
 
     assert collection_sheet is not None
-    assert 'className="z-[60] w-[400px] sm:w-[540px] p-0"' in collection_sheet.group(0)
+    sheet_attrs = collection_sheet.group("attrs")
+    collection_body = collection_sheet.group("body")
+    assert re.search(r"(?:^|\s)modal(?=\s|$)", sheet_attrs)
+    assert re.search(r"\bonOpenChange=\{handleCollectionOpenChange\}", sheet_attrs)
+
+    collection_content = re.search(
+        r'<SheetContent\b(?P<attrs>.*?)>\s*'
+        r'<SheetTitle\s+className="sr-only">收集</SheetTitle>',
+        collection_body,
+        re.DOTALL,
+    )
+    assert collection_content is not None
+    content_attrs = collection_content.group("attrs")
+    assert re.search(r'\bside="right"', content_attrs)
+    assert re.search(r"\bshowCloseButton=\{false\}", content_attrs)
+    assert re.search(r'\boverlayClassName="bg-transparent"', content_attrs)
+    content_class = re.search(r'\bclassName="([^"]+)"', content_attrs)
+    assert content_class is not None
+    assert {
+        "z-[70]",
+        "w-full",
+        "max-w-[min(100vw,34rem)]",
+        "p-0",
+        "sm:w-[34rem]",
+    } <= set(content_class.group(1).split())
+
+    close_control = re.search(
+        r"<SheetClose\s+asChild>\s*"
+        r"<Button(?P<attrs>.*?)>\s*"
+        r'<X\s+className="h-4 w-4"\s*/>\s*'
+        r"</Button>\s*</SheetClose>",
+        collection_body,
+        re.DOTALL,
+    )
+    assert close_control is not None
+    close_attrs = close_control.group("attrs")
+    assert re.search(r'\btype="button"', close_attrs)
+    assert re.search(r'\bvariant="quiet"', close_attrs)
+    assert re.search(r'\bsize="icon-touch"', close_attrs)
+    assert re.search(r'\baria-label="关闭收集"', close_attrs)
+    collection_panel = re.search(
+        r"<CollectionPanel\s+gameId=\{gameId \|\| 0\}\s*/>",
+        collection_body,
+    )
+    assert collection_panel is not None
+    assert close_control.end() < collection_panel.start()
+
+    play_route_guard = re.search(
+        r"const usesPlayToolsOnly\s*=\s*(?P<expr>.*?);",
+        music_player,
+        re.DOTALL,
+    )
+    assert play_route_guard is not None
+    assert re.fullmatch(
+        r'pathname\s*===\s*"/play"',
+        play_route_guard.group("expr").strip(),
+    )
     bottom_route_guard = re.search(
-        r"const usesBottomAppShellDock\s*=\s*(.*?);",
+        r"const usesBottomAppShellDock\s*=\s*(?P<expr>.*?);",
         music_player,
         re.DOTALL,
     )
@@ -230,7 +287,7 @@ def test_global_music_player_uses_app_shell_route_safe_positioning() -> None:
     assert bottom_route_guard is not None
     bottom_routes = re.findall(
         r'pathname\s*===\s*"([^"]+)"',
-        bottom_route_guard.group(1),
+        bottom_route_guard.group("expr"),
     )
     assert len(bottom_routes) == 6
     assert set(bottom_routes) == {
@@ -241,6 +298,12 @@ def test_global_music_player_uses_app_shell_route_safe_positioning() -> None:
         "/story/opening",
         "/ending",
     }
+    guard_residue = re.sub(
+        r'pathname\s*===\s*"[^"]+"',
+        "",
+        bottom_route_guard.group("expr"),
+    )
+    assert re.fullmatch(r"\s*(?:\|\|\s*){5}", guard_residue)
 
     spacer_branch = re.search(
         r"\{usesBottomAppShellDock\s*&&\s*\(.*?"
@@ -265,6 +328,12 @@ def test_global_music_player_uses_app_shell_route_safe_positioning() -> None:
     assert "app-shell-bottom-dock" in bottom_classes
     assert "left-4 right-4 safe-area-pb" in bottom_classes
     assert "top-16 left-0 right-0 safe-area-pt mt-2" in top_classes
+    assert re.search(
+        r"\{!isExpanded\s*&&\s*!usesPlayToolsOnly\s*&&\s*\(\s*"
+        r'<div\s+data-testid="global-music-mini-bar"',
+        music_player,
+        re.DOTALL,
+    )
 
 
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
@@ -442,7 +511,9 @@ def test_collection_panel_cache_spec_uses_scoped_character_locator() -> None:
 
     assert "page.locator('text=缓存测试角色')" not in spec
     assert "function collectionDialog" in spec
-    assert "collectionDialog(page).getByRole('button', { name: /缓存测试角色.*主角/ })" in spec
+    assert "name: '查看人物：缓存测试角色'" in spec
+    assert "initialPlayerRow.getByText('主角', { exact: true })" in spec
+    assert "cachedPlayerRow.getByText('主角', { exact: true })" in spec
 
 
 def test_e2e_specs_do_not_hardcode_default_backend_port() -> None:

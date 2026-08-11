@@ -15,36 +15,67 @@ export function CollectionTabs({
   landmarksCount,
 }: CollectionTabsProps) {
   return (
-    <div className="px-4 pt-2 flex gap-2 flex-shrink-0">
+    <div
+      role="tablist"
+      aria-label="收集分类"
+      className="grid min-w-0 flex-shrink-0 grid-cols-3 px-4 pt-2"
+    >
       <Button
-        variant={activeTab === "characters" ? "default" : "outline"}
-        size="sm"
+        id="collection-tab-characters"
+        type="button"
+        role="tab"
+        aria-selected={activeTab === "characters"}
+        aria-controls="collection-panel-characters"
+        variant="quiet"
+        size="touch"
         onClick={() => onTabChange("characters")}
         data-testid="collection-tab-characters"
-        className="flex-1"
+        className={`min-w-11 rounded-none border-b px-1 ${
+          activeTab === "characters"
+            ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+            : "border-[var(--border-default)]"
+        }`}
       >
-        <User className="w-4 h-4 mr-1" />
-        人物 ({charactersCount})
+        <User className="h-4 w-4" />
+        <span className="truncate">人物 ({charactersCount})</span>
       </Button>
       <Button
-        variant={activeTab === "items" ? "default" : "outline"}
-        size="sm"
+        id="collection-tab-items"
+        type="button"
+        role="tab"
+        aria-selected={activeTab === "items"}
+        aria-controls="collection-panel-items"
+        variant="quiet"
+        size="touch"
         onClick={() => onTabChange("items")}
         data-testid="collection-tab-items"
-        className="flex-1"
+        className={`min-w-11 rounded-none border-b px-1 ${
+          activeTab === "items"
+            ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+            : "border-[var(--border-default)]"
+        }`}
       >
-        <Package className="w-4 h-4 mr-1" />
-        物品 ({itemsCount})
+        <Package className="h-4 w-4" />
+        <span className="truncate">物品 ({itemsCount})</span>
       </Button>
       <Button
-        variant={activeTab === "landmarks" ? "default" : "outline"}
-        size="sm"
+        id="collection-tab-landmarks"
+        type="button"
+        role="tab"
+        aria-selected={activeTab === "landmarks"}
+        aria-controls="collection-panel-landmarks"
+        variant="quiet"
+        size="touch"
         onClick={() => onTabChange("landmarks")}
         data-testid="collection-tab-landmarks"
-        className="flex-1"
+        className={`min-w-11 rounded-none border-b px-1 ${
+          activeTab === "landmarks"
+            ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+            : "border-[var(--border-default)]"
+        }`}
       >
-        <MapPin className="w-4 h-4 mr-1" />
-        标志物 ({landmarksCount})
+        <MapPin className="h-4 w-4" />
+        <span className="truncate">标志物 ({landmarksCount})</span>
       </Button>
     </div>
   );

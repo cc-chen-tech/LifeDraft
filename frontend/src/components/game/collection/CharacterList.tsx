@@ -1,8 +1,7 @@
 "use client";
 
 import { memo, useState, useCallback } from "react";
-import { Badge } from "@/components/ui/badge";
-import { User, Image as ImageIcon, Loader2 } from "lucide-react";
+import { User, Loader2 } from "lucide-react";
 import type { CharacterListProps } from "./types";
 
 /**
@@ -20,7 +19,11 @@ export const CharacterList = memo(function CharacterList({
   }, []);
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-8">
+      <div
+        className="flex items-center justify-center py-8"
+        role="status"
+        aria-label="正在加载人物收集"
+      >
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -35,57 +38,51 @@ export const CharacterList = memo(function CharacterList({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <ul
+      aria-label="人物目录"
+      className="w-full min-w-0 divide-y divide-[var(--border-default)] border-y border-[var(--border-default)]"
+    >
       {characters.map((character) => (
-        <button
-          key={character.name}
-          onClick={() => onCharacterClick(character)}
-          className="text-left p-3 rounded-lg border bg-card hover:bg-accent transition-colors"
-        >
-          {/* 图片区域 - 使用 object-contain 显示完整人物 */}
-          <div className="aspect-square rounded-md bg-muted mb-2 overflow-hidden flex items-center justify-center">
-            {character.image_url && !imageErrors.has(character.name) ? (
-              <img
-                src={character.image_url}
-                alt={character.name}
-                className="w-full h-full object-contain"
-                loading="lazy"
-                onError={() => handleImageError(character.name)}
-              />
-            ) : (
-              <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                <User className="w-8 h-8" />
-                <span className="text-xs">无图片</span>
-              </div>
-            )}
-          </div>
-
-          {/* 信息 */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-sm truncate">
-                {character.name}
-              </span>
-              {character.image_generated ? (
-                <Badge variant="outline" className="text-xs">
-                  <ImageIcon className="w-3 h-3 mr-1" />
-                  有图
-                </Badge>
+        <li key={character.name} className="min-w-0">
+          <button
+            type="button"
+            aria-label={`查看人物：${character.name}`}
+            onClick={() => onCharacterClick(character)}
+            className="grid min-h-11 w-full min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-3 rounded-none py-3 text-left transition-colors hover:bg-[var(--surface-subtle)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--text-primary)]"
+          >
+            <div className="flex h-14 w-14 items-center justify-center overflow-hidden bg-[var(--surface-subtle)]">
+              {character.image_url && !imageErrors.has(character.name) ? (
+                <img
+                  src={character.image_url}
+                  alt={character.name}
+                  className="h-full w-full object-contain"
+                  loading="lazy"
+                  onError={() => handleImageError(character.name)}
+                />
               ) : (
-                <Badge variant="secondary" className="text-xs">
-                  待生成
-                </Badge>
+                <User className="h-6 w-6 text-[var(--text-muted)]" />
               )}
             </div>
-            {character.role && (
-              <p className="text-xs text-muted-foreground truncate">
-                {character.role}
-              </p>
-            )}
-          </div>
-        </button>
+
+            <div className="min-w-0 space-y-1">
+              <div className="flex min-w-0 items-baseline justify-between gap-3">
+                <span className="truncate text-sm font-medium text-[var(--text-primary)]">
+                  {character.name}
+                </span>
+                <span className="shrink-0 text-xs text-[var(--text-secondary)]">
+                  {character.image_generated ? "有图" : "待生成"}
+                </span>
+              </div>
+              {character.role && (
+                <p className="truncate text-xs text-[var(--text-secondary)]">
+                  {character.role}
+                </p>
+              )}
+            </div>
+          </button>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 });
 

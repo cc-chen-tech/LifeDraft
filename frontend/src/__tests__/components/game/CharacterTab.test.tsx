@@ -106,7 +106,7 @@ describe('CharacterTab', () => {
     it('calls setActiveTab when clicking tab buttons', async () => {
       const user = userEvent.setup();
       render(<CollectionPanel gameId={1} />);
-      const itemsButton = screen.getByRole('button', { name: /物品/ });
+      const itemsButton = screen.getByRole('tab', { name: /物品/ });
       await user.click(itemsButton);
       expect(storeSpy.spies.setActiveTab).toHaveBeenCalledWith('items');
     });

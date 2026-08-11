@@ -102,7 +102,10 @@ describe("Story101 foundation components", () => {
 
     const stylesheet = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8");
     expect(stylesheet).toMatch(
-      /\.story101-page-transition\s*\{[^}]*animation:\s*story101-page-enter 200ms ease-out both/
+      /\.story101-page-transition\s*\{[^}]*animation:\s*story101-page-enter 200ms ease-out backwards/
+    );
+    expect(stylesheet).not.toMatch(
+      /\.story101-page-transition\s*\{[^}]*animation:[^;}]*\b(?:forwards|both)\b/
     );
     expect(stylesheet).toMatch(
       /@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*\.story101-page-transition\s*\{[^}]*animation:\s*none/

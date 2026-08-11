@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { ensureAuthenticated, API_URL } from "./helpers/auth";
+import { openPlayTools } from "./helpers/play-tools";
 
 // 通过 API 直接创建测试游戏
 async function createTestGame(
@@ -32,7 +33,7 @@ async function createTestGame(
 }
 
 test.describe("叙事质量设置", () => {
-  test("齿轮按钮下拉菜单可切换三级模式", async ({ page, context }) => {
+  test("游戏工具可切换三级模式", async ({ page, context }) => {
     // 登录并创建游戏
     await ensureAuthenticated(page, context);
     const gameId = await createTestGame(context);
@@ -42,30 +43,21 @@ test.describe("叙事质量设置", () => {
     await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
-    // 点击右上角齿轮按钮（设置）
-    const settingsButton = page.locator("button[title='设置']").first();
-    await expect(settingsButton).toBeVisible({ timeout: 20000 });
-    await settingsButton.click();
-
-    // 断言 DropdownMenu 可见且包含"设置"和"叙事质量"
-    await expect(page.locator("text=设置").first()).toBeVisible();
-    await expect(page.locator("text=叙事质量").first()).toBeVisible();
+    // 从当前视口的真实入口打开统一游戏工具面板
+    const toolsDialog = await openPlayTools(page);
+    await expect(toolsDialog.getByText("叙事质量", { exact: true })).toBeVisible();
     await expect(page.locator('[data-testid="chat-bar-panel"]')).not.toBeVisible();
 
-    // Hover 到"叙事质量"上展开子菜单
-    await page.locator("text=叙事质量").first().hover();
-    await page.waitForTimeout(300);
-
-    // 子菜单中应包含三个选项
-    await expect(page.locator("text=快速").first()).toBeVisible();
-    await expect(page.locator("text=专家").first()).toBeVisible();
-    await expect(page.locator("text=大师").first()).toBeVisible();
+    // 面板中直接提供三个原生 radio 选项
+    await expect(toolsDialog.getByRole("radio", { name: "快速", exact: true })).toBeVisible();
+    await expect(toolsDialog.getByRole("radio", { name: "专家", exact: true })).toBeVisible();
+    await expect(toolsDialog.getByRole("radio", { name: "大师", exact: true })).toBeVisible();
 
     // 选择"大师"
-    const masterItem = page.locator("[role='menuitemradio']:has-text('大师')");
-    await masterItem.click();
+    const masterItem = toolsDialog.getByRole("radio", { name: "大师", exact: true });
+    await masterItem.check();
 
-    // 验证"大师"项带有选中标记
-    await expect(masterItem).toHaveAttribute("data-state", "checked");
+    // 验证"大师"原生 radio 已选中
+    await expect(masterItem).toBeChecked();
   });
 });

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { API_URL, ensureAuthenticated } from './helpers/auth';
+import { openPlayTools } from './helpers/play-tools';
 
 async function routeActionableGameState(
   page: Page,
@@ -82,8 +83,8 @@ test.describe('Read-only grounded story assistant', () => {
     await expect(
       page.getByRole('button', { name: '选择 1：继续忠实记录已经发生的生活' }),
     ).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByLabel('打开聊天')).toBeVisible({ timeout: 20_000 });
-    await page.getByLabel('打开聊天').click();
+    const toolsDialog = await openPlayTools(page);
+    await toolsDialog.getByRole('button', { name: '打开剧情助手' }).click();
 
     const input = page.getByPlaceholder('向剧情助手提问...');
     await expect(input).toBeVisible();

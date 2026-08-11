@@ -58,6 +58,24 @@ describe("StatusBar", () => {
       expect(screen.queryByText(/财富/)).not.toBeInTheDocument();
       expect(screen.queryByText(/5,000/)).not.toBeInTheDocument();
     });
+
+    it("offers a flat narrative treatment without badge pills", () => {
+      const { container } = render(
+        <StatusBar
+          playerState={{ ...mockPlayerState, current_round: 0, rounds_per_week: 3 }}
+          progress={mockProgress}
+          appearance="narrative"
+        />
+      );
+
+      expect(screen.getByText("25岁 · 第10周")).toBeInTheDocument();
+      expect(screen.getByText("周一 · 第1轮/3")).toBeInTheDocument();
+      expect(container.querySelector('[data-slot="badge"]')).not.toBeInTheDocument();
+      expect(screen.getByTestId("status-bar")).toHaveAttribute(
+        "data-appearance",
+        "narrative",
+      );
+    });
   });
 
   describe("full mode", () => {

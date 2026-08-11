@@ -67,6 +67,7 @@ export interface LandmarkListProps {
 export interface CharacterDetailProps {
   character: CharacterCollectionItem | null;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onGenerateImage: (name: string) => Promise<void>;
   onStartRegenerate: () => void;
   onCancelRegenerate: () => void;
@@ -85,6 +86,7 @@ export interface CharacterDetailProps {
 export interface ItemDetailProps {
   item: ItemCollectionItem | null;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onGenerateImage: (name: string) => Promise<void>;
   onGenerateDescription: (name: string) => Promise<void>;
   onStartRegenerate: () => void;
@@ -105,6 +107,7 @@ export interface ItemDetailProps {
 export interface LandmarkDetailProps {
   landmark: LandmarkCollectionItem | null;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onGenerateImage: (name: string) => Promise<void>;
   onGenerateDescription: (name: string) => Promise<void>;
   onOpenDeleteConfirm: (name: string) => void;
@@ -117,6 +120,7 @@ export interface LandmarkDetailProps {
 export interface RecognizeDialogProps {
   open: boolean;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onSubmit: () => Promise<void>;
   isRecognizing: boolean;
   isLoading: boolean;
@@ -137,6 +141,7 @@ export interface RecognizeDialogProps {
 export interface AddItemDialogProps {
   open: boolean;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onSubmit: () => Promise<void>;
   itemName: string;
   onItemNameChange: (value: string) => void;
@@ -149,6 +154,7 @@ export interface AddItemDialogProps {
 export interface DeleteConfirmDialogProps {
   open: boolean;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onConfirm: () => Promise<void>;
   entityToDelete: EntityToDelete | null;
   isDeleting: boolean;

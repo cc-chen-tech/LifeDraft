@@ -134,6 +134,17 @@
   );
   --app-shell-feedback-bottom: calc(var(--app-shell-bottom-reserve) + 0.75rem);
 
+  /* Keep the play reading axis and transient surfaces clear of its mobile dock. */
+  --play-mobile-action-dock-height: 4.25rem;
+  --play-floating-gap: 0.75rem;
+  --play-mobile-floating-bottom: calc(
+    var(--play-mobile-action-dock-height) + var(--safe-area-inset-bottom) +
+      var(--play-floating-gap)
+  );
+  --play-mobile-content-reserve: calc(
+    var(--play-mobile-action-dock-height) + var(--safe-area-inset-bottom) + 2rem
+  );
+
   /* Compatibility aliases */
   --background: var(--surface-canvas);
   --foreground: var(--text-primary);
@@ -191,6 +202,26 @@
 
 .app-shell-bottom-dock {
   bottom: var(--app-shell-fixed-gap);
+}
+
+.play-reading-axis {
+  padding-bottom: var(--play-mobile-content-reserve);
+}
+
+.play-chat-surface,
+.play-feedback {
+  bottom: var(--play-mobile-floating-bottom);
+}
+
+@media (min-width: 768px) {
+  .play-reading-axis {
+    padding-bottom: 4rem;
+  }
+
+  .play-chat-surface,
+  .play-feedback {
+    bottom: 1rem;
+  }
 }
 
 @layer base {
@@ -261,7 +292,7 @@
 }
 
 .story101-page-transition {
-  animation: story101-page-enter 200ms ease-out both;
+  animation: story101-page-enter 200ms ease-out backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
