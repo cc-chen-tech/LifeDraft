@@ -240,7 +240,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      const continueButton = screen.getByRole('button', { name: /跳过并继续/i });
+      const continueButton = screen.getByRole('button', { name: /继续生成角色/i });
       expect(continueButton).toBeEnabled();
     });
   });

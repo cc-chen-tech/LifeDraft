@@ -13,6 +13,7 @@ import api, { type PortraitImageGenerationJob } from "@/lib/api";
 
 const PORTRAIT_JOB_POLL_INTERVAL_MS = 3_000;
 let portraitJobPollTimer: ReturnType<typeof setTimeout> | null = null;
+let activePortraitJobGameId: number | null = null;
 
 function clearPortraitJobPollTimer(): void {
   if (portraitJobPollTimer !== null) {
@@ -132,6 +133,8 @@ export const useImageStore = create<ImageState>()(
         throw new Error("请先输入角色姓名");
       }
 
+      activePortraitJobGameId = gameId;
+      clearPortraitJobPollTimer();
       set({
         isGeneratingImage: true,
         imageGenerationError: null,
@@ -180,6 +183,8 @@ export const useImageStore = create<ImageState>()(
           feedback,
         });
 
+        if (activePortraitJobGameId !== gameId) return;
+
         set({
           portraitImageJob: job,
           isGeneratingImage: job.status === "queued" || job.status === "running",
@@ -199,6 +204,7 @@ export const useImageStore = create<ImageState>()(
         }
       } catch (err) {
         console.error("[generatePlayerImage] Failed:", err);
+        if (activePortraitJobGameId !== gameId) return;
         await get().refreshPortraitImageJob(gameId);
         const recoveredJob = get().portraitImageJob;
         if (recoveredJob && (recoveredJob.status === "queued" || recoveredJob.status === "running" || recoveredJob.status === "succeeded")) {
@@ -215,8 +221,11 @@ export const useImageStore = create<ImageState>()(
     refreshPortraitImageJob: async (gameId) => {
       if (!gameId) return;
 
+      activePortraitJobGameId = gameId;
+      clearPortraitJobPollTimer();
       try {
         const job = await api.images.getLatestCharacterPortraitJob(gameId);
+        if (activePortraitJobGameId !== gameId) return;
         if (!job) {
           clearPortraitJobPollTimer();
           set({ portraitImageJob: null, isGeneratingImage: false });
@@ -243,21 +252,29 @@ export const useImageStore = create<ImageState>()(
         clearPortraitJobPollTimer();
         portraitJobPollTimer = setTimeout(() => {
           portraitJobPollTimer = null;
-          void get().refreshPortraitImageJob(gameId);
+          if (activePortraitJobGameId === gameId) {
+            void get().refreshPortraitImageJob(gameId);
+          }
         }, PORTRAIT_JOB_POLL_INTERVAL_MS);
       } catch (err) {
+        if (activePortraitJobGameId !== gameId) return;
         console.warn("[refreshPortraitImageJob] Unable to refresh durable job", err);
         if (get().portraitImageJob?.status === "queued" || get().portraitImageJob?.status === "running") {
           clearPortraitJobPollTimer();
           portraitJobPollTimer = setTimeout(() => {
             portraitJobPollTimer = null;
-            void get().refreshPortraitImageJob(gameId);
+            if (activePortraitJobGameId === gameId) {
+              void get().refreshPortraitImageJob(gameId);
+            }
           }, PORTRAIT_JOB_POLL_INTERVAL_MS);
         }
       }
     },
 
-    stopPortraitImagePolling: () => clearPortraitJobPollTimer(),
+    stopPortraitImagePolling: () => {
+      activePortraitJobGameId = null;
+      clearPortraitJobPollTimer();
+    },
 
     regeneratePlayerImage: async (feedback) => {
       const { playerImages, selectedImageIndex } = get();

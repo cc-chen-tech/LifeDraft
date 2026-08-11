@@ -424,7 +424,7 @@ export default function CreatePage() {
                 </>
               ) : isPortraitStep && playerImages.length === 0 ? (
                 <>
-                  跳过并继续
+                  继续生成角色
                   <ArrowRight />
                 </>
               ) : isPortraitStep ? (

@@ -138,6 +138,42 @@ describe('useImageStore', () => {
         });
       });
 
+      it('ignores a stale portrait job response after switching games', async () => {
+        let resolveFirstGame!: (response: Response) => void;
+        const firstGameResponse = new Promise<Response>((resolve) => {
+          resolveFirstGame = resolve;
+        });
+        (global.fetch as jest.Mock).mockImplementation((url: string) => {
+          if (url.includes('game_id=1')) return firstGameResponse;
+          if (url.includes('game_id=2')) {
+            return Promise.resolve(jsonResponse({
+              job_id: 22,
+              game_id: 2,
+              status: 'queued',
+              image_id: null,
+              attempt_count: 0,
+            }));
+          }
+          throw new Error(`Unexpected URL: ${url}`);
+        });
+
+        const staleRefresh = useImageStore.getState().refreshPortraitImageJob(1);
+        await useImageStore.getState().refreshPortraitImageJob(2);
+        resolveFirstGame(jsonResponse({
+          job_id: 11,
+          game_id: 1,
+          status: 'queued',
+          image_id: null,
+          attempt_count: 0,
+        }));
+        await staleRefresh;
+
+        expect(useImageStore.getState().portraitImageJob).toMatchObject({
+          job_id: 22,
+          game_id: 2,
+        });
+      });
+
       it('loads the persisted image after polling reports success', async () => {
         (global.fetch as jest.Mock).mockResolvedValue(
           jsonResponse({

@@ -193,7 +193,9 @@ async function expectOnlyApiRequests(
   expect(scenario.unexpected).toEqual([]);
   expect(
     scenario.requests.filter(
-      ({ origin, search }) => origin !== FRONTEND_ORIGIN || search !== "",
+      ({ method, origin, path, search }) =>
+        origin !== FRONTEND_ORIGIN ||
+        (search !== "" && expected[`${method} ${path}${search}`] === undefined),
     ),
   ).toEqual([]);
 
@@ -416,16 +418,74 @@ async function installCreateFixture(page: Page) {
   await fulfillExactJson(page, "/api/games", "POST", () => ({
     game_id: CREATE_GAME_ID,
   }));
-  await fulfillExactJson(page, "/api/images/generate", "POST", () => ({
-    images: [
-      {
-        image_id: 81001,
-        image_url:
-          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='480'%3E%3Crect width='100%25' height='100%25' fill='%23171513'/%3E%3C/svg%3E",
-      },
-    ],
-    total: 1,
-  }));
+  const portraitImage = {
+    image_id: 81001,
+    image_url:
+      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='480'%3E%3Crect width='100%25' height='100%25' fill='%23171513'/%3E%3C/svg%3E",
+    image_type: "character",
+    entity_key: "player_main",
+    entity_name: "许知夏",
+  };
+  await fulfillExactJson(
+    page,
+    "/api/images/character/generate-async",
+    "POST",
+    () => ({
+      job_id: 81002,
+      game_id: CREATE_GAME_ID,
+      status: "queued",
+      image_id: null,
+      attempt_count: 0,
+    }),
+  );
+  await page.route(
+    new RegExp(`/api/images/character/jobs/latest\\?game_id=${CREATE_GAME_ID}$`),
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (
+        request.method() !== "GET" ||
+        url.origin !== FRONTEND_ORIGIN ||
+        url.pathname !== "/api/images/character/jobs/latest" ||
+        url.search !== `?game_id=${CREATE_GAME_ID}`
+      ) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          job_id: 81002,
+          game_id: CREATE_GAME_ID,
+          status: "succeeded",
+          image_id: portraitImage.image_id,
+          attempt_count: 1,
+        }),
+      });
+    },
+  );
+  await page.route(
+    new RegExp(`/api/images/game/${CREATE_GAME_ID}\\?image_type=character$`),
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (
+        request.method() !== "GET" ||
+        url.origin !== FRONTEND_ORIGIN ||
+        url.pathname !== `/api/images/game/${CREATE_GAME_ID}` ||
+        url.search !== "?image_type=character"
+      ) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ images: [portraitImage], total: 1 }),
+      });
+    },
+  );
   await fulfillExactJson(page, "/api/presets", "POST", () => ({
     preset_id: 74001,
   }));
@@ -650,7 +710,9 @@ test("create uses the real five-step reading flow through completion", async ({
     "POST /api/character/relationship": 3,
     "POST /api/character/relationships-summary": 1,
     "POST /api/games": 1,
-    "POST /api/images/generate": 1,
+    "POST /api/images/character/generate-async": 1,
+    [`GET /api/images/character/jobs/latest?game_id=${CREATE_GAME_ID}`]: 1,
+    [`GET /api/images/game/${CREATE_GAME_ID}?image_type=character`]: 1,
     "POST /api/presets": 1,
     [`GET /api/music/playlist/${SOUND_GAME_ID}`]: 1,
   });
