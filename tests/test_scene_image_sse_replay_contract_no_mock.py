@@ -113,10 +113,14 @@ def test_scene_image_sse_replay_replaces_stale_key_and_isolates_games() -> None:
         )
 
         assert response.status_code == 200
-        events = [
-            json.loads(line[6:].decode("utf-8"))
+        event_lines = (
+            line.decode("utf-8") if isinstance(line, bytes) else line
             for line in response.iter_lines()
-            if line.startswith(b"data: ")
+        )
+        events = [
+            json.loads(line[6:])
+            for line in event_lines
+            if line.startswith("data: ")
         ]
         assert {(event["week"], event["round_number"], event["stage"]) for event in events} == {
             (3, 2, "event"),
