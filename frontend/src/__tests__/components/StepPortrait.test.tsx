@@ -33,7 +33,7 @@ describe("StepPortrait", () => {
     it("shows loading when generating image", () => {
       render(<StepPortrait {...baseProps} isGeneratingImage={true} />);
       expect(
-        screen.getByText("正在生成人物形象...")
+        screen.getByText("人物形象正在后台生成，你可以先继续创建。")
       ).toBeInTheDocument();
       expect(screen.queryByText(/AI/)).not.toBeInTheDocument();
     });
@@ -99,7 +99,7 @@ describe("StepPortrait", () => {
         <StepPortrait {...baseProps} isGeneratingImage={true} gameId={null} />
       );
       expect(
-        screen.getByText("正在生成人物形象...")
+        screen.getByText("人物形象正在后台生成，你可以先继续创建。")
       ).toBeInTheDocument();
       expect(screen.queryByText("正在准备生成...")).not.toBeInTheDocument();
     });

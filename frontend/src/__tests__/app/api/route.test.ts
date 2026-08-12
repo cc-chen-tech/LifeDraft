@@ -444,6 +444,27 @@ describe('错误处理', () => {
     expect(res.status).toBe(504);
     expect(String((res as { body: unknown }).body)).toContain('300s');
   });
+
+  it('/api/images/generate 使用长请求超时，保留其他同步图片功能的兼容性', async () => {
+    (global.fetch as jest.Mock).mockImplementation((_url, opts?: { signal?: AbortSignal }) => {
+      return new Promise((_, reject) => {
+        opts?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'));
+        });
+      });
+    });
+
+    const req = makeRequest('POST', '/api/images/generate', {
+      body: JSON.stringify({ game_id: 1, image_type: 'character' }),
+    });
+    const resPromise = POST(req);
+
+    await Promise.resolve();
+    jest.advanceTimersByTime(300_001);
+    const res = await resPromise;
+    expect(res.status).toBe(504);
+    expect(String((res as { body: unknown }).body)).toContain('300s');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

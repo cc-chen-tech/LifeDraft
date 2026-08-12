@@ -85,10 +85,10 @@ export function StepPortrait({
           <div className="mx-auto flex aspect-[9/17] w-full max-w-sm items-center justify-center overflow-hidden rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)] px-4">
             <div className="flex flex-col items-center gap-2 text-[var(--text-secondary)]">
               <Loader2 className="w-8 h-8 animate-spin" />
-              <span className="text-sm">正在生成人物形象...</span>
+              <span className="text-center text-sm">人物形象正在后台生成，你可以先继续创建。</span>
               {isLongRunning && (
                 <div className="mt-2 max-w-xs border-l-2 border-[var(--border-interactive)] pl-3 text-left text-xs leading-relaxed">
-                  人物形象生成通常需要 1-2 分钟。你可以继续等待，或刷新状态查看是否已经生成完成。
+                  人物形象生成通常需要 1-2 分钟。你可以继续创建，或刷新状态查看是否已经生成完成。
                 </div>
               )}
               {isLongRunning && onRecover && (

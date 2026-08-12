@@ -931,6 +931,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/images/character/generate-async": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue Character Portrait
+         * @description Queue a durable main-character portrait without holding the browser request open.
+         */
+        post: operations["enqueue_character_portrait_api_images_character_generate_async_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images/character/jobs/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Latest Character Portrait Job
+         * @description Return the latest durable portrait job for the authenticated game owner.
+         */
+        get: operations["get_latest_character_portrait_job_api_images_character_jobs_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images/character/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Character Portrait Job
+         * @description Return an owned portrait job by id for polling after refresh or relogin.
+         */
+        get: operations["get_character_portrait_job_api_images_character_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/images/batch-characters": {
         parameters: {
             query?: never;
@@ -2649,6 +2709,30 @@ export interface components {
             mood?: string | null;
             /** Keywords */
             keywords?: string[] | null;
+        };
+        /**
+         * PortraitImageGenerationJobResponse
+         * @description Safe public state for a durable main-character portrait job.
+         */
+        PortraitImageGenerationJobResponse: {
+            /** Job Id */
+            job_id: number;
+            /** Game Id */
+            game_id: number;
+            /** Status */
+            status: string;
+            /** Image Id */
+            image_id?: number | null;
+            /** Attempt Count */
+            attempt_count: number;
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** PresetInfo */
         PresetInfo: {
@@ -4813,6 +4897,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImageListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enqueue_character_portrait_api_images_character_generate_async_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitImageGenerationJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_latest_character_portrait_job_api_images_character_jobs_latest_get: {
+        parameters: {
+            query: {
+                game_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitImageGenerationJobResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_character_portrait_job_api_images_character_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitImageGenerationJobResponse"];
                 };
             };
             /** @description Validation Error */

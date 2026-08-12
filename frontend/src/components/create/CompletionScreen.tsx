@@ -216,6 +216,13 @@ export function CompletionScreen({
               </div>
             )}
 
+            {playerImages.length === 0 && isGeneratingImage && (
+              <div className="flex items-center gap-2 border-l-2 border-[var(--border-interactive)] py-2 pl-3 text-sm text-[var(--text-secondary)]" role="status">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                人物形象正在后台生成，完成后会自动显示。
+              </div>
+            )}
+
             <div className="min-w-0">
               <p className="text-xs text-[var(--text-secondary)]">角色创建</p>
               <h1 className="mt-2 font-serif text-2xl font-semibold text-[var(--text-primary)] sm:text-3xl">

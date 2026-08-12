@@ -770,7 +770,7 @@ describe('CreatePage', () => {
       useImageStore.setState({ isGeneratingImage: true });
 
       render(<CreatePage />);
-      expect(screen.getByText('正在生成人物形象...')).toBeInTheDocument();
+      expect(screen.getByText('人物形象正在后台生成，你可以先继续创建。')).toBeInTheDocument();
       expect(screen.queryByText(/AI/)).not.toBeInTheDocument();
     });
 
