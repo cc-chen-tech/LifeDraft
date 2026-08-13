@@ -1,19 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import {
-  Calendar,
-  User,
-  Globe,
-  Home,
-  Users,
-  Sparkles,
-  Coins,
-} from "lucide-react";
 
 interface SettingDisplayProps {
   stepKey: string;
@@ -23,7 +11,7 @@ interface SettingDisplayProps {
 }
 
 /**
- * SettingDisplay — 将各设定类型的 JSON 数据渲染为人类可读的卡片
+ * SettingDisplay — 将各设定类型的 JSON 数据渲染为人类可读的章节
  * 根据 stepKey 使用不同的渲染模板
  */
 export const SettingDisplay = memo(function SettingDisplay({
@@ -32,22 +20,25 @@ export const SettingDisplay = memo(function SettingDisplay({
   isNew = false,
   className,
 }: SettingDisplayProps) {
+  if (stepKey === "wealth") return null;
+
   return (
-    <Card
+    <section
+      data-slot="setting-display"
+      data-state={isNew ? "new" : undefined}
       className={cn(
-        "p-5 bg-card",
-        isNew ? "border-primary/30 border" : "border-border",
+        "min-w-0 border-y border-[var(--border-default)] py-5",
+        "font-serif text-[var(--text-primary)]",
         className
       )}
     >
       {isNew && (
-        <div className="flex items-center gap-2 mb-3">
-          <Sparkles className="w-4 h-4 text-primary" />
-          <span className="text-xs text-primary font-medium">AI 生成</span>
-        </div>
+        <p className="mb-4 text-xs font-sans text-[var(--text-secondary)]">
+          刚刚生成
+        </p>
       )}
       {renderContent(stepKey, data)}
-    </Card>
+    </section>
   );
 });
 
@@ -72,12 +63,10 @@ function renderContent(
       return <RelationshipsDisplay data={data} />;
     case "traits":
       return <TraitsDisplay data={data} />;
-    case "wealth":
-      return <WealthDisplay data={data} />;
     default:
       // Fallback: formatted JSON
       return (
-        <pre className="text-sm text-foreground whitespace-pre-wrap font-sans">
+        <pre className="min-w-0 whitespace-pre-wrap break-words font-sans text-sm text-[var(--text-primary)]">
           {JSON.stringify(data, null, 2)}
         </pre>
       );
@@ -97,19 +86,18 @@ function has(data: Record<string, unknown>, key: string): boolean {
 function EraDisplay({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <Calendar className="w-5 h-5 text-primary flex-shrink-0" />
-        <span className="text-2xl font-bold text-foreground">
+      <div className="min-w-0">
+        <span className="break-words text-2xl font-semibold text-[var(--text-primary)]">
           {str(data.year)}年
         </span>
       </div>
       {has(data, "era_description") && (
-        <p className="text-sm text-foreground leading-relaxed">
+        <p className="break-words text-sm leading-relaxed text-[var(--text-primary)]">
           {str(data.era_description)}
         </p>
       )}
       {has(data, "world_context") && (
-        <p className="text-sm text-muted-foreground leading-relaxed">
+        <p className="break-words text-sm leading-relaxed text-[var(--text-secondary)]">
           {str(data.world_context)}
         </p>
       )}
@@ -121,21 +109,20 @@ function EraDisplay({ data }: { data: Record<string, unknown> }) {
 function AgeDisplay({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <User className="w-5 h-5 text-primary flex-shrink-0" />
-        <div>
-          <span className="text-2xl font-bold text-foreground">
+      <div className="min-w-0">
+        <div className="min-w-0">
+          <span className="break-words text-2xl font-semibold text-[var(--text-primary)]">
             {str(data.age)}岁
           </span>
           {has(data, "birth_year") && (
-            <span className="text-sm text-muted-foreground ml-2">
+            <span className="ml-2 break-words text-sm text-[var(--text-secondary)]">
               (出生于{str(data.birth_year)}年)
             </span>
           )}
         </div>
       </div>
       {has(data, "age_description") && (
-        <p className="text-sm text-foreground leading-relaxed">
+        <p className="break-words text-sm leading-relaxed text-[var(--text-primary)]">
           {str(data.age_description)}
         </p>
       )}
@@ -147,14 +134,13 @@ function AgeDisplay({ data }: { data: Record<string, unknown> }) {
 function GenderDisplay({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <User className="w-5 h-5 text-primary flex-shrink-0" />
-        <span className="text-2xl font-bold text-foreground">
+      <div className="min-w-0">
+        <span className="break-words text-2xl font-semibold text-[var(--text-primary)]">
           {str(data.gender)}
         </span>
       </div>
       {has(data, "gender_description") && (
-        <p className="text-sm text-foreground leading-relaxed">
+        <p className="break-words text-sm leading-relaxed text-[var(--text-primary)]">
           {str(data.gender_description)}
         </p>
       )}
@@ -166,32 +152,29 @@ function GenderDisplay({ data }: { data: Record<string, unknown> }) {
 function WorldDisplay({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-1">
-        <Globe className="w-5 h-5 text-primary flex-shrink-0" />
-        <span className="font-medium text-foreground">世界与社会</span>
-      </div>
+      <h3 className="font-sans text-sm font-medium text-[var(--text-primary)]">世界与社会</h3>
       {has(data, "world_description") && (
-        <p className="text-sm text-foreground leading-relaxed">
+        <p className="break-words text-sm leading-relaxed text-[var(--text-primary)]">
           {str(data.world_description)}
         </p>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+      <div className="mt-2 grid min-w-0 grid-cols-1 border-t border-[var(--border-default)] sm:grid-cols-2">
         {has(data, "technology_level") && (
-          <div className="bg-secondary rounded-lg p-3">
-            <p className="text-xs text-muted-foreground mb-1">科技水平</p>
-            <p className="text-sm text-foreground">{str(data.technology_level)}</p>
+          <div className="min-w-0 border-b border-[var(--border-default)] py-3 sm:pr-4">
+            <p className="mb-1 text-xs font-sans text-[var(--text-secondary)]">科技水平</p>
+            <p className="break-words text-sm text-[var(--text-primary)]">{str(data.technology_level)}</p>
           </div>
         )}
         {has(data, "social_system") && (
-          <div className="bg-secondary rounded-lg p-3">
-            <p className="text-xs text-muted-foreground mb-1">社会制度</p>
-            <p className="text-sm text-foreground">{str(data.social_system)}</p>
+          <div className="min-w-0 border-b border-[var(--border-default)] py-3 sm:pl-4">
+            <p className="mb-1 text-xs font-sans text-[var(--text-secondary)]">社会制度</p>
+            <p className="break-words text-sm text-[var(--text-primary)]">{str(data.social_system)}</p>
           </div>
         )}
         {has(data, "economy") && (
-          <div className="bg-secondary rounded-lg p-3">
-            <p className="text-xs text-muted-foreground mb-1">经济状况</p>
-            <p className="text-sm text-foreground">{str(data.economy)}</p>
+          <div className="min-w-0 border-b border-[var(--border-default)] py-3 sm:pr-4">
+            <p className="mb-1 text-xs font-sans text-[var(--text-secondary)]">经济状况</p>
+            <p className="break-words text-sm text-[var(--text-primary)]">{str(data.economy)}</p>
           </div>
         )}
       </div>
@@ -208,41 +191,37 @@ function FamilyDisplay({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-1">
-        <Home className="w-5 h-5 text-primary flex-shrink-0" />
-        <span className="font-medium text-foreground">家庭背景</span>
-      </div>
+      <h3 className="font-sans text-sm font-medium text-[var(--text-primary)]">家庭背景</h3>
       {has(data, "family_description") && (
-        <p className="text-sm text-foreground leading-relaxed">
+        <p className="break-words text-sm leading-relaxed text-[var(--text-primary)]">
           {str(data.family_description)}
         </p>
       )}
       {members.length > 0 && (
         <>
-          <Separator className="my-2" />
-          <div className="space-y-2">
+          <div className="border-t border-[var(--border-default)]">
             {members.map((member, i) => {
               if (typeof member === "string") {
                 return (
-                  <Badge key={i} variant="secondary" className="mr-1">
+                  <p key={i} className="break-words border-b border-[var(--border-default)] py-3 text-sm">
                     {member}
-                  </Badge>
+                  </p>
                 );
               }
               return (
-                <div key={i} className="bg-secondary rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">
+                <div key={i} className="min-w-0 border-b border-[var(--border-default)] py-3">
+                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className="break-words text-sm font-medium text-[var(--text-primary)]">
                       {member.name || "未知"}
                     </span>
                     {member.role && (
-                      <Badge variant="outline" className="text-xs">
+                      <span className="break-words text-xs font-sans text-[var(--text-secondary)]">
                         {member.role}
-                      </Badge>
+                      </span>
                     )}
                   </div>
                   {member.personality && (
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="mt-1 break-words text-xs leading-relaxed text-[var(--text-secondary)]">
                       {member.personality}
                     </p>
                   )}
@@ -253,7 +232,7 @@ function FamilyDisplay({ data }: { data: Record<string, unknown> }) {
         </>
       )}
       {has(data, "family_economy") && (
-        <p className="text-xs text-muted-foreground">
+        <p className="break-words text-xs text-[var(--text-secondary)]">
           家庭经济: {str(data.family_economy)}
         </p>
       )}
@@ -273,21 +252,18 @@ function RelationshipsDisplay({ data }: { data: Record<string, unknown> }) {
   if (has(data, "name") && has(data, "role")) {
     return (
       <div className="space-y-3">
-        <div className="flex items-center gap-2 mb-1">
-          <Users className="w-5 h-5 text-primary flex-shrink-0" />
-          <span className="font-medium text-foreground">关键人物</span>
-        </div>
-        <div className="bg-secondary rounded-lg p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-medium text-foreground">
+        <h3 className="font-sans text-sm font-medium text-[var(--text-primary)]">关键人物</h3>
+        <div className="min-w-0 border-t border-[var(--border-default)] py-3">
+          <div className="mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="break-words text-sm font-medium text-[var(--text-primary)]">
               {str(data.name)}
             </span>
-            <Badge variant="outline" className="text-xs">
+            <span className="break-words text-xs font-sans text-[var(--text-secondary)]">
               {str(data.role)}
-            </Badge>
+            </span>
           </div>
           {has(data, "relationship") && (
-            <p className="text-sm text-muted-foreground">
+            <p className="break-words text-sm leading-relaxed text-[var(--text-secondary)]">
               {str(data.relationship)}
             </p>
           )}
@@ -298,31 +274,28 @@ function RelationshipsDisplay({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-1">
-        <Users className="w-5 h-5 text-primary flex-shrink-0" />
-        <span className="font-medium text-foreground">社会关系</span>
-      </div>
+      <h3 className="font-sans text-sm font-medium text-[var(--text-primary)]">社会关系</h3>
       {has(data, "relationships_description") && (
-        <p className="text-sm text-foreground leading-relaxed">
+        <p className="break-words text-sm leading-relaxed text-[var(--text-primary)]">
           {str(data.relationships_description)}
         </p>
       )}
       {people.length > 0 && (
-        <div className="space-y-2">
+        <div className="border-t border-[var(--border-default)]">
           {people.map((person, i) => (
-            <div key={i} className="bg-secondary rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-medium text-foreground">
+            <div key={i} className="min-w-0 border-b border-[var(--border-default)] py-3">
+              <div className="mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="break-words text-sm font-medium text-[var(--text-primary)]">
                   {person.name || "未知"}
                 </span>
                 {person.role && (
-                  <Badge variant="outline" className="text-xs">
+                  <span className="break-words text-xs font-sans text-[var(--text-secondary)]">
                     {person.role}
-                  </Badge>
+                  </span>
                 )}
               </div>
               {person.relationship && (
-                <p className="text-xs text-muted-foreground">
+                <p className="break-words text-xs leading-relaxed text-[var(--text-secondary)]">
                   {person.relationship}
                 </p>
               )}
@@ -336,59 +309,35 @@ function RelationshipsDisplay({ data }: { data: Record<string, unknown> }) {
 
 // ===== Traits =====
 function TraitsDisplay({ data }: { data: Record<string, unknown> }) {
+  const traits = [
+    { key: "personality", label: "性格" },
+    { key: "abilities", label: "能力" },
+    { key: "interests", label: "兴趣" },
+    { key: "strengths", label: "优点" },
+    { key: "weaknesses", label: "缺点" },
+  ].filter(({ key }) => has(data, key));
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-1">
-        <Sparkles className="w-5 h-5 text-primary flex-shrink-0" />
-        <span className="font-medium text-foreground">个人特点</span>
-      </div>
+      <h3 className="font-sans text-sm font-medium text-[var(--text-primary)]">个人特点</h3>
       {has(data, "traits_description") && (
-        <p className="text-sm text-foreground leading-relaxed">
+        <p className="break-words text-sm leading-relaxed text-[var(--text-primary)]">
           {str(data.traits_description)}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        {has(data, "personality") && (
-          <Badge variant="secondary">性格: {str(data.personality)}</Badge>
-        )}
-        {has(data, "abilities") && (
-          <Badge variant="secondary">能力: {str(data.abilities)}</Badge>
-        )}
-        {has(data, "interests") && (
-          <Badge variant="secondary">兴趣: {str(data.interests)}</Badge>
-        )}
-        {has(data, "strengths") && (
-          <Badge variant="secondary">优点: {str(data.strengths)}</Badge>
-        )}
-        {has(data, "weaknesses") && (
-          <Badge variant="secondary">缺点: {str(data.weaknesses)}</Badge>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ===== Wealth =====
-function WealthDisplay({ data }: { data: Record<string, unknown> }) {
-  const wealth = data.wealth as number | undefined;
-  const currency = str(data.currency) || "碳信用";
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-1">
-        <Coins className="w-5 h-5 text-warning flex-shrink-0" />
-        <span className="font-medium text-foreground">初始财富</span>
-      </div>
-      {wealth !== undefined && (
-        <div className="text-2xl font-bold text-warning">
-          {currency}
-          {wealth.toLocaleString()}
+      {traits.length > 0 && (
+        <div aria-label="角色特质" className="border-t border-[var(--border-default)]" role="list">
+          {traits.map(({ key, label }) => (
+            <div
+              className="w-full min-w-0 border-b border-[var(--border-default)] py-3 text-sm leading-relaxed whitespace-normal break-words"
+              key={key}
+              role="listitem"
+            >
+              <span className="font-sans font-medium text-[var(--text-primary)]">{label}: </span>
+              <span className="text-[var(--text-secondary)]">{str(data[key])}</span>
+            </div>
+          ))}
         </div>
-      )}
-      {has(data, "wealth_description") && (
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {str(data.wealth_description)}
-        </p>
       )}
     </div>
   );

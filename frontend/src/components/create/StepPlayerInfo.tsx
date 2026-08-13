@@ -2,6 +2,10 @@
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { FormField } from "@/components/story101";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 
 interface StepPlayerInfoProps {
   playerName: string;
@@ -20,6 +24,12 @@ export function StepPlayerInfo({
   startDate = "",
   onStartDateChange,
 }: StepPlayerInfoProps) {
+  const isNameOverLimit = !isWithinInputLimit(playerName, INPUT_LIMITS.name);
+  const isVisionOverLimit = !isWithinInputLimit(
+    lifeVision,
+    INPUT_LIMITS.lifeVision,
+  );
+
   return (
     <div className="space-y-4 mb-8">
       <div>

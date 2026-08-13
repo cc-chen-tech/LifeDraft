@@ -30,7 +30,7 @@ import type {
 import { useSessionStore } from "./useSessionStore";
 import { useEventStore } from "./useEventStore";
 import { useImageStore, type RoundSceneImage } from "./useImageStore";
-import { useCharacterStore, CREATION_STEPS, MANUAL_STEPS, AUTO_ADVANCE_STEPS, type CreationStep } from "./useCharacterStore";
+import { useCharacterStore } from "./useCharacterStore";
 import { useGameListStore } from "./useGameListStore";
 import { useSceneImageStore } from "./useSceneImageStore";
 
@@ -94,7 +94,7 @@ interface GameState {
   setGameId: (gameId: number) => void;
   setGameSession: (gameId: number, sessionId: string) => void;
   loadGameState: (gameId: number) => Promise<void>;
-  syncState: () => Promise<void>;
+  syncState: (options?: { gameId?: number; signal?: AbortSignal }) => Promise<void>;
   syncPlayerState: () => Promise<unknown>;
   saveGame: () => Promise<void>;
   resetGame: () => void;
@@ -301,13 +301,23 @@ export const useGameStore = create<GameState>()(
 
       // Load player images asynchronously
       setTimeout(() => {
-        useImageStore.getState().loadPlayerImages(gameId);
+        const imageStore = useImageStore.getState();
+        void imageStore.loadPlayerImages(gameId);
+        void imageStore.refreshPortraitImageJob(gameId);
       }, 0);
     },
 
-    syncState: async () => {
+    syncState: async (options) => {
+      const expectedGameId = options?.gameId ?? get().gameId;
+      const isRunOwnedRequest =
+        options?.gameId !== undefined || options?.signal !== undefined;
+      const isCurrentRequest = () =>
+        !options?.signal?.aborted &&
+        get().gameId === expectedGameId &&
+        (options?.gameId === undefined || useSessionStore.getState().gameId === expectedGameId);
       try {
-        const result = await useSessionStore.getState().syncState();
+        const result = await useSessionStore.getState().syncState(options);
+        if (!isCurrentRequest()) return;
         if (result && result.event) {
           const newOptions = result.event.options || [];
           const currentStoryText = useEventStore.getState().storyText;
@@ -336,10 +346,14 @@ export const useGameStore = create<GameState>()(
             });
           }
         }
-        get()._syncFromSubStores();
+        if (isCurrentRequest()) get()._syncFromSubStores();
       } catch (err) {
+        const sessionGameId = useSessionStore.getState().gameId;
+        const legacyRequestClearedSession =
+          !isRunOwnedRequest && sessionGameId === null && get().gameId === null;
+        if (!legacyRequestClearedSession && !isCurrentRequest()) return;
         // On 404 error, session store clears its state - also clear event store
-        if (useSessionStore.getState().gameId === null) {
+        if (sessionGameId === null) {
           useEventStore.getState().clearCurrentEvent();
         }
         get()._syncFromSubStores();

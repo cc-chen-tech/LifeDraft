@@ -107,7 +107,7 @@ class TestAchievementAPIContract:
             assert "detail" in data
 
     def test_life_review_resource_curves_structure(self):
-        """resource_curves 包含 4 个资源的数组"""
+        """resource_curves contains the three active resources."""
         with patch("src.api.routers.gameplay.summary.session_service") as mock_service:
             mock_session = MagicMock()
             mock_game_loop = MagicMock()
@@ -116,7 +116,6 @@ class TestAchievementAPIContract:
                 energy=50,
                 mood=50,
                 knowledge=50,
-                wealth=5000,
                 relationships={},
                 decision_history=[],
                 week=10,
@@ -136,11 +135,10 @@ class TestAchievementAPIContract:
             assert "energy" in curves
             assert "mood" in curves
             assert "knowledge" in curves
-            assert "wealth" in curves
+            assert set(curves) == {"energy", "mood", "knowledge"}
             assert isinstance(curves["energy"], list)
             assert isinstance(curves["mood"], list)
             assert isinstance(curves["knowledge"], list)
-            assert isinstance(curves["wealth"], list)
 
     def test_life_review_badge_wall_structure(self):
         """achievement_badge_wall 条目包含所需字段"""

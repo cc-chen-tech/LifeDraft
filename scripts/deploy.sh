@@ -16,7 +16,7 @@ fi
 
 # 创建必要目录
 echo "Creating necessary directories..."
-mkdir -p nginx/ssl data/images data/cache data/vector_store logs/nginx data/certbot-www
+mkdir -p nginx/ssl data/images data/cache logs/nginx data/certbot-www
 
 # 检查 .env 文件
 if [ ! -f ".env" ]; then

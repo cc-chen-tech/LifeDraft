@@ -2,9 +2,13 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { FormField } from "@/components/story101";
 import { cn } from "@/lib/utils";
 import { Loader2, RefreshCw, RotateCcw, User } from "lucide-react";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 
 interface StepPortraitProps {
   playerImages: Array<{ image_id: number; image_url: string }>;
@@ -46,6 +50,10 @@ export function StepPortrait({
   const [thumbErrors, setThumbErrors] = useState<Set<number>>(new Set());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const isLongRunning = isGeneratingImage && elapsedSeconds >= 60;
+  const isFeedbackOverLimit = !isWithinInputLimit(
+    imageFeedback,
+    INPUT_LIMITS.feedback,
+  );
 
   useEffect(() => {
     if (!isGeneratingImage) {
@@ -74,33 +82,32 @@ export function StepPortrait({
       {/* 图片展示区 */}
       <div className="w-full">
         {isGeneratingImage ? (
-          <div className="w-full aspect-[9/17] max-w-sm mx-auto bg-secondary rounded-lg overflow-hidden flex items-center justify-center px-4">
-            <div className="flex flex-col items-center gap-2 text-muted-foreground">
+          <div className="mx-auto flex aspect-[9/17] w-full max-w-sm items-center justify-center overflow-hidden rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)] px-4">
+            <div className="flex flex-col items-center gap-2 text-[var(--text-secondary)]">
               <Loader2 className="w-8 h-8 animate-spin" />
-              <span className="text-sm">AI正在生成人物形象...</span>
-              <span className="text-xs text-muted-foreground/60">（生成人物形象）</span>
+              <span className="text-center text-sm">人物形象正在后台生成，你可以先继续创建。</span>
               {isLongRunning && (
-                <div className="mt-2 max-w-xs rounded-md border border-border/60 bg-background/40 px-3 py-2 text-center text-xs leading-relaxed">
-                  人物形象生成通常需要 1-2 分钟。你可以继续等待，或刷新状态查看是否已经生成完成。
+                <div className="mt-2 max-w-xs border-l-2 border-[var(--border-interactive)] pl-3 text-left text-xs leading-relaxed">
+                  人物形象生成通常需要 1-2 分钟。你可以继续创建，或刷新状态查看是否已经生成完成。
                 </div>
               )}
               {isLongRunning && onRecover && (
-                <Button type="button" variant="outline" size="sm" onClick={onRecover}>
+                <Button type="button" variant="narrative" size="touch" onClick={onRecover}>
                   刷新状态
                 </Button>
               )}
             </div>
           </div>
         ) : imageGenerationError ? (
-          <div className="w-full aspect-[9/17] max-w-sm mx-auto bg-secondary rounded-lg overflow-hidden flex items-center justify-center px-5">
-            <div className="flex max-w-xs flex-col items-center gap-3 text-center text-muted-foreground">
+          <div className="mx-auto flex aspect-[9/17] w-full max-w-sm items-center justify-center overflow-hidden rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)] px-5">
+            <div className="flex max-w-xs flex-col items-center gap-3 text-center text-[var(--text-secondary)]">
               <User className="h-10 w-10 opacity-60" />
               <p className="text-sm leading-relaxed">{imageGenerationError}</p>
               {onRetryGeneration && (
                 <Button
                   type="button"
-                  variant="outline"
-                  size="sm"
+                  variant="narrative"
+                  size="touch"
                   onClick={async () => {
                     try {
                       await onRetryGeneration();
@@ -119,7 +126,7 @@ export function StepPortrait({
         ) : playerImages.length > 0 ? (
           <div className="space-y-3">
             {/* 主图展示 */}
-            <div className="w-full aspect-[9/17] max-w-sm mx-auto bg-secondary rounded-lg overflow-hidden flex items-center justify-center">
+            <div className="mx-auto flex aspect-[9/17] w-full max-w-sm items-center justify-center overflow-hidden rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)]">
               {!mainImageError ? (
                 <img
                   src={playerImage?.image_url}
@@ -140,12 +147,15 @@ export function StepPortrait({
               <div className="flex gap-2 justify-center">
                 {playerImages.map((img, idx) => (
                   <button
+                    type="button"
                     key={img.image_id}
+                    aria-label={`选择人物形象 ${idx + 1}`}
+                    aria-pressed={idx === selectedImageIndex}
                     className={cn(
-                      "w-16 h-20 rounded overflow-hidden border-2 transition-all",
-                      idx === selectedImageIndex 
-                        ? "border-primary ring-2 ring-primary/30" 
-                        : "border-transparent opacity-70 hover:opacity-100"
+                      "h-20 w-16 overflow-hidden rounded-[var(--radius-control)] border transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                      idx === selectedImageIndex
+                        ? "border-[var(--border-interactive)] opacity-100"
+                        : "border-[var(--border-default)] opacity-70 hover:opacity-100"
                     )}
                     onClick={() => onSelectImage(idx)}
                   >
@@ -167,8 +177,8 @@ export function StepPortrait({
             )}
           </div>
         ) : (
-          <div className="w-full aspect-[9/17] max-w-sm mx-auto bg-secondary rounded-lg overflow-hidden flex items-center justify-center">
-            <div className="text-center text-muted-foreground p-4">
+          <div className="mx-auto flex aspect-[9/17] w-full max-w-sm items-center justify-center overflow-hidden rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)]">
+            <div className="p-4 text-center text-[var(--text-secondary)]">
               <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin" />
               <p className="text-sm">正在准备生成...</p>
             </div>
@@ -178,7 +188,7 @@ export function StepPortrait({
       
       {/* 后台生成进度提示 */}
       {isBackgroundGenerating && playerImages.length > 0 && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 border-l-2 border-[var(--border-default)] px-3 py-2 text-sm text-[var(--text-secondary)]">
           <Loader2 className="w-4 h-4 animate-spin" />
           <span>后台正在生成家庭背景、人际关系等设定...</span>
         </div>
@@ -186,18 +196,44 @@ export function StepPortrait({
       
       {/* 修改意见输入 */}
       {playerImages.length > 0 && !isGeneratingImage && (
-        <div className="space-y-2">
-          <Input
-            value={imageFeedback}
-            onChange={(e) => onFeedbackChange(e.target.value)}
-            placeholder="不满意？描述你想要的修改...（会保留之前的角色设定）"
-            className="bg-secondary border-border"
-          />
+        <div className="grid gap-3 border-t border-[var(--border-default)] pt-5">
+          <FormField
+            id="portrait-feedback"
+            label="人物形象修改意见"
+            description="会保留现有角色设定，只调整人物形象。"
+            error={isFeedbackOverLimit ? `修改意见不能超过 ${INPUT_LIMITS.feedback} 字` : undefined}
+          >
+            {({ describedBy, invalid }) => (
+              <>
+                <Textarea
+                  id="portrait-feedback"
+                  value={imageFeedback}
+                  onChange={(e) => onFeedbackChange(e.target.value)}
+                  placeholder="不满意？描述你想要的修改...（会保留之前的角色设定）"
+                  surface="underline"
+                  controlSize="touch"
+                  className="min-h-24 resize-y"
+                  aria-describedby={[describedBy, "portrait-feedback-count"].filter(Boolean).join(" ")}
+                  aria-invalid={invalid}
+                />
+                <LengthIndicator
+                  id="portrait-feedback-count"
+                  value={imageFeedback}
+                  limit={INPUT_LIMITS.feedback}
+                  announce={false}
+                />
+              </>
+            )}
+          </FormField>
           <Button
-            variant="outline"
+            variant="narrative"
+            size="touch"
             className="w-full"
             onClick={async () => {
-              if (imageFeedback.trim()) {
+              if (
+                imageFeedback.trim() &&
+                !isFeedbackOverLimit
+              ) {
                 try {
                   await onRegenerate();
                   onFeedbackChange("");
@@ -207,7 +243,10 @@ export function StepPortrait({
                 }
               }
             }}
-            disabled={!imageFeedback.trim()}
+            disabled={
+              !imageFeedback.trim() ||
+              isFeedbackOverLimit
+            }
           >
             <RefreshCw className="w-4 h-4 mr-2" />
             根据修改意见重新生成
@@ -215,8 +254,9 @@ export function StepPortrait({
           
           {/* 完全重新生成按钮 */}
           <Button
-            variant="ghost"
-            className="w-full text-muted-foreground"
+            variant="quiet"
+            size="touch"
+            className="w-full"
             onClick={async () => {
               try {
                 await onRegenerateFresh();

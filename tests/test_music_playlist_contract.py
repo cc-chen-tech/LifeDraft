@@ -180,6 +180,25 @@ class TestMusicPlaylistContract:
         data = resp.json()
         assert data["current_song"]["id"] == "ai-generated-120"
 
+    def test_generated_current_track_is_not_duplicated_into_future_queue(self):
+        """A local-library hit must not queue the asset that is already playing."""
+        from src.services.music_playlist_service import MusicPlaylistService
+
+        current = {
+            "id": "ai-generated-120",
+            "asset_id": 120,
+            "name": "AI MiniMax 平静",
+            "source": "ai_generated",
+        }
+
+        updated = MusicPlaylistService.insert_generated_track(
+            {"current_song": current, "queue": []},
+            dict(current),
+        )
+
+        assert updated["current_song"] == current
+        assert updated["queue"] == []
+
     def test_put_playlist_dedupes_future_queue_by_title_family_save_read(self):
         """PUT must persist a queue deduped by title family, not only by id."""
         game_id, headers = self._create_game()

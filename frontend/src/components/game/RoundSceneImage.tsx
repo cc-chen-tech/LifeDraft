@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, ImageIcon, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FormField } from "@/components/story101";
 import type { RoundSceneImage } from "@/stores/useGameStore";
 import { useGameStore } from "@/stores/useGameStore";
 
@@ -14,6 +14,7 @@ interface RoundSceneImageProps {
   isLoading: boolean;
   error?: string | null;
   isRegenerating?: boolean;
+  announceError?: boolean;
   currentRound: number;
   label?: string;  // ★ 可选标签：事件场景 | 结果场景
   onRefresh: () => void;
@@ -26,6 +27,7 @@ export function RoundSceneImageDisplay({
   isLoading,
   error,
   isRegenerating = false,
+  announceError = true,
   currentRound,
   label,
   onRefresh,
@@ -76,13 +78,18 @@ export function RoundSceneImageDisplay({
 
   if (error && !sceneImage) {
     return (
-      <Card className="p-4 mb-4 bg-card/50 border-dashed">
+      <section
+        data-slot="round-scene-state"
+        role={announceError ? "status" : undefined}
+        aria-live={announceError ? "polite" : undefined}
+        className="mb-6 border-y border-[var(--border-default)] bg-transparent px-0 py-4 shadow-none"
+      >
         <div className="flex flex-col items-center justify-center gap-3 py-6 text-center text-muted-foreground">
           <ImageIcon className="w-8 h-8 opacity-50" />
           <span className="max-w-md text-sm leading-relaxed">{error}</span>
           <Button
-            variant="outline"
-            size="sm"
+            variant="narrative"
+            size="touch"
             onClick={handleExplicitGenerationRetry}
             disabled={isLoading}
           >
@@ -90,26 +97,32 @@ export function RoundSceneImageDisplay({
             重试生成场景插画
           </Button>
         </div>
-      </Card>
+      </section>
     );
   }
 
   // 加载中状态
   if (isLoading && !sceneImage) {
     return (
-      <Card className="p-4 mb-4 bg-card/50 border-dashed">
+      <section
+        data-slot="round-scene-state"
+        className="mb-6 border-y border-[var(--border-default)] bg-transparent px-0 py-4 shadow-none"
+      >
         <div className="flex items-center justify-center gap-2 text-muted-foreground py-8">
           <Loader2 className="w-5 h-5 animate-spin" />
           <span className="text-sm">正在生成场景插画...</span>
         </div>
-      </Card>
+      </section>
     );
   }
 
   // 无图片状态
   if (!sceneImage) {
     return (
-      <Card className="p-4 mb-4 bg-card/50 border-dashed">
+      <section
+        data-slot="round-scene-state"
+        className="mb-6 border-y border-[var(--border-default)] bg-transparent px-0 py-4 shadow-none"
+      >
         <div className="flex flex-col items-center justify-center gap-3 text-muted-foreground py-6">
           <ImageIcon className="w-8 h-8 opacity-50" />
           {error ? (
@@ -120,8 +133,8 @@ export function RoundSceneImageDisplay({
             <span className="text-sm">暂无场景插画</span>
           )}
           <Button
-            variant="outline"
-            size="sm"
+            variant="narrative"
+            size="touch"
             onClick={handleExplicitGenerationRetry}
             disabled={isLoading}
           >
@@ -129,7 +142,7 @@ export function RoundSceneImageDisplay({
             {error ? "重试生成插画" : "生成场景插画"}
           </Button>
         </div>
-      </Card>
+      </section>
     );
   }
 
@@ -142,9 +155,12 @@ export function RoundSceneImageDisplay({
   };
 
   return (
-    <Card className="mb-4 overflow-hidden bg-card/50">
+    <figure
+      data-slot="round-scene-figure"
+      className="mb-6 overflow-hidden rounded-none border-y border-[var(--border-default)] bg-transparent shadow-none"
+    >
       {/* 图片区域 */}
-      <div className="relative aspect-video bg-muted">
+      <div className="relative aspect-video bg-[var(--surface-subtle)]">
         {!imageLoaded && (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -165,20 +181,14 @@ export function RoundSceneImageDisplay({
           onError={handleImageError}
         />
 
-        {/* 轮次标签 */}
-        <div className="absolute top-2 left-2 px-2 py-1 rounded bg-black/50 text-white text-xs">
-          第 {sceneImage.round_number + 1} 轮
-        </div>
-        
         {/* ★ 图片加载错误提示 */}
         {imageError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/90 gap-2">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--surface-reading)] gap-2">
             <ImageIcon className="w-8 h-8 text-muted-foreground opacity-50" />
             <span className="text-xs text-muted-foreground">图片加载失败</span>
             <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
+              variant="narrative"
+              size="touch"
               onClick={() => {
                 clearImageCache();
                 onRefresh();
@@ -193,18 +203,26 @@ export function RoundSceneImageDisplay({
       </div>
 
       {/* 描述区域 */}
-      <div className="p-3">
-        <p className="text-sm text-muted-foreground line-clamp-2">
+      <figcaption className="border-t border-[var(--border-default)] py-3">
+        <div className="mb-2 flex items-center justify-between gap-4 text-xs text-[var(--text-secondary)]">
+          <span>{label || "场景插画"}</span>
+          <span>第 {sceneImage.round_number + 1} 轮</span>
+        </div>
+        <p className="whitespace-normal break-words text-sm text-muted-foreground">
           {sceneImage.scene_description}
         </p>
 
         {error && (
-          <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div
+            className="mt-3 border-y border-destructive/30 bg-transparent py-3 text-sm text-destructive"
+            role={announceError ? "status" : undefined}
+            aria-live={announceError ? "polite" : undefined}
+          >
             <p>{error}</p>
             <Button
-              variant="outline"
-              size="sm"
-              className="mt-2 h-7 text-xs"
+              variant="narrative"
+              size="touch"
+              className="mt-2"
               onClick={handleExplicitGenerationRetry}
               disabled={isLoading || isRegenerating}
             >
@@ -221,27 +239,32 @@ export function RoundSceneImageDisplay({
           </div>
         )}
 
-        {error && !isLoading && (
-          <div className="mt-2 text-xs text-destructive" role="status" aria-live="polite">
-            {error}
-          </div>
-        )}
-
         {/* 重新生成输入框 */}
         {showRegenerateInput && (
-          <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
-            <p className="text-xs text-muted-foreground">描述你想要的修改：</p>
-            <Input
-              placeholder="例如：让场景更明亮一些，增加更多人物..."
-              value={regeneratePrompt}
-              onChange={(e) => setRegeneratePrompt(e.target.value)}
-              className="text-sm h-8"
-              disabled={isRegenerating}
-            />
+          <div className="mt-3 space-y-2 border-t border-border/50 pt-3">
+            <FormField
+              id={`round-scene-regenerate-${sceneImage.scene_id}`}
+              label="插画修改要求"
+              description="说明想保留和调整的画面内容。"
+            >
+              {({ describedBy }) => (
+                <Input
+                  id={`round-scene-regenerate-${sceneImage.scene_id}`}
+                  placeholder="例如：让场景更明亮一些，增加更多人物..."
+                  value={regeneratePrompt}
+                  onChange={(e) => setRegeneratePrompt(e.target.value)}
+                  surface="underline"
+                  controlSize="touch"
+                  className="text-sm"
+                  disabled={isRegenerating}
+                  aria-describedby={describedBy}
+                />
+              )}
+            </FormField>
             <div className="flex gap-2">
               <Button
-                size="sm"
-                className="h-7 text-xs"
+                variant="narrative"
+                size="touch"
                 onClick={handleRegenerate}
                 disabled={isRegenerating || !regeneratePrompt.trim()}
               >
@@ -249,9 +272,8 @@ export function RoundSceneImageDisplay({
                 确认生成
               </Button>
               <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
+                variant="quiet"
+                size="touch"
                 onClick={() => setShowRegenerateInput(false)}
                 disabled={isRegenerating}
               >
@@ -262,16 +284,12 @@ export function RoundSceneImageDisplay({
         )}
 
         {/* 操作按钮 */}
-        <div className="mt-3 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">
-            {label || "场景插画"}
-          </span>
+        <div className="mt-3 flex items-center justify-end">
           <div className="flex gap-1">
             {onRegenerate && !showRegenerateInput && (
               <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
+                variant="quiet"
+                size="touch"
                 onClick={() => setShowRegenerateInput(true)}
                 disabled={isLoading || isRegenerating}
               >
@@ -280,9 +298,8 @@ export function RoundSceneImageDisplay({
               </Button>
             )}
             <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
+              variant="quiet"
+              size="touch"
               onClick={handleExplicitGenerationRetry}
               disabled={isLoading || isRegenerating}
             >
@@ -291,7 +308,7 @@ export function RoundSceneImageDisplay({
             </Button>
           </div>
         </div>
-      </div>
-    </Card>
+      </figcaption>
+    </figure>
   );
 }

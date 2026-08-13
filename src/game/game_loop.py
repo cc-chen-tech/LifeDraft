@@ -10,6 +10,7 @@ from config.feature_flags import get_feature
 from config.settings import settings
 from src.ai.generator import EventGenerator
 from src.ai.models import EventOption, GameEvent
+from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.character_creation import CharacterCreator
 from src.game.decisions import process_decision
 from src.game.historical_summary_selector import HistoricalSummarySelector
@@ -30,6 +31,27 @@ class GameLoop(RoundSystemMixin):
 
     Inherits Multi-Round System functionality from RoundSystemMixin.
     """
+
+    def _select_display_summary_context(self) -> tuple[Optional[str], Optional[str]]:
+        """Return legacy prose memory only while structured memory is disabled."""
+        if get_feature("structured_story_memory"):
+            return None, None
+
+        four_week_summary = None
+        if self.player_state and self.player_state.four_week_summaries:
+            latest = self.player_state.four_week_summaries[-1]
+            four_week_summary = latest.get("summary") or latest.get("combined_summary")
+
+        yearly_summary = None
+        if (
+            self.player_state
+            and self.player_state.yearly_summaries
+            and random.random() < 0.5
+        ):
+            latest = self.player_state.yearly_summaries[-1]
+            yearly_summary = latest.get("summary") or latest.get("summary_text")
+            logger.info("Including yearly summary in event generation context")
+        return four_week_summary, yearly_summary
 
     def __init__(
         self,
@@ -499,16 +521,7 @@ class GameLoop(RoundSystemMixin):
             state_dict = self.player_state.to_dict()
             character_settings = state_dict.get("character_settings", {})
 
-            # Get the most recent 4-week summary if available
-            four_week_summary = None
-            if self.player_state.four_week_summaries:
-                four_week_summary = self.player_state.four_week_summaries[-1].get("summary")
-
-            # Randomly decide whether to include yearly summary (if available)
-            yearly_summary = None
-            if self.player_state.yearly_summaries and random.random() < 0.5:
-                yearly_summary = self.player_state.yearly_summaries[-1].get("summary")
-                logger.info("Including yearly summary in event generation context")
+            four_week_summary, yearly_summary = self._select_display_summary_context()
 
             event = self.ai_generator.generate_event(
                 state_dict,
@@ -532,12 +545,7 @@ class GameLoop(RoundSystemMixin):
             )
 
             if not event:
-                logger.error("AI generator returned None - this should not happen!")
-                logger.error(
-                    f"Player state: week={self.player_state.week}, age={self.player_state.age}"
-                )
-                logger.error(f"Character settings present: {bool(character_settings)}")
-                event = self._generate_fallback_event()
+                raise StoryGenerationFailure("AI generator returned no weekly event")
 
             self.current_event = event
 
@@ -553,17 +561,11 @@ class GameLoop(RoundSystemMixin):
             logger.debug(f"Successfully generated event for 第{self.player_state.week + 1}周")
             return event
 
+        except StoryGenerationFailure:
+            raise
         except Exception as e:
             logger.error(f"Failed to generate event: {str(e)}", exc_info=True)
-            logger.error(f"Exception type: {type(e).__name__}")
-            logger.error(f"Player week: {self.player_state.week if self.player_state else 'N/A'}")
-            # Fallback to a simple event
-            event = self._generate_fallback_event()
-            self.current_event = event
-            self.player_state.current_event_data = event.model_dump()
-            self.last_event_week = current_week
-            logger.error(f"Using fallback event due to error: {str(e)}")
-            return event
+            raise StoryGenerationFailure(f"Weekly event generation failed: {e}") from e
 
     def make_choice(self, option_index: int) -> Dict[str, Any]:
         """
@@ -866,12 +868,11 @@ class GameLoop(RoundSystemMixin):
                             "energy": 0 if is_round else 5,
                             "mood": 5,
                             "knowledge": 0,
-                            "wealth": 0,
                         },
                     ),
                     EventOption(
                         text="思考人生方向" if not is_round else "尝试做点不一样的事",
-                        effects={"energy": -5, "mood": 0, "knowledge": 5, "wealth": 0},
+                        effects={"energy": -5, "mood": 0, "knowledge": 5},
                     ),
                 ],
             )
@@ -896,7 +897,6 @@ class GameLoop(RoundSystemMixin):
                             "energy": 0 if is_round else 5,
                             "mood": 5,
                             "knowledge": 0,
-                            "wealth": 0,
                         },
                     ),
                     EventOption(
@@ -905,7 +905,7 @@ class GameLoop(RoundSystemMixin):
                             if not is_round
                             else "Try something different"
                         ),
-                        effects={"energy": -5, "mood": 0, "knowledge": 5, "wealth": 0},
+                        effects={"energy": -5, "mood": 0, "knowledge": 5},
                     ),
                 ],
             )

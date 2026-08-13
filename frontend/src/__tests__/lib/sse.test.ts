@@ -115,6 +115,33 @@ describe('SSE Streaming', () => {
       expect(onStory).toHaveBeenCalledWith('后续片段');
     });
 
+    it.each([
+      ['heartbeat status', 'event: status\ndata: {"phase":"generating_story","heartbeat":true}\n\n', 'status'],
+      ['ordinary status', 'event: status\ndata: {"phase":"validating"}\n\n', 'status'],
+      ['story chunk', 'event: story\ndata: "新正文"\n\n', 'story'],
+      ['complete frame', 'event: complete\ndata: {"event_description":"完成","options":[{"text":"继续"}]}\n\n', 'complete'],
+      ['error frame', 'event: error\ndata: {"message":"generation failed"}\n\n', 'error'],
+    ] as const)('reports one real SSE activity for %s', async (_name, frame, expectedKind) => {
+      const onActivity = jest.fn();
+      const callbacks = { onActivity } as StreamCallbacks & {
+        onActivity: (kind: 'status' | 'story' | 'complete' | 'error') => void;
+      };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([frame]),
+      });
+
+      const stream = streamGameEvent(123, callbacks);
+      if (expectedKind === 'status' || expectedKind === 'story') {
+        await expect(stream).rejects.toThrow('Stream ended without complete event');
+      } else {
+        await stream;
+      }
+
+      expect(onActivity).toHaveBeenCalledTimes(1);
+      expect(onActivity).toHaveBeenCalledWith(expectedKind);
+    });
+
     it('sends Last-Event-ID only for a resume request', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -195,6 +222,105 @@ describe('SSE Streaming', () => {
 
       expect(onError).toHaveBeenCalledWith({ message: 'Timeout waiting for event generation' });
       expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('treats an error frame as terminal when buffered complete and story frames follow it', async () => {
+      const onStory = jest.fn();
+      const onComplete = jest.fn();
+      const onError = jest.fn();
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'event: error\ndata: {"message":"generation failed"}\n\n',
+          'event: story\ndata: "buffered stale story"\n\n',
+          'event: complete\ndata: {"event_description":"buffered stale complete","options":[{"text":"stale"}]}\n\n',
+        ]),
+      });
+
+      await streamGameEvent(123, { onStory, onComplete, onError });
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onStory).not.toHaveBeenCalled();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('settles and cancels an open body immediately after one error frame', async () => {
+      jest.useRealTimers();
+      const onStory = jest.fn();
+      const onComplete = jest.fn();
+      const onError = jest.fn();
+      const cancelBody = jest.fn();
+      let closeProducer!: () => void;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          closeProducer = () => controller.close();
+          controller.enqueue(new TextEncoder().encode(
+            'event: error\ndata: {"message":"generation failed"}\n\n',
+          ));
+        },
+        cancel() {
+          cancelBody();
+        },
+      });
+      mockFetch.mockResolvedValueOnce({ ok: true, body });
+
+      const stream = streamGameEvent(123, { onStory, onComplete, onError });
+      const settledBeforeProducerClose = await Promise.race([
+        stream.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 100)),
+      ]);
+      if (!settledBeforeProducerClose) closeProducer();
+      await stream;
+
+      expect(settledBeforeProducerClose).toBe(true);
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith({ message: 'generation failed' });
+      expect(cancelBody).toHaveBeenCalledTimes(1);
+      expect(onStory).not.toHaveBeenCalled();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('ignores buffered story frames after a complete frame', async () => {
+      const onStory = jest.fn();
+      const onComplete = jest.fn();
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'event: complete\ndata: {"event_description":"complete story","options":[{"text":"next"}]}\n\n',
+          'event: story\ndata: "buffered stale story"\n\n',
+          'data: [DONE]\n\n',
+        ]),
+      });
+
+      await streamGameEvent(123, { onStory, onComplete });
+
+      expect(onStory).not.toHaveBeenCalled();
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({
+        event_description: 'complete story',
+      }));
+    });
+
+    it('commits and resolves as soon as a complete frame arrives even if the body stays open', async () => {
+      const onComplete = jest.fn();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(
+            'event: complete\ndata: {"event_description":"complete now","options":[{"text":"next"}]}\n\n',
+          ));
+        },
+      });
+      mockFetch.mockResolvedValueOnce({ ok: true, body });
+
+      const stream = streamGameEvent(123, { onComplete });
+      const completedBeforeClose = await Promise.race([
+        stream.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 100)),
+      ]);
+      await stream;
+
+      expect(completedBeforeClose).toBe(true);
+      expect(onComplete).toHaveBeenCalledTimes(1);
     });
 
     it('keeps collected stream chunks and fails with missing complete event', async () => {
@@ -282,6 +408,20 @@ describe('SSE Streaming', () => {
   });
 
   describe('streamChoice', () => {
+    it.each([
+      ['normal choice', () => streamChoice(123, 0, {})],
+      ['custom choice', () => streamCustomChoice(123, 'wait', {})],
+    ])('never retries the mutating POST transport for %s', async (_name, start) => {
+      mockFetch.mockRejectedValue(new Error('network failed after request dispatch'));
+
+      const rejection = expect(start()).rejects.toThrow('network failed after request dispatch');
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(3_000);
+      await rejection;
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
     it('calls fetch with POST method and correct body', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -315,6 +455,7 @@ describe('SSE Streaming', () => {
       const body = JSON.parse(call[1].body);
       expect(body.option_index).toBe(2);
     });
+
   });
 
   describe('streamCustomChoice', () => {
@@ -340,6 +481,7 @@ describe('SSE Streaming', () => {
       const body = JSON.parse(call[1].body);
       expect(body.custom_text).toBe('My custom action');
     });
+
   });
 
   describe('streamOpeningStory', () => {

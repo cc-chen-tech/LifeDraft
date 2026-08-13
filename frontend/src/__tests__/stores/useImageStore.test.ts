@@ -4,10 +4,11 @@
  */
 
 import { useImageStore } from '@/stores/useImageStore';
-import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
 
 describe('useImageStore', () => {
   beforeEach(() => {
+    useImageStore.getState().stopPortraitImagePolling();
     // Reset store to initial state
     useImageStore.setState({
       playerImage: null,
@@ -15,6 +16,7 @@ describe('useImageStore', () => {
       selectedImageIndex: 0,
       isGeneratingImage: false,
       imageGenerationError: null,
+      portraitImageJob: null,
       imageFeedback: '',
       openingIllustration: null,
       isGeneratingIllustration: false,
@@ -87,9 +89,14 @@ describe('useImageStore', () => {
         ).rejects.toThrow('请先输入角色姓名');
       });
 
-      it('generates player image successfully', async () => {
-        const mockImages = [{ image_id: 1, image_url: 'url1' }];
-        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ images: mockImages }));
+      it('queues player image generation without waiting for MiniMax', async () => {
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+          job_id: 9,
+          game_id: 1,
+          status: 'queued',
+          image_id: null,
+          attempt_count: 0,
+        }, 202));
 
         await useImageStore.getState().generatePlayerImage(1, 'TestPlayer', {
           era: { era: '现代', era_name: '现代' },
@@ -97,12 +104,16 @@ describe('useImageStore', () => {
           gender: { gender: '男' },
         });
 
-        expect(global.fetch).toHaveBeenCalledWith('/api/images/generate', expect.objectContaining({ method: 'POST' }));
-        expect(useImageStore.getState().playerImages).toEqual(mockImages);
-        expect(useImageStore.getState().isGeneratingImage).toBe(false);
+        expect(global.fetch).toHaveBeenCalledWith(
+          '/api/images/character/generate-async',
+          expect.objectContaining({ method: 'POST' })
+        );
+        expect(useImageStore.getState().playerImages).toEqual([]);
+        expect(useImageStore.getState().isGeneratingImage).toBe(true);
+        expect(useImageStore.getState().portraitImageJob).toMatchObject({ job_id: 9, status: 'queued' });
       });
 
-      it('handles generation error', async () => {
+      it('handles enqueue error', async () => {
         (global.fetch as jest.Mock).mockRejectedValue(new Error('API Error'));
 
         await expect(
@@ -112,22 +123,106 @@ describe('useImageStore', () => {
         expect(useImageStore.getState().isGeneratingImage).toBe(false);
       });
 
-      it('stores a safe provider failure and stops loading', async () => {
+      it('keeps the durable job pending when a polling request is temporarily disconnected', async () => {
+        useImageStore.setState({
+          isGeneratingImage: true,
+          portraitImageJob: { job_id: 9, game_id: 1, status: 'running', image_id: null, attempt_count: 1 },
+        });
+        (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Failed to fetch'));
+
+        await useImageStore.getState().refreshPortraitImageJob(1);
+
+        expect(useImageStore.getState()).toMatchObject({
+          isGeneratingImage: true,
+          imageGenerationError: null,
+        });
+      });
+
+      it('ignores a stale portrait job response after switching games', async () => {
+        let resolveFirstGame!: (response: Response) => void;
+        const firstGameResponse = new Promise<Response>((resolve) => {
+          resolveFirstGame = resolve;
+        });
+        (global.fetch as jest.Mock).mockImplementation((url: string) => {
+          if (url.includes('game_id=1')) return firstGameResponse;
+          if (url.includes('game_id=2')) {
+            return Promise.resolve(jsonResponse({
+              job_id: 22,
+              game_id: 2,
+              status: 'queued',
+              image_id: null,
+              attempt_count: 0,
+            }));
+          }
+          throw new Error(`Unexpected URL: ${url}`);
+        });
+
+        const staleRefresh = useImageStore.getState().refreshPortraitImageJob(1);
+        await useImageStore.getState().refreshPortraitImageJob(2);
+        resolveFirstGame(jsonResponse({
+          job_id: 11,
+          game_id: 1,
+          status: 'queued',
+          image_id: null,
+          attempt_count: 0,
+        }));
+        await staleRefresh;
+
+        expect(useImageStore.getState().portraitImageJob).toMatchObject({
+          job_id: 22,
+          game_id: 2,
+        });
+      });
+
+      it('loads the persisted image after polling reports success', async () => {
         (global.fetch as jest.Mock).mockResolvedValue(
-          errorResponse(503, {
-            code: 'minimax_2056',
-            message: '图片生成额度暂时不可用，请稍后再试',
-            retryable: false,
+          jsonResponse({
+            job_id: 9,
+            game_id: 1,
+            status: 'succeeded',
+            image_id: 42,
+            attempt_count: 1,
           })
         );
+        (global.fetch as jest.Mock).mockResolvedValueOnce(
+          jsonResponse({
+            job_id: 9,
+            game_id: 1,
+            status: 'succeeded',
+            image_id: 42,
+            attempt_count: 1,
+          })
+        ).mockResolvedValueOnce(jsonResponse({
+          images: [{ image_id: 42, image_url: 'url42', entity_key: 'player_main' }],
+          total: 1,
+        }));
 
-        await expect(
-          useImageStore.getState().generatePlayerImage(1, '林见微', {})
-        ).rejects.toThrow('图片生成额度暂时不可用，请稍后再试');
+        await useImageStore.getState().refreshPortraitImageJob(1);
+
+        expect(useImageStore.getState()).toMatchObject({
+          isGeneratingImage: false,
+          imageGenerationError: null,
+          playerImages: [{ image_id: 42, image_url: 'url42', entity_key: 'player_main' }],
+        });
+      });
+
+      it('stores a safe background provider failure and allows a retry', async () => {
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+          job_id: 9,
+          game_id: 1,
+          status: 'failed',
+          image_id: null,
+          attempt_count: 1,
+          error_code: 'minimax_2056',
+          error_message: '图片生成额度暂时不可用，请稍后再试',
+        }));
+
+        await useImageStore.getState().refreshPortraitImageJob(1);
 
         expect(useImageStore.getState()).toMatchObject({
           isGeneratingImage: false,
           imageGenerationError: '图片生成额度暂时不可用，请稍后再试',
+          portraitImageJob: { status: 'failed', error_code: 'minimax_2056' },
         });
       });
     });

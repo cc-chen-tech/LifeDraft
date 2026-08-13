@@ -12,6 +12,8 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
+from src.api.input_limits import FULL_STORY_MAX_CHARS, CharacterSettingsPayload
+
 from src.api.deps import get_current_user_optional
 from src.database.models import SessionLocal
 from src.services.minimax_config import build_minimax_config
@@ -71,10 +73,10 @@ def _music_generation_failure_detail(exc: Exception) -> str:
 class MusicRecommendationRequest(BaseModel):
     """音乐推荐请求"""
 
-    story_text: str
+    story_text: str = Field(..., max_length=FULL_STORY_MAX_CHARS)
     game_id: Optional[int] = None
     refresh: bool = False  # 刷新模式：复用缓存的 AI 分析，重新搜索歌曲
-    character_settings: Optional[dict] = None  # 角色设定（含时代信息）
+    character_settings: Optional[CharacterSettingsPayload] = None  # 角色设定（含时代信息）
 
 
 class SongResponse(BaseModel):
@@ -171,7 +173,7 @@ class MusicGenerationRequest(BaseModel):
     """Request body for story-conditioned generated music."""
 
     game_id: int
-    story_text: str
+    story_text: str = Field(..., max_length=FULL_STORY_MAX_CHARS)
     analysis: Dict[str, Any] = Field(default_factory=dict)
 
 

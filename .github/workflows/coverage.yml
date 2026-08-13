@@ -43,22 +43,7 @@ jobs:
 
       - name: Run maintained backend coverage
         run: |
-          pytest \
-            tests/test_gate_preflight_no_mock.py \
-            tests/test_gate_gameplay_behavior_no_mock.py \
-            tests/test_gate_static_no_mock.py \
-            tests/test_imports.py \
-            tests/test_gate_imports_no_mock.py \
-            tests/test_api_contract.py \
-            tests/test_gate_contracts_no_mock.py \
-            tests/test_shift_left_e2e_contract_no_mock.py \
-            tests/test_story_music_recommendation_contract.py \
-            tests/test_integration_real_db.py \
-            tests/test_database.py \
-            tests/test_gate_real_db_no_mock.py \
-            tests/test_story_music_recommendation_db.py \
-            tests/test_music_degradation_no_mock.py \
-            --cov=src --cov-report=xml --cov-report=term
+          ./scripts/run-maintained-backend-tests.sh coverage
         env:
           PYTHONPATH: ${{ github.workspace }}
           TESTING: 'true'

@@ -7,6 +7,8 @@ import pytest
 
 from src.ai.models import EventOption, GameEvent
 
+pytestmark = pytest.mark.usefixtures("constraint_harness_disabled")
+
 # ==================== OptionGenerator Tests ====================
 
 
@@ -60,14 +62,83 @@ class TestOptionGenerator:
         assert len(event.options) == 3
         assert event.options[0].text == "选项A"
 
-    def test_generate_options_rejects_two_options_and_returns_three_contextual_fallbacks(self):
+    def test_generate_options_disables_thinking_on_every_attempt(self):
+        """An option retry must not fall back to DeepSeek's default thinking mode."""
+
+        class SequentialClient:
+            def __init__(self):
+                self.calls = []
+                self.responses = iter(
+                    [
+                        "not json",
+                        json.dumps(
+                            {
+                                "options": [
+                                    {
+                                        "text": "细读合作条款",
+                                        "effects": {"knowledge": 5},
+                                    },
+                                    {"text": "请伙伴一起把关", "effects": {"mood": 3}},
+                                    {
+                                        "text": "先锁定关键风险",
+                                        "effects": {"energy": -3},
+                                    },
+                                ]
+                            }
+                        ),
+                    ]
+                )
+
+            def call(self, **kwargs):
+                self.calls.append(kwargs)
+                return next(self.responses)
+
+        client = SequentialClient()
+        event = self._make_generator(client).generate_options_only(
+            "林岚需要决定是否签署新的合作协议。",
+            {},
+            language="zh",
+            retry_count=2,
+        )
+
+        assert [option.text for option in event.options] == [
+            "细读合作条款",
+            "请伙伴一起把关",
+            "先锁定关键风险",
+        ]
+        assert len(client.calls) == 2
+        assert all(call["thinking"] is False for call in client.calls)
+
+    def test_generate_options_uses_one_bounded_provider_attempt_before_fallback(self):
+        """A stalled option provider must not keep a completed story in generation forever."""
+        mock_client = Mock()
+        mock_client.call.side_effect = TimeoutError("option provider timed out")
+        gen = self._make_generator(mock_client)
+
+        event = gen.generate_options_only(
+            "林岚要在租金和特价图书之间取舍。", {}, language="zh"
+        )
+
+        assert len(event.options) == 3
+        assert mock_client.call.call_count == 1
+        assert mock_client.call.call_args.kwargs["request_timeout"] == 45.0
+
+    def test_generate_options_rejects_two_options_and_returns_three_contextual_fallbacks(
+        self,
+    ):
         """Two options is a production regression: the UI expects three meaningful choices."""
         mock_client = Mock()
         mock_client.call.return_value = json.dumps(
             {
                 "options": [
-                    {"text": "陪晓雨去吃麻辣烫", "effects": {"energy": -10, "mood": 10}},
-                    {"text": "直接回家搭框架", "effects": {"energy": -15, "knowledge": 10}},
+                    {
+                        "text": "陪晓雨去吃麻辣烫",
+                        "effects": {"energy": -10, "mood": 10},
+                    },
+                    {
+                        "text": "直接回家搭框架",
+                        "effects": {"energy": -15, "knowledge": 10},
+                    },
                 ]
             }
         )
@@ -82,7 +153,12 @@ class TestOptionGenerator:
 
         assert len(event.options) == 3
         assert {opt.text for opt in event.options}.isdisjoint(
-            {"回应眼前的请求", "先核对现场线索", "积极面对新的一天", "保持平常心继续前进"}
+            {
+                "回应眼前的请求",
+                "先核对现场线索",
+                "积极面对新的一天",
+                "保持平常心继续前进",
+            }
         )
 
     def test_generate_options_fallback(self):
@@ -90,9 +166,45 @@ class TestOptionGenerator:
         mock_client = Mock()
         mock_client.call.side_effect = Exception("API error")
         gen = self._make_generator(mock_client)
-        event = gen.generate_options_only("Story text", {}, language="zh", retry_count=2)
+        event = gen.generate_options_only(
+            "Story text", {}, language="zh", retry_count=2
+        )
         assert len(event.options) == 3
         assert "积极面对" not in event.options[0].text
+
+    def test_generate_options_replaces_a_model_set_that_repeats_recent_choices(self):
+        """Repeated model choices are replaced without discarding the story."""
+        repeated_choices = ["细读合作条款", "请伙伴一起把关", "先锁定关键风险"]
+        mock_client = Mock()
+        mock_client.call.return_value = json.dumps(
+            {
+                "options": [
+                    {"text": choice, "effects": {"energy": -5, "mood": 0}}
+                    for choice in repeated_choices
+                ]
+            }
+        )
+
+        event = self._make_generator(mock_client).generate_options_only(
+            "林岚需要在合同签署前决定如何处理新增条款。",
+            {"decision_history": [{"choice": choice} for choice in repeated_choices]},
+            language="zh",
+        )
+
+        assert len(event.options) == 3
+        assert {option.text for option in event.options}.isdisjoint(repeated_choices)
+
+    def test_options_prompt_includes_recent_choices_as_a_repeat_constraint(self):
+        from config.prompts import get_options_only_prompt
+
+        prompt = get_options_only_prompt(
+            "林岚需要在合同签署前决定如何处理新增条款。",
+            {"decision_history": [{"choice": "细读合作条款"}]},
+            language="zh",
+        )
+
+        assert "细读合作条款" in prompt
+        assert "禁止逐字或等价重复" in prompt
 
     def test_generate_options_fallback_en(self):
         """Test English fallback options."""
@@ -139,7 +251,7 @@ class TestOptionGenerator:
         )
         settings = {"relationships": {"key_people": [{"name": "张三"}]}}
         gen.validate_and_fix_relationships(event, settings)
-        assert "张三" in event.options[0].effects["relationships"]
+        assert event.options[0].effects["relationships"] == {"张三": 5}
 
     def test_validate_and_fix_relationships_case_insensitive(self):
         """Test case-insensitive name matching."""
@@ -153,7 +265,7 @@ class TestOptionGenerator:
         )
         settings = {"relationships": {"key_people": [{"name": "John"}]}}
         gen.validate_and_fix_relationships(event, settings)
-        assert "John" in event.options[0].effects["relationships"]
+        assert event.options[0].effects["relationships"] == {"John": 5}
 
     def test_validate_and_fix_relationships_role_match(self):
         """Test name matching by role."""
@@ -167,7 +279,7 @@ class TestOptionGenerator:
         )
         settings = {"relationships": {"key_people": [{"name": "李华", "role": "老师"}]}}
         gen.validate_and_fix_relationships(event, settings)
-        assert "李华" in event.options[0].effects["relationships"]
+        assert event.options[0].effects["relationships"] == {"李华": 5}
 
     def test_validate_and_fix_relationships_keeps_non_key_people(self):
         """Test non-key_people names are kept as-is (not dropped or mapped)."""
@@ -179,11 +291,11 @@ class TestOptionGenerator:
                 EventOption(text="B", effects={"energy": -5}),
             ],
         )
-        settings = {"relationships": {"key_people": [{"name": "张三"}, {"name": "李四"}]}}
+        settings = {
+            "relationships": {"key_people": [{"name": "张三"}, {"name": "李四"}]}
+        }
         gen.validate_and_fix_relationships(event, settings)
-        # Non-key_people name should be kept as-is, not dropped or mapped
-        assert "韦待价" in event.options[0].effects["relationships"]
-        assert event.options[0].effects["relationships"]["韦待价"] == 5
+        assert event.options[0].effects["relationships"] == {"韦待价": 5}
 
     def test_validate_and_fix_relationships_no_cross_mapping(self):
         """Test non-key_people names are NOT mapped to key_people.
@@ -201,12 +313,11 @@ class TestOptionGenerator:
                 EventOption(text="B", effects={"energy": -5}),
             ],
         )
-        settings = {"relationships": {"key_people": [{"name": "裴行俭"}, {"name": "李四"}]}}
+        settings = {
+            "relationships": {"key_people": [{"name": "裴行俭"}, {"name": "李四"}]}
+        }
         gen.validate_and_fix_relationships(event, settings)
-        # 武承嗣 should be kept as-is, NOT mapped to 裴行俭
-        assert "武承嗣" in event.options[0].effects["relationships"]
-        assert event.options[0].effects["relationships"]["武承嗣"] == -5
-        assert "裴行俭" not in event.options[0].effects["relationships"]
+        assert event.options[0].effects["relationships"] == {"武承嗣": -5}
 
     def test_validate_and_fix_relationships_family_members(self):
         """Test family members are also valid relationship targets."""
@@ -223,7 +334,7 @@ class TestOptionGenerator:
             "family": {"family_members": [{"name": "母亲王氏", "role": "母亲"}]},
         }
         gen.validate_and_fix_relationships(event, settings)
-        assert "母亲王氏" in event.options[0].effects["relationships"]
+        assert event.options[0].effects["relationships"] == {"母亲王氏": 5}
 
     def test_validate_event_quality_adds_action_points(self):
         """Test quality validation adds missing action_points."""
@@ -236,7 +347,7 @@ class TestOptionGenerator:
             ],
         )
         gen.validate_event_quality(event)
-        assert event.options[0].effects["action_points"] == -1
+        assert "action_points" not in event.options[0].effects
 
     def test_validate_event_quality_too_few_options(self):
         """Test quality validation rejects <2 options."""
@@ -273,7 +384,9 @@ class TestOptionGenerator:
         event = GameEvent(
             event_description="测试故事",
             options=[
-                EventOption(text="A", effects={"relationships": {"同事": 5, "朋友": -5}}),
+                EventOption(
+                    text="A", effects={"relationships": {"同事": 5, "朋友": -5}}
+                ),
                 EventOption(text="B", effects={"energy": -5}),
             ],
         )
@@ -300,7 +413,6 @@ class TestOptionGenerator:
         issues = gen.validate_options_consistency(
             event, story_text, available_people, language="zh"
         )
-        # Should have warning for 陌生人甲
         assert any("陌生人甲" in issue for issue in issues)
 
     def test_validate_options_consistency_known_character_no_warning(self):
@@ -571,7 +683,9 @@ class TestStoryGenerator:
 
     @patch("src.ai.story_generator.get_round_event_prompt", return_value="prompt")
     @patch("src.ai.story_generator.get_system_prompt", return_value="sys")
-    def test_generate_round_event_surfaces_provider_failure(self, mock_sys, mock_prompt):
+    def test_generate_round_event_surfaces_provider_failure(
+        self, mock_sys, mock_prompt
+    ):
         """Provider failure must not be persisted as a playable fallback event."""
         from src.ai.story_generator import StoryGenerator
         from src.ai.story_exceptions import StoryGenerationFailure
@@ -596,11 +710,16 @@ class TestStoryGenerator:
         """If story succeeds but option validation fails, keep story and build 3 non-generic choices."""
         from src.ai.story_generator import StoryGenerator
 
-        story = "顾晨曦在浙大实验室拿到合作协议，需要和林一凡确认技术对接计划。"
+        story = (
+            "顾晨曦在浙大实验室拿到合作协议，需要和林一凡确认技术对接计划，"
+            "并为下周的联调安排明确负责人和时间表。"
+        ) * 20
         mock_client = Mock()
         mock_client.call.return_value = story
         option_generator = Mock()
-        option_generator.generate_options_only.side_effect = ValueError("generic options")
+        option_generator.generate_options_only.side_effect = ValueError(
+            "generic options"
+        )
 
         event = StoryGenerator(mock_client).generate_round_event(
             player_state={"week": 2, "age": 26, "decision_history": []},
@@ -613,43 +732,55 @@ class TestStoryGenerator:
         assert event.event_description == story
         assert len(event.options) == 3
         assert {opt.text for opt in event.options}.isdisjoint(
-            {"回应眼前的请求", "先核对现场线索", "积极面对新的一天", "保持平常心继续前进"}
+            {
+                "回应眼前的请求",
+                "先核对现场线索",
+                "积极面对新的一天",
+                "保持平常心继续前进",
+            }
         )
 
     @patch("src.ai.story_generator.get_round_event_prompt", return_value="prompt")
     @patch("src.ai.story_generator.get_system_prompt", return_value="sys")
-    def test_option_failure_rejects_a_repeated_contextual_fallback_set(
+    def test_option_failure_replaces_a_repeated_contextual_fallback_set(
         self, mock_sys, mock_prompt
     ):
-        """A valid story cannot be made playable with the same three old choices."""
-        from src.ai.story_exceptions import StoryGenerationFailure
+        """A valid story remains playable when the static fallbacks were recent."""
         from src.ai.story_generator import StoryGenerator
 
-        story = "顾晨曦在浙大实验室拿到合作协议，需要和林一凡确认技术对接计划。"
+        story = (
+            "顾晨曦在浙大实验室拿到合作协议，需要和林一凡确认技术对接计划，"
+            "并为下周的联调安排明确负责人和时间表。"
+        ) * 20
         mock_client = Mock()
         mock_client.call.return_value = story
         option_generator = Mock()
-        option_generator.generate_options_only.side_effect = ValueError("generic options")
+        option_generator.generate_options_only.side_effect = ValueError(
+            "generic options"
+        )
         repeated_choices = ["细读合作条款", "请伙伴一起把关", "先锁定关键风险"]
 
-        with pytest.raises(StoryGenerationFailure, match="repeats recent choices"):
-            StoryGenerator(mock_client).generate_round_event(
-                player_state={
-                    "week": 7,
-                    "age": 26,
-                    "decision_history": [
-                        {"choice": choice} for choice in repeated_choices
-                    ],
-                },
-                language="zh",
-                round_number=0,
-                round_context="",
-                option_generator=option_generator,
-            )
+        event = StoryGenerator(mock_client).generate_round_event(
+            player_state={
+                "week": 7,
+                "age": 26,
+                "decision_history": [{"choice": choice} for choice in repeated_choices],
+            },
+            language="zh",
+            round_number=0,
+            round_context="",
+            option_generator=option_generator,
+        )
+
+        assert event.event_description == story
+        assert len(event.options) == 3
+        assert {option.text for option in event.options}.isdisjoint(repeated_choices)
 
     @patch("src.ai.story_generator.get_round_event_prompt", return_value="prompt")
     @patch("src.ai.story_generator.get_system_prompt", return_value="sys")
-    def test_generate_round_event_en_surfaces_provider_failure(self, mock_sys, mock_prompt):
+    def test_generate_round_event_en_surfaces_provider_failure(
+        self, mock_sys, mock_prompt
+    ):
         """English provider failure must not be turned into a fake event."""
         from src.ai.story_generator import StoryGenerator
         from src.ai.story_exceptions import StoryGenerationFailure
@@ -697,7 +828,9 @@ class TestStoryRewriter:
         mock_client.call.side_effect = Exception("fail")
         rewriter = StoryRewriter(mock_client)
         with pytest.raises(StoryRewriteFailure, match="fail"):
-            rewriter.rewrite_story_segment("Original", "segment", "instruction", None, "")
+            rewriter.rewrite_story_segment(
+                "Original", "segment", "instruction", None, ""
+            )
 
     @patch("src.ai.story_rewriter.get_story_only_prompt", return_value="prompt")
     def test_regenerate_story_success(self, mock_prompt):
@@ -736,7 +869,9 @@ class TestStoryRewriter:
         mock_client = Mock()
         mock_client.call.return_value = "Contextual story"
         rewriter = StoryRewriter(mock_client)
-        result = rewriter.regenerate_story({"week": 0}, None, "Previous context", language="zh")
+        result = rewriter.regenerate_story(
+            {"week": 0}, None, "Previous context", language="zh"
+        )
         assert result == "Contextual story"
 
     @patch("src.ai.story_rewriter.get_story_only_prompt", return_value="prompt")
@@ -827,7 +962,10 @@ class TestSummaryGenerator:
     def test_clean_summary_text_code_block(self):
         from src.ai.summary_generator import SummaryGenerator
 
-        assert SummaryGenerator._clean_summary_text("```json\nSummary text\n```") == "Summary text"
+        assert (
+            SummaryGenerator._clean_summary_text("```json\nSummary text\n```")
+            == "Summary text"
+        )
 
     def test_clean_summary_text_json_prefix(self):
         from src.ai.summary_generator import SummaryGenerator
@@ -869,7 +1007,9 @@ class TestSummaryGenerator:
         from src.ai.summary_generator import SummaryGenerator
 
         content = "ab"  # Too short
-        result = SummaryGenerator._extract_summary_from_raw(content, "original story text", "zh")
+        result = SummaryGenerator._extract_summary_from_raw(
+            content, "original story text", "zh"
+        )
         assert result == "original story text"
 
     def test_generate_weekly_summary_success(self):

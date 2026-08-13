@@ -3,27 +3,40 @@
 import re
 from typing import Any, Dict, Optional
 
-from config.prompts._helpers import (
-    _build_available_people_constraint,
-    _build_character_habits_context,
-    _build_common_story_constraints,
-    _build_continuation_mandate,
-    _build_critical_summary,
-    _build_era_anachronism_constraints,
-    _build_established_facts_context,
-    _build_foreshadowing_context,
-    _build_full_character_context,
-    _build_logic_constraints,
-    _build_new_character_intro_context,
-    _build_pending_storylines_context,
-    _build_time_context,
-    _build_world_model_constraints,
-    _collect_available_people,
-    _format_people_names,
-    build_realistic_modern_world_boundary,
-)
-from src.ai.prompt_sanitizer import sanitize_player_name, sanitize_user_choice
+from config.feature_flags import get_feature
+from config.prompts._helpers import (_build_available_people_constraint,
+                                     _build_character_habits_context,
+                                     _build_common_story_constraints,
+                                     _build_continuation_mandate,
+                                     _build_critical_summary,
+                                     _build_era_anachronism_constraints,
+                                     _build_established_facts_context,
+                                     _build_foreshadowing_context,
+                                     _build_full_character_context,
+                                     _build_logic_constraints,
+                                     _build_new_character_intro_context,
+                                     _build_pending_storylines_context,
+                                     _build_time_context,
+                                     _build_world_model_constraints,
+                                     _collect_available_people,
+                                     _format_people_names,
+                                     build_realistic_modern_world_boundary)
+from src.ai.budgets import NarrativeKind, resolve_prompt_length_requirement
+from src.ai.prompt_sanitizer import sanitize_persisted_player_name, sanitize_user_choice
 from src.game.relationship_authority import build_required_cast_constraints
+
+_LEGACY_EVENT_PARAGRAPH_ZH = (
+    "适时换段，每段控制在200-400字，禁止出现超过600字无换行的超长段落"  # LEGACY_COMPAT
+)
+_LEGACY_EVENT_PARAGRAPH_EN = "Change paragraphs appropriately. Keep each paragraph between 200-400 words. NO paragraphs exceeding 600 words without a break"  # LEGACY_COMPAT
+_LEGACY_EVENT_SCHEMA_ZH = "对情况的生动描述（1500-2000字，包含大量人物对话）"  # LEGACY_COMPAT
+_LEGACY_EVENT_SCHEMA_EN = (
+    "A vivid description (1500-2000 words with extensive dialogue)"  # LEGACY_COMPAT
+)
+_LEGACY_CONTINUATION_PARAGRAPH_ZH = (
+    "每段控制在150-300字，适时换段，禁止出现超过500字无换行的超长段落"  # LEGACY_COMPAT
+)
+_LEGACY_CONTINUATION_PARAGRAPH_EN = "Keep each paragraph between 150-300 words. Change paragraphs appropriately. NO paragraphs exceeding 500 words without a break"  # LEGACY_COMPAT
 
 # ==================== 自定义选择相关 Prompts ====================
 
@@ -35,7 +48,7 @@ _PROTAGONIST_MARKER_RE = re.compile(r"([\u4e00-\u9fff]{2,4})[（(]\s*玩家角�
 def _clean_protagonist_name(raw_name: Any) -> str:
     if not raw_name:
         return ""
-    return sanitize_player_name(str(raw_name)).strip()
+    return sanitize_persisted_player_name(str(raw_name)).strip()
 
 
 def _looks_like_generated_session_name(name: str) -> bool:
@@ -92,7 +105,9 @@ def resolve_protagonist_name(
     """Resolve the canonical protagonist name from explicit input, state, or settings."""
     explicit_clean = _clean_protagonist_name(explicit_name)
     settings_clean = _extract_settings_protagonist_name(character_settings)
-    player_clean = _clean_protagonist_name(player_state.get("player_name") or player_state.get("name"))
+    player_clean = _clean_protagonist_name(
+        player_state.get("player_name") or player_state.get("name")
+    )
 
     if explicit_clean and not (
         settings_clean and _looks_like_generated_session_name(explicit_clean)
@@ -212,15 +227,33 @@ def _is_modern_story_setting(character_settings: Optional[Dict[str, Any]]) -> bo
     if any(cue in text for cue in realistic_cues):
         return True
 
-    realistic_sections = {"basic", "career", "wealth", "education", "family", "relationships"}
+    realistic_sections = {"basic", "career", "education", "family", "relationships"}
     settings = character_settings or {}
     return any(section in settings for section in realistic_sections)
 
 
 def _zh_chapter_label(total_chapter: int) -> str:
     chapter_number_zh = [
-        "一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
-        "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
+        "一",
+        "二",
+        "三",
+        "四",
+        "五",
+        "六",
+        "七",
+        "八",
+        "九",
+        "十",
+        "十一",
+        "十二",
+        "十三",
+        "十四",
+        "十五",
+        "十六",
+        "十七",
+        "十八",
+        "十九",
+        "二十",
     ]
     if total_chapter <= len(chapter_number_zh):
         return f"第{chapter_number_zh[total_chapter - 1]}回"
@@ -229,7 +262,11 @@ def _zh_chapter_label(total_chapter: int) -> str:
 
 def _zh_timeline_title(week_index: int, round_index: int) -> str:
     round_names = ["周一", "周中", "周末"]
-    round_name = round_names[round_index] if 0 <= round_index < len(round_names) else f"第{round_index + 1}轮"
+    round_name = (
+        round_names[round_index]
+        if 0 <= round_index < len(round_names)
+        else f"第{round_index + 1}轮"
+    )
     return f"第{week_index + 1}周·{round_name}"
 
 
@@ -283,13 +320,12 @@ def get_custom_choice_effects_prompt(
         return f"""你是一个人生模拟游戏的叙事引擎。玩家选择了一个自定义的行动，请根据当前情境和玩家的选择，生成合理的属性变化。
 
 角色设定：{json.dumps(character_settings or {}, ensure_ascii=False)}
-当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}, 财富={current_state.get('wealth', 1000)}
+当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}
 
 属性变化范围说明：
 - energy(精力): -20到20，负值表示累了，正值表示休息恢复
 - mood(情绪): -20到20，负值表示不开心，正值表示开心
 - knowledge(学识): -10到15，正值表示学到东西
-- wealth(财富): -1000到1000，平时变化应该较小
 
 注意：属性变化应该合理，不要过于极端。大多数情况下变化应该在 -10 到 10 之间。
 
@@ -297,20 +333,18 @@ def get_custom_choice_effects_prompt(
 {{
   "energy": 0,
   "mood": 0,
-  "knowledge": 0,
-  "wealth": 0
+  "knowledge": 0
 }}"""
     else:
         return f"""You are a narrative engine for a life simulation game. The player chose a custom action. Based on the current situation and player's choice, generate reasonable attribute changes.
 
 Character settings: {json.dumps(character_settings or {}, ensure_ascii=False)}
-Current state: Energy={current_state.get('energy', 50)}, Mood={current_state.get('mood', 50)}, Knowledge={current_state.get('knowledge', 50)}, Wealth={current_state.get('wealth', 1000)}
+Current state: Energy={current_state.get('energy', 50)}, Mood={current_state.get('mood', 50)}, Knowledge={current_state.get('knowledge', 50)}
 
 Attribute change ranges:
 - energy: -20 to 20, negative means tired, positive means rested
 - mood: -20 to 20, negative means unhappy, positive means happy
 - knowledge: -10 to 15, positive means learned something
-- wealth: -1000 to 1000, usually small changes
 
 Note: Changes should be reasonable, not extreme. Most changes should be between -10 and 10.
 
@@ -318,8 +352,7 @@ Return ONLY JSON format:
 {{
   "energy": 0,
   "mood": 0,
-  "knowledge": 0,
-  "wealth": 0
+  "knowledge": 0
 }}"""
 
 
@@ -327,6 +360,7 @@ def get_custom_choice_result_prompt(
     character_settings: dict,
     current_state: dict,
     language: str = "zh",
+    length_requirement: Optional[str] = None,
 ) -> str:
     """
     生成自定义选择完整结果（包含故事续写和属性变化）的 system prompt。
@@ -342,7 +376,9 @@ def get_custom_choice_result_prompt(
     import json
 
     required_cast_context = build_required_cast_constraints(character_settings or {}, language)
-    modern_world_boundary = build_realistic_modern_world_boundary(character_settings or {}, language)
+    modern_world_boundary = build_realistic_modern_world_boundary(
+        character_settings or {}, language
+    )
     era_constraints = _build_era_anachronism_constraints(character_settings or {}, language)
     authority_context_parts = [
         part for part in [required_cast_context, modern_world_boundary, era_constraints] if part
@@ -362,19 +398,21 @@ def get_custom_choice_result_prompt(
         )
 
     if language == "zh":
+        localized_length = length_requirement or resolve_prompt_length_requirement(
+            NarrativeKind.CONTINUATION, "expert", language
+        )
         return f"""你是一个人生模拟游戏的叙事引擎。玩家选择了一个自定义的行动，你需要：
-1. 根据当前情境和玩家的选择，生成合理的故事续写（200-400字）
+1. 根据当前情境和玩家的选择，生成合理的故事续写（{localized_length}）
 2. 生成合理的属性变化（必须符合逻辑）
 
 角色设定：{json.dumps(character_settings or {}, ensure_ascii=False)}
-当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}, 财富={current_state.get('wealth', 1000)}
+当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}
 {authority_context}
 
 属性变化范围说明：
 - energy(精力): -20到20，负值表示累了，正值表示休息恢复
 - mood(情绪): -20到20，负值表示不开心，正值表示开心
 - knowledge(学识): -10到15，正值表示学到东西
-- wealth(财富): -1000到1000，平时变化应该较小
 
 注意：属性变化应该合理，不要过于极端。大多数情况下变化应该在 -10 到 10 之间。
 
@@ -384,24 +422,25 @@ def get_custom_choice_result_prompt(
   "effects": {{
     "energy": 0,
     "mood": 0,
-    "knowledge": 0,
-    "wealth": 0
+    "knowledge": 0
   }}
 }}"""
     else:
+        localized_length = length_requirement or resolve_prompt_length_requirement(
+            NarrativeKind.CONTINUATION, "expert", language
+        )
         return f"""You are a narrative engine for a life simulation game. The player chose a custom action. You need to:
-1. Generate a reasonable story continuation (200-400 words) based on the situation and choice
+1. Generate a reasonable story continuation ({localized_length}) based on the situation and choice
 2. Generate reasonable attribute changes (must be logical)
 
 Character settings: {json.dumps(character_settings or {}, ensure_ascii=False)}
-Current state: Energy={current_state.get('energy', 50)}, Mood={current_state.get('mood', 50)}, Knowledge={current_state.get('knowledge', 50)}, Wealth={current_state.get('wealth', 1000)}
+Current state: Energy={current_state.get('energy', 50)}, Mood={current_state.get('mood', 50)}, Knowledge={current_state.get('knowledge', 50)}
 {authority_context}
 
 Attribute change ranges:
 - energy: -20 to 20, negative means tired, positive means rested
 - mood: -20 to 20, negative means unhappy, positive means happy
 - knowledge: -10 to 15, positive means learned something
-- wealth: -1000 to 1000, usually small changes
 
 Note: Changes should be reasonable, not extreme. Most changes should be between -10 and 10.
 
@@ -411,8 +450,7 @@ Return JSON format:
   "effects": {{
     "energy": 0,
     "mood": 0,
-    "knowledge": 0,
-    "wealth": 0
+    "knowledge": 0
   }}
 }}"""
 
@@ -465,6 +503,7 @@ def get_event_generation_prompt(
     pending_storylines: Optional[list] = None,
     established_facts: Optional[list] = None,
     world_model: Optional[Any] = None,
+    quality_level: str = "expert",
 ) -> str:
     """
     Generate the prompt for AI event generation.
@@ -499,6 +538,7 @@ def get_event_generation_prompt(
             pending_storylines,
             established_facts,
             world_model=world_model,
+            quality_level=quality_level,
         )
     else:
         return _get_english_prompt(
@@ -513,6 +553,7 @@ def get_event_generation_prompt(
             pending_storylines,
             established_facts,
             world_model=world_model,
+            quality_level=quality_level,
         )
 
 
@@ -528,6 +569,7 @@ def _get_english_prompt(
     pending_storylines: Optional[list] = None,
     established_facts: Optional[list] = None,
     world_model: Optional[Any] = None,
+    quality_level: str = "expert",
 ) -> str:
     """English prompt template."""
 
@@ -535,7 +577,6 @@ def _get_english_prompt(
     energy = player_state.get("energy", 70)
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
-    wealth = player_state.get("wealth", 10000)
     relationships = player_state.get("relationships", {})
 
     rel_str = ", ".join([f"{name}({affinity})" for name, affinity in relationships.items()])
@@ -603,11 +644,22 @@ def _get_english_prompt(
             "\n\n【Older History Summaries - MUST NOT repeat these plots】\n" + recent_topics_str
         )
 
+    length_requirement = resolve_prompt_length_requirement(NarrativeKind.ROUND, quality_level, "en")
+    paragraph_rule = (
+        "Break the story into coherent paragraphs; do not return one oversized unbroken block"
+        if get_feature("unified_narrative_budgets")
+        else _LEGACY_EVENT_PARAGRAPH_EN
+    )
+    event_schema_description = (
+        "A vivid description that follows the required narrative budget"
+        if get_feature("unified_narrative_budgets")
+        else _LEGACY_EVENT_SCHEMA_EN
+    )
     prompt = f"""You are a "fate engine" for a life simulation game. Generate a life event that requires the player to make a meaningful choice.
 
 MOST IMPORTANT REQUIREMENTS:
 1. **MUST use third-person narration** ("he/she" not "I/you"), keep consistent perspective throughout
-2. The story should be 800-1200 words, with dialogue, scene descriptions, and key moments. Write it with depth and engagement.
+2. {length_requirement}, with dialogue, scene descriptions, and key moments. Write it with depth and engagement.
 
 【Complete Character Settings - MUST STRICTLY FOLLOW】
 {character_context if character_context else "Standard modern young adult"}{available_people_str}
@@ -621,7 +673,6 @@ Age: {age} years old
 Energy: {energy}/100
 Mood: {mood}/100
 Knowledge: {knowledge}/100
-Wealth: ${wealth:,}
 Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_context}
 
 【Generation Requirements - MUST STRICTLY FOLLOW】
@@ -631,10 +682,10 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
    - **Family Background**: If family situation is special, reflect it in the event
    - **Personality Traits**: Event must match character's personality (introverted/extroverted, adventurous/conservative, etc.)
    - **Social Relationships**: **All people in the event MUST and ONLY come from the "Available People List"**, cannot create new people
-2. Event must relate to at least two state values (energy, mood, knowledge, wealth, or relationships)
+2. Event must relate to at least two state values (energy, mood, knowledge, or relationships)
 3. Event should fit the "{phase_desc}" life stage and strictly match character settings
-4. Provide 2-4 options, each clearly listing effects on [energy, mood, knowledge, wealth]
-5. **Story should be 800-1200 words - engaging and immersive**:
+4. Provide exactly 3 options, each clearly listing effects on [energy, mood, knowledge]; target 3-12 words per option and rewrite any option over 16 words
+5. **{length_requirement} - engaging and immersive**:
    - Write it as a compelling scene with depth
    - Include 3-5 meaningful dialogue exchanges
    - Include essential dialogue, expressions, actions, inner thoughts
@@ -646,7 +697,7 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
    - Use commas and semicolons for clause breaks; no run-on sentences over 30 words without punctuation
    - No paragraphs without any punctuation
    - Do not mix Chinese and English punctuation
-   - **Paragraph breaks**: Change paragraphs appropriately. Keep each paragraph between 200-400 words. NO paragraphs exceeding 600 words without a break
+   - **Paragraph breaks**: {paragraph_rule}
 7. Options should present real trade-offs - no option should be clearly superior
 8. Relationship effects should be specified as "relationships": {{"name": +/-value}}, **name MUST come from Available People List**
 9. **IMPORTANT: Based on the character's personality, abilities, interests, and life vision, mark each option with "likely_choice": true/false to indicate what the character would most likely choose. At least one option should have likely_choice: true.**
@@ -666,31 +717,29 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
 13. **NO FOURTH-WALL BREAKING**: The story must NEVER contain meta-commentary, references to 'game', 'simulation', 'system', 'stats', 'energy points', 'mood value', etc. No author asides, no addressing the reader, no explaining creative intent. The story must remain fully immersed in the character's world.
 14. **DO NOT FABRICATE PAST EVENTS**: Any past events referenced in the story MUST come from the context provided above. ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events.
 
-REMINDER: event_description should be 800-1200 words - engaging and immersive. Focus on the key moment with atmosphere and depth.
+REMINDER: event_description: {length_requirement}. Focus on the key moment with atmosphere and depth.
 
 【Output Format】
 You MUST return ONLY valid JSON in this exact format:
 {{
-  "event_description": "A vivid description (1500-2000 words with extensive dialogue)"
+  "event_description": "{event_schema_description}"
   "options": [
     {{
-      "text": "Option A description (max 15 words)",
+      "text": "Option A description (target 3-12 words)",
       "effects": {{
         "energy": -10,
         "mood": 5,
         "knowledge": 0,
-        "wealth": 2000,
         "relationships": {{"Alice": -10}}
       }},
       "likely_choice": true
     }},
     {{
-      "text": "Option B description (max 15 words)",
+      "text": "Option B description (target 3-12 words)",
       "effects": {{
         "energy": -20,
         "mood": -10,
-        "knowledge": 5,
-        "wealth": 5000
+        "knowledge": 5
       }}
     }}
   ]
@@ -713,6 +762,7 @@ def _get_chinese_prompt(
     pending_storylines: Optional[list] = None,
     established_facts: Optional[list] = None,
     world_model: Optional[Any] = None,
+    quality_level: str = "expert",
 ) -> str:
     """Chinese prompt template."""
 
@@ -720,11 +770,6 @@ def _get_chinese_prompt(
     energy = player_state.get("energy", 70)
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
-    wealth = player_state.get("wealth", 10000)
-    # ★ 从 character_settings 提取动态货币单位
-    currency_name = "货币"
-    if character_settings and isinstance(character_settings.get("wealth"), dict):
-        currency_name = character_settings["wealth"].get("currency_name", "货币")
     week = player_state.get("week", 0)
     current_round = player_state.get("current_round", 0)
     rounds_per_week = player_state.get("rounds_per_week", 3)
@@ -834,11 +879,22 @@ def _get_chinese_prompt(
         character_settings,
     )
 
+    length_requirement = resolve_prompt_length_requirement(NarrativeKind.ROUND, quality_level, "zh")
+    paragraph_rule = (
+        "按语义适时换段，禁止返回一整块无换行的超长段落"
+        if get_feature("unified_narrative_budgets")
+        else _LEGACY_EVENT_PARAGRAPH_ZH
+    )
+    event_schema_description = (
+        "遵守当前叙事预算的生动描述"
+        if get_feature("unified_narrative_budgets")
+        else _LEGACY_EVENT_SCHEMA_ZH
+    )
     prompt = f"""你是一个人生模拟游戏的"命运引擎"。请根据以下玩家状态和角色设定，以故事续写的方式生成一个需要拉择的生活事件。
 
 最重要的要求：
 1. **必须使用第三人称叙事**（"他/她"而非"我/你"），保持全文人称统一
-2. 故事应该控制在800-1200字，包含丰富的人物对话、场景描写、内心活动。要生动有深度，聚焦核心决策时刻。{story_context}{summary_context}
+2. {length_requirement}，包含丰富的人物对话、场景描写、内心活动。要生动有深度，聚焦核心决策时刻。{story_context}{summary_context}
 {chapter_constraint}
 
 【角色完整设定 - 必须严格遵守】
@@ -867,7 +923,6 @@ def _get_chinese_prompt(
 精力：{energy}/100
 情绪：{mood}/100
 学识：{knowledge}/100
-财富：{wealth:,}{currency_name}
 关键关系：{rel_str}{storylines_context}{facts_context}{world_model_context}
 
 【生成要求 - 必须严格遵守】
@@ -877,10 +932,10 @@ def _get_chinese_prompt(
    - **家庭背景**：如果家庭情况特殊，要在事件中体现
    - **性格特点**：事件要符合角色的性格（内向/外向、冒险/保守等）
    - **社会关系**：**事件中出现的所有人物必须且只能来自"可用人物列表"**，不能凭空创造新人物
-2. 事件必须与至少两项状态值相关（精力、情绪、学识、财富或关系）
+2. 事件必须与至少两项状态值相关（精力、情绪、学识或关系）
 3. 事件应贴近"{phase_desc}"人生阶段，并严格符合角色的基本设定
-4. 提供2-4个选项，每个选项明确列出对【精力、情绪、学识、财富】的影响值
-5. **故事应该800-1200字，生动有深度**：
+4. 提供恰好3个选项，每个选项目标8-24字，超过40字必须重写，并明确列出对【精力、情绪、学识】的影响值
+5. **{length_requirement}，生动有深度**：
    - 写成有吸引力的场景片段，有一定深度
    - 包含3-5轮有意义的对话交流
    - 包含必要的对话、表情、动作、内心活动
@@ -892,7 +947,7 @@ def _get_chinese_prompt(
    - 句内必须使用逗号、顿号合理断句，禁止出现超过30字无标点的情况
    - 禁止出现没有标点的大段连续文字
    - 标点禁止中英混用
-   - **合理分段**：适时换段，每段控制在200-400字，禁止出现超过600字无换行的超长段落
+   - **合理分段**：{paragraph_rule}
 7. 选项应呈现真实的权衡取舍，不应有明显最优选项
 8. 关系影响应指定为"relationships": {{"姓名": +/-数值}}，**姓名必须来自可用人物列表**
 9. **重要：根据角色的性格特点、能力、兴趣和人生愿景，在选项中标注"likely_choice": true/false，表示该角色最可能做出的选择。每个事件至少有一个likely_choice为true的选项。**
@@ -913,31 +968,29 @@ def _get_chinese_prompt(
 13. **严禁跳脱叙事**：故事中绝对不能出现任何打破第四面墙的内容，包括但不限于：提及"游戏""模拟""系统""属性值""精力值""情绪值"等元信息；出现作者旁白、对读者说话、解释创作意图；出现对故事本身的评论或总结性元叙述。故事应完全沉浸在角色的世界中。
 14. **严禁编造过往事件**：故事中提到的任何过去发生的事情，必须来自上面提供的上下文（上周故事、近期总结、年度回顾等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及。
 
-再次强调：event_description应该800-1200字，生动有深度。既不过长影响节奏，也不过短缺乏沉浸感！
+再次强调：event_description 必须遵守“{length_requirement}”，生动有深度！
 
 【输出格式】
 你必须仅返回有效的JSON格式，格式如下：
 {{
-  "event_description": "对情况的生动描述（1500-2000字，包含大量人物对话）"
+  "event_description": "{event_schema_description}"
   "options": [
     {{
-      "text": "选项A描述（最多15字）",
+      "text": "选项A描述（目标8-24字）",
       "effects": {{
         "energy": -10,
         "mood": 5,
         "knowledge": 0,
-        "wealth": 2000,
         "relationships": {{"李华": -10}}
       }},
       "likely_choice": true
     }},
     {{
-      "text": "选项B描述（最多15字）",
+      "text": "选项B描述（目标8-24字）",
       "effects": {{
         "energy": -20,
         "mood": -10,
-        "knowledge": 5,
-        "wealth": 5000
+        "knowledge": 5
       }}
     }}
   ]
@@ -956,11 +1009,13 @@ def get_result_generation_prompt(
     character_settings: Optional[Dict[str, Any]] = None,
     recent_context: str = "",
     is_custom: bool = False,
+    length_requirement: Optional[str] = None,
 ) -> str:
     """
     Generate prompt for story continuation after player's choice.
 
-    This prompt generates a detailed story continuation (500-800 chars) that:
+    This prompt generates a detailed story continuation whose localized length
+    is resolved by the narrative budget:
     - Continues the narrative from the event
     - Shows the immediate consequences of the player's choice
     - Includes character interactions and dialogue where appropriate
@@ -975,15 +1030,9 @@ def get_result_generation_prompt(
         full_character_context, available_people = _build_full_character_context(
             character_settings, language
         )
-        available_people_context = _build_available_people_constraint(
-            available_people, language
-        )
-        required_cast_context = build_required_cast_constraints(
-            character_settings, language
-        )
-        modern_world_boundary = build_realistic_modern_world_boundary(
-            character_settings, language
-        )
+        available_people_context = _build_available_people_constraint(available_people, language)
+        required_cast_context = build_required_cast_constraints(character_settings, language)
+        modern_world_boundary = build_realistic_modern_world_boundary(character_settings, language)
         era_constraints = _build_era_anachronism_constraints(character_settings, language)
         if full_character_context:
             char_context += f"\n{full_character_context}"
@@ -1014,7 +1063,7 @@ def get_result_generation_prompt(
             "也不允许将其解释为预设选项中的某一个。"
             "续写的内容必须直接体现玩家输入的这个具体行动。"
             "\n10a. 续写开头必须用一句话明确描述玩家执行了这个自定义行动的具体场景，"
-            "例如：\"主角决定[自定义行动内容]，于是...\""
+            '例如："主角决定[自定义行动内容]，于是..."'
             "\n10b. 如果玩家的选择与当前情境存在冲突，"
             "你应该在故事中展现这个冲突的后果（如失败、意外、他人反对等），"
             "而不是忽略玩家的选择回到原有剧情。"
@@ -1038,6 +1087,14 @@ def get_result_generation_prompt(
         )
 
     if language == "zh":
+        localized_length = length_requirement or resolve_prompt_length_requirement(
+            NarrativeKind.CONTINUATION, "expert", language
+        )
+        paragraph_rule = (
+            "按完整场景和语义自然分段，避免过碎或整块无换行"
+            if get_feature("unified_narrative_budgets")
+            else _LEGACY_CONTINUATION_PARAGRAPH_ZH
+        )
         return f"""你是一个沉浸式叙事小说作家。现在请续写以下故事，展示玩家做出选择后发生了什么。
 
 ## 角色信息{char_context}
@@ -1052,7 +1109,7 @@ def get_result_generation_prompt(
 {effects}
 
 ## 要求
-1. 续写500-800字，详细描述选择后立即发生的事情
+1. 续写{localized_length}，详细描述选择后立即发生的事情
 2. 包含具体的场景描写、人物反应和丰富的对话（至少3-5轮自然对话）
 3. 展现这个选择带来的即时后果和情感变化
 4. 必须保持第三人称叙事，使用主角姓名或"他/她"，严禁使用叙述性"你"指代主角
@@ -1060,11 +1117,19 @@ def get_result_generation_prompt(
 6. 正确使用标点符号：对话必须用""包裹，句末使用句号/问号/感叹号，句内用逗号合理断句。禁止出现没有标点的大段连续文字
 7. 严禁跳脱叙事：不得提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白
 8. **选择必须产生独特影响**：这个续写必须是因这个特定选择才发生的，不能是换任何一个选项都能套用的通用剧情。必须体现：如果玩家选择了另一个完全不同的选项，故事的走向和发展会明显不同
-9. **合理分段**：每段控制在150-300字，适时换段，禁止出现超过500字无换行的超长段落
+9. **合理分段**：{paragraph_rule}
 10. **不得重复当前故事**：当前故事已经展示给玩家，续写必须从玩家选择之后开始推进；不要重复叙述当前故事中已经发生的场景、旅程、对话或揭示{custom_constraint_zh}
 
 仅返回续写的故事内容，不要其他说明或标题。"""
     else:
+        localized_length = length_requirement or resolve_prompt_length_requirement(
+            NarrativeKind.CONTINUATION, "expert", language
+        )
+        paragraph_rule = (
+            "Use coherent scene-based paragraphs; avoid fragments and oversized unbroken blocks"
+            if get_feature("unified_narrative_budgets")
+            else _LEGACY_CONTINUATION_PARAGRAPH_EN
+        )
         return f"""You are an immersive narrative writer. Continue the following story, showing what happens after the player's choice.
 
 ## Character Info{char_context}
@@ -1079,7 +1144,7 @@ def get_result_generation_prompt(
 {effects}
 
 ## Requirements
-1. Write 500-800 words continuing the story
+1. Write {localized_length} continuing the story
 2. Include specific scene descriptions, character reactions, and rich dialogue (at least 3-5 natural exchanges)
 3. Show immediate consequences and emotional changes from this choice
 4. Maintain third-person narrative, using the protagonist's name or "he/she"; do not use narrative "you" for the protagonist
@@ -1087,7 +1152,7 @@ def get_result_generation_prompt(
 6. Proper punctuation: dialogue MUST be in quotation marks, every sentence MUST end with a period/question/exclamation, use commas for clause breaks. No run-on paragraphs without punctuation
 7. NO FOURTH-WALL BREAKING: never mention 'game', 'simulation', 'system', 'stats', etc. No author asides
 8. **Choice must have UNIQUE impact**: This continuation MUST be a direct result of THIS specific choice. It cannot be a generic outcome that would apply to any option. Show that if the player had chosen a completely different option, the story direction and development would be noticeably different
-9. **Paragraph breaks**: Keep each paragraph between 150-300 words. Change paragraphs appropriately. NO paragraphs exceeding 500 words without a break
+9. **Paragraph breaks**: {paragraph_rule}
 10. **Do not repeat the current story**: The current story has already been shown to the player. Continue from after the player's choice; do not re-narrate scenes, travel, dialogue, or revelations that already happened in the current story{custom_constraint_en}
 
 Return only the story continuation, no other explanations or headers."""
@@ -1123,6 +1188,14 @@ def get_options_only_prompt(
 
     people_list = "、".join(available_people) if available_people else "无"
 
+    recent_choice_texts = []
+    for entry in player_state.get("decision_history", [])[-12:]:
+        if not isinstance(entry, dict):
+            continue
+        choice = str(entry.get("choice") or "").strip()
+        if choice and choice not in recent_choice_texts:
+            recent_choice_texts.append(choice)
+
     # Build character context for option generator (era, personality, key background)
     char_context_parts = []
     if character_settings:
@@ -1155,19 +1228,26 @@ def get_options_only_prompt(
 
     if language == "zh":
         char_section = f"\n\n【角色背景】\n{char_context_str}" if char_context_str else ""
-        return f"""你是一个人生模拟游戏的选项生成器。基于以下故事描述，生成2-4个用户可以选择的选项。
+        recent_choices_section = (
+            "\n\n【近期已采用的选择】\n"
+            + "\n".join(f"- {choice}" for choice in recent_choice_texts)
+            + "\n本轮三项选择禁止逐字或等价重复上述选择；必须针对当前故事结尾提出新的取舍。"
+            if recent_choice_texts
+            else ""
+        )
+        return f"""你是一个人生模拟游戏的选项生成器。基于以下故事描述，生成恰好3个用户可以选择的选项。
 
 【故事描述】
 {story_description}
 
 【可用人物列表】
-{people_list}{char_section}
+{people_list}{char_section}{recent_choices_section}
 
 【核心要求 - 必须严格遵守】
 
 **最重要：选项必须精确回应故事结尾的决策点！**
 
-请仔细阅读上面的故事，特别关注故事**最后几段**面临的具体情境（某人提出邀请/面临冲突/需要做选择），然后生成2-4个**直接回应该情境**的选项。
+请仔细阅读上面的故事，特别关注故事**最后几段**面临的具体情境（某人提出邀请/面临冲突/需要做选择），然后生成恰好3个**直接回应该情境**的选项。
 
 **逻辑一致性要求：**
 - 选项必须是主角在故事结尾的**具体情境下**可以采取的行动
@@ -1180,7 +1260,8 @@ def get_options_only_prompt(
 - 不要生成脱离故事情境的独立行动
 
 【其他要求】
-3. 每个选项明确列出对【精力(energy)、情绪(mood)、学识(knowledge)、财富(wealth)】的影响值
+2. 每个选项目标8-24字；超过40字的选项必须重写
+3. 每个选项明确列出对【精力(energy)、情绪(mood)、学识(knowledge)】的影响值
 4. 选项应呈现真实的权衡取舍，不应有明显最优选项
 5. **关系影响必须指定为"relationships": {{"姓名": +/-数值}}，姓名必须严格来自可用人物列表，禁止使用列表中不存在的名字！**
 6. 标注"likely_choice": true/false表示角色最可能做出的选择
@@ -1190,23 +1271,21 @@ def get_options_only_prompt(
 {{
   "options": [
     {{
-      "text": "选项A描述（最多15字）",
+      "text": "选项A描述（目标8-24字）",
       "effects": {{
         "energy": -10,
         "mood": 5,
         "knowledge": 0,
-        "wealth": 0,
         "relationships": {{}}
       }},
       "likely_choice": true
     }},
     {{
-      "text": "选项B描述（最多15字）",
+      "text": "选项B描述（目标8-24字）",
       "effects": {{
         "energy": -5,
         "mood": -5,
-        "knowledge": 5,
-        "wealth": 0
+        "knowledge": 5
       }},
       "likely_choice": false
     }}
@@ -1218,13 +1297,20 @@ def get_options_only_prompt(
         char_section_en = (
             f"\n\n[Character Background]\n{char_context_str}" if char_context_str else ""
         )
-        return f"""You are an options generator for a life simulation game. Based on the following story description, generate 2-4 options for the user to choose from.
+        recent_choices_section_en = (
+            "\n\n[Recently Chosen Actions]\n"
+            + "\n".join(f"- {choice}" for choice in recent_choice_texts)
+            + "\nThe complete option set must not repeat these choices verbatim or semantically; propose new trade-offs for the current ending."
+            if recent_choice_texts
+            else ""
+        )
+        return f"""You are an options generator for a life simulation game. Based on the following story description, generate exactly 3 options for the user to choose from.
 
 [Story Description]
 {story_description}
 
 [Available People]
-{people_list}{char_section_en}
+{people_list}{char_section_en}{recent_choices_section_en}
 
 [Requirements]
 1. **Options MUST precisely respond to the decision point at the END of the story**:
@@ -1236,33 +1322,32 @@ def get_options_only_prompt(
    - "Rest", "Study", "Work", "Exercise" etc.
    - "Continue forward", "Think about it", "Keep status quo" etc.
    - Any action detached from the story context
-3. Each option clearly lists effects on [energy, mood, knowledge, wealth]
-4. Options should present real trade-offs - no option should be clearly superior
-5. Relationship effects should be specified as "relationships": {{"name": +/-value}}, name must come from Available People List
-6. Mark "likely_choice": true/false to indicate what the character would most likely choose
+3. Target 3-12 words per option; any option over 16 words must be rewritten
+4. Each option clearly lists effects on [energy, mood, knowledge]
+5. Options should present real trade-offs - no option should be clearly superior
+6. Relationship effects should be specified as "relationships": {{"name": +/-value}}, name must come from Available People List
+7. Mark "likely_choice": true/false to indicate what the character would most likely choose
 
 [Output Format]
 Return ONLY valid JSON:
 {{
   "options": [
     {{
-      "text": "Option A description (max 15 words)",
+      "text": "Option A description (target 3-12 words)",
       "effects": {{
         "energy": -10,
         "mood": 5,
         "knowledge": 0,
-        "wealth": 0,
         "relationships": {{}}
       }},
       "likely_choice": true
     }},
     {{
-      "text": "Option B description (max 15 words)",
+      "text": "Option B description (target 3-12 words)",
       "effects": {{
         "energy": -5,
         "mood": -5,
-        "knowledge": 5,
-        "wealth": 0
+        "knowledge": 5
       }},
       "likely_choice": false
     }}
@@ -1328,7 +1413,6 @@ def get_story_only_prompt(
     energy = player_state.get("energy", 70)
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
-    wealth = player_state.get("wealth", 10000)
     # ★ 章节号计算（week 已是显示值+1，此处用原始值计算章节号）
     raw_week = player_state.get("week", 0)
     current_round = player_state.get("current_round", 0)
@@ -1340,10 +1424,6 @@ def get_story_only_prompt(
         current_round,
         character_settings,
     )
-    # ★ 从 character_settings 提取动态货币单位
-    currency_name = "货币"
-    if character_settings and isinstance(character_settings.get("wealth"), dict):
-        currency_name = character_settings["wealth"].get("currency_name", "货币")
     relationships = player_state.get("relationships", {})
     protagonist_name = _resolve_protagonist_name(player_state, character_settings, player_name)
     protagonist_gender = _extract_gender_text(character_settings)
@@ -1507,6 +1587,9 @@ def get_story_only_prompt(
 
     # ★ 构建公共叙事约束（根据质量级别）
     common_constraints = _build_common_story_constraints(language, quality_level)
+    length_requirement = resolve_prompt_length_requirement(
+        NarrativeKind.ROUND, quality_level, language
+    )
     pacing_guard = _build_round_pacing_guard(language)
 
     if language == "zh":
@@ -1527,7 +1610,7 @@ def get_story_only_prompt(
 【玩家当前状态】
 年龄：{age}岁 | 第{week}周
 精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
-财富：{wealth:,}{currency_name} | 关系：{rel_str}
+关系：{rel_str}
 
 [MUST] 强制约束（违反即重新生成）：{storylines_context}{facts_context}{world_model_context}{continuation_mandate}
 {pacing_guard}
@@ -1540,7 +1623,7 @@ def get_story_only_prompt(
 {common_constraints}
 
 【写作要求】
-1. **故事应该800-1200字**，包含3-5轮对话交流，对话用""包裹
+1. **{length_requirement}**，包含3-5轮对话交流，对话用""包裹
 2. 包含环境描写、表情动作、内心独白等细节，事件必须严格符合角色设定
 3. 故事中出现的人物必须来自可用人物列表，标点禁止中英混用
 4. **场景连贯性**：检查上一轮结束地点，禁止无故跳跃场景。开头前3句明确当前地点
@@ -1565,7 +1648,7 @@ def get_story_only_prompt(
 [Current Player State]
 Age: {age} | Week {week}
 Energy: {energy}/100 | Mood: {mood}/100 | Knowledge: {knowledge}/100
-Wealth: ${wealth:,} | Relationships: {rel_str}
+Relationships: {rel_str}
 
 [MUST] Mandatory constraints (violation = regeneration):{storylines_context}{facts_context}{world_model_context}{continuation_mandate}
 {pacing_guard}
@@ -1578,7 +1661,7 @@ Wealth: ${wealth:,} | Relationships: {rel_str}
 {common_constraints}
 
 [Writing Requirements]
-1. **Story should be 800-1200 words**, include 3-5 dialogue exchanges using quotation marks
+1. **{length_requirement}**, include 3-5 dialogue exchanges using quotation marks
 2. Include environment descriptions, expressions, actions, inner thoughts; must match character settings
 3. Characters must come from available people list
 4. **Scene continuity**: Check previous round ending location. No unexplained scene jumps. First 3 sentences must establish location
@@ -1676,16 +1759,14 @@ def get_round_event_prompt(
     Returns:
         Formatted prompt string for story generation
     """
-    from src.ai.generation_budget import get_generation_budget
-
-    generation_budget = get_generation_budget(quality_level)
-    length_requirement = generation_budget.length_requirement(language)
+    length_requirement = resolve_prompt_length_requirement(
+        NarrativeKind.ROUND, quality_level, language
+    )
     age = player_state.get("age", 22)
     week = player_state.get("week", 0) + 1  # ★ week 从0开始，显示时+1，与前端一致
     energy = player_state.get("energy", 70)
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
-    wealth = player_state.get("wealth", 10000)
     # ★ 章节号计算（与 get_story_only_prompt 一致）
     raw_week = player_state.get("week", 0)
     current_round = player_state.get("current_round", 0)
@@ -1697,10 +1778,6 @@ def get_round_event_prompt(
         current_round,
         character_settings,
     )
-    # ★ 从 character_settings 提取动态货币单位
-    currency_name = "货币"
-    if character_settings and isinstance(character_settings.get("wealth"), dict):
-        currency_name = character_settings["wealth"].get("currency_name", "货币")
     relationships = player_state.get("relationships", {})
     protagonist_name = _resolve_protagonist_name(player_state, character_settings, player_name)
     protagonist_gender = _extract_gender_text(character_settings)
@@ -1900,7 +1977,7 @@ def get_round_event_prompt(
 【当前状态】
 年龄：{age}岁 | 第{week}周 - {round_name}
 精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
-财富：{wealth:,}{currency_name} | 关系：{rel_str}{context_section}{rel_events_context}{memory_context}
+关系：{rel_str}{context_section}{rel_events_context}{memory_context}
 
 [MUST] 强制约束（违反即重新生成）：{world_model_context}{storylines_context}{facts_context}{continuation_mandate}{new_char_context}
 {pacing_guard}
@@ -2044,7 +2121,7 @@ Usage tip: Use as character memories, dialogue references, or background context
 [Current State]
 Age: {age} | Week {week} - {round_name_en}
 Energy: {energy}/100 | Mood: {mood}/100 | Knowledge: {knowledge}/100
-Wealth: ${wealth:,} | Relationships: {rel_str}{context_section}{rel_events_context}{memory_context}
+Relationships: {rel_str}{context_section}{rel_events_context}{memory_context}
 
 [MUST] Mandatory constraints (violation = regeneration):{world_model_context_en}{storylines_context}{facts_context}{continuation_mandate_en}{new_char_context_en}
 {pacing_guard}

@@ -37,8 +37,6 @@ class LifeReviewGenerator:
         zh = self.language == "zh"
 
         # Resource-based labels
-        if player.wealth > 50000:
-            labels.append("财富追求者" if zh else "Wealth Seeker")
         if player.knowledge > 80:
             labels.append("知识探索者" if zh else "Knowledge Seeker")
         if len(player.relationships) >= 5:
@@ -76,10 +74,8 @@ class LifeReviewGenerator:
         for i, r in enumerate(player.round_history):
             effects = r.get("effects", {})
             impact = 0
-            for key in ["energy", "mood", "knowledge", "wealth"]:
+            for key in ["energy", "mood", "knowledge"]:
                 delta = abs(effects.get(key, 0))
-                if key == "wealth":
-                    delta = delta / 100  # Scale wealth
                 impact += delta
 
             if impact > 15:
@@ -105,7 +101,6 @@ class LifeReviewGenerator:
         energy_curve = [settings.INITIAL_ENERGY]
         mood_curve = [settings.INITIAL_MOOD]
         knowledge_curve = [settings.INITIAL_KNOWLEDGE]
-        wealth_curve = [settings.INITIAL_WEALTH]
 
         for r in player.round_history:
             effects = r.get("effects", {})
@@ -114,20 +109,17 @@ class LifeReviewGenerator:
             knowledge_curve.append(
                 max(0, min(100, knowledge_curve[-1] + int(effects.get("knowledge", 0))))
             )
-            wealth_curve.append(max(0, wealth_curve[-1] + int(effects.get("wealth", 0))))
 
         # Pad to match week count
         while len(energy_curve) < weeks:
             energy_curve.append(energy_curve[-1])
             mood_curve.append(mood_curve[-1])
             knowledge_curve.append(knowledge_curve[-1])
-            wealth_curve.append(wealth_curve[-1])
 
         return {
             "energy": energy_curve,
             "mood": mood_curve,
             "knowledge": knowledge_curve,
-            "wealth": wealth_curve,
         }
 
     def _build_badge_wall(self, achievements: List[Achievement]) -> List[Dict[str, Any]]:

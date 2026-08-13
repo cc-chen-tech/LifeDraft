@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CompletionScreen } from "@/components/create/CompletionScreen";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 
 const defaultProps = {
   playerName: "测试角色",
@@ -16,6 +17,9 @@ const defaultProps = {
   showPresetSheet: false,
   presetName: "",
   isSavingPreset: false,
+  presetSaveStatus: "idle" as const,
+  presetSaveMessage: "",
+  toast: null,
   isGeneratingImage: false,
   imageFeedback: "",
   onImageFeedbackChange: jest.fn(),
@@ -34,6 +38,72 @@ const defaultProps = {
 describe("CompletionScreen - Loading Feedback", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  test("uses one page transition and one reading surface", () => {
+    const { container } = render(<CompletionScreen {...defaultProps} />);
+
+    expect(container.querySelectorAll('main[data-slot="page-transition"]')).toHaveLength(1);
+    expect(container.querySelectorAll('main main')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-slot="surface"][data-variant="reading"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(0);
+  });
+
+  test("renders completion feedback outside the page transition at the app-shell offset", () => {
+    render(
+      <CompletionScreen
+        {...defaultProps}
+        toast={{ type: "error", message: "人物形象修改失败" }}
+      />
+    );
+
+    const alert = screen.getByRole("alert");
+    const notice = alert.closest('[data-slot="feedback-notice"]');
+    expect(alert).toHaveTextContent("人物形象修改失败");
+    expect(notice).not.toBeNull();
+    expect(notice).toHaveClass("bottom-[var(--app-shell-feedback-bottom)]");
+    expect(notice?.closest('[data-slot="page-transition"]')).toBeNull();
+  });
+
+  test("uses the full reading width when no portrait image exists", () => {
+    render(<CompletionScreen {...defaultProps} playerImages={[]} />);
+
+    const heading = screen.getByRole("heading", {
+      name: "角色设定完成",
+      level: 1,
+    });
+    const overview = heading.closest("section");
+
+    expect(overview).not.toBeNull();
+    expect(overview?.children).toHaveLength(1);
+    expect(overview?.firstElementChild).toContainElement(heading);
+    expect(overview).not.toHaveClass("grid");
+    expect(overview).not.toHaveClass("gap-8");
+    expect(overview?.className).not.toContain("md:grid-cols-");
+  });
+
+  test("restores the portrait track only when an image exists", () => {
+    render(<CompletionScreen {...defaultProps} />);
+
+    const heading = screen.getByRole("heading", {
+      name: "角色设定完成",
+      level: 1,
+    });
+    const overview = heading.closest("section");
+
+    expect(overview).toHaveClass("grid", "gap-8");
+    expect(overview?.className).toContain(
+      "md:grid-cols-[10rem_minmax(0,1fr)]",
+    );
+    expect(overview?.children).toHaveLength(2);
+  });
+
+  test("keeps completion actions at the touch target size", () => {
+    render(<CompletionScreen {...defaultProps} />);
+
+    for (const name of ["返回修改", "快速保存", "查看设定详情", "开始游戏", "保存为预设"]) {
+      expect(screen.getByRole("button", { name })).toHaveAttribute("data-size", "touch");
+    }
   });
 
   test("返回修改按钮点击后立即禁用", async () => {
@@ -62,7 +132,34 @@ describe("CompletionScreen - Loading Feedback", () => {
   test("sheet uses confirm save wording", () => {
     render(<CompletionScreen {...defaultProps} showPresetSheet={true} />);
 
+    expect(document.querySelector('[data-slot="preset-save-sheet"]')).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认保存" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "关闭保存预设" })).toHaveAttribute(
+      "data-size",
+      "icon-touch",
+    );
+    const input = screen.getByRole("textbox", { name: "预设名称" });
+    expect(input).toHaveAttribute("aria-describedby");
+    expect(input.getAttribute("aria-describedby")).toContain("preset-name-count");
+  });
+
+  test("sheet blocks an injected overlimit preset name", () => {
+    const onSavePreset = jest.fn();
+    render(
+      <CompletionScreen
+        {...defaultProps}
+        showPresetSheet={true}
+        presetName={"😀".repeat(INPUT_LIMITS.name + 1)}
+        onSavePreset={onSavePreset}
+      />
+    );
+    expect(screen.getByText("已超出 1 字")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "预设名称" })).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "确认保存" })).toBeDisabled();
+    expect(onSavePreset).not.toHaveBeenCalled();
   });
 
   test("完全重生成按钮点击后进入加载状态", async () => {

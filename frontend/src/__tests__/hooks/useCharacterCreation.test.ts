@@ -9,6 +9,7 @@ import { useCharacterStore, useGameStore } from '@/stores/useGameStore';
 import { useImageStore } from '@/stores/useImageStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
+import { INPUT_LIMITS } from '@/types/input-limits.generated';
 
 // -- Mock next/navigation --
 const mockPush = jest.fn();
@@ -352,6 +353,46 @@ describe('useCharacterCreation', () => {
       });
     });
 
+    it('does not submit an overlimit persisted UI value', async () => {
+      useGameStore.setState({
+        playerName: '😀'.repeat(INPUT_LIMITS.name + 1),
+      } as never);
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await act(async () => {
+        await result.current.handleGenerate();
+      });
+
+      expect(fetchCalled('/api/character/setting')).toBe(false);
+    });
+
+    it('does not retry deterministic 422 responses', async () => {
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
+      (global.fetch as jest.Mock).mockImplementation((_url: string, options?: RequestInit) => {
+        const body = typeof options?.body === 'string' ? options.body : '';
+        return Promise.resolve(
+          body.includes('deterministic-422')
+            ? errorResponse(422, 'too long')
+            : jsonResponse({}),
+        );
+      });
+      jest.spyOn(console, 'warn').mockImplementation(() => {});
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await act(async () => {
+        await result.current.handleGenerate('deterministic-422');
+      });
+
+      const calls = (global.fetch as jest.Mock).mock.calls.filter(
+        (call: unknown[]) =>
+          call[0] === '/api/character/setting' &&
+          typeof (call[1] as RequestInit | undefined)?.body === 'string' &&
+          ((call[1] as RequestInit).body as string).includes('deterministic-422'),
+      );
+      expect(calls).toHaveLength(1);
+    });
+
     it('sets isGenerating to true during generation', async () => {
       useGameStore.setState({ playerName: 'TestPlayer' } as never);
       let resolvePromise: (value: Response) => void;
@@ -565,6 +606,7 @@ describe('useCharacterCreation', () => {
     });
 
     it('shows error toast when saving preset fails', async () => {
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
       (global.fetch as jest.Mock).mockResolvedValue(errorResponse(400, 'Save error'));
       jest.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -587,6 +629,7 @@ describe('useCharacterCreation', () => {
     });
 
     it('exposes inline preset save progress and error states for the modal', async () => {
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
       let resolveSave: (response: Response) => void = () => undefined;
       (global.fetch as jest.Mock).mockImplementation((url: string) => {
         if (url === '/api/presets') {
@@ -656,6 +699,26 @@ describe('useCharacterCreation', () => {
       expect(result.current.feedback).toBe('');
       expect(fetchBody('/api/character/setting')).toMatchObject({ feedback: 'Please change era' });
     });
+
+    it('keeps overlimit feedback visible and does not submit it', async () => {
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
+      const { result } = renderHook(() => useCharacterCreation());
+      const feedback = '😀'.repeat(INPUT_LIMITS.feedback + 1);
+      act(() => result.current.setFeedback(feedback));
+
+      await act(async () => {
+        await result.current.handleRegenerate();
+      });
+
+      expect(result.current.feedback).toBe(feedback);
+      const calls = (global.fetch as jest.Mock).mock.calls.filter(
+        (call: unknown[]) =>
+          call[0] === '/api/character/setting' &&
+          typeof (call[1] as RequestInit | undefined)?.body === 'string' &&
+          ((call[1] as RequestInit).body as string).includes(feedback),
+      );
+      expect(calls).toHaveLength(0);
+    });
   });
 
   // ===================== Constants =====================
@@ -680,7 +743,7 @@ describe('useCharacterCreation', () => {
 
     it('exposes AUTO_ADVANCE_STEPS', () => {
       const { result } = renderHook(() => useCharacterCreation());
-      expect(result.current.AUTO_ADVANCE_STEPS).toEqual(['family', 'relationships', 'traits', 'wealth']);
+      expect(result.current.AUTO_ADVANCE_STEPS).toEqual(['family', 'relationships', 'traits']);
     });
   });
 
@@ -798,6 +861,49 @@ describe('useCharacterCreation', () => {
       } as never);
       const { result } = renderHook(() => useCharacterCreation());
       expect(result.current.autoGenPhase).toBe('done');
+    });
+
+    it('exposes each actual automatic background step while the generation loop advances', async () => {
+      useGameStore.setState({
+        creationStep: 3,
+        playerName: '陆明',
+        lifeVision: '认真生活',
+        characterSettings: {
+          era: { era_name: '现代' },
+          age: { starting_age: 22 },
+          gender: 'male',
+          world: { world_description: '城市' },
+        },
+      } as never);
+
+      let resolveFamily: ((response: Response) => void) | undefined;
+      let resolveRelationship: ((response: Response) => void) | undefined;
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/character/setting') {
+          return new Promise<Response>((resolve) => {
+            resolveFamily = resolve;
+          });
+        }
+        if (url === '/api/character/relationship') {
+          return new Promise<Response>((resolve) => {
+            resolveRelationship = resolve;
+          });
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+
+      const { result } = renderHook(() => useCharacterCreation());
+      act(() => {
+        void result.current.runAutoGeneration();
+      });
+
+      await waitFor(() => expect(result.current.autoGenLabel).toBe('家庭背景'));
+      act(() => {
+        resolveFamily?.(jsonResponse({ family_background: '普通家庭' }));
+      });
+      await waitFor(() => expect(result.current.autoGenLabel).toBe('生成关键人物'));
+      expect(resolveRelationship).toBeDefined();
+
     });
   });
 
@@ -937,6 +1043,20 @@ describe('useCharacterCreation', () => {
         resolveGeneration(jsonResponse({ era_name: '古代', era_description: 'Ancient times' }));
         await generationPromise;
       });
+    });
+
+    it('does not start a game with an overlimit name', async () => {
+      useGameStore.setState({
+        playerName: '😀'.repeat(INPUT_LIMITS.name + 1),
+      } as never);
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await act(async () => {
+        await result.current.handleStartGame();
+      });
+
+      expect(fetchCalled('/api/games')).toBe(false);
+      expect(result.current.toast?.type).toBe('error');
     });
 
     it('navigates to /story/opening when gameId already exists', async () => {
@@ -1085,6 +1205,21 @@ describe('useCharacterCreation', () => {
   // ===================== handleAcceptAndNext =====================
 
   describe('handleAcceptAndNext', () => {
+    it('does not advance or write with an overlimit name', async () => {
+      useGameStore.setState({
+        playerName: '😀'.repeat(INPUT_LIMITS.name + 1),
+        creationStep: 3,
+      } as never);
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await act(async () => {
+        await result.current.handleAcceptAndNext();
+      });
+
+      expect(fetchCalled('/api/games')).toBe(false);
+      expect(gameSpy.spies.nextCreationStep).not.toHaveBeenCalled();
+    });
+
     it('updates characterSetting with generatedContent for non-portrait steps', async () => {
       useGameStore.setState({
         playerName: 'TestPlayer',

@@ -2,35 +2,7 @@
 
 import { useGameStore } from "@/stores/useGameStore";
 import type { EventOption } from "@/lib/types";
-
-// ==================== Retry Tracking ====================
-
-/**
- * 模块级变量：跟踪是否发生了重试
- * 当收到 retry 状态时设为 true，complete 时检查并重置
- */
-let hadRetry = false;
-
-/**
- * 标记发生了重试（由 handleStatusUpdate 调用）
- */
-export function markRetry(): void {
-  hadRetry = true;
-  console.log("[eventUtils] Retry marked, will force use backend story on complete");
-}
-
-/**
- * 检查并清除重试标记
- * 返回 true 表示刚才发生了重试
- */
-export function checkAndClearRetry(): boolean {
-  const result = hadRetry;
-  if (result) {
-    console.log("[eventUtils] Retry detected, clearing flag");
-  }
-  hadRetry = false;
-  return result;
-}
+import type { NarrativeTransportState } from "@/components/narrative-loading/NarrativeLoadingState";
 
 // ==================== Types ====================
 
@@ -62,6 +34,9 @@ export interface EventHandlers {
   appendStoryText: (text: string) => void;
   generatingRef: React.MutableRefObject<boolean>;
   isRetryingRef?: React.MutableRefObject<boolean>;
+  hadRetryRef?: React.MutableRefObject<boolean>;
+  isCurrentRun?: () => boolean;
+  setTransport?: (transport: NarrativeTransportState) => void;
 }
 
 function buildCurrentEvent(eventData: EventData, story: string, options: EventOption[]) {
@@ -75,9 +50,19 @@ function buildCurrentEvent(eventData: EventData, story: string, options: EventOp
 }
 
 function enterRetryableCompleteError(
-  handlers: Pick<EventHandlers, "setConnectionStatus" | "setPhase" | "setRoundSummary" | "isRetryingRef">
+  handlers: Pick<
+    EventHandlers,
+    | "setConnectionStatus"
+    | "setPhase"
+    | "setRoundSummary"
+    | "isRetryingRef"
+    | "isCurrentRun"
+    | "setTransport"
+  >
 ): void {
+  if (handlers.isCurrentRun && !handlers.isCurrentRun()) return;
   handlers.setConnectionStatus("error");
+  handlers.setTransport?.("failed");
   handlers.setPhase("error");
   handlers.setRoundSummary(null);
   if (handlers.isRetryingRef) {
@@ -168,7 +153,9 @@ export function streamRemainingText(
 export function handleEventComplete(
   data: Record<string, unknown>,
   handlers: EventHandlers
-): void {
+): boolean {
+  const isCurrentRun = handlers.isCurrentRun ?? (() => true);
+  if (!isCurrentRun()) return false;
   const {
     setStoryText,
     setOptions,
@@ -191,16 +178,17 @@ export function handleEventComplete(
 
   // 游戏结束
   if (eventData.game_over) {
+    handlers.setTransport?.("active");
     setPhase("ending");
     setGameOver(true);
-    return;
+    return true;
   }
 
   const receivedOptions = eventData.options || [];
   if (receivedOptions.length === 0) {
     console.error("[onComplete] No options in complete event");
     enterRetryableCompleteError(handlers);
-    return;
+    return false;
   }
 
   const backendStory = eventData.event_description || eventData.story || "";
@@ -208,12 +196,13 @@ export function handleEventComplete(
   if (!backendStory.trim() && !frontendStory.trim()) {
     console.error("[onComplete] No story text in complete event");
     enterRetryableCompleteError(handlers);
-    return;
+    return false;
   }
   
   // Retry streams may complete with either the full backend story or a shorter
   // event summary; keep substantial streamed prose when the payload is only a summary.
-  const wasRetry = checkAndClearRetry();
+  const wasRetry = handlers.hadRetryRef?.current ?? false;
+  if (handlers.hadRetryRef) handlers.hadRetryRef.current = false;
   if (wasRetry && backendStory) {
     // If retry streaming already produced a substantial story and the complete
     // payload only carries a short event summary, keep the streamed story body.
@@ -224,7 +213,7 @@ export function handleEventComplete(
       setCurrentEvent(buildCurrentEvent(eventData, frontendStory, receivedOptions));
       setPhase("options");
       setRoundSummary(null);
-      return;
+      return true;
     }
     console.log(`[onComplete] Retry detected, forcing backend story (${backendStory.length} chars)`);
     setStoryText(backendStory);
@@ -232,7 +221,7 @@ export function handleEventComplete(
     setCurrentEvent(buildCurrentEvent(eventData, backendStory, receivedOptions));
     setPhase("options");
     setRoundSummary(null);
-    return;
+    return true;
   }
 
   const result = selectFinalStory(backendStory, frontendStory);
@@ -243,22 +232,23 @@ export function handleEventComplete(
     setCurrentEvent(buildCurrentEvent(eventData, result.finalStory, receivedOptions));
     setPhase("options");
     setRoundSummary(null);
-    return;
+    return true;
   }
 
   if (result.remainingText) {
     // 流式补充剩余文本
     setOptions(receivedOptions);
+    handlers.setTransport?.("active");
     // 保持 generating 阶段以维持流式显示效果
     streamRemainingText(result.remainingText, appendStoryText, () => {
-      if (generatingRef.current) {
-        console.warn("[onComplete] Skipping stale remaining-text completion because a new generation is active");
+      if (!isCurrentRun()) {
+        console.warn("[onComplete] Skipping stale remaining-text completion");
         return;
       }
       setCurrentEvent(buildCurrentEvent(eventData, backendStory, receivedOptions));
       setPhase("options");
-    }, 3, 20, () => !generatingRef.current);
-    return;
+    }, 3, 20, isCurrentRun);
+    return true;
   }
 
   // 使用前端故事，检查是否需要更新
@@ -274,17 +264,19 @@ export function handleEventComplete(
   }
   // 延迟切换到 options 阶段，让用户看到完整故事后再选择
   setTimeout(() => {
-    if (generatingRef.current) {
-      console.warn("[onComplete] Skipping stale delayed options transition because a new generation is active");
+    if (!isCurrentRun()) {
+      console.warn("[onComplete] Skipping stale delayed options transition");
       return;
     }
     setPhase("options");
   }, 500);
+  handlers.setTransport?.("active");
   setRoundSummary(null);
   
   // ★ 事件插画由后端 SSE 完成后自动触发（_trigger_round_illustration_generation）
   // 前端不再重复触发，避免生成两张相同场景插画
   // 页面刷新后的备用生成由 usePlayGame 的 auto-generate effect 处理
+  return true;
 }
 
 // ==================== Status Helpers ====================
@@ -295,7 +287,8 @@ export function handleEventComplete(
 export function handleStatusUpdate(
   status: { phase: string },
   setProcessing: (processing: boolean, message?: string) => void,
-  isRetryingRef?: React.MutableRefObject<boolean>
+  isRetryingRef?: React.MutableRefObject<boolean>,
+  onRetry?: () => void,
 ): void {
   if (status.phase === "retrying") {
     console.log("[onStatus] Retrying detected, story will be regenerated");
@@ -305,11 +298,8 @@ export function handleStatusUpdate(
   }
   if (status.phase === "retry") {
     console.log("[onStatus] Retry event received, clearing story for new content");
-    // ★ 标记发生了重试，complete 时会强制使用后端故事
-    markRetry();
+    onRetry?.();
     if (isRetryingRef) isRetryingRef.current = true;
-    useGameStore.getState().setStoryText?.("");
-    useGameStore.setState?.({ storyText: "" });
     setProcessing(true, "retrying");
     return;
   }

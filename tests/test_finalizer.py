@@ -172,10 +172,6 @@ class TestFinalizeWeek:
                     finalizer.finalize_week(result)
 
         mock_state.update.assert_called_once_with(energy=10, mood=5, knowledge=3)
-        transaction = mock_state.wealth_ledger["transactions"][0]
-        assert transaction["transaction_id"] == "weekly-bonus:w1"
-        assert transaction["requested_delta"] == 2
-        assert transaction["closing_balance"] == mock_state.wealth
 
     def test_finalize_week_does_not_wait_for_slow_enrichment_tasks(self):
         """Slow post-week enrichment must not block the choice response."""

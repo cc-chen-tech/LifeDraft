@@ -94,7 +94,7 @@ class TestYearlySummaryContract:
         assert changes["energy"] == 10
         assert changes["mood"] == 10
         assert changes["knowledge"] == 10
-        assert changes["wealth"] == 5000
+        assert "wealth" not in changes
         assert changes["age"] == 1
 
     def test_generate_summary_no_previous_defaults(self):

@@ -8,6 +8,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { usePlayGame } from '@/hooks/usePlayGame';
 import { useGameStore } from '@/stores/useGameStore';
+import { useSessionStore } from '@/stores/useSessionStore';
 import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
 
@@ -68,6 +69,14 @@ function makeChoiceCompleteOnlyResponse(story = 'Choice result...', options = [{
   ]);
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 /** SSE response for regenerate endpoint */
 function makeRegenerateResponse(story = 'New regenerated story') {
   return createSSEMockResponse([
@@ -95,6 +104,10 @@ function setupGameStore(options: {
   } = options;
 
   act(() => {
+    useSessionStore.setState({
+      gameId,
+      playerState: playerState as never,
+    });
     useGameStore.setState({
       gameId,
       storyText,
@@ -119,6 +132,7 @@ describe('usePlayGame - Phase State Machine', () => {
     jest.clearAllMocks();
     act(() => {
       useGameStore.getState().resetGame();
+      useSessionStore.getState().resetSession();
     });
     // Default fetch: fresh SSE responses for SSE endpoints, JSON for everything else
     (global.fetch as jest.Mock).mockImplementation((url: string) => {
@@ -395,6 +409,9 @@ describe('usePlayGame - Phase State Machine', () => {
 
     it('should transition to error phase on SSE error event', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
+      const initialSync = createDeferred<void>();
+      const syncState = jest.spyOn(useGameStore.getState(), 'syncState');
+      syncState.mockImplementationOnce(() => initialSync.promise);
 
       (global.fetch as jest.Mock).mockImplementation((url: string) => {
         if (typeof url === 'string' && url.includes('/event')) {
@@ -409,15 +426,22 @@ describe('usePlayGame - Phase State Machine', () => {
         expect(result.current.gameId).toBe(1);
       });
 
-      await act(async () => {
-        await result.current.generateEvent();
+      // Keep initialization behind its state sync so this test owns the one
+      // explicit request that exercises the SSE error path.
+      act(() => {
+        void result.current.generateEvent();
       });
 
-      // Should be in error phase or loading (depending on error handling)
       await waitFor(() => {
-        expect(['error', 'loading', 'generating']).toContain(result.current.phase);
+        expect(fetchCallCount('/event')).toBe(1);
+      });
+      await waitFor(() => {
+        expect(result.current.transport).toBe('failed');
       });
 
+      expect(result.current.phase).toBe('error');
+      expect(syncState).toHaveBeenCalledTimes(1);
+      initialSync.resolve(undefined);
       unmount();
     });
 
@@ -497,9 +521,9 @@ describe('usePlayGame - Phase State Machine', () => {
         await result.current.generateEvent();
       });
 
-      // Connection should be reset after completion
+      // The public narrative transport returns to active after completion.
       await waitFor(() => {
-        expect(result.current.connectionStatus).toBeNull();
+        expect(result.current.transport).toBe('active');
       });
     });
   });
@@ -587,72 +611,9 @@ describe('usePlayGame - Phase State Machine', () => {
     });
   });
 
-  // ==================== Phase Timeout Handling ====================
+  // ==================== Recovery Completion ====================
 
-  describe('Phase Timeout Handling', () => {
-    it('should track elapsed time during generating phase', async () => {
-      setupGameStore({ gameId: 1, storyText: '' });
-
-      let resolveFetch: ((r: Response) => void) | null = null;
-      (global.fetch as jest.Mock).mockImplementation((url: string) => {
-        if (typeof url === 'string' && url.includes('/event')) {
-          return new Promise<Response>((resolve) => {
-            resolveFetch = resolve;
-          });
-        }
-        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
-      });
-
-      const { result } = renderHook(() => usePlayGame());
-
-      await waitFor(() => {
-        expect(result.current.gameId).toBe(1);
-      });
-
-      await act(async () => {
-        result.current.generateEvent();
-      });
-
-      // Should be in generating phase with timer
-      await waitFor(() => {
-        expect(result.current.phase).toBe('generating');
-      });
-
-      // Elapsed seconds should be tracked
-      expect(result.current.elapsedSeconds).toBeGreaterThanOrEqual(0);
-
-      // Cleanup
-      if (resolveFetch) {
-        act(() => {
-          resolveFetch(makeEventResponse());
-        });
-      }
-    });
-
-    it('should reset elapsed time when leaving generating phase', async () => {
-      setupGameStore({ gameId: 1, storyText: '' });
-
-      const { result, unmount } = renderHook(() => usePlayGame());
-
-      await waitFor(() => {
-        expect(result.current.gameId).toBe(1);
-      });
-
-      // Start generation
-      await act(async () => {
-        await result.current.generateEvent();
-      });
-
-      await waitFor(() => {
-        expect(result.current.phase).toBe('options');
-      });
-
-      // Timer should be reset when not in generating/choosing phase
-      expect(result.current.elapsedSeconds).toBe(0);
-
-      unmount();
-    });
-
+  describe('Recovery Completion', () => {
     it('should handle long-running generation with polling fallback', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
@@ -712,9 +673,9 @@ describe('usePlayGame - Phase State Machine', () => {
         await result.current.handleChoice(0);
       });
 
-      // Should end with options again
+      // A completed choice enters the result acknowledgement phase.
       await waitFor(() => {
-        expect(result.current.phase).toBe('options');
+        expect(result.current.phase).toBe('result');
       });
 
       // Story should include event story
@@ -978,9 +939,9 @@ describe('usePlayGame - Phase State Machine', () => {
         await result.current.generateEvent();
       });
 
-      // Connection status should be reset after completion
+      // The public narrative transport returns to active after completion.
       await waitFor(() => {
-        expect(result.current.connectionStatus).toBeNull();
+        expect(result.current.transport).toBe('active');
       });
 
       unmount();
@@ -1007,53 +968,4 @@ describe('usePlayGame - Phase State Machine', () => {
     });
   });
 
-  // ==================== Loading Messages ====================
-
-  describe('Loading Messages', () => {
-    it('should return appropriate loading messages for each phase', async () => {
-      setupGameStore({ gameId: 1 });
-
-      const { result, unmount } = renderHook(() => usePlayGame());
-
-      await waitFor(() => {
-        expect(result.current.gameId).toBe(1);
-      });
-
-      act(() => {
-        result.current.setPhase('loading');
-      });
-      expect(result.current.getLoadingMessage()).toBeDefined();
-
-      act(() => {
-        result.current.setPhase('generating');
-      });
-      expect(result.current.getLoadingMessage()).toContain('正在');
-
-      act(() => {
-        result.current.setPhase('choosing');
-      });
-      expect(result.current.getLoadingMessage()).toContain('正在');
-
-      unmount();
-    });
-
-    it('should show reconnection message when reconnecting', async () => {
-      setupGameStore({ gameId: 1 });
-
-      const { result, unmount } = renderHook(() => usePlayGame());
-
-      await waitFor(() => {
-        expect(result.current.gameId).toBe(1);
-      });
-
-      act(() => {
-        result.current.setPhase('generating');
-      });
-
-      const message = result.current.getLoadingMessage();
-      expect(message).toBeTruthy();
-
-      unmount();
-    });
-  });
 });

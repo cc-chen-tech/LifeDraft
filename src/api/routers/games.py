@@ -22,9 +22,10 @@ from src.api.schemas import (CreateSavePointRequest, GameListItem,
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
 from src.database.models import Game, SessionLocal
-from src.game.game_initializer import GameInitializer, extract_initial_wealth_from_settings
+from src.game.game_initializer import GameInitializer
 from src.game.game_loop import GameLoop
 from src.game.state import PlayerState
+from src.utils.legacy_data import strip_retired_wealth_keys
 from src.utils.language import detect_language_from_state
 
 logger = logging.getLogger(__name__)
@@ -517,7 +518,7 @@ async def update_character_settings(
     """
     Persist late character creation settings for an existing game.
 
-    The create flow may add generated family, relationship, trait, and wealth
+    The create flow may add generated family, relationship, and trait
     settings after the initial game record exists. This endpoint preserves the
     manually selected settings and merges the generated settings into the saved
     player state before opening story generation starts.
@@ -530,7 +531,9 @@ async def update_character_settings(
     existing_settings = state_data.get("character_settings") or {}
     if not isinstance(existing_settings, dict):
         existing_settings = {}
-    merged_settings = _deep_merge_dicts(existing_settings, req.character_settings)
+    merged_settings = strip_retired_wealth_keys(
+        _deep_merge_dicts(existing_settings, req.character_settings)
+    )
 
     updated_state = dict(state_data)
     updated_state["character_settings"] = merged_settings
@@ -538,16 +541,6 @@ async def update_character_settings(
         updated_state["player_name"] = req.player_name.strip()
     if req.life_vision is not None:
         updated_state["life_vision"] = req.life_vision
-    late_initial_wealth = extract_initial_wealth_from_settings(req.character_settings)
-    should_sync_late_wealth = (
-        late_initial_wealth is not None and _is_before_first_played_round(state_data)
-    )
-    if should_sync_late_wealth:
-        updated_state["wealth"] = late_initial_wealth
-        from src.game.wealth_ledger import WealthLedger
-
-        setup_ledger = WealthLedger.from_player_state(updated_state)
-        setup_ledger.reset_opening_balance(updated_state, late_initial_wealth)
     player_state = PlayerState.from_dict(updated_state)
 
     if not db.save_game_progress(game_id, player_state):
@@ -560,16 +553,6 @@ async def update_character_settings(
             game_session.game_loop.player_state.player_name = req.player_name.strip()
         if req.life_vision is not None:
             game_session.game_loop.player_state.life_vision = req.life_vision
-        if should_sync_late_wealth:
-            from src.game.wealth_ledger import WealthLedger
-
-            live_ledger = WealthLedger.from_player_state(
-                game_session.game_loop.player_state
-            )
-            live_ledger.reset_opening_balance(
-                game_session.game_loop.player_state, late_initial_wealth
-            )
-
     return MessageResponse(success=True, message="Character settings updated")
 
 

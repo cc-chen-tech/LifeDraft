@@ -21,6 +21,14 @@ SPEC_NAMES = (
 )
 
 
+def _read_e2e_regression_fixture_sources() -> str:
+    fixture_dir = ROOT / "frontend" / "src" / "app" / "e2e-regression"
+    return "\n".join(
+        (fixture_dir / source_name).read_text(encoding="utf-8")
+        for source_name in ("page.tsx", "E2ERegressionClient.tsx")
+    )
+
+
 def test_fix_story_continuity_change_tasks_stay_complete() -> None:
     tasks = (CHANGE_DIR / "tasks.md").read_text(encoding="utf-8")
 
@@ -62,7 +70,9 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     assert "src/__tests__/lib/sse.test.ts" in script
     assert "python -m flake8 src/services/story_voice_reading.py" in script
     assert "python scripts/export_openapi.py" in script
-    assert "git diff --exit-code -- frontend/src/types/openapi-schema.json" in script
+    assert 'local openapi_check_dir="$TEST_RUN_DIR/openapi-check"' in script
+    assert 'python scripts/export_openapi.py "$generated_openapi_schema"' in script
+    assert 'cmp -s "$generated_openapi_schema" frontend/src/types/openapi-schema.json' in script
     assert script.index("run_preflight || ((failed++))") < script.index("run_mypy || ((failed++))")
     assert script.index("run_preflight || ((failed++))") < script.index(
         "run_e2e_browser || ((failed++))"
@@ -116,6 +126,7 @@ def test_preflight_validates_archived_provider_story_tts_spec() -> None:
 
 def test_preflight_validates_minimax_story_audio_generation_change() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
     change_dir = ROOT / "openspec" / "changes" / "add-minimax-story-audio-generation"
 
     assert change_dir.exists()
@@ -125,7 +136,10 @@ def test_preflight_validates_minimax_story_audio_generation_change() -> None:
     assert "openspec validate add-minimax-story-audio-generation --strict" in script
     assert "tests/test_minimax_audio_generation_contract.py" in script
     assert "tests/test_minimax_audio_generation_db.py" in script
-    assert "e2e/minimax-story-audio-generation.spec.ts" in script
+    assert 'run_playwright_command "core" npx playwright test --project=core' in script
+    assert "minimax-story-audio-generation.spec.ts" not in config.split(
+        "const AI_HEAVY_TESTS", 1
+    )[1].split("const MANUAL_EXPLORATION_TESTS", 1)[0]
 
 
 def test_minimax_api_key_is_not_committed_to_repository_files() -> None:
@@ -191,7 +205,7 @@ def test_frontend_layout_does_not_depend_on_google_font_network() -> None:
     assert "--font-serif-sc" in globals_css
 
 
-def test_collection_sheet_stacks_above_global_music_player() -> None:
+def test_global_music_player_uses_app_shell_route_safe_positioning() -> None:
     play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
         encoding="utf-8"
     )
@@ -200,14 +214,126 @@ def test_collection_sheet_stacks_above_global_music_player() -> None:
     ).read_text(encoding="utf-8")
 
     collection_sheet = re.search(
-        r"<Sheet modal=\{false\} open=\{collectionPanelOpen\}.*?<CollectionPanel",
+        r'<Sheet(?P<attrs>[^>]*\bopen=\{collectionPanelOpen\}[^>]*)>'
+        r'(?P<body>.*?)</Sheet>',
         play_page,
         re.DOTALL,
     )
 
     assert collection_sheet is not None
-    assert 'className="z-[60] w-[400px] sm:w-[540px] p-0"' in collection_sheet.group(0)
-    assert 'className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2' in music_player
+    sheet_attrs = collection_sheet.group("attrs")
+    collection_body = collection_sheet.group("body")
+    assert re.search(r"(?:^|\s)modal(?=\s|$)", sheet_attrs)
+    assert re.search(r"\bonOpenChange=\{handleCollectionOpenChange\}", sheet_attrs)
+
+    collection_content = re.search(
+        r'<SheetContent\b(?P<attrs>.*?)>\s*'
+        r'<SheetTitle\s+className="sr-only">收集</SheetTitle>',
+        collection_body,
+        re.DOTALL,
+    )
+    assert collection_content is not None
+    content_attrs = collection_content.group("attrs")
+    assert re.search(r'\bside="right"', content_attrs)
+    assert re.search(r"\bshowCloseButton=\{false\}", content_attrs)
+    assert re.search(r'\boverlayClassName="bg-transparent"', content_attrs)
+    content_class = re.search(r'\bclassName="([^"]+)"', content_attrs)
+    assert content_class is not None
+    assert {
+        "z-[70]",
+        "w-full",
+        "max-w-[min(100vw,34rem)]",
+        "p-0",
+        "sm:w-[34rem]",
+    } <= set(content_class.group(1).split())
+
+    close_control = re.search(
+        r"<SheetClose\s+asChild>\s*"
+        r"<Button(?P<attrs>.*?)>\s*"
+        r'<X\s+className="h-4 w-4"\s*/>\s*'
+        r"</Button>\s*</SheetClose>",
+        collection_body,
+        re.DOTALL,
+    )
+    assert close_control is not None
+    close_attrs = close_control.group("attrs")
+    assert re.search(r'\btype="button"', close_attrs)
+    assert re.search(r'\bvariant="quiet"', close_attrs)
+    assert re.search(r'\bsize="icon-touch"', close_attrs)
+    assert re.search(r'\baria-label="关闭收集"', close_attrs)
+    collection_panel = re.search(
+        r"<CollectionPanel\s+gameId=\{gameId \|\| 0\}\s*/>",
+        collection_body,
+    )
+    assert collection_panel is not None
+    assert close_control.end() < collection_panel.start()
+
+    play_route_guard = re.search(
+        r"const usesPlayToolsOnly\s*=\s*(?P<expr>.*?);",
+        music_player,
+        re.DOTALL,
+    )
+    assert play_route_guard is not None
+    assert re.fullmatch(
+        r'pathname\s*===\s*"/play"',
+        play_route_guard.group("expr").strip(),
+    )
+    bottom_route_guard = re.search(
+        r"const usesBottomAppShellDock\s*=\s*(?P<expr>.*?);",
+        music_player,
+        re.DOTALL,
+    )
+
+    assert bottom_route_guard is not None
+    bottom_routes = re.findall(
+        r'pathname\s*===\s*"([^"]+)"',
+        bottom_route_guard.group("expr"),
+    )
+    assert len(bottom_routes) == 6
+    assert set(bottom_routes) == {
+        "/",
+        "/saves",
+        "/presets",
+        "/create",
+        "/story/opening",
+        "/ending",
+    }
+    guard_residue = re.sub(
+        r'pathname\s*===\s*"[^"]+"',
+        "",
+        bottom_route_guard.group("expr"),
+    )
+    assert re.fullmatch(r"\s*(?:\|\|\s*){5}", guard_residue)
+
+    spacer_branch = re.search(
+        r"\{usesBottomAppShellDock\s*&&\s*\(.*?"
+        r'data-app-shell-reserve-spacer="bottom".*?\)\}',
+        music_player,
+        re.DOTALL,
+    )
+    class_branch = re.search(
+        r"className=\{\s*usesBottomAppShellDock\s*\?\s*"
+        r'"([^"]+)"\s*:\s*"([^"]+)"\s*\}',
+        music_player,
+        re.DOTALL,
+    )
+
+    assert spacer_branch is not None
+    assert (
+        'data-app-shell-reserve={usesBottomAppShellDock ? "bottom" : undefined}'
+        in music_player
+    )
+    assert class_branch is not None
+    bottom_classes, top_classes = class_branch.groups()
+    assert "app-shell-bottom-dock" in bottom_classes
+    assert "left-4 right-4 safe-area-pb" in bottom_classes
+    assert "top-16 left-0 right-0 safe-area-pt mt-2" in top_classes
+    assert re.search(
+        r"\{!isExpanded\s*&&\s*!usesPlayToolsOnly\s*&&\s*\(\s*"
+        r'<div\s+data-testid="global-music-mini-bar"',
+        music_player,
+        re.DOTALL,
+    )
 
 
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
@@ -385,7 +511,9 @@ def test_collection_panel_cache_spec_uses_scoped_character_locator() -> None:
 
     assert "page.locator('text=缓存测试角色')" not in spec
     assert "function collectionDialog" in spec
-    assert "collectionDialog(page).getByRole('button', { name: /缓存测试角色.*主角/ })" in spec
+    assert "name: '查看人物：缓存测试角色'" in spec
+    assert "initialPlayerRow.getByText('主角', { exact: true })" in spec
+    assert "cachedPlayerRow.getByText('主角', { exact: true })" in spec
 
 
 def test_e2e_specs_do_not_hardcode_default_backend_port() -> None:
@@ -422,9 +550,7 @@ def test_playwright_global_setup_does_not_spawn_competing_backend() -> None:
 
 
 def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
-    fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
-        encoding="utf-8"
-    )
+    fixture = _read_e2e_regression_fixture_sources()
     e2e = (ROOT / "frontend" / "e2e" / "no-mock-regression.spec.ts").read_text(encoding="utf-8")
 
     for token in (
@@ -445,9 +571,7 @@ def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
 
 
 def test_regression_fixture_does_not_hit_real_music_recommendation_by_default() -> None:
-    fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
-        encoding="utf-8"
-    )
+    fixture = _read_e2e_regression_fixture_sources()
 
     assert "autoFetchRecommendation={false}" in fixture
 
@@ -540,9 +664,7 @@ def test_story_voice_test_controls_stay_out_of_real_play_page() -> None:
     global_music_player = (
         ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"
     ).read_text(encoding="utf-8")
-    regression_page = (
-        ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx"
-    ).read_text(encoding="utf-8")
+    regression_page = _read_e2e_regression_fixture_sources()
 
     assert "showTestControls?: boolean" in component
     assert "showTestControls = false" in component
@@ -620,9 +742,7 @@ def test_global_music_player_autogenerates_music_from_completed_story_when_colla
 
 
 def test_regression_fixture_does_not_autogenerate_global_ai_music() -> None:
-    fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
-        encoding="utf-8"
-    )
+    fixture = _read_e2e_regression_fixture_sources()
 
     assert "setActiveStoryText(null);" in fixture
     assert 'setActiveStoryText("雨夜码头的旧账册被风吹开。");' not in fixture
@@ -637,7 +757,8 @@ def test_play_page_missing_game_state_has_actionable_recovery_ui() -> None:
 
     assert "正在恢复当前进度" in play_page
     assert "返回首页" in play_page
-    assert "window.location.reload()" in play_page
+    assert 'onClick={() => router.replace("/")}' in play_page
+    assert "window.location.reload()" not in play_page
     assert (
         'if (!gameId) {\n    return (\n      <div className="min-h-screen flex items-center justify-center">\n        <Loader2'
         not in play_page
@@ -799,11 +920,10 @@ def test_e2e_api_contract_probe_does_not_trigger_long_story_regeneration() -> No
 
     assert "E2E_CONTRACT_PROBE_FAST=1" in script
     assert "E2E_CONTRACT_PROBE_FAST" in story_router
-    assert 'request.headers.get("user-agent", "")' in story_router
+    assert 'request.headers.get("x-e2e-contract-probe") == "1"' in story_router
     assert "API contract probe should not trigger story regeneration" in story_router
     assert "E2E_CONTRACT_PROBE_FAST" in events_router
-    assert 'request.headers.get("user-agent", "")' in events_router
-    assert 'not request.headers.get("cookie")' not in events_router
+    assert 'request.headers.get("x-e2e-contract-probe") == "1"' in events_router
     assert "API contract probe should not trigger event generation" in events_router
 
 

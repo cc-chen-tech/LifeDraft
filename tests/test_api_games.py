@@ -191,8 +191,8 @@ class TestCreateGame:
         assert saved_state["relationships"] == {"陆昊然": 50, "陈晓雨": 50}
         assert saved_state["character_settings"]["relationships"]["key_people"][0]["name"] == "陆昊然"
 
-    def test_create_game_preserves_generated_initial_wealth(self, client, mock_db):
-        """Generated wealth should initialize the playable state instead of defaulting to 10000."""
+    def test_create_game_drops_legacy_generated_wealth(self, client, mock_db):
+        """Legacy generated wealth is accepted but not persisted as game state."""
         mock_db.create_game.return_value = 88
 
         response = client.post(
@@ -214,14 +214,15 @@ class TestCreateGame:
 
         assert response.status_code == 201
         data = response.json()
-        assert data["player_state"]["wealth"] == 40000
+        assert "wealth" not in data["player_state"]
         saved_state = mock_db.create_game.call_args.kwargs["initial_state"]
-        assert saved_state["wealth"] == 40000
+        assert "wealth" not in saved_state
+        assert "wealth" not in saved_state["character_settings"]
 
-    def test_create_game_preserves_starting_wealth_field_from_character_generator(
+    def test_create_game_drops_legacy_starting_wealth_field(
         self, client, mock_db
     ):
-        """The character wealth generator returns starting_wealth, which must initialize state."""
+        """Legacy starting_wealth does not initialize retired state."""
         mock_db.create_game.return_value = 89
 
         response = client.post(
@@ -245,14 +246,15 @@ class TestCreateGame:
 
         assert response.status_code == 201
         data = response.json()
-        assert data["player_state"]["wealth"] == 50000
+        assert "wealth" not in data["player_state"]
         saved_state = mock_db.create_game.call_args.kwargs["initial_state"]
-        assert saved_state["wealth"] == 50000
+        assert "wealth" not in saved_state
+        assert "wealth" not in saved_state["character_settings"]
 
-    def test_create_game_preserves_currency_string_initial_wealth_field(
+    def test_create_game_drops_legacy_currency_string_wealth_field(
         self, client, mock_db
     ):
-        """AI/frontends may send initial_wealth as a formatted currency string."""
+        """Formatted legacy currency payloads are discarded."""
         mock_db.create_game.return_value = 90
 
         response = client.post(
@@ -276,9 +278,10 @@ class TestCreateGame:
 
         assert response.status_code == 201
         data = response.json()
-        assert data["player_state"]["wealth"] == 50000
+        assert "wealth" not in data["player_state"]
         saved_state = mock_db.create_game.call_args.kwargs["initial_state"]
-        assert saved_state["wealth"] == 50000
+        assert "wealth" not in saved_state
+        assert "wealth" not in saved_state["character_settings"]
 
 
 class TestListGames:

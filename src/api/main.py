@@ -9,6 +9,9 @@ from typing import Optional
 import sentry_sdk
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
+from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -21,6 +24,7 @@ from src.api.routers import (auth, character, collection, gameplay, games,
                              images, music, presets, story,
                              voice_reading)
 from src.database.models import init_db
+from src.api.input_limits import PUBLIC_INPUT_LIMITS
 
 load_dotenv()
 
@@ -50,6 +54,12 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
 
+    from src.services.portrait_image_jobs import recover_pending_portrait_image_jobs
+
+    recovered_portrait_job_ids = recover_pending_portrait_image_jobs()
+    if recovered_portrait_job_ids:
+        logger.info("Scheduled durable portrait jobs count=%s", len(recovered_portrait_job_ids))
+
     import asyncio
 
     drain_task: Optional[asyncio.Task[None]] = None
@@ -70,7 +80,7 @@ async def lifespan(app: FastAPI):
     from src.api.routers.gameplay.sse_helpers import shutdown_sse_thread_pool
     from src.services.image_service import shutdown_image_thread_pool
 
-    shutdown_sse_thread_pool(wait=False)
+    shutdown_sse_thread_pool(wait=False, prevent_new_background_jobs=True)
     shutdown_image_thread_pool(wait=False)
     logger.info("Global thread pools shut down")
 
@@ -81,6 +91,25 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+
+def custom_openapi():
+    """Publish input limits beside ordinary JSON Schema field constraints."""
+
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    schema["x-input-limits"] = dict(PUBLIC_INPUT_LIMITS)
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 # CORS — allow Next.js dev server, Streamlit, and LAN access
 # ★ 必须使用 allow_credentials=True 来支持 Cookie 认证
@@ -159,6 +188,45 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(AuditLogMiddleware)
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Add actionable measurements to request length failures without echoing text."""
+
+    details = []
+    for raw_error in exc.errors():
+        error_type = raw_error.get("type")
+        ctx = dict(raw_error.get("ctx") or {})
+        if error_type in {"string_too_long", "json_too_large"}:
+            error = {
+                key: value
+                for key, value in raw_error.items()
+                if key not in {"input", "url"}
+            }
+        else:
+            error = dict(raw_error)
+        if error_type == "string_too_long":
+            input_value = raw_error.get("input")
+            error.update(
+                {
+                    "field": str(raw_error.get("loc", ("",))[-1]),
+                    "limit": int(ctx["max_length"]),
+                    "actual_length": len(input_value) if isinstance(input_value, str) else None,
+                    "unit": "characters",
+                }
+            )
+        elif error_type == "json_too_large":
+            error.update(
+                {
+                    "field": str(raw_error.get("loc", ("",))[-1]),
+                    "limit": int(ctx["limit"]),
+                    "actual_length": int(ctx["actual_length"]),
+                    "unit": str(ctx.get("unit", "bytes")),
+                }
+            )
+        details.append(error)
+    return JSONResponse(status_code=422, content=jsonable_encoder({"detail": details}))
 
 
 # Global exception handler

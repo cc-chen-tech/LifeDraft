@@ -8,15 +8,31 @@
  * 4. 收集面板基本交互
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { ensureActiveGame } from './helpers/auth';
+import { openPlayTools } from './helpers/play-tools';
 
-// 打开收集面板的辅助函数
-async function openCollectionPanel(page: import('@playwright/test').Page) {
-  const collectionButton = page.getByRole('button', { name: '收集' });
-  await expect(collectionButton).toBeVisible({ timeout: 15000 });
-  await collectionButton.click();
-  await expect(page.locator('text=人物、物品和标志物收集记录')).toBeVisible({ timeout: 5000 });
+function collectionDialog(page: Page) {
+  return page.getByRole('dialog', { name: '收集', exact: true });
+}
+
+// 从当前 viewport 的真实工具入口打开收集面板。
+async function openCollectionPanel(page: Page): Promise<Locator> {
+  const tools = await openPlayTools(page);
+  await tools.getByRole('button', { name: '打开收集', exact: true }).click();
+
+  const dialog = collectionDialog(page);
+  await expect(dialog).toBeVisible({ timeout: 5000 });
+  await expect(
+    dialog.getByText('人物、物品和标志物收集记录', { exact: true })
+  ).toBeVisible({ timeout: 5000 });
+  return dialog;
+}
+
+async function closeCollectionPanel(page: Page) {
+  const dialog = collectionDialog(page);
+  await dialog.getByRole('button', { name: '关闭收集', exact: true }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 3000 });
 }
 
 test.describe('异步实体识别功能', () => {
@@ -30,10 +46,10 @@ test.describe('异步实体识别功能', () => {
     await page.waitForLoadState('domcontentloaded');
     
     // 打开收集面板
-    await openCollectionPanel(page);
+    const collection = await openCollectionPanel(page);
     
     // 点击智能识别按钮
-    const recognizeButton = page.locator('button:has-text("智能识别")').first();
+    const recognizeButton = collection.getByRole('button', { name: '智能识别', exact: true });
     await expect(recognizeButton).toBeVisible();
     await recognizeButton.click();
     
@@ -46,10 +62,10 @@ test.describe('异步实体识别功能', () => {
     await page.goto('/play');
     await page.waitForLoadState('domcontentloaded');
     
-    await openCollectionPanel(page);
+    const collection = await openCollectionPanel(page);
     
     // 点击智能识别
-    await page.locator('button:has-text("智能识别")').first().click();
+    await collection.getByRole('button', { name: '智能识别', exact: true }).click();
     
     // 等待识别对话框出现
     const dialog = page.getByRole('dialog', { name: '智能识别' });
@@ -80,46 +96,45 @@ test.describe('异步实体识别功能', () => {
     await page.waitForLoadState('domcontentloaded');
     
     // 打开收集面板
-    await openCollectionPanel(page);
+    let collection = await openCollectionPanel(page);
     
     // 验证面板内容
-    await expect(page.locator('text=人物、物品和标志物收集记录')).toBeVisible();
+    await expect(
+      collection.getByText('人物、物品和标志物收集记录', { exact: true })
+    ).toBeVisible();
     
     // 关闭面板
-    const closeButton = page.locator('button:has-text("Close"), button[aria-label="关闭"]').first();
-    if (await closeButton.isVisible().catch(() => false)) {
-      await closeButton.click();
-      await page.waitForTimeout(500);
-    }
+    await closeCollectionPanel(page);
     
     // 重新打开
-    const collectionButton = page.getByRole('button', { name: '收集' });
-    await collectionButton.click();
+    collection = await openCollectionPanel(page);
     
     // 面板应重新显示
-    await expect(page.locator('text=人物、物品和标志物收集记录')).toBeVisible({ timeout: 5000 });
+    await expect(
+      collection.getByText('人物、物品和标志物收集记录', { exact: true })
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test('收集面板显示分类标签', async ({ page }) => {
     await page.goto('/play');
     await page.waitForLoadState('domcontentloaded');
     
-    await openCollectionPanel(page);
+    const collection = await openCollectionPanel(page);
     
     // 应有人物、物品、标志物三个分类标签
-    await expect(page.locator('text=/人物.*\\(/')).toBeVisible();
-    await expect(page.locator('text=/物品.*\\(/')).toBeVisible();
-    await expect(page.locator('text=/标志物.*\\(/')).toBeVisible();
+    await expect(collection.getByRole('tab', { name: /人物.*\(/ })).toBeVisible();
+    await expect(collection.getByRole('tab', { name: /物品.*\(/ })).toBeVisible();
+    await expect(collection.getByRole('tab', { name: /标志物.*\(/ })).toBeVisible();
   });
 
   test('取消识别对话框后可重新打开', async ({ page }) => {
     await page.goto('/play');
     await page.waitForLoadState('domcontentloaded');
     
-    await openCollectionPanel(page);
+    const collection = await openCollectionPanel(page);
     
     // 点击智能识别
-    const recognizeButton = page.locator('button:has-text("智能识别")').first();
+    const recognizeButton = collection.getByRole('button', { name: '智能识别', exact: true });
     await recognizeButton.click();
     
     // 等待对话框
@@ -145,18 +160,18 @@ test.describe('异步实体识别功能', () => {
     await page.goto('/play');
     await page.waitForLoadState('domcontentloaded');
     
-    await openCollectionPanel(page);
+    const collectionDialog = await openCollectionPanel(page);
     
     // 新创建的游戏应该显示主角
     // 检查人物标签有计数
-    const characterTab = page.locator('text=/人物.*\\(/');
+    const characterTab = collectionDialog.getByRole('tab', { name: /人物.*\(/ });
     await expect(characterTab).toBeVisible();
-    
-    // 应显示角色名
-    const playerName = page.locator('text=E2E测试角色');
-    if (await playerName.isVisible().catch(() => false)) {
-      // 角色应标记为主角
-      await expect(page.locator('text=主角')).toBeVisible();
-    }
+
+    const playerCard = collectionDialog.getByRole('button', {
+      name: '查看人物：E2E测试角色',
+      exact: true,
+    });
+    await expect(playerCard).toBeVisible();
+    await expect(playerCard.getByText('主角', { exact: true })).toBeVisible();
   });
 });

@@ -53,6 +53,12 @@ describe("LifeReviewCard", () => {
       expect(screen.getByTestId("life-review-card")).toBeInTheDocument();
     });
 
+    it("renders review details without a nested generic card", () => {
+      const { container } = render(<LifeReviewCard data={baseData} />);
+
+      expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(0);
+    });
+
     it("renders personality labels", () => {
       render(<LifeReviewCard data={baseData} />);
       expect(screen.getByText("人格标签")).toBeInTheDocument();
@@ -94,6 +100,24 @@ describe("LifeReviewCard", () => {
       render(<LifeReviewCard data={baseData} />);
       expect(screen.getByText("冒险")).toBeInTheDocument();
       expect(screen.getByText("偏好风格")).toBeInTheDocument();
+    });
+
+    it("renders explicit zero values for both numeric stats", () => {
+      render(
+        <LifeReviewCard
+          data={{
+            ...baseData,
+            play_duration_minutes: 0,
+            total_decisions: 0,
+            favorite_choice_type: "",
+          }}
+        />
+      );
+
+      const decisionsStat = screen.getByText("总决策数").parentElement;
+      const durationStat = screen.getByText("游戏时长(分)").parentElement;
+      expect(decisionsStat).toHaveTextContent("0");
+      expect(durationStat).toHaveTextContent("0");
     });
   });
 
@@ -176,8 +200,27 @@ describe("LifeReviewCard", () => {
     it("renders with empty life motto", () => {
       const data = { ...baseData, life_motto: "" };
       render(<LifeReviewCard data={data} />);
-      // Empty motto renders smart quotes with nothing in between
-      expect(screen.getByText(/“”/)).toBeInTheDocument();
+      expect(screen.queryByText(/“”/)).not.toBeInTheDocument();
+    });
+
+    it("does not invent stats for omitted review metadata", () => {
+      const data = {
+        personality_labels: [],
+        key_turning_points: [],
+        resource_curves: { energy: [], mood: [], knowledge: [], wealth: [] },
+        achievement_badge_wall: [],
+        relationship_network: { nodes: [], edges: [] },
+        life_motto: "",
+        favorite_choice_type: "",
+      };
+
+      render(<LifeReviewCard data={data} />);
+
+      expect(screen.queryByText("人格标签")).not.toBeInTheDocument();
+      expect(screen.queryByText("总决策数")).not.toBeInTheDocument();
+      expect(screen.queryByText("游戏时长(分)")).not.toBeInTheDocument();
+      expect(screen.queryByText("偏好风格")).not.toBeInTheDocument();
+      expect(screen.queryByText(/“”/)).not.toBeInTheDocument();
     });
   });
 });

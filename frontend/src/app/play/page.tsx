@@ -1,40 +1,38 @@
 "use client";
 
-import { useState, useEffect, Suspense, useCallback } from "react";
+import { useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-} from "@/components/ui/dropdown-menu";
 import {
   Sheet,
+  SheetClose,
   SheetContent,
-  SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { StreamingText } from "@/components/game/StreamingText";
-import { OptionCards } from "@/components/game/OptionCards";
-import { StatusBar } from "@/components/game/StatusBar";
-import { SkeletonStory } from "@/components/game/SkeletonStory";
-import { ChatBar } from "@/components/game/ChatBar";
+import { PlayPhaseContent } from "@/components/game/PlayPhaseContent";
+import { PlayReadingFrame } from "@/components/game/PlayReadingFrame";
+import { NarrativeLoadingState, getNarrativeLoadingDelay } from "@/components/narrative-loading/NarrativeLoadingState";
+import {
+  ChatBar,
+  type ChatBarAction,
+  type ChatBarCommand,
+} from "@/components/game/ChatBar";
 import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
+import {
+  CLOSE_SOUND_PANEL_EVENT,
+  OPEN_SOUND_PANEL_EVENT,
+  SOUND_PANEL_STATE_EVENT,
+} from "@/components/game/GlobalMusicPlayer";
 import { CompletedStoryMediaGate } from "@/components/game/CompletedStoryMediaGate";
 import { getSceneImageDisplayMode } from "@/components/game/sceneImageStagePolicy";
+import {
+  FeedbackNotice,
+} from "@/components/story101";
 
-import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
+import { usePlayGame } from "@/hooks/usePlayGame";
+import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
 import { useMusicStore } from "@/stores/useMusicStore";
@@ -45,25 +43,12 @@ import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
-  Save,
   Loader2,
   Home,
   CheckCircle2,
   XCircle,
-  History,
-  Settings,
-  BookOpen,
-  ArrowRight,
-  Palette,
-  RotateCcw,
+  X,
 } from "lucide-react";
-
-function formatElapsedTime(seconds: number): string {
-  if (seconds < 60) return `${seconds}秒`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}分${secs}秒`;
-}
 
 /**
  * GameIdSync - 内部组件，使用 useGameIdFromUrl 同步 URL 参数
@@ -73,6 +58,12 @@ function GameIdSync() {
   useGameIdFromUrl();
   return null;
 }
+
+type PageFeedbackState = {
+  key: string;
+  type: "success" | "error";
+  message: string;
+};
 
 /**
  * PlayPage - Main game play page component.
@@ -115,8 +106,9 @@ export default function PlayPage() {
     isSaving,
     saveToast,
     regenerateToast,
-    endingData,
-    elapsedSeconds,
+    transport: gameplayTransport,
+    loadingOperation: gameplayOperation,
+    loadingIdentity,
     isPrefetching,  // ★ 预生成状态
 
     // Store values
@@ -125,15 +117,12 @@ export default function PlayPage() {
     progress,
     roundInfo,
     storyText,
-    isGameOver,
 
     // Refs
     storyContainerRef,
 
     // Actions
-    setPhase,
     setStoryText,
-    setOptions,
 
     // Handlers
     handleChoice,
@@ -144,9 +133,9 @@ export default function PlayPage() {
     handleRegenerate,
     generateEvent,
     recoverEventGeneration,
+    recoverChoiceGeneration,
 
     // Utilities
-    getLoadingMessage,
     hydrated,
     router,
     
@@ -166,7 +155,6 @@ export default function PlayPage() {
     handleRegenerateHistoryImage,  // ★ 重新生成历史图片
     
     // ★ 场景插画
-    roundSceneImages,
     currentRoundSceneImage,
     eventSceneImage,  // ★ 事件插画
     resultSceneImage,  // ★ 结果插画
@@ -175,8 +163,6 @@ export default function PlayPage() {
     isRegeneratingRoundScene,
     fetchRoundSceneImage,
     regenerateRoundSceneImage,
-    setEventSceneImage,  // ★ 设置事件插画
-    setResultSceneImage,  // ★ 设置结果插画
     // ★ 历史场景插画
     historySceneImage,
     isLoadingHistoryImage,
@@ -184,6 +170,25 @@ export default function PlayPage() {
     isRegeneratingHistoryImage,
     currentRound,
   } = usePlayGame();
+
+  const processingMessage = useUIStore((state) => state.processingMessage);
+  const hasMusicSoundContext = useMusicStore((state) =>
+    Boolean(
+      state.activeStoryText ||
+        state.recommendation ||
+        state.currentSong ||
+        state.queue.length > 0,
+    ),
+  );
+  const hasCompletedReadingContext = Boolean(
+    displayText.trim() &&
+      Number.isFinite(Number(gameId)) &&
+      (isViewingHistory ||
+        phase === "options" ||
+        phase === "result" ||
+        phase === "summary"),
+  );
+  const soundAvailable = hasMusicSoundContext || hasCompletedReadingContext;
 
   const resultSceneRound = Math.max(0, currentRound - 1);
   const isDailyTimeline = playerState?.timeline?.version === 2;
@@ -193,6 +198,18 @@ export default function PlayPage() {
   const storyReadyForCompletedMedia =
     phase === "options" || phase === "result" || phase === "summary";
   const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
+  const isUnifiedGameplayFailure =
+    phase === "error" && gameplayTransport === "failed";
+  const hasInlineStoryError =
+    phase === "error" && !isUnifiedGameplayFailure;
+  const shouldRenderGameplayLoading =
+    isCurrentStoryBusy || isUnifiedGameplayFailure;
+  const hasCompetingSurfaceOpen =
+    assistantSurfaceOpen ||
+    toolsSurfaceOpen ||
+    soundSurfaceOpen ||
+    showCollection ||
+    showHistory;
   const sceneImageDisplayMode = getSceneImageDisplayMode({
     phase,
     hasEventSceneImage: Boolean(eventSceneImage),
@@ -200,6 +217,89 @@ export default function PlayPage() {
     hasCurrentRoundSceneImage: Boolean(currentRoundSceneImage),
     isLoadingRoundSceneImage,
   });
+  const storyRewriteOverLimit = !isWithinInputLimit(
+    storyText,
+    INPUT_LIMITS.fullStory,
+  );
+  const storyRewriteDisabled = !storyText.trim() || storyRewriteOverLimit;
+  const storyRewriteDisabledReason = !storyText.trim()
+    ? "暂无可改写的故事"
+    : storyRewriteOverLimit
+      ? `当前故事超过 ${INPUT_LIMITS.fullStory} 字，无法提交改写`
+      : undefined;
+  const terminalRegenerateToast =
+    regenerateToast &&
+    (regenerateToast.type === "success" || regenerateToast.type === "error")
+      ? regenerateToast
+      : null;
+  const rawTerminalFeedbackType: PageFeedbackState["type"] | null =
+    terminalRegenerateToast?.type === "success"
+      ? "success"
+      : terminalRegenerateToast?.type === "error"
+        ? "error"
+        : saveToast;
+  const rawTerminalFeedbackMessage = terminalRegenerateToast
+    ? terminalRegenerateToast.message
+    : saveToast === "success"
+      ? "已保存"
+      : saveToast === "error"
+        ? "保存失败"
+        : null;
+  const rawTerminalFeedbackKey = rawTerminalFeedbackType && rawTerminalFeedbackMessage
+    ? `${rawTerminalFeedbackType}:${rawTerminalFeedbackMessage}`
+    : "";
+
+  useEffect(() => {
+    if (!rawTerminalFeedbackKey || !rawTerminalFeedbackType || !rawTerminalFeedbackMessage) {
+      lastObservedFeedbackKeyRef.current = null;
+      return;
+    }
+    if (lastObservedFeedbackKeyRef.current === rawTerminalFeedbackKey) return;
+
+    lastObservedFeedbackKeyRef.current = rawTerminalFeedbackKey;
+    setQueuedPageFeedback({
+      key: rawTerminalFeedbackKey,
+      type: rawTerminalFeedbackType,
+      message: rawTerminalFeedbackMessage,
+    });
+  }, [
+    rawTerminalFeedbackKey,
+    rawTerminalFeedbackMessage,
+    rawTerminalFeedbackType,
+  ]);
+
+  const pageFeedbackBlocked =
+    shouldRenderGameplayLoading || hasCompetingSurfaceOpen;
+  const loadingPageFeedback = regenerateToast?.type === "loading"
+    ? {
+        key: `loading:${regenerateToast.message}`,
+        type: "loading" as const,
+        message: regenerateToast.message,
+      }
+    : null;
+  const pageFeedback = pageFeedbackBlocked
+    ? null
+    : loadingPageFeedback ?? queuedPageFeedback;
+  const pageFeedbackType = pageFeedback?.type ?? null;
+  const pageFeedbackMessage = pageFeedback?.message ?? null;
+  const announceSceneImageError = Boolean(
+    roundSceneError &&
+      !pageFeedback &&
+      !hasInlineStoryError &&
+      !hasCompetingSurfaceOpen &&
+      !shouldRenderGameplayLoading,
+  );
+
+  useEffect(() => {
+    if (!pageFeedback || pageFeedback.type === "loading") return;
+
+    const timeout = window.setTimeout(() => {
+      setQueuedPageFeedback((current) =>
+        current?.key === pageFeedback.key ? null : current,
+      );
+    }, pageFeedback.type === "error" ? 3000 : 2000);
+    return () => window.clearTimeout(timeout);
+  }, [pageFeedback]);
 
   // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
   const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
@@ -219,6 +319,16 @@ export default function PlayPage() {
   const setConstraintLevel = useGameStore((state) => state.setConstraintLevel);
   const enableSceneImage = useGameStore((state) => state.enableSceneImage);
   const setEnableSceneImage = useGameStore((state) => state.setEnableSceneImage);
+  const isGameplayDelayed = useDelayedLoading({
+    isLoading: isCurrentStoryBusy,
+    delay: getNarrativeLoadingDelay("gameplay", constraintLevel),
+    loadingIdentity,
+  });
+  const isHydrationLoadingVisible = useDelayedLoading({
+    isLoading: !hydrated,
+    delay: getNarrativeLoadingDelay("hydrate"),
+    loadingIdentity: "play-hydration",
+  });
 
   // ★ 加载故事风格
   const loadNarrativeStyles = useCallback(async () => {
@@ -249,36 +359,100 @@ export default function PlayPage() {
     }
   }, [gameId]);
 
-  const showEmptyGenerationRecovery =
-    !isViewingHistory &&
-    phase === "loading" &&
-    !storyText &&
-    !displayText &&
-    options.length === 0;
-
   const handleRecoverGeneration = useCallback(() => {
-    setOptions([]);
-    setPhase("loading");
-    setTimeout(() => recoverEventGeneration(), 0);
-  }, [recoverEventGeneration, setOptions, setPhase]);
+    void recoverEventGeneration();
+  }, [recoverEventGeneration]);
+
+  const handleRetryGeneration = useCallback(() => {
+    void generateEvent();
+  }, [generateEvent]);
+
+  const handleRecoverChoice = useCallback(() => {
+    void recoverChoiceGeneration();
+  }, [recoverChoiceGeneration]);
+
+  const handleGameplayLoadingAction =
+    gameplayOperation === "choice"
+      ? handleRecoverChoice
+      : gameplayTransport === "failed"
+        ? handleRetryGeneration
+        : handleRecoverGeneration;
+
+  useEffect(() => {
+    if (hydrated && gameId && phase === "ending") {
+      router.push("/ending");
+    }
+  }, [gameId, hydrated, phase, router]);
+
+  const requestAssistantAction = useCallback((action: ChatBarAction) => {
+    setAssistantCommand((current) => ({
+      id: (current?.id ?? 0) + 1,
+      action,
+    }));
+  }, []);
+
+  const closeSoundPanel = useCallback(() => {
+    window.dispatchEvent(new Event(CLOSE_SOUND_PANEL_EVENT));
+  }, []);
+
+  useEffect(() => {
+    const handleSoundPanelState = (event: Event) => {
+      const open = (event as CustomEvent<{ open?: unknown }>).detail?.open;
+      if (typeof open === "boolean") setSoundSurfaceOpen(open);
+    };
+    window.addEventListener(SOUND_PANEL_STATE_EVENT, handleSoundPanelState);
+    return () => {
+      window.removeEventListener(SOUND_PANEL_STATE_EVENT, handleSoundPanelState);
+    };
+  }, []);
+
+  const closeAssistantAndSound = useCallback(() => {
+    requestAssistantAction("close");
+    closeSoundPanel();
+  }, [closeSoundPanel, requestAssistantAction]);
+
+  const rememberPanelOpener = useCallback(
+    (targetRef: { current: HTMLElement | null }) => {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement && activeElement !== document.body) {
+        targetRef.current = activeElement;
+      }
+    },
+    [],
+  );
+
+  const restorePanelOpener = useCallback(
+    (targetRef: { current: HTMLElement | null }) => {
+      const target = targetRef.current;
+      targetRef.current = null;
+      target?.focus();
+    },
+    [],
+  );
 
   const handleOpenCollection = useCallback(() => {
+    rememberPanelOpener(collectionReturnFocusRef);
+    closeAssistantAndSound();
     setActiveSidePanel("collection");
     setShowCollection(true);
     setShowHistory(false);
     if (isViewingHistory) {
       handleBackToCurrent();
     }
-  }, [handleBackToCurrent, isViewingHistory, setShowHistory]);
+  }, [closeAssistantAndSound, handleBackToCurrent, isViewingHistory, rememberPanelOpener, setShowHistory]);
 
   const handleOpenHistoryPanel = useCallback(() => {
+    rememberPanelOpener(historyReturnFocusRef);
+    closeAssistantAndSound();
     setActiveSidePanel("history");
     setShowCollection(false);
     handleOpenHistory();
-  }, [handleOpenHistory]);
+  }, [closeAssistantAndSound, handleOpenHistory, rememberPanelOpener]);
 
   const handleCollectionOpenChange = useCallback((open: boolean) => {
     if (open) {
+      rememberPanelOpener(collectionReturnFocusRef);
+      closeAssistantAndSound();
       setActiveSidePanel("collection");
       setShowCollection(true);
       setShowHistory(false);
@@ -287,10 +461,12 @@ export default function PlayPage() {
 
     setShowCollection(false);
     setActiveSidePanel((current) => (current === "collection" ? null : current));
-  }, [setShowHistory]);
+  }, [closeAssistantAndSound, rememberPanelOpener, setShowHistory]);
 
   const handleHistoryOpenChange = useCallback((open: boolean) => {
     if (open) {
+      rememberPanelOpener(historyReturnFocusRef);
+      closeAssistantAndSound();
       setActiveSidePanel("history");
       setShowCollection(false);
       setShowHistory(true);
@@ -299,7 +475,7 @@ export default function PlayPage() {
 
     setShowHistory(false);
     setActiveSidePanel((current) => (current === "history" ? null : current));
-  }, [setShowHistory]);
+  }, [closeAssistantAndSound, rememberPanelOpener, setShowHistory]);
 
   const collectionPanelOpen =
     showCollection && (!showHistory || activeSidePanel === "collection");
@@ -328,11 +504,52 @@ export default function PlayPage() {
     }
   }, [setOptions, setStoryText]);
 
+  const handleOpenAssistantSurface = useCallback((action: ChatBarAction) => {
+    closeSoundPanel();
+    setShowCollection(false);
+    setActiveSidePanel(null);
+    if (showHistory) setShowHistory(false);
+    requestAssistantAction(action);
+  }, [closeSoundPanel, requestAssistantAction, setShowHistory, showHistory]);
+
+  const handleOpenTools = useCallback(() => {
+    closeAssistantAndSound();
+    setShowCollection(false);
+    setActiveSidePanel(null);
+    if (showHistory) setShowHistory(false);
+  }, [closeAssistantAndSound, setShowHistory, showHistory]);
+
+  const handleCoordinatedSave = useCallback(() => {
+    closeAssistantAndSound();
+    handleSave();
+  }, [closeAssistantAndSound, handleSave]);
+
+  const handleCoordinatedRegenerate = useCallback(() => {
+    closeAssistantAndSound();
+    handleRegenerate();
+  }, [closeAssistantAndSound, handleRegenerate]);
+
+  const handleOpenSound = useCallback(() => {
+    requestAssistantAction("close");
+    window.dispatchEvent(new Event(OPEN_SOUND_PANEL_EVENT));
+  }, [requestAssistantAction]);
+
+  const handleHome = useCallback(() => {
+    closeAssistantAndSound();
+    router.push("/");
+  }, [closeAssistantAndSound, router]);
+
   // Don't render until hydrated
   if (!hydrated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div
+        className="min-h-screen bg-[#0D0C0B]"
+        data-testid="play-hydration-shell"
+        aria-busy="true"
+      >
+        {isHydrationLoadingVisible && (
+          <NarrativeLoadingState context="hydrate" layout="screen" />
+        )}
       </div>
     );
   }
@@ -346,17 +563,17 @@ export default function PlayPage() {
           <div className="space-y-2">
             <h1 className="text-lg font-semibold text-foreground">正在恢复当前进度</h1>
             <p className="text-sm text-muted-foreground">
-              如果没有可恢复的游戏，页面会返回首页。你也可以手动返回或重新加载。
+              如果没有可恢复的游戏，页面会返回首页。你也可以手动返回。
             </p>
           </div>
           <div className="flex items-center justify-center gap-3">
-            <Button variant="outline" onClick={() => router.replace("/")}>
+            <Button
+              variant="narrative"
+              size="touch"
+              onClick={() => router.replace("/")}
+            >
               <Home className="mr-2 h-4 w-4" />
               返回首页
-            </Button>
-            <Button variant="secondary" onClick={() => window.location.reload()}>
-              <RotateCcw className="mr-2 h-4 w-4" />
-              重新加载
             </Button>
           </div>
         </div>
@@ -364,8 +581,166 @@ export default function PlayPage() {
     );
   }
 
+  if (phase === "ending") {
+    return (
+      <NarrativeLoadingState
+        context="ending"
+        layout="screen"
+        phase="loading_context"
+      />
+    );
+  }
+
+  const sceneMedia = isViewingHistory ? (
+    currentHistoryRound ? (
+      <HistorySceneImage
+        sceneImage={historySceneImage}
+        isLoading={isLoadingHistoryImage}
+        isGenerating={isGeneratingHistoryImage}
+        isRegenerating={isRegeneratingHistoryImage}
+        week={currentHistoryRound.week}
+        round={currentHistoryRound.round}
+        storyText={historyDisplayText || ""}
+        onGenerate={handleGenerateHistoryImage}
+        onRegenerate={handleRegenerateHistoryImage}
+      />
+    ) : null
+  ) : storyText ? (
+    <>
+      {sceneImageDisplayMode === "event" && eventSceneImage && (
+        <RoundSceneImageDisplay
+          sceneImage={eventSceneImage}
+          isLoading={isLoadingRoundSceneImage && phase === "options"}
+          error={roundSceneError}
+          announceError={announceSceneImageError}
+          isRegenerating={isRegeneratingRoundScene}
+          currentRound={currentRound}
+          label="事件场景"
+          onRefresh={() => fetchRoundSceneImage(currentRound, "event")}
+          onRetryGeneration={() =>
+            fetchRoundSceneImage(currentRound, "event", { retry: true })
+          }
+          onRegenerate={regenerateRoundSceneImage}
+        />
+      )}
+
+      {sceneImageDisplayMode === "result" && resultSceneImage && (
+        <RoundSceneImageDisplay
+          sceneImage={resultSceneImage}
+          isLoading={isLoadingRoundSceneImage}
+          error={roundSceneError}
+          announceError={announceSceneImageError}
+          isRegenerating={isRegeneratingRoundScene}
+          currentRound={resultSceneRound}
+          label="结果场景"
+          onRefresh={() => fetchRoundSceneImage(resultSceneRound, "result")}
+          onRetryGeneration={() =>
+            fetchRoundSceneImage(resultSceneRound, "result", { retry: true })
+          }
+          onRegenerate={regenerateRoundSceneImage}
+        />
+      )}
+
+      {sceneImageDisplayMode === "result-loading" && (
+        <RoundSceneImageDisplay
+          sceneImage={null}
+          isLoading={isLoadingRoundSceneImage}
+          error={roundSceneError}
+          announceError={announceSceneImageError}
+          isRegenerating={isRegeneratingRoundScene}
+          currentRound={resultSceneRound}
+          label="结果场景"
+          onRefresh={() => fetchRoundSceneImage(resultSceneRound, "result")}
+          onRetryGeneration={() =>
+            fetchRoundSceneImage(resultSceneRound, "result", { retry: true })
+          }
+          onRegenerate={regenerateRoundSceneImage}
+        />
+      )}
+
+      {sceneImageDisplayMode === "event-fallback" && eventSceneImage && (
+        <RoundSceneImageDisplay
+          sceneImage={eventSceneImage}
+          isLoading={isLoadingRoundSceneImage}
+          error={roundSceneError}
+          announceError={announceSceneImageError}
+          isRegenerating={isRegeneratingRoundScene}
+          currentRound={resultSceneRound}
+          label="事件场景"
+          onRefresh={() => fetchRoundSceneImage(resultSceneRound, "event")}
+          onRetryGeneration={() =>
+            fetchRoundSceneImage(resultSceneRound, "event", { retry: true })
+          }
+          onRegenerate={regenerateRoundSceneImage}
+        />
+      )}
+
+      {sceneImageDisplayMode === "current" && currentRoundSceneImage && (
+        <RoundSceneImageDisplay
+          sceneImage={currentRoundSceneImage}
+          isLoading={isLoadingRoundSceneImage}
+          error={roundSceneError}
+          announceError={announceSceneImageError}
+          isRegenerating={isRegeneratingRoundScene}
+          currentRound={currentRound}
+          onRefresh={() =>
+            fetchRoundSceneImage(
+              currentRound,
+              phase === "options"
+                ? "event"
+                : phase === "result" || phase === "summary"
+                  ? "result"
+                  : undefined,
+            )
+          }
+          onRetryGeneration={() =>
+            fetchRoundSceneImage(
+              currentRound,
+              phase === "options"
+                ? "event"
+                : phase === "result" || phase === "summary"
+                  ? "result"
+                  : undefined,
+              { retry: true },
+            )
+          }
+          onRegenerate={regenerateRoundSceneImage}
+        />
+      )}
+
+      {sceneImageDisplayMode === "none" &&
+        (roundSceneError || isLoadingRoundSceneImage) && (
+          <RoundSceneImageDisplay
+            sceneImage={null}
+            isLoading={isLoadingRoundSceneImage}
+            error={roundSceneError}
+            announceError={announceSceneImageError}
+            isRegenerating={isRegeneratingRoundScene}
+            currentRound={
+              phase === "options" ? currentRound : resultSceneRound
+            }
+            label={phase === "options" ? "事件场景" : "结果场景"}
+            onRefresh={() =>
+              fetchRoundSceneImage(
+                phase === "options" ? currentRound : resultSceneRound,
+                phase === "options" ? "event" : "result",
+              )
+            }
+            onRetryGeneration={() =>
+              fetchRoundSceneImage(
+                phase === "options" ? currentRound : resultSceneRound,
+                phase === "options" ? "event" : "result",
+                { retry: true },
+              )
+            }
+            onRegenerate={regenerateRoundSceneImage}
+          />
+        )}
+    </>
+  ) : null;
+
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <>
       {/* ★ URL 参数同步 - 必须在 Suspense 中 */}
       <Suspense fallback={null}>
         <GameIdSync />
@@ -395,133 +770,39 @@ export default function PlayPage() {
         storyBusy={isCurrentStoryBusy}
         isViewingHistory={isViewingHistory}
       />
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-          {/* Status bar */}
-          <StatusBar
-            playerState={playerState}
-            progress={progress}
-            compact
-          />
-          
-          {/* Actions */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2"
-              onClick={handleSave}
-              disabled={isSaving}
-              title="保存游戏"
-              aria-label="保存游戏"
-            >
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 animate-spin md:mr-1.5" />
-              ) : (
-                <Save className="w-4 h-4 md:mr-1.5" />
-              )}
-              <span className="hidden md:inline text-xs">保存</span>
-            </Button>
-            {/* ★ 收集按钮 */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2"
-              onClick={handleOpenCollection}
-              title="收集"
-              aria-label="收集"
-            >
-              <BookOpen className="w-4 h-4 md:mr-1.5" />
-              <span className="hidden md:inline text-xs">收集</span>
-            </Button>
-            {/* ★ 历史回顾按钮 */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn("h-8 px-2", isViewingHistory && "text-primary")}
-              onClick={handleOpenHistoryPanel}
-              title="历史回顾"
-              aria-label="历史回顾"
-            >
-              <History className="w-4 h-4 md:mr-1.5" />
-              <span className="hidden md:inline text-xs">历史</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2"
-              onClick={() => router.push("/")}
-              title="返回首页"
-              aria-label="返回首页"
-            >
-              <Home className="w-4 h-4 md:mr-1.5" />
-              <span className="hidden md:inline text-xs">首页</span>
-            </Button>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 px-2" title="设置" aria-label="设置">
-                  <Settings className="w-4 h-4 md:mr-1.5" />
-                  <span className="hidden md:inline text-xs">设置</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>设置</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                
-                {/* 叙事质量 */}
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>叙事质量</DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
-                    <DropdownMenuRadioGroup value={constraintLevel} onValueChange={(value) => setConstraintLevel(value as "fast" | "expert" | "master")}>
-                      <DropdownMenuRadioItem value="fast">快速</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="expert">专家</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="master">大师</DropdownMenuRadioItem>
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-                
-                <DropdownMenuSeparator />
-                
-                {/* 故事风格 */}
-                <DropdownMenuSub onOpenChange={(open: boolean) => { if (open) loadNarrativeStyles(); }}>
-                  <DropdownMenuSubTrigger>
-                    <Palette className="w-3.5 h-3.5 mr-1.5" />叙事风格
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
-                    {styleLoading ? (
-                      <DropdownMenuItem disabled>
-                        <Loader2 className="w-3 h-3 animate-spin mr-1.5" />加载中...
-                      </DropdownMenuItem>
-                    ) : (
-                      <DropdownMenuRadioGroup value={narrativeStyleId} onValueChange={handleStyleChange}>
-                        {narrativeStyleOptions.map((s) => (
-                          <DropdownMenuRadioItem key={s.style_id} value={s.style_id} title={s.description}>
-                            {s.style_name}
-                          </DropdownMenuRadioItem>
-                        ))}
-                      </DropdownMenuRadioGroup>
-                    )}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-
-                <DropdownMenuSeparator />
-
-                {/* 场景插画开关 */}
-                <DropdownMenuItem onClick={() => setEnableSceneImage(!enableSceneImage)}>
-                  {enableSceneImage ? "关闭场景插画" : "开启场景插画"}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-      </header>
-
-      {/* Main content area */}
-      <main
-        ref={storyContainerRef}
-        className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-28"
+      <PlayReadingFrame
+        contentRef={storyContainerRef}
+        playerState={playerState}
+        progress={progress}
+        isViewingHistory={isViewingHistory}
+        toolsProps={{
+          isSaving,
+          isStoryBusy: shouldRenderGameplayLoading,
+          isViewingHistory,
+          constraintLevel,
+          narrativeStyleId,
+          narrativeStyles: narrativeStyleOptions,
+          narrativeStylesLoading: styleLoading,
+          rewriteDisabled: storyRewriteDisabled,
+          rewriteDisabledReason: storyRewriteDisabledReason,
+          soundAvailable,
+          enableSceneImage,
+          onSave: handleCoordinatedSave,
+          onOpenHistory: handleOpenHistoryPanel,
+          onOpenCollection: handleOpenCollection,
+          onOpenChat: () => handleOpenAssistantSurface("chat"),
+          onOpenRewrite: () => handleOpenAssistantSurface("rewrite"),
+          onOpenSummary: () => handleOpenAssistantSurface("summary"),
+          onRegenerate: handleCoordinatedRegenerate,
+          onOpenSound: handleOpenSound,
+          onHome: handleHome,
+          onConstraintLevelChange: setConstraintLevel,
+          onNarrativeStyleChange: handleStyleChange,
+          onSceneImageChange: setEnableSceneImage,
+          onRequestNarrativeStyles: loadNarrativeStyles,
+          onOpenTools: handleOpenTools,
+          onToolsOpenChange: setToolsSurfaceOpen,
+        }}
       >
         {!isViewingHistory && dailyDateTitle && (
           <div className="mb-5 text-center">
@@ -908,6 +1189,10 @@ export default function PlayPage() {
       <RoundHistoryDrawer
         open={historyPanelOpen}
         onOpenChange={handleHistoryOpenChange}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          restorePanelOpener(historyReturnFocusRef);
+        }}
         roundHistory={roundHistory}
         selectedIndex={historyRoundIndex}
         onSelect={handleSelectHistoryRound}
@@ -919,32 +1204,55 @@ export default function PlayPage() {
       />
 
       {/* ★ 收集面板 */}
-      <Sheet modal={false} open={collectionPanelOpen} onOpenChange={handleCollectionOpenChange}>
+      <Sheet modal open={collectionPanelOpen} onOpenChange={handleCollectionOpenChange}>
         <SheetContent
           side="right"
-          className="z-[60] w-[400px] sm:w-[540px] p-0"
-          overlayClassName="pointer-events-none bg-transparent"
+          showCloseButton={false}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            restorePanelOpener(collectionReturnFocusRef);
+          }}
+          className="z-[70] w-full max-w-[min(100vw,34rem)] p-0 sm:w-[34rem]"
+          overlayClassName="bg-transparent"
         >
           <SheetTitle className="sr-only">收集</SheetTitle>
+          <SheetClose asChild>
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-touch"
+              className="absolute right-3 top-3 z-10"
+              aria-label="关闭收集"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </SheetClose>
           <CollectionPanel gameId={gameId || 0} />
         </SheetContent>
       </Sheet>
 
-      {/* Save toast */}
-      {saveToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-fade-in-word">
-          <div className={cn(
-            "flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium shadow-lg backdrop-blur-sm",
-            saveToast === "success"
-              ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/50"
-              : "bg-red-950/80 text-red-300 border border-red-800/50"
-          )}>
-            {saveToast === "success" ? (
-              <><CheckCircle2 className="w-4 h-4" /> 已保存</>
-            ) : (
-              <><XCircle className="w-4 h-4" /> 保存失败</>
-            )}
-          </div>
+      {/* A single page-level feedback owner prevents fixed notices from overlapping. */}
+      {pageFeedbackType && pageFeedbackMessage && (
+        <div className="play-feedback fixed left-1/2 z-[80] w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2">
+          <FeedbackNotice
+            tone={
+              pageFeedbackType === "success"
+                ? "success"
+                : pageFeedbackType === "loading"
+                  ? "info"
+                  : "danger"
+            }
+          >
+            <span className="flex items-center gap-2">
+              {pageFeedbackType === "success" ? (
+                <><CheckCircle2 className="h-4 w-4" /> {pageFeedbackMessage}</>
+              ) : pageFeedbackType === "loading" ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /> {pageFeedbackMessage}</>
+              ) : (
+                <><XCircle className="h-4 w-4" /> {pageFeedbackMessage}</>
+              )}
+            </span>
+          </FeedbackNotice>
         </div>
       )}
 

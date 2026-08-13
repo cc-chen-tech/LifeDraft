@@ -14,9 +14,16 @@ import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
+from config.feature_flags import get_feature
 from config.settings import PRESETS_DIR, settings
+from src.ai.budgets import (
+    GenerationCallTracker,
+    GenerationOperation,
+    NarrativeKind,
+    resolve_narrative_budget,
+)
 from src.ai.cache import EventCache
-from src.ai.client import AIClient
+from src.ai.client import AIClient, _thinking_request_params
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_generator import StoryGenerator
@@ -63,7 +70,11 @@ class EventGenerator:
         self.story_gen = StoryGenerator(self.ai_client, quality_level=quality_level)
         self.option_gen = OptionGenerator(self.ai_client)
         self.summary_gen = SummaryGenerator(self.ai_client)
-        self.rewriter = StoryRewriter(self.ai_client)
+        self.quality_level = str(quality_level or "expert")
+        self.rewriter = StoryRewriter(
+            self.ai_client,
+            quality_level=self.quality_level,
+        )
 
     # ==================== Backward-Compatible AI Calling ====================
 
@@ -75,6 +86,7 @@ class EventGenerator:
         max_tokens: int = 2000,
         stream_callback: Optional[Callable[[str], None]] = None,
         model: Optional[str] = None,
+        thinking: Optional[bool] = None,
     ) -> str:
         """Backward-compatible private AI call (delegates to AIClient)."""
         return self.ai_client.call(
@@ -84,6 +96,7 @@ class EventGenerator:
             max_tokens=max_tokens,
             stream_callback=stream_callback,
             model=model,
+            thinking=thinking,
         )
 
     def generate_completion(
@@ -97,6 +110,8 @@ class EventGenerator:
         retry_count: int = 1,
         language: str = "zh",
         request_timeout: Optional[float] = None,
+        thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> str:
         """Public AI text generation interface.
 
@@ -109,6 +124,7 @@ class EventGenerator:
             model: Optional model override
             retry_count: Number of attempts (1 = no retry, 2+ = retry with error feedback)
             language: Language for error feedback messages
+            thinking: Disable thinking for DeepSeek V4 when False
         """
         if retry_count > 1:
             return self.ai_client.call_with_retry(
@@ -121,7 +137,12 @@ class EventGenerator:
                 model=model,
                 language=language,
                 request_timeout=request_timeout,
+                thinking=thinking,
+                generation_tracker=generation_tracker,
             )
+        if generation_tracker is not None:
+            generation_tracker.consume("prose")
+            generation_tracker.assert_before_provider_call()
         return self.ai_client.call(
             system_prompt=system_prompt,
             user_prompt=prompt,
@@ -130,6 +151,8 @@ class EventGenerator:
             stream_callback=stream_callback,
             model=model,
             request_timeout=request_timeout,
+            thinking=thinking,
+            generation_tracker=generation_tracker,
         )
 
     def generate_completion_json(
@@ -139,14 +162,20 @@ class EventGenerator:
         temperature: float = 0.8,
         max_tokens: int = 2000,
         model: Optional[str] = None,
+        thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> Optional[Dict[str, Any]]:
         """Public AI JSON generation interface."""
+        if generation_tracker is not None:
+            generation_tracker.consume("prose")
         return self.ai_client.call_json(
             system_prompt=system_prompt,
             user_prompt=prompt,
             temperature=temperature,
             max_tokens=max_tokens,
             model=model,
+            thinking=thinking,
+            generation_tracker=generation_tracker,
         )
 
     def generate_stream(
@@ -156,6 +185,9 @@ class EventGenerator:
         temperature: float = 0.8,
         max_tokens: int = 2000,
         model: Optional[str] = None,
+        thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
+        request_timeout: Optional[float] = None,
     ):
         """Public AI streaming interface - returns raw stream object.
 
@@ -165,8 +197,13 @@ class EventGenerator:
         Returns:
             OpenAI stream object that yields chunks
         """
+        if generation_tracker is not None:
+            generation_tracker.consume("prose")
         use_model = model or self.ai_client.model
         client = self.ai_client.require_openai_client()
+        request_params = _thinking_request_params(use_model, thinking)
+        if generation_tracker is not None:
+            generation_tracker.assert_before_provider_call()
         return client.chat.completions.create(
             model=use_model,
             messages=[
@@ -176,6 +213,8 @@ class EventGenerator:
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True,
+            **({"timeout": request_timeout} if request_timeout is not None else {}),
+            **request_params,
         )
 
     # ==================== Preset Events ====================
@@ -191,7 +230,9 @@ class EventGenerator:
                 logger.warning(f"Failed to load preset events: {e}")
         return {}
 
-    def _get_preset_milestone_event(self, week: int, language: str) -> Optional[GameEvent]:
+    def _get_preset_milestone_event(
+        self, week: int, language: str
+    ) -> Optional[GameEvent]:
         """Get preset milestone event if available."""
         if not self.preset_events:
             return None
@@ -202,7 +243,13 @@ class EventGenerator:
                 lang_data = event_data.get(language)
                 if lang_data:
                     try:
-                        return GameEvent(**lang_data)
+                        event = GameEvent(**lang_data)
+                        options = OptionGenerator.complete_new_event_options(
+                            event.options,
+                            story_description=event.event_description,
+                            language=language,
+                        )
+                        return event.model_copy(update={"options": options})
                     except Exception as e:
                         logger.warning(f"Failed to parse preset milestone event: {e}")
         return None
@@ -321,14 +368,25 @@ class EventGenerator:
         character_settings: Optional[Dict[str, Any]] = None,
         language: str = "zh",
         retry_count: int = 3,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> GameEvent:
         """Generate options for an existing story."""
+        if get_feature("unified_narrative_budgets"):
+            budget = resolve_narrative_budget(
+                NarrativeKind.ROUND,
+                GenerationOperation.GENERATE,
+                self.quality_level,
+                language,
+            )
+            generation_tracker = generation_tracker or GenerationCallTracker(budget)
+            retry_count = min(retry_count, budget.option_call_limit)
         return self.option_gen.generate_options_only(
             story_description=story_description,
             player_state=player_state,
             character_settings=character_settings,
             language=language,
             retry_count=retry_count,
+            generation_tracker=generation_tracker,
         )
 
     def compress_story(
@@ -388,7 +446,6 @@ class EventGenerator:
         character_settings: Optional[Dict[str, Any]],
         language: str,
         game_date_info: Optional[Dict[str, Any]] = None,
-        wealth_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Generate weekly summary and bonus effects."""
         return self.summary_gen.generate_weekly_summary(
@@ -396,7 +453,6 @@ class EventGenerator:
             character_settings=character_settings,
             language=language,
             game_date_info=game_date_info,
-            wealth_context=wealth_context,
         )
 
     def generate_four_week_summary(
@@ -500,6 +556,10 @@ class EventGenerator:
         return SummaryGenerator._clean_summary_text(summary)
 
     @staticmethod
-    def _extract_summary_from_raw(content: str, original_story: str, language: str) -> str:
+    def _extract_summary_from_raw(
+        content: str, original_story: str, language: str
+    ) -> str:
         """Extract summary from raw response (delegates to SummaryGenerator)."""
-        return SummaryGenerator._extract_summary_from_raw(content, original_story, language)
+        return SummaryGenerator._extract_summary_from_raw(
+            content, original_story, language
+        )

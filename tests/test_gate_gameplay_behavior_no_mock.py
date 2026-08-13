@@ -1,5 +1,7 @@
 """No-mock gameplay behavior tests for option relevance and text cleanup."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from config.prompts import (
@@ -428,7 +430,9 @@ def test_round_event_generation_surfaces_failure_when_provider_is_unavailable() 
         )
 
 
-def test_round_event_retries_when_ai_story_is_too_short_for_quality_budget() -> None:
+def test_round_event_retries_when_ai_story_is_too_short_for_quality_budget(
+    constraint_harness_disabled,
+) -> None:
     short_story = (
         "顾晨曦推开会议室的门，发现陆昊然已经把访谈记录贴在白板上。"
         "陈晓雨递来一杯咖啡，提醒她今天必须先决定需求优先级。"
@@ -527,7 +531,74 @@ def test_round_event_retries_when_ai_story_is_too_short_for_quality_budget() -> 
     assert event.event_description == expected_story
 
 
-def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_new_cast() -> None:
+def test_round_event_repairs_length_after_a_quick_validation_retry(
+    monkeypatch,
+    constraint_harness_disabled,
+) -> None:
+    """A quick retry must not bypass the configured story-length contract."""
+    quick_failure = "林清忽略了预设关系网。"
+    overlong_retry = "林清在会议室整理项目风险。" * 100
+    repaired_story = "林清和陆昊然复核风险清单，陈晓雨记录需要当天确认的三项决策。" * 20
+
+    class Client:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def call(self, **kwargs):
+            self.calls.append(kwargs)
+            return [quick_failure, overlong_retry, repaired_story][len(self.calls) - 1]
+
+    class OptionGenerator:
+        def generate_options_only(self, **kwargs):
+            return GameEvent(
+                event_description=kwargs["story_description"],
+                options=[
+                    EventOption(text="确认风险清单", effects={}),
+                    EventOption(text="请陆昊然复核优先级", effects={}),
+                ],
+            )
+
+        def validate_and_fix_relationships(self, *args, **kwargs):
+            return None
+
+        def validate_options_consistency(self, *args, **kwargs):
+            return []
+
+    quick_results = iter(
+        [
+            SimpleNamespace(passed=False, issues=["名单外人物"], warnings=[]),
+            SimpleNamespace(passed=True, issues=[], warnings=[]),
+            SimpleNamespace(passed=True, issues=[], warnings=[]),
+        ]
+    )
+    shape_results = iter([["story_too_long"], []])
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: next(quick_results),
+    )
+    monkeypatch.setattr(
+        "src.ai.story_generator.validate_narrative_quality",
+        lambda *_args, **_kwargs: next(shape_results),
+    )
+
+    client = Client()
+    event = StoryGenerator(client).generate_round_event(
+        player_state={"player_name": "林清", "week": 1, "current_round": 0},
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings={},
+        option_generator=OptionGenerator(),
+    )
+
+    assert len(client.calls) == 3
+    assert "故事太长" in str(client.calls[2]["user_prompt"])
+    assert event.event_description == repaired_story
+
+
+def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_new_cast(
+    constraint_harness_disabled,
+) -> None:
     class DriftClient:
         def __init__(self):
             self.calls = []

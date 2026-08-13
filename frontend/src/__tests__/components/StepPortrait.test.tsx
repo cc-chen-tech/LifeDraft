@@ -33,8 +33,9 @@ describe("StepPortrait", () => {
     it("shows loading when generating image", () => {
       render(<StepPortrait {...baseProps} isGeneratingImage={true} />);
       expect(
-        screen.getByText("AI正在生成人物形象...")
+        screen.getByText("人物形象正在后台生成，你可以先继续创建。")
       ).toBeInTheDocument();
+      expect(screen.queryByText(/AI/)).not.toBeInTheDocument();
     });
 
     it("shows long-running portrait guidance and recover action after one minute", () => {
@@ -98,7 +99,7 @@ describe("StepPortrait", () => {
         <StepPortrait {...baseProps} isGeneratingImage={true} gameId={null} />
       );
       expect(
-        screen.getByText("AI正在生成人物形象...")
+        screen.getByText("人物形象正在后台生成，你可以先继续创建。")
       ).toBeInTheDocument();
       expect(screen.queryByText("正在准备生成...")).not.toBeInTheDocument();
     });
@@ -121,8 +122,10 @@ describe("StepPortrait", () => {
     it("shows thumbnail selectors when multiple images", () => {
       render(<StepPortrait {...baseProps} playerImages={images} />);
 
-      const thumbnails = document.querySelectorAll("button img");
-      expect(thumbnails.length).toBeGreaterThanOrEqual(1);
+      const thumbnails = screen.getAllByRole("button", { name: /选择人物形象/ });
+      expect(thumbnails).toHaveLength(2);
+      expect(thumbnails[0]).toHaveAttribute("aria-pressed", "true");
+      expect(thumbnails[1]).toHaveAttribute("aria-pressed", "false");
     });
 
     it("does not show thumbnails when only one image", () => {
@@ -184,9 +187,12 @@ describe("StepPortrait", () => {
     it("shows feedback input when images exist and not generating", () => {
       render(<StepPortrait {...baseProps} playerImages={images} />);
 
-      expect(
-        screen.getByPlaceholderText("不满意？描述你想要的修改...（会保留之前的角色设定）")
-      ).toBeInTheDocument();
+      const feedback = screen.getByRole("textbox", { name: "人物形象修改意见" });
+      expect(feedback.tagName).toBe("TEXTAREA");
+      expect(feedback).toHaveAttribute("aria-describedby");
+      expect(feedback.getAttribute("aria-describedby")).toContain(
+        "portrait-feedback-count",
+      );
     });
 
     it("does not show feedback input when generating image", () => {

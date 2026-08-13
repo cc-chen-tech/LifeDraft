@@ -28,6 +28,7 @@ const SSE_PATH_PATTERNS = [
 
 const LONG_REQUEST_PATH_PATTERNS = [
   '/api/music/generate',
+  '/api/images/generate',
 ];
 
 function isSSEPath(pathname: string): boolean {

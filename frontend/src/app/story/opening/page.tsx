@@ -7,20 +7,27 @@ declare global {
   }
 }
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { StreamingText } from "@/components/game/StreamingText";
 import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
-import { SkeletonStory } from "@/components/game/SkeletonStory";
+import { FormField, PageTransition, Surface } from "@/components/story101";
+import {
+  NarrativeLoadingState,
+  getNarrativeLoadingDelay,
+} from "@/components/narrative-loading/NarrativeLoadingState";
 import { useGameStore } from "@/stores/useGameStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { useImageStore } from "@/stores/useImageStore";
 import { useHydration } from "@/hooks/useHydration";
+import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { games } from "@/lib/api";
 import { streamOpeningStory } from "@/lib/sse";
 import { Loader2, Home, ImageIcon, RefreshCw } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit, unicodeCharacterLength } from "@/lib/inputLimits";
 
 export default function OpeningStoryPage() {
   const router = useRouter();
@@ -29,6 +36,7 @@ export default function OpeningStoryPage() {
   const setOpeningStory = useGameStore((s) => s.setOpeningStory);
   const playerName = useGameStore((s) => s.playerName);
   const characterSettings = useGameStore((s) => s.characterSettings);
+  const constraintLevel = useGameStore((s) => s.constraintLevel);
   // ★ 图片相关状态从 useImageStore 获取
   const openingIllustration = useImageStore((s) => s.openingIllustration);
   const isGeneratingIllustration = useImageStore((s) => s.isGeneratingIllustration);
@@ -38,33 +46,250 @@ export default function OpeningStoryPage() {
   const { language } = useUIStore();
 
   const [isStreaming, setIsStreaming] = useState(false);
-  const [isComplete, setIsComplete] = useState(false);
-  const [storyText, setStoryText] = useState("");
+  const [isComplete, setIsComplete] = useState(() => Boolean(openingStory));
+  const [storyText, setStoryText] = useState(() => openingStory);
   const [displayedCompleteText, setDisplayedCompleteText] = useState("");
   const [error, setError] = useState("");
+  const [streamingIdentity, setStreamingIdentity] = useState(0);
+  const [storyDisplayIdentity, setStoryDisplayIdentity] = useState(0);
   const [illustrationPrompt, setIllustrationPrompt] = useState("");
+  const [isStarting, setIsStarting] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const activeAttemptRef = useRef(0);
+  const openingPersistenceRef = useRef<{
+    key: string;
+    promise: Promise<void>;
+  } | null>(null);
   const hydrated = useHydration();
+  const showHydrationLoading = useDelayedLoading({
+    isLoading: !hydrated,
+    delay: getNarrativeLoadingDelay("hydrate"),
+    loadingIdentity: "opening-hydration",
+  });
+  const isOpeningDelayed = useDelayedLoading({
+    isLoading: hydrated && isStreaming,
+    delay: getNarrativeLoadingDelay("opening", constraintLevel),
+    loadingIdentity: streamingIdentity,
+  });
   const illustrationGeneratedRef = useRef(false);
-  
-  // ★ 防止重复执行的标记
-  const initializedRef = useRef(false);
+  const illustrationPromptRemaining =
+    INPUT_LIMITS.feedback - unicodeCharacterLength(illustrationPrompt);
+  const illustrationPromptWithinLimit = isWithinInputLimit(
+    illustrationPrompt,
+    INPUT_LIMITS.feedback,
+  );
   
   // ★ 添加渲染计数器来诊断问题
   const renderCountRef = useRef(0);
   // Note: ref access moved to useEffect to avoid React warning
 
   useEffect(() => {
-    console.log(`[OpeningStory] Render #${renderCountRef.current}, hydrated=${hydrated}, initialized=${initializedRef.current}`);
+    console.log(`[OpeningStory] Render #${renderCountRef.current}, hydrated=${hydrated}`);
   });
 
-  // ★ 初始化：只执行一次
+  const ensureOpeningContinuityPersisted = useCallback(({
+    persistenceGameId,
+    persistenceStory,
+    persistenceCharacterSettings,
+    persistencePlayerName,
+    persistenceLifeVision,
+  }: {
+    persistenceGameId: number;
+    persistenceStory: string;
+    persistenceCharacterSettings: Record<string, unknown>;
+    persistencePlayerName: string;
+    persistenceLifeVision: string;
+  }): Promise<void> => {
+    const normalizedStory = persistenceStory.trim();
+    if (!normalizedStory) return Promise.resolve();
+
+    const key = `${persistenceGameId}:${normalizedStory}`;
+    if (openingPersistenceRef.current?.key === key) {
+      return openingPersistenceRef.current.promise;
+    }
+
+    const promise = (async () => {
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          await games.patchCharacterSettings(
+            persistenceGameId,
+            { ...persistenceCharacterSettings, opening_story: normalizedStory },
+            {
+              player_name: persistencePlayerName.trim(),
+              life_vision: persistenceLifeVision,
+            },
+          );
+          return;
+        } catch (err) {
+          console.warn("[OpeningStory] Opening continuity persistence failed", {
+            gameId: persistenceGameId,
+            attempt,
+            willRetry: attempt === 1,
+            errorType: err instanceof Error ? err.name : typeof err,
+          });
+        }
+      }
+    })();
+
+    openingPersistenceRef.current = { key, promise };
+    return promise;
+  }, []);
+
+  const waitForPersistenceBounded = useCallback((persistence: Promise<void>) => (
+    new Promise<void>((resolve) => {
+      const timeoutId = window.setTimeout(resolve, 2000);
+      void persistence.then(() => {
+        window.clearTimeout(timeoutId);
+        resolve();
+      });
+    })
+  ), []);
+
+  const startOpeningStream = useCallback(({
+    attemptGameId,
+    attemptCharacterSettings,
+    attemptPlayerName,
+    attemptLifeVision,
+    attemptLanguage,
+    generateIllustrationOnComplete,
+  }: {
+    attemptGameId: number | null;
+    attemptCharacterSettings: Record<string, unknown>;
+    attemptPlayerName: string;
+    attemptLifeVision: string;
+    attemptLanguage: string;
+    generateIllustrationOnComplete: boolean;
+  }) => {
+    const attemptId = activeAttemptRef.current + 1;
+    activeAttemptRef.current = attemptId;
+    abortRef.current?.abort();
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let streamedText = "";
+    let hasReceivedChunk = false;
+    let settled = false;
+
+    const isActiveAttempt = () =>
+      activeAttemptRef.current === attemptId && !controller.signal.aborted && !settled;
+
+    const failAttempt = (streamError: unknown) => {
+      if (!isActiveAttempt()) return;
+
+      settled = true;
+      controller.abort();
+      const message =
+        streamError instanceof Error
+          ? streamError.message
+          : typeof streamError === "object" &&
+              streamError !== null &&
+              "message" in streamError &&
+              typeof streamError.message === "string"
+            ? streamError.message
+            : "未知错误";
+      console.error("[OpeningStory] SSE error:", streamError);
+      setIsStreaming(false);
+      setError("故事生成失败: " + (message || "未知错误"));
+    };
+
+    setError("");
+    setStreamingIdentity(attemptId);
+    setIsStreaming(true);
+    setIsComplete(false);
+
+    try {
+      const streamPromise = streamOpeningStory(
+        attemptCharacterSettings,
+        attemptPlayerName,
+        attemptLifeVision,
+        attemptLanguage,
+        {
+          onStory: (text) => {
+            if (!isActiveAttempt() || !text) return;
+
+            const replacePreviousAttempt = !hasReceivedChunk;
+            hasReceivedChunk = true;
+            const nextAttemptText = streamedText + text;
+            streamedText = nextAttemptText;
+            setDisplayedCompleteText("");
+            if (replacePreviousAttempt) {
+              setStoryDisplayIdentity(attemptId);
+            }
+            setStoryText(nextAttemptText);
+          },
+          onComplete: (data) => {
+            if (!isActiveAttempt()) return;
+
+            const fullText = (data && typeof data === "object" && "full_story" in data)
+              ? (data as { full_story?: string }).full_story || ""
+              : "";
+            const finalText = fullText || streamedText;
+            if (!finalText.trim()) {
+              failAttempt(new Error("故事内容为空"));
+              return;
+            }
+
+            settled = true;
+            console.log("[OpeningStory] Generation complete, length:", finalText.length);
+            if (finalText) {
+              setStoryText(finalText);
+              setOpeningStory(finalText);
+            }
+            setIsStreaming(false);
+            setError("");
+
+            const currentGameId = attemptGameId;
+            if (currentGameId) {
+              void ensureOpeningContinuityPersisted({
+                persistenceGameId: currentGameId,
+                persistenceStory: finalText,
+                persistenceCharacterSettings: attemptCharacterSettings,
+                persistencePlayerName: attemptPlayerName,
+                persistenceLifeVision: attemptLifeVision,
+              });
+            }
+
+            if (generateIllustrationOnComplete) {
+              // ★ 故事生成完成后，触发插画生成
+              if (!illustrationGeneratedRef.current && currentGameId) {
+                illustrationGeneratedRef.current = true;
+                console.log("[OpeningStory] Story complete, triggering illustration generation...");
+                // 延迟一点生成插画，让用户先看到故事
+                setTimeout(() => {
+                  generateOpeningIllustration(
+                    currentGameId,
+                    finalText,
+                    attemptCharacterSettings,
+                    attemptPlayerName
+                  );
+                }, 500);
+              }
+            }
+            setIsComplete(true);
+          },
+          onError: failAttempt,
+        },
+        {
+          signal: controller.signal,
+          enableReconnect: false,
+        }
+      );
+
+      void Promise.resolve(streamPromise).catch(failAttempt);
+    } catch (streamError) {
+      failAttempt(streamError);
+    }
+  }, [ensureOpeningContinuityPersisted, generateOpeningIllustration, setOpeningStory]);
+
+  // Defer initialization by one microtask so StrictMode can replay the effect
+  // without issuing and immediately aborting a duplicate backend request.
   useEffect(() => {
-    if (!hydrated || initializedRef.current) return;
-    initializedRef.current = true;
+    if (!hydrated) return;
     let cancelled = false;
 
     const initialize = async () => {
+      if (cancelled) return;
+
       // ★ 支持测试数据注入（E2E 测试用）
       const testData = (typeof window !== "undefined" && window.__TEST_DATA__) || null;
       if (testData) {
@@ -114,6 +339,15 @@ export default function OpeningStoryPage() {
         console.log("[OpeningStory] Using existing story");
         setStoryText(state.openingStory);
         setIsComplete(true);
+        if (state.gameId) {
+          void ensureOpeningContinuityPersisted({
+            persistenceGameId: state.gameId,
+            persistenceStory: state.openingStory,
+            persistenceCharacterSettings: resolvedCharacterSettings,
+            persistencePlayerName: resolvedPlayerName,
+            persistenceLifeVision: resolvedLifeVision,
+          });
+        }
         return;
       }
 
@@ -129,125 +363,57 @@ export default function OpeningStoryPage() {
 
       // 开始生成故事
       console.log("[OpeningStory] Starting generation...");
-      setIsStreaming(true);
-      abortRef.current = new AbortController();
-
-      let streamedText = "";
-
-      streamOpeningStory(
-        resolvedCharacterSettings,
-        resolvedPlayerName,
-        resolvedLifeVision,
-        language,
-        {
-          onStory: (text) => {
-            setDisplayedCompleteText("");
-            streamedText += text;
-            setStoryText((prev) => prev + text);
-          },
-          onComplete: (data) => {
-            const fullText = (data && typeof data === 'object' && 'full_story' in data)
-              ? (data as { full_story?: string }).full_story || ""
-              : "";
-            const finalText = fullText || streamedText;
-            console.log("[OpeningStory] Generation complete, length:", finalText.length);
-            if (finalText) {
-              setStoryText(finalText);
-              setOpeningStory(finalText);
-            }
-            setIsStreaming(false);
-
-            // ★ 故事生成完成后，触发插画生成
-            const currentGameId = useGameStore.getState().gameId;
-            if (!illustrationGeneratedRef.current && currentGameId) {
-              illustrationGeneratedRef.current = true;
-              console.log("[OpeningStory] Story complete, triggering illustration generation...");
-              // 延迟一点生成插画，让用户先看到故事
-              setTimeout(() => {
-                generateOpeningIllustration(currentGameId, finalText, resolvedCharacterSettings, resolvedPlayerName);
-              }, 500);
-            }
-            setIsComplete(true);
-          },
-          onError: (err) => {
-            console.error("[OpeningStory] SSE error:", err);
-            setIsStreaming(false);
-            setError("故事生成失败: " + (err.message || "未知错误"));
-          },
-        },
-        {
-          signal: abortRef.current.signal,
-          enableReconnect: false,
-        }
-      );
+      startOpeningStream({
+        attemptGameId: state.gameId,
+        attemptCharacterSettings: resolvedCharacterSettings,
+        attemptPlayerName: resolvedPlayerName,
+        attemptLifeVision: resolvedLifeVision,
+        attemptLanguage: language,
+        generateIllustrationOnComplete: true,
+      });
     };
 
-    void initialize();
+    void Promise.resolve().then(initialize);
 
     return () => {
       cancelled = true;
       console.log("[OpeningStory] Cleanup: aborting SSE");
       abortRef.current?.abort();
     };
-  }, [hydrated, language, setOpeningStory, generateOpeningIllustration]);
+  }, [ensureOpeningContinuityPersisted, hydrated, language, startOpeningStream]);
 
   const handleRetry = () => {
     console.log("[OpeningStory] Retrying generation...");
-    setError("");
-    setStoryText("");
-    setDisplayedCompleteText("");
-    setIsStreaming(true);
-    setIsComplete(false);
-    
     const state = useGameStore.getState();
-    abortRef.current = new AbortController();
-    
-    let streamedText = "";
-
-    streamOpeningStory(
-      state.characterSettings,
-      state.playerName,
-      state.lifeVision,
-      language,
-      {
-        onStory: (text) => {
-          setDisplayedCompleteText("");
-          streamedText += text;
-          setStoryText((prev) => prev + text);
-        },
-        onComplete: (data) => {
-          const fullText = (data && typeof data === 'object' && 'full_story' in data)
-            ? (data as { full_story?: string }).full_story || ""
-            : "";
-          const finalText = fullText || streamedText;
-          if (finalText) {
-            setStoryText(finalText);
-            setOpeningStory(finalText);
-          }
-          setIsStreaming(false);
-          setIsComplete(true);
-        },
-        onError: (err) => {
-          console.error("[OpeningStory] Retry error:", err);
-          setIsStreaming(false);
-          setError("重试失败: " + (err.message || "未知错误"));
-        },
-      },
-      { 
-        signal: abortRef.current.signal,
-        enableReconnect: false,
-      }
-    );
+    startOpeningStream({
+      attemptGameId: state.gameId,
+      attemptCharacterSettings: state.characterSettings,
+      attemptPlayerName: state.playerName,
+      attemptLifeVision: state.lifeVision,
+      attemptLanguage: language,
+      generateIllustrationOnComplete: false,
+    });
   };
 
-  const handleStart = () => {
-    if (!isComplete || displayedCompleteText !== storyText) return;
+  const handleStart = async () => {
+    if (!isComplete || displayedCompleteText !== storyText || isStarting) return;
 
-    const currentGameId = useGameStore.getState().gameId;
+    const state = useGameStore.getState();
+    const currentGameId = state.gameId;
     
     console.log("[OpeningStory] Starting game, gameId:", currentGameId);
     
     if (currentGameId) {
+      setIsStarting(true);
+      const persistence = ensureOpeningContinuityPersisted({
+        persistenceGameId: currentGameId,
+        persistenceStory: (state.openingStory || storyText).trim(),
+        persistenceCharacterSettings: state.characterSettings,
+        persistencePlayerName: state.playerName,
+        persistenceLifeVision: state.lifeVision,
+      });
+      await waitForPersistenceBounded(persistence);
+
       router.push("/play");
     } else {
       console.warn("[OpeningStory] No gameId, going to create page");
@@ -257,60 +423,105 @@ export default function OpeningStoryPage() {
 
   // 等待 hydration
   if (!hydrated) {
-    return <SkeletonStory message="加载中..." />;
+    if (storyText || openingStory) {
+      return <div className="min-h-screen" aria-busy="true" />;
+    }
+    return showHydrationLoading ? (
+      <NarrativeLoadingState context="hydrate" layout="screen" />
+    ) : (
+      <div className="min-h-screen" aria-busy="true" />
+    );
   }
 
   // 错误状态
-  if (error) {
+  if (error && !storyText) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4">
-        <div className="text-center space-y-4 max-w-md">
-          <p className="text-destructive">{error}</p>
-          <div className="flex gap-3 justify-center">
-            <Button variant="outline" onClick={() => router.push("/")}>
-              <Home className="w-4 h-4 mr-2" />
-              返回首页
-            </Button>
-            <Button onClick={handleRetry}>
-              <Loader2 className="w-4 h-4 mr-2" />
-              重试
-            </Button>
-          </div>
+      <div className="relative min-h-[100dvh]">
+        <NarrativeLoadingState
+          context="opening"
+          layout="screen"
+          phase="generating"
+          transport="failed"
+          onAction={handleRetry}
+        />
+        <div className="absolute inset-x-0 bottom-8 flex flex-col items-center gap-3 px-4">
+          <p className="text-center text-sm text-[var(--danger-foreground)]">{error}</p>
+          <Button
+            type="button"
+            variant="quiet"
+            size="touch"
+            onClick={() => router.push("/")}
+          >
+            <Home className="w-4 h-4 mr-2" />
+            返回首页
+          </Button>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen flex flex-col bg-background animate-page-enter">
-      <div className="flex-1 flex items-center justify-center p-6 md:p-12">
-        <div className="w-full max-w-[65ch] space-y-8">
-          {/* ★ 修复：streaming 初始状态也显示 loading，避免空白 */}
-          {(!storyText || isStreaming) && (
-            <SkeletonStory message="正在编写你的人生开篇..." />
-          )}
+  if (!storyText && (isStreaming || !isComplete)) {
+    return (
+      <NarrativeLoadingState
+        context="opening"
+        layout="screen"
+        phase="generating"
+        delayed={isOpeningDelayed}
+      />
+    );
+  }
 
+  return (
+    <PageTransition className="min-h-[100dvh] bg-[var(--surface-canvas)] px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto w-full max-w-[70ch]">
+        <header className="mb-5 border-b border-[var(--border-default)] pb-4">
+          <h1 className="font-serif text-2xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-3xl">
+            人生开篇
+          </h1>
+        </header>
+
+        <Surface variant="reading" className="px-4 py-6 sm:px-8 sm:py-9">
+          <div className="space-y-8">
           {storyText && (
             <StreamingText
+              key={storyDisplayIdentity}
               text={storyText}
               isStreaming={isStreaming}
               narrative
+              showCursor={false}
               onDisplayComplete={setDisplayedCompleteText}
             />
           )}
-          
-          {/* ★ 开场插画展示区 */}
+
+          {storyText && isStreaming && (
+            <NarrativeLoadingState
+              context="opening"
+              layout="inline"
+              phase="generating"
+              delayed={isOpeningDelayed}
+            />
+          )}
+
+          {storyText && error && (
+            <NarrativeLoadingState
+              context="opening"
+              layout="inline"
+              phase="generating"
+              transport="failed"
+              onAction={handleRetry}
+            />
+          )}
+
           {isComplete && (
-            <div className="flex flex-col items-center space-y-4 animate-fade-in">
-              {/* 插画生成中 */}
+            <div className="space-y-5 border-t border-[var(--border-default)] pt-7">
               {isGeneratingIllustration && (
-                <div className="flex flex-col items-center gap-3 py-8">
+                <div className="flex flex-col items-center gap-3 py-6 text-center">
                   <div className="relative">
-                    <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-                    <ImageIcon className="absolute inset-0 m-auto w-6 h-6 text-primary" />
+                    <div className="h-16 w-16 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+                    <ImageIcon className="absolute inset-0 m-auto h-6 w-6 text-primary" />
                   </div>
-                  <div className="text-center space-y-1">
-                    <p className="text-sm text-muted-foreground animate-pulse">
+                  <div className="space-y-1 text-center">
+                    <p className="animate-pulse text-sm text-muted-foreground">
                       AI正在为你绘制人生插画...
                     </p>
                     <p className="text-xs text-muted-foreground/60">
@@ -319,16 +530,16 @@ export default function OpeningStoryPage() {
                   </div>
                 </div>
               )}
-              
-              {/* 插画生成错误 */}
+
               {illustrationError && !isGeneratingIllustration && (
-                <div className="text-center py-4 space-y-3">
-                  <p className="text-xs text-muted-foreground/60">
+                <div className="space-y-3 py-4 text-center">
+                  <p className="text-sm text-[var(--danger-foreground)]">
                     插画生成失败，但不影响游戏体验
                   </p>
                   <Button
-                    variant="outline"
-                    size="sm"
+                    type="button"
+                    variant="narrative"
+                    size="touch"
                     onClick={() => {
                       console.log("[OpeningStory] Retrying illustration generation...");
                       if (gameId) {
@@ -341,40 +552,78 @@ export default function OpeningStoryPage() {
                   </Button>
                 </div>
               )}
-              
-              {/* 插画展示 */}
+
               {openingIllustration && !isGeneratingIllustration && (
-                <div className="w-full space-y-4">
-                  <div className="w-full aspect-video max-w-2xl mx-auto bg-secondary rounded-lg overflow-hidden shadow-lg">
-                    <img 
-                      src={openingIllustration.image_url} 
+                <div className="w-full space-y-5">
+                  <div className="mx-auto aspect-video w-full max-w-2xl overflow-hidden rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)]">
+                    <img
+                      src={openingIllustration.image_url}
                       alt="开场插画"
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover"
                     />
                   </div>
-                  <p className="text-xs text-center text-muted-foreground/60">
+                  <p className="text-center text-xs text-[var(--text-secondary)]">
                     {openingIllustration.scene_description}
                   </p>
-                  
-                  {/* ★ 用户输入提示词重新生成 */}
-                  <div className="w-full max-w-2xl mx-auto space-y-2 pt-2">
-                    <Input
-                      value={illustrationPrompt}
-                      onChange={(e) => setIllustrationPrompt(e.target.value)}
-                      placeholder="想修改插画？描述你的想法，如：换成夜晚场景、增加 rain 效果..."
-                      className="bg-secondary border-border text-sm"
-                    />
+
+                  <div className="mx-auto w-full max-w-2xl space-y-3 pt-2">
+                    <FormField
+                      id="opening-illustration-instruction"
+                      label="调整开场插画"
+                      description="写下希望改变的画面细节。"
+                    >
+                      {({ describedBy }) => (
+                        <>
+                          <Textarea
+                            id="opening-illustration-instruction"
+                            name="opening-illustration-instruction"
+                            value={illustrationPrompt}
+                            onChange={(event) => setIllustrationPrompt(event.target.value)}
+                            placeholder="例如：换成夜晚，增加雨景"
+                            surface="filled"
+                            controlSize="touch"
+                            disabled={isGeneratingIllustration}
+                            aria-invalid={!illustrationPromptWithinLimit}
+                            aria-describedby={[
+                              describedBy,
+                              "opening-illustration-instruction-count",
+                            ].filter(Boolean).join(" ")}
+                          />
+                          <p
+                            id="opening-illustration-instruction-count"
+                            className={
+                              illustrationPromptRemaining < 0
+                                ? "text-right text-xs text-[var(--danger-foreground)]"
+                                : "text-right text-xs text-[var(--text-secondary)]"
+                            }
+                          >
+                            {illustrationPromptRemaining < 0
+                              ? `已超出 ${Math.abs(illustrationPromptRemaining)} 字`
+                              : `还可输入 ${illustrationPromptRemaining} 字`}
+                          </p>
+                        </>
+                      )}
+                    </FormField>
                     <Button
-                      variant="outline"
-                      size="sm"
+                      type="button"
+                      variant="narrative"
+                      size="touch"
                       className="w-full"
                       onClick={() => {
-                        if (illustrationPrompt.trim() && gameId) {
+                        if (
+                          illustrationPrompt.trim() &&
+                          gameId &&
+                          illustrationPromptWithinLimit
+                        ) {
                           regenerateOpeningIllustration(gameId, openingStory || storyText, characterSettings, playerName, illustrationPrompt);
                           setIllustrationPrompt("");
                         }
                       }}
-                      disabled={!illustrationPrompt.trim() || isGeneratingIllustration}
+                      disabled={
+                        !illustrationPrompt.trim() ||
+                        isGeneratingIllustration ||
+                        !illustrationPromptWithinLimit
+                      }
                     >
                       <RefreshCw className="w-4 h-4 mr-2" />
                       根据描述重新生成
@@ -384,27 +633,30 @@ export default function OpeningStoryPage() {
               )}
             </div>
           )}
-        </div>
-      </div>
 
-      <div className="p-6 flex justify-center">
-        {isComplete || isStreaming ? (
-          <OpeningCompletionGate
-            backendComplete={isComplete}
-            visibleComplete={Boolean(storyText) && displayedCompleteText === storyText}
-            onStart={handleStart}
-          />
-        ) : (
-          <Button
-            variant="outline"
-            className="touch-target"
-            onClick={handleRetry}
-          >
-            <Loader2 className="w-4 h-4 mr-2" />
-            重新加载
-          </Button>
-        )}
+            <div className="flex justify-center border-t border-[var(--border-default)] pt-7">
+              {isComplete ? (
+                <OpeningCompletionGate
+                  backendComplete={isComplete}
+                  visibleComplete={Boolean(storyText) && displayedCompleteText === storyText}
+                  pending={isStarting}
+                  onStart={handleStart}
+                />
+              ) : !isStreaming && !error ? (
+                <Button
+                  type="button"
+                  variant="narrative"
+                  size="touch"
+                  onClick={handleRetry}
+                >
+                  <Loader2 className="w-4 h-4 mr-2" />
+                  重新加载
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </Surface>
       </div>
-    </div>
+    </PageTransition>
   );
 }

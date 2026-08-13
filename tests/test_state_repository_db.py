@@ -97,6 +97,36 @@ class TestStateRepositoryDB:
         result = repo.save_game_progress(sample_game.game_id, sample_player_state)
         assert result is True
 
+    def test_save_game_progress_sanitizes_structured_financial_world_authority(
+        self, sample_game
+    ):
+        repo = StateRepository()
+        state = PlayerState(
+            player_name="林岚",
+            world_model_data={
+                "career_records": {
+                    "林岚": {"current_job": "月薪8000元的产品经理"},
+                    "周宁": {"current_job": "经济援助项目协调员"},
+                },
+                "active_commitments": [
+                    {"description": "承诺偿还5000元债务"},
+                    {"description": "在经济压力下互相支持"},
+                ],
+                "causal_chains": [
+                    {"cause": "付款2000元", "expected_consequence": "账户余额改善"},
+                    {"cause": "家庭消费压力加剧", "expected_consequence": "生活选择更加谨慎"},
+                ],
+            },
+        )
+
+        assert repo.save_game_progress(sample_game.game_id, state) is True
+        saved = str(repo.load_game_state(sample_game.game_id)["world_model_data"])
+
+        assert "经济援助项目协调员" in saved
+        assert "家庭消费压力加剧" in saved
+        for forbidden in ("8000", "5000", "2000", "账户余额"):
+            assert forbidden not in saved
+
     def test_save_game_progress_none_state(self, sample_game):
         """save_game_progress with None should return False."""
         repo = StateRepository()

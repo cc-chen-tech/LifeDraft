@@ -11,6 +11,8 @@ from src.ai.harness.quality_level import QualityLevel
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.ai.story_generator import StoryGenerator
 
+pytestmark = pytest.mark.usefixtures("constraint_harness_disabled")
+
 
 def _make_generator(level: QualityLevel):
     """辅助函数：创建带 mock client 的 StoryGenerator."""
@@ -51,8 +53,8 @@ def test_fast_mode_single_attempt():
     assert client.call.call_count == 1
 
 
-def test_expert_mode_max_three_attempts():
-    """EXPERT 模式下 generate_round_event 最多尝试 3 次（1次生成+2次重试）."""
+def test_expert_without_harness_uses_one_attempt_for_valid_story():
+    """Harness 关闭时，EXPERT 的合格正文不会增加隐式尝试。"""
     gen, client = _make_generator(QualityLevel.EXPERT)
     mock_option_gen = MagicMock()
     mock_option_gen.generate_options_only.return_value = MagicMock(
@@ -67,14 +69,11 @@ def test_expert_mode_max_three_attempts():
         option_generator=mock_option_gen,
     )
 
-    # 当前实现尚未添加重试循环，因此期望值为 1
-    # 当重试循环实现后，在 Harness 校验通过的情况下仍为 1
-    # 此测试主要验证方法可正常调用且不会异常循环
-    assert client.call.call_count >= 1
+    assert client.call.call_count == 1
 
 
-def test_master_mode_max_five_attempts():
-    """MASTER 模式下 generate_round_event 最多尝试 5 次（1次生成+4次重试）."""
+def test_master_without_harness_uses_one_attempt_for_valid_story():
+    """Harness 关闭时，MASTER 的合格正文不会增加隐式尝试。"""
     gen, client = _make_generator(QualityLevel.MASTER)
     mock_option_gen = MagicMock()
     mock_option_gen.generate_options_only.return_value = MagicMock(
@@ -89,7 +88,7 @@ def test_master_mode_max_five_attempts():
         option_generator=mock_option_gen,
     )
 
-    assert client.call.call_count >= 1
+    assert client.call.call_count == 1
 
 
 def test_round_event_fails_closed_when_quick_validation_retry_still_drifts():

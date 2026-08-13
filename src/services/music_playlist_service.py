@@ -117,6 +117,11 @@ class PlaylistQueuePolicy:
         generated_id = self._song_key(generated_track)
 
         queue = [item for item in queue if self._song_key(item) != generated_id]
+        if current_song is not None and self._song_key(current_song) == generated_id:
+            updated = dict(playlist)
+            updated["current_song"] = current_song
+            updated["queue"] = queue
+            return updated
         if current_song is None:
             current_song = generated_track
         else:

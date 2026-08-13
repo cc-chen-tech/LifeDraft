@@ -470,7 +470,7 @@ class TestStoryChat:
         data = response.json()
         assert "reply" in data
 
-    def test_story_chat_qualifies_unsafe_professional_guarantee(
+    def test_story_chat_rejects_unsupported_professional_guarantee(
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):
         mock_session.game_loop.ai_generator.generate_completion_json.return_value = {

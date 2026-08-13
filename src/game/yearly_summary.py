@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from src.ai.generator import EventGenerator
 from src.ai.professional_risk import apply_professional_risk_guardrail
-from src.ai.system_prompts import get_system_prompt
+from src.ai.summary_generator import SummaryGenerator
 from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,6 @@ class YearlySummaryGenerator:
             "energy": end_state.energy - start_state.get("energy", end_state.energy),
             "mood": end_state.mood - start_state.get("mood", end_state.mood),
             "knowledge": end_state.knowledge - start_state.get("knowledge", end_state.knowledge),
-            "wealth": end_state.wealth - start_state.get("wealth", end_state.wealth),
             "age": end_state.age - start_state.get("age", end_state.age),
         }
 
@@ -116,7 +115,7 @@ class YearlySummaryGenerator:
                     summary_highlights = [s.get("summary_text", "") for s in weekly_summaries]
 
             if language == "zh":
-                prompt = f"""请为第{year}年生成一段年度总结（150-250字）。
+                prompt = f"""请为第{year}年生成一段年度总结。
 
 这一年从第{start_week}周到第{end_week}周，年龄从{start_state.get('age', end_state.age)}岁到{end_state.age}岁。
 
@@ -124,20 +123,19 @@ class YearlySummaryGenerator:
 - 精力：{changes['energy']:+d}
 - 情绪：{changes['mood']:+d}
 - 学识：{changes['knowledge']:+d}
-- 财富：{changes['wealth']:+,}
 - 年龄增长：{changes['age']}岁
 
 年度决策：{len(decisions)}个
 关键决策：{', '.join(decision_texts[:5]) if decision_texts else '无'}
 
-当前状态：精力{end_state.energy}/100，情绪{end_state.mood}/100，学识{end_state.knowledge}/100，财富¥{end_state.wealth:,}
+当前状态：精力{end_state.energy}/100，情绪{end_state.mood}/100，学识{end_state.knowledge}/100
 
 月度总结片段：
 {chr(10).join(summary_highlights[:3]) if summary_highlights else '无详细记录'}
 
 请生成一段生动的年度总结，描述这一年的主要变化、重要事件、成长和挑战。要体现这一年的整体轨迹和转折点。"""
             else:
-                prompt = f"""Generate a summary for year {year} (150-250 words).
+                prompt = f"""Generate a summary for year {year}.
 
 This year spans from week {start_week} to week {end_week}, age from {start_state.get('age', end_state.age)} to {end_state.age}.
 
@@ -145,24 +143,26 @@ Annual changes:
 - Energy: {changes['energy']:+d}
 - Mood: {changes['mood']:+d}
 - Knowledge: {changes['knowledge']:+d}
-- Wealth: {changes['wealth']:+,}
 - Age increase: {changes['age']} years
 
 Annual decisions: {len(decisions)}
 Key decisions: {', '.join(decision_texts[:5]) if decision_texts else 'None'}
 
-Current state: Energy {end_state.energy}/100, Mood {end_state.mood}/100, Knowledge {end_state.knowledge}/100, Wealth ¥{end_state.wealth:,}
+Current state: Energy {end_state.energy}/100, Mood {end_state.mood}/100, Knowledge {end_state.knowledge}/100
 
 Monthly summary highlights:
 {chr(10).join(summary_highlights[:3]) if summary_highlights else 'No detailed records'}
 
 Generate a vivid annual summary describing the main changes, important events, growth, and challenges of this year. Reflect the overall trajectory and turning points."""
 
-            summary = self.ai_generator.generate_completion(
+            summary = SummaryGenerator.for_compatibility_generator(
+                self.ai_generator
+            ).generate_display_summary(
+                summary_kind="year",
                 prompt=prompt,
-                system_prompt=get_system_prompt("narrative_summary", self.language),
+                language=language,
+                fallback=self._get_fallback_summary(year, changes, language),
                 temperature=0.8,
-                max_tokens=4096,
             )
             return apply_professional_risk_guardrail(summary, language=language)
         except Exception as e:
@@ -172,6 +172,6 @@ Generate a vivid annual summary describing the main changes, important events, g
     def _get_fallback_summary(self, year: int, changes: Dict[str, int], language: str) -> str:
         """Get fallback summary."""
         if language == "zh":
-            return f"第{year}年过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}，财富变化{changes['wealth']:+,}，年龄增长了{changes['age']}岁。"
+            return f"第{year}年过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}，年龄增长了{changes['age']}岁。"
         else:
-            return f"Year {year} passed. Energy {changes['energy']:+d}, Mood {changes['mood']:+d}, Knowledge {changes['knowledge']:+d}, Wealth {changes['wealth']:+,}, Age increased by {changes['age']} years."
+            return f"Year {year} passed. Energy {changes['energy']:+d}, Mood {changes['mood']:+d}, Knowledge {changes['knowledge']:+d}, Age increased by {changes['age']} years."

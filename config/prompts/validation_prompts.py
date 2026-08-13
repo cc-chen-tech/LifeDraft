@@ -69,13 +69,14 @@ def get_story_analysis_prompt(
 - **social_dynamic**: 社交关系的微妙变化（暗恋、嫉妒、联盟、冷战等）
 - **secret**: 角色掌握的秘密或隐瞒的事情
 - **goal**: 角色设定的目标或计划（准备考研、打算创业等）
-- **financial**: 重大财务变化（借了钱、签了合同、拿到奖金等）
+- **economic_context**: 定性的经济处境变化（收入压力、消费趋于谨慎等），不得记录精确金额、余额、财富值或跨周资金状态
 - **reputation**: 名声/评价变化（被误解、获得认可、传出谣言等）
 - **skill**: 技能/能力变化（学会了新技能、发现了天赋等）
 - **time_sensitive**: 有时间限制的事项（X天内必须完成、约定了某日某事等）
 - **其他任何你认为重要的类型**
 
 【对每个事实，你必须提供】
+- 精确金额、账户余额、财富值不是长期权威事实，不得提取或写入 constraint_text；可以保留不含金额的定性经济叙事。
 - **constraint_text**: 这是最重要的字段！写一句明确的约束描述，告诉未来的故事生成AI：因为这个事实的存在，故事中必须/不能做什么。
   例如："张伟右臂打着石膏，至少4周内不能做任何需要双手的动作"
   例如："主角已知李经理在暗中调查财务问题，与他对话时应表现出警觉"
@@ -145,13 +146,14 @@ Common but not limited to these types:
 - **social_dynamic**: Subtle relationship changes (crush, jealousy, alliance, cold war)
 - **secret**: Secrets characters hold or things they're hiding
 - **goal**: Goals or plans characters set (preparing for grad school, planning startup)
-- **financial**: Major financial changes (borrowed money, signed contract, received bonus)
+- **economic_context**: Qualitative economic circumstances (income pressure, more cautious spending); never record exact monetary amounts, balances, wealth scores, or cross-week money state
 - **reputation**: Reputation/evaluation changes (misunderstood, gained recognition, rumors)
 - **skill**: Skill/ability changes (learned new skill, discovered talent)
 - **time_sensitive**: Time-bound items (must complete within X days, scheduled something)
 - **Any other type you deem important**
 
 [For each fact, you MUST provide]
+- Exact monetary amounts, account balances, and wealth values are not long-term authoritative facts. Never extract them or put them in constraint_text; qualitative economic narrative without amounts is allowed.
 - **constraint_text**: This is the most important field! Write a clear constraint telling future story AI: because of this fact, the story must/cannot do what.
   E.g.: "Zhang Wei's right arm is in a cast, cannot do any two-handed activities for at least 4 weeks"
   E.g.: "Protagonist knows Manager Li is secretly investigating financial issues, should show alertness when talking to him"

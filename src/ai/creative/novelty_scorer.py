@@ -1,7 +1,7 @@
 """NoveltyScorer 反套路引擎。
 
 L3 创意增强层 - 新颖度评分与多样性建议。
-尝试使用向量存储做语义相似度比较，无 chromadb 时降级到字符 n-gram Jaccard 相似度。
+使用字符 n-gram Jaccard 相似度做轻量的文本相似度比较。
 """
 
 import logging
@@ -9,15 +9,6 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
-
-# 尝试导入向量存储
-_vector_store_available = False
-try:
-    pass
-
-    _vector_store_available = True
-except ImportError:
-    logger.info("Vector store not available, will use text-based similarity fallback.")
 
 
 @dataclass
@@ -34,8 +25,8 @@ class NoveltyScorer:
 
     THRESHOLD = 0.15  # novelty < 0.15 触发反套路
 
-    def __init__(self, use_vector_store: bool = True):
-        self._use_vector_store = use_vector_store and _vector_store_available
+    def __init__(self) -> None:
+        pass
 
     def score(self, current_text: str, history: Optional[List[str]] = None) -> NoveltyResult:
         """
@@ -55,24 +46,6 @@ class NoveltyScorer:
             if not valid_history:
                 return NoveltyResult(score=1.0)
 
-            if not self._use_vector_store:
-                # 降级模式：使用简单文本相似度但给予较高基础分
-                max_sim = 0.0
-                most_similar_idx = -1
-                for i, hist_text in enumerate(valid_history):
-                    sim = self._simple_text_similarity(current_text, hist_text)
-                    if sim > max_sim:
-                        max_sim = sim
-                        most_similar_idx = i
-
-                # 降级模式下相似度打折，保证分数 >= 0.5
-                novelty = max(0.5, 1.0 - max_sim * 0.5)
-                return NoveltyResult(
-                    score=novelty,
-                    most_similar_week=most_similar_idx,
-                )
-
-            # 正常模式：使用文本相似度
             max_sim = 0.0
             most_similar_idx = -1
             for i, hist_text in enumerate(valid_history):

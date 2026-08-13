@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.params import Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from src.api.deps import get_current_user, get_current_user_optional
 from src.api.routers.image_failures import (image_failure_http_exception,
@@ -21,17 +22,20 @@ from src.api.schemas import (BatchGenerateCharactersRequest,
                              GenerateRoundSceneRequest, ImageListResponse,
                              ImageResponse, MessageResponse,
                              OpeningIllustrationResponse,
+                             PortraitImageGenerationJobResponse,
                              RegenerateFreshImageRequest,
                              RegenerateImageRequest,
                              RegenerateOpeningIllustrationRequest,
                              RegenerateRoundSceneRequest, RoundSceneResponse)
 from src.database.models import Game
 from src.database.models import Image as ImageModel
-from src.database.models import SessionLocal, User
+from src.database.models import PortraitImageGenerationJob, SessionLocal, User
 from src.services.image_service import (ImageContentError,
                                         ImageProviderServiceError, ImageService,
                                         ImageServiceError)
 from src.services.image_storage import ImageStorageError, ImageStorageService
+from src.services.portrait_image_jobs import (PortraitImageJobService,
+                                              schedule_portrait_image_job)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -217,7 +221,8 @@ async def generate_image(
 
         if req.image_type == "character":
             # 人物形象：生成1张
-            image_models = service.generate_character_image(
+            image_models = await run_in_threadpool(
+                service.generate_character_image,
                 game_id=req.game_id,
                 name=req.entity_name,
                 description=req.description,
@@ -245,7 +250,8 @@ async def generate_image(
                 total=len(image_models),
             )
         elif req.image_type == "location":
-            image_model = service.generate_location_image(
+            image_model = await run_in_threadpool(
+                service.generate_location_image,
                 game_id=req.game_id,
                 name=req.entity_name,
                 description=req.description,
@@ -271,7 +277,8 @@ async def generate_image(
                 total=1,
             )
         elif req.image_type == "item":
-            image_model = service.generate_item_image(
+            image_model = await run_in_threadpool(
+                service.generate_item_image,
                 game_id=req.game_id,
                 name=req.entity_name,
                 description=req.description,
@@ -324,6 +331,91 @@ async def generate_image(
     except Exception as e:
         logger.exception(f"Unexpected error in generate_image: {e}")
         raise HTTPException(status_code=500, detail=f"图片生成失败: {e}")
+
+
+def _portrait_job_response(job: PortraitImageGenerationJob) -> PortraitImageGenerationJobResponse:
+    return PortraitImageGenerationJobResponse(
+        job_id=int(job.job_id),
+        game_id=int(job.game_id),
+        status=str(job.status),
+        image_id=int(job.image_id) if job.image_id is not None else None,
+        attempt_count=int(job.attempt_count),
+        error_code=str(job.error_code) if job.error_code else None,
+        error_message=str(job.error_message) if job.error_message else None,
+        created_at=job.created_at.isoformat() if job.created_at else None,
+        updated_at=job.updated_at.isoformat() if job.updated_at else None,
+    )
+
+
+@router.post(
+    "/character/generate-async",
+    response_model=PortraitImageGenerationJobResponse,
+    status_code=202,
+)
+async def enqueue_character_portrait(
+    req: GenerateImageRequest,
+    db: Session = Depends(get_session),
+    user: Optional[int] = Depends(get_current_user_optional),
+) -> PortraitImageGenerationJobResponse:
+    """Queue a durable main-character portrait without holding the browser request open."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="未登录")
+    if req.image_type != "character" or req.entity_key not in (None, "player_main"):
+        raise HTTPException(status_code=422, detail="该接口仅支持主角人物形象")
+
+    verify_game_ownership(db, req.game_id, user)
+    request_json = req.model_dump()
+    request_json["entity_key"] = "player_main"
+    job, _ = PortraitImageJobService(db).enqueue(user, request_json)
+    schedule_portrait_image_job(int(job.job_id))
+    return _portrait_job_response(job)
+
+
+@router.get(
+    "/character/jobs/latest",
+    response_model=Optional[PortraitImageGenerationJobResponse],
+)
+async def get_latest_character_portrait_job(
+    game_id: int,
+    db: Session = Depends(get_session),
+    user: Optional[int] = Depends(get_current_user_optional),
+) -> Optional[PortraitImageGenerationJobResponse]:
+    """Return the latest durable portrait job for the authenticated game owner."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="未登录")
+    verify_game_ownership(db, game_id, user)
+    job = PortraitImageJobService(db).latest_for_game(user, game_id)
+    if job is not None and job.status == "queued":
+        schedule_portrait_image_job(int(job.job_id))
+    return _portrait_job_response(job) if job else None
+
+
+@router.get(
+    "/character/jobs/{job_id}",
+    response_model=PortraitImageGenerationJobResponse,
+)
+async def get_character_portrait_job(
+    job_id: int,
+    db: Session = Depends(get_session),
+    user: Optional[int] = Depends(get_current_user_optional),
+) -> PortraitImageGenerationJobResponse:
+    """Return an owned portrait job by id for polling after refresh or relogin."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="未登录")
+    job = (
+        db.query(PortraitImageGenerationJob)
+        .filter(
+            PortraitImageGenerationJob.job_id == job_id,
+            PortraitImageGenerationJob.user_id == user,
+        )
+        .first()
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="人物形象任务不存在或无权访问")
+    verify_game_ownership(db, int(job.game_id), user)
+    if job.status == "queued":
+        schedule_portrait_image_job(int(job.job_id))
+    return _portrait_job_response(job)
 
 
 @router.post("/batch-characters", response_model=ImageListResponse)
@@ -424,7 +516,8 @@ async def batch_generate_character_images(
 
             logger.info(f"Generating image for {char['name']} ({char['role']}): {description}")
 
-            image_models = service.generate_character_image(
+            image_models = await run_in_threadpool(
+                service.generate_character_image,
                 game_id=req.game_id,
                 name=char["name"],
                 description=description,
@@ -476,7 +569,8 @@ async def batch_generate_character_images(
 
                 await asyncio.sleep(10)  # 等待10秒后重试一次
                 try:
-                    image_models = service.generate_character_image(
+                    image_models = await run_in_threadpool(
+                        service.generate_character_image,
                         game_id=req.game_id,
                         name=char["name"],
                         description=description,
@@ -545,7 +639,8 @@ async def generate_opening_illustration(
 
     try:
         service = ImageService(db)
-        image_model = service.generate_opening_illustration(
+        image_model = await run_in_threadpool(
+            service.generate_opening_illustration,
             game_id=req.game_id,
             story_text=req.story_text,
             character_settings=req.character_settings,
@@ -610,7 +705,8 @@ async def regenerate_opening_illustration(
 
     try:
         service = ImageService(db)
-        image_model = service.regenerate_opening_illustration(
+        image_model = await run_in_threadpool(
+            service.regenerate_opening_illustration,
             game_id=req.game_id,
             story_text=req.story_text,
             character_settings=req.character_settings,
@@ -676,7 +772,8 @@ async def regenerate_image(
 
     try:
         service = ImageService(db)
-        image_models = service.regenerate_image(
+        image_models = await run_in_threadpool(
+            service.regenerate_image,
             image_id=req.image_id,
             feedback=req.feedback,
             new_description=req.new_description,
@@ -751,7 +848,8 @@ async def regenerate_fresh_image(
 
     try:
         service = ImageService(db)
-        image_models = service.regenerate_fresh_image(
+        image_models = await run_in_threadpool(
+            service.regenerate_fresh_image,
             image_id=req.image_id,
             use_deepseek_prompt=req.use_deepseek_prompt,
         )
@@ -1181,7 +1279,8 @@ async def generate_round_scene_image(
     service = ImageService(db)
 
     try:
-        scene_model = service.generate_round_scene_image(
+        scene_model = await run_in_threadpool(
+            service.generate_round_scene_image,
             game_id=req.game_id,
             round_number=req.round_number,
             story_text=req.story_text,
@@ -1260,7 +1359,8 @@ async def regenerate_round_scene_image(
     service = ImageService(db)
 
     try:
-        scene_model = service.regenerate_round_scene_image(
+        scene_model = await run_in_threadpool(
+            service.regenerate_round_scene_image,
             game_id=req.game_id,
             round_number=req.round_number,
             story_text=req.story_text,

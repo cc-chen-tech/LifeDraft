@@ -10,7 +10,10 @@ interface StatusBarProps {
   progress: Record<string, unknown> | null;
   className?: string;
   compact?: boolean;
+  appearance?: "badges" | "narrative";
 }
+
+const ROUND_NAMES = ["周一", "周中", "周末"];
 
 function getNonNegativeInteger(value: unknown, fallback = 0): number {
   const numberValue = Number(value);
@@ -50,6 +53,7 @@ export const StatusBar = memo(function StatusBar({
   progress,
   className,
   compact = true,
+  appearance = "badges",
 }: StatusBarProps) {
   if (!playerState) return null;
 
@@ -63,8 +67,29 @@ export const StatusBar = memo(function StatusBar({
   const roundLabel = `第${currentRound + 1}轮/${totalRounds}`;
 
   if (compact) {
+    if (appearance === "narrative") {
+      const roundName = ROUND_NAMES[currentRound] ?? `第${currentRound + 1}轮`;
+
+      return (
+        <div
+          data-testid="status-bar"
+          data-appearance="narrative"
+          className={cn("flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1", className)}
+        >
+          <p className="text-sm font-medium text-[var(--text-primary)]">
+            {age}岁 · 第{week}周
+          </p>
+          {hasRoundProgress && (
+            <p className="text-xs text-[var(--text-secondary)]">
+              {roundName} · {roundLabel}
+            </p>
+          )}
+        </div>
+      );
+    }
+
     return (
-      <div data-testid="status-bar" className={cn("flex items-center gap-2 flex-wrap", className)}>
+      <div data-testid="status-bar" data-appearance="badges" className={cn("flex items-center gap-2 flex-wrap", className)}>
         <Badge variant="secondary" className="text-xs">
           {age}岁 第{week}周
         </Badge>

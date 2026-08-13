@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { FormField } from "@/components/story101";
 import { cn } from "@/lib/utils";
 import { Send, Loader2, ChevronRight } from "lucide-react";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 
 interface OptionCardsProps {
   options: { text: string; potential_effects?: Record<string, unknown> }[];
@@ -31,74 +35,107 @@ export function OptionCards({
 }: OptionCardsProps) {
   const [customText, setCustomText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const customChoiceId = useId();
+  const customChoiceCountId = `${customChoiceId}-count`;
+  const isSubmitting = selectedIndex !== null;
+  const controlsDisabled = disabled || isSubmitting;
+  const customChoiceWithinLimit = isWithinInputLimit(
+    customText,
+    INPUT_LIMITS.customAction,
+  );
 
-  const handleSelect = (index: number) => {
-    if (disabled) return;
+  const handleSelect = async (index: number) => {
+    if (controlsDisabled) return;
     setSelectedIndex(index);
-    onSelect(index);
+    try {
+      const pendingSelection = onSelect(index);
+      if (pendingSelection) await pendingSelection;
+    } finally {
+      setSelectedIndex(null);
+    }
   };
 
-  const handleCustomSubmit = () => {
-    if (!customText.trim() || disabled) return;
+  const handleCustomSubmit = async () => {
+    if (
+      !customText.trim() ||
+      controlsDisabled ||
+      !isWithinInputLimit(customText, INPUT_LIMITS.customAction)
+    ) return;
+    const submittedText = customText.trim();
     setSelectedIndex(-1); // -1 = custom
     onCustomChoice?.(customText.trim());
     setCustomText("");
+    try {
+      const pendingSelection = onCustomChoice(submittedText);
+      if (pendingSelection) await pendingSelection;
+    } finally {
+      setSelectedIndex(null);
+    }
   };
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn("grid gap-0", className)}>
       {/* Section hint */}
-      <p className="text-xs text-muted-foreground/70 mb-1 tracking-wide">
+      <p className="mb-2 text-xs tracking-[0.16em] text-[var(--text-secondary)]">
         你的选择
       </p>
 
-      {/* Option cards */}
+      {/* Story branches */}
       {options.map((option, i) => (
         <button
           key={i}
+          data-slot="choice-branch-row"
           aria-label={`选择 ${i + 1}：${option.text}`}
+          title={option.text}
           className={cn(
-            "option-card group w-full text-left",
-            "flex items-start gap-3 px-4 py-3.5 rounded-lg",
-            "border border-border/60 bg-card/50",
-            "transition-all duration-200 ease-out",
-            "hover:bg-card hover:border-primary/40",
-            "active:scale-[0.985]",
-            disabled && "opacity-40 pointer-events-none",
+            "group flex min-h-14 w-full items-center gap-3 px-0 py-3 text-left",
+            "rounded-none border-x-0 border-t-0 border-b border-[var(--border-default)] bg-transparent shadow-none",
+            "transition-colors duration-200 ease-out",
+            "hover:border-[var(--border-strong)]",
+            "focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-reading)]",
+            controlsDisabled && selectedIndex !== i && "opacity-40",
             selectedIndex === i &&
-              "border-primary/60 bg-primary/5 shadow-[0_0_16px_rgba(96,165,250,0.08)]"
+              "border-[var(--border-strong)]"
           )}
-          onClick={() => handleSelect(i)}
-          disabled={disabled}
+          onClick={() => void handleSelect(i)}
+          disabled={controlsDisabled}
         >
           {/* Ordinal number */}
           <span
+            data-testid={`option-ordinal-${i}`}
+            aria-hidden="true"
             className={cn(
-              "flex-shrink-0 w-5 h-5 mt-0.5 rounded text-[11px] font-medium",
-              "flex items-center justify-center",
-              "bg-primary/10 text-primary/70",
+              "w-7 flex-shrink-0 font-mono text-xs font-medium tabular-nums tracking-[0.14em]",
+              "text-[var(--text-secondary)]",
               "transition-colors duration-200",
-              "group-hover:bg-primary/20 group-hover:text-primary",
-              selectedIndex === i && "bg-primary/25 text-primary"
+              "group-hover:text-[var(--text-primary)]",
+              selectedIndex === i && "text-[var(--text-primary)]"
             )}
           >
             {i + 1}
           </span>
 
           {/* Option text */}
-          <span className="flex-1 text-sm text-foreground/85 leading-relaxed group-hover:text-foreground transition-colors duration-200">
+          <span
+            data-testid={`option-text-${i}`}
+            className="min-w-0 flex-1 whitespace-normal break-words text-sm leading-7 text-[var(--text-primary)]"
+          >
             {option.text}
           </span>
 
           {/* Action indicator */}
-          {disabled && selectedIndex === i ? (
-            <Loader2 className="w-3.5 h-3.5 mt-0.5 animate-spin text-primary flex-shrink-0" />
+          {isSubmitting && selectedIndex === i ? (
+            <span className="flex flex-shrink-0 items-center gap-1.5 text-sm text-[var(--text-secondary)]" role="status">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+              <span aria-hidden="true">正在进入</span>
+              <span className="sr-only">正在进入下一段人生</span>
+            </span>
           ) : (
             <ChevronRight
               className={cn(
                 "w-3.5 h-3.5 mt-0.5 flex-shrink-0",
-                "text-muted-foreground/30 transition-all duration-200",
-                "group-hover:text-primary/60 group-hover:translate-x-0.5"
+                "text-[var(--text-secondary)] transition-transform duration-200",
+                "group-hover:translate-x-0.5"
               )}
             />
           )}
@@ -126,7 +163,21 @@ export function OptionCards({
                   e.preventDefault();
                   handleCustomSubmit();
                 }
-              }}
+                onClick={() => void handleCustomSubmit()}
+              >
+                {isSubmitting && selectedIndex === -1 ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </Button>
+            </div>
+            <LengthIndicator
+              id={customChoiceCountId}
+              value={customText}
+              limit={INPUT_LIMITS.customAction}
+              announce={!customChoiceWithinLimit}
+              className="mt-0"
             />
           </div>
           <Button

@@ -10,7 +10,8 @@
  * We use opacity-0 + h-0 + overflow-hidden (NOT display:none / hidden) so the
  * browser never pauses the audio.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { MusicPlayer } from "./MusicPlayer";
 import { StoryVoiceControls } from "./StoryVoiceControls";
 import { useMusicStore } from "@/stores/useMusicStore";
@@ -23,9 +24,27 @@ import {
   Volume2,
 } from "lucide-react";
 
+const SOUND_PANEL_ID = "story101-global-sound-panel";
+export const OPEN_SOUND_PANEL_EVENT = "story101:open-sound-panel";
+export const CLOSE_SOUND_PANEL_EVENT = "story101:close-sound-panel";
+export const SOUND_PANEL_STATE_EVENT = "story101:sound-panel-state";
+
 export function GlobalMusicPlayer() {
   const hasInitRef = useRef(false);
+  const expandButtonRef = useRef<HTMLButtonElement>(null);
+  const collapseButtonRef = useRef<HTMLButtonElement>(null);
+  const focusAfterToggleRef = useRef<"expand" | "collapse" | null>(null);
+  const externalReturnFocusRef = useRef<HTMLElement | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+  const pathname = usePathname();
+  const usesPlayToolsOnly = pathname === "/play";
+  const usesBottomAppShellDock =
+    pathname === "/" ||
+    pathname === "/saves" ||
+    pathname === "/presets" ||
+    pathname === "/create" ||
+    pathname === "/story/opening" ||
+    pathname === "/ending";
 
   const loadPlaylist = useMusicStore((state) => state.loadPlaylist);
   const playlistGameId = useMusicStore((state) => state.playlistGameId);
@@ -71,25 +90,135 @@ export function GlobalMusicPlayer() {
   const storyText =
     activeStoryText ||
     (recommendation || currentSong || queue.length > 0 ? "persisted" : "");
+  const hasSoundContext = Boolean(storyText || activeReadingContext);
   const shouldAutoFetchRecommendation = Boolean(
     activeStoryText && effectiveGameId,
   );
+
+  const expandSoundPanel = useCallback(() => {
+    focusAfterToggleRef.current = "collapse";
+    setIsExpanded(true);
+  }, []);
+
+  const collapseSoundPanel = useCallback(() => {
+    focusAfterToggleRef.current = usesPlayToolsOnly ? null : "expand";
+    setIsExpanded(false);
+  }, [usesPlayToolsOnly]);
+
+  useEffect(() => {
+    const handleExternalOpen = () => {
+      if (!hasSoundContext) {
+        setIsExpanded(false);
+        window.dispatchEvent(
+          new CustomEvent(SOUND_PANEL_STATE_EVENT, {
+            detail: { open: false },
+          }),
+        );
+        return;
+      }
+      const activeElement = document.activeElement;
+      if (
+        usesPlayToolsOnly &&
+        activeElement instanceof HTMLElement &&
+        activeElement !== document.body
+      ) {
+        externalReturnFocusRef.current = activeElement;
+      }
+      focusAfterToggleRef.current = "collapse";
+      window.dispatchEvent(
+        new CustomEvent(SOUND_PANEL_STATE_EVENT, {
+          detail: { open: true },
+        }),
+      );
+      setIsExpanded(true);
+      queueMicrotask(() => collapseButtonRef.current?.focus());
+    };
+
+    const handleExternalClose = () => {
+      const activeElement = document.activeElement;
+      const soundPanel = document.getElementById(SOUND_PANEL_ID);
+      const focusIsInsideSoundPanel =
+        activeElement instanceof HTMLElement &&
+        Boolean(soundPanel?.contains(activeElement));
+      if (!focusIsInsideSoundPanel) {
+        externalReturnFocusRef.current = null;
+      }
+      focusAfterToggleRef.current = null;
+      window.dispatchEvent(
+        new CustomEvent(SOUND_PANEL_STATE_EVENT, {
+          detail: { open: false },
+        }),
+      );
+      setIsExpanded(false);
+    };
+
+    window.addEventListener(OPEN_SOUND_PANEL_EVENT, handleExternalOpen);
+    window.addEventListener(CLOSE_SOUND_PANEL_EVENT, handleExternalClose);
+    return () => {
+      window.removeEventListener(OPEN_SOUND_PANEL_EVENT, handleExternalOpen);
+      window.removeEventListener(CLOSE_SOUND_PANEL_EVENT, handleExternalClose);
+    };
+  }, [hasSoundContext, usesPlayToolsOnly]);
+
+  useEffect(() => {
+    if (!usesPlayToolsOnly) return;
+    externalReturnFocusRef.current = null;
+    focusAfterToggleRef.current = null;
+    setIsExpanded(false);
+  }, [usesPlayToolsOnly]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent(SOUND_PANEL_STATE_EVENT, {
+        detail: { open: hasSoundContext && isExpanded },
+      }),
+    );
+  }, [hasSoundContext, isExpanded]);
+
+  useEffect(() => {
+    if (
+      !isExpanded &&
+      usesPlayToolsOnly &&
+      externalReturnFocusRef.current
+    ) {
+      const returnTarget = externalReturnFocusRef.current;
+      externalReturnFocusRef.current = null;
+      returnTarget.focus();
+      return;
+    }
+
+    const focusTarget = focusAfterToggleRef.current;
+    if (focusTarget === null) return;
+
+    focusAfterToggleRef.current = null;
+    const button =
+      focusTarget === "collapse"
+        ? collapseButtonRef.current
+        : expandButtonRef.current;
+    button?.focus();
+  }, [isExpanded, usesPlayToolsOnly]);
 
   useEffect(() => {
     if (!isExpanded) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setIsExpanded(false);
+        collapseSoundPanel();
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isExpanded]);
+  }, [collapseSoundPanel, hasSoundContext, isExpanded]);
+
+  useEffect(() => {
+    if (hasSoundContext) return;
+    focusAfterToggleRef.current = null;
+    setIsExpanded(false);
+  }, [hasSoundContext]);
 
   // Only render when at least one sound surface has context.
-  if (!storyText && !activeReadingContext) return null;
+  if (!hasSoundContext) return null;
 
   const songName = currentSong?.name || recommendation?.songs?.[0]?.name || "";
   const artistName = currentSong?.artists?.join(", ") || "";
@@ -124,22 +253,42 @@ export function GlobalMusicPlayer() {
     : "音乐和朗读";
 
   return (
+    <>
+      {usesBottomAppShellDock && (
+        <div
+          key="bottom-reserve"
+          aria-hidden="true"
+          data-app-shell-reserve-spacer="bottom"
+          className="app-shell-bottom-reserve"
+        />
+      )}
     <div
+      key="player"
       role="region"
       aria-label="声音"
       data-testid="global-music-player"
-      className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-[28rem]"
+      data-play-tools-only={usesPlayToolsOnly ? "true" : undefined}
+      data-app-shell-reserve={usesBottomAppShellDock ? "bottom" : undefined}
+      aria-hidden={usesPlayToolsOnly && !isExpanded ? true : undefined}
+      inert={usesPlayToolsOnly && !isExpanded ? true : undefined}
+      className={
+        usesBottomAppShellDock
+          ? "app-shell-bottom-dock safe-area-fixed-inline fixed z-50 left-4 right-4 safe-area-pb md:left-auto md:right-4 md:w-[28rem]"
+          : "safe-area-fixed-inline fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-[28rem]"
+      }
     >
       {/* MusicPlayer always mounted to keep audio alive.
           Use opacity-0 + h-0 + overflow-hidden instead of display:none
           so the browser never pauses audio playback. */}
       <div
+        id={SOUND_PANEL_ID}
         className={
           isExpanded
-            ? "bg-card border rounded-b-lg md:rounded-lg shadow-lg max-h-[68vh] overflow-y-auto"
+            ? "story101-sound-panel max-h-[68vh] overflow-y-auto rounded-[var(--radius-overlay)] border border-[var(--border-default)] bg-[var(--surface-overlay)] shadow-[var(--shadow-overlay)]"
             : "opacity-0 h-0 overflow-hidden pointer-events-none absolute top-full left-0 right-0"
         }
         aria-hidden={!isExpanded}
+        inert={!isExpanded}
         role={isExpanded ? "group" : undefined}
         aria-label={isExpanded ? "音乐和朗读" : undefined}
       >
@@ -163,11 +312,14 @@ export function GlobalMusicPlayer() {
               </div>
             </div>
             <button
+              ref={collapseButtonRef}
               type="button"
               aria-label="收起声音"
+              aria-controls={SOUND_PANEL_ID}
+              aria-expanded={isExpanded}
               title="收起声音"
-              onClick={() => setIsExpanded(false)}
-              className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={collapseSoundPanel}
+              className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <ChevronUp className="h-4 w-4" />
             </button>
@@ -218,10 +370,10 @@ export function GlobalMusicPlayer() {
         </div>
       </div>
 
-      {!isExpanded && (
+      {!isExpanded && !usesPlayToolsOnly && (
         <div
           data-testid="global-music-mini-bar"
-          className="relative bg-card/95 backdrop-blur-sm border-b md:border md:rounded-lg flex items-center gap-2 px-3 py-2"
+          className="relative flex items-center gap-2 rounded-[var(--radius-overlay)] border border-[var(--border-default)] bg-[var(--surface-overlay)] px-3 py-2 shadow-[var(--shadow-floating)] backdrop-blur-sm"
         >
           {/* Progress bar - thin line at top */}
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-muted">
@@ -255,9 +407,11 @@ export function GlobalMusicPlayer() {
                   togglePlay();
                   return;
                 }
-                setIsExpanded(true);
+                expandSoundPanel();
               }}
-              className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-controls={!hasPlayableMusic ? SOUND_PANEL_ID : undefined}
+              aria-expanded={!hasPlayableMusic ? isExpanded : undefined}
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {isPlaying ? (
                 <Pause className="w-4 h-4" />
@@ -266,7 +420,7 @@ export function GlobalMusicPlayer() {
               )}
             </button>
           ) : (
-            <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
               <Volume2 className="w-4 h-4" />
             </div>
           )}
@@ -279,25 +433,30 @@ export function GlobalMusicPlayer() {
             </div>
             <div
               data-testid="collapsed-sound-status"
-              className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground"
+              className="mt-0.5 truncate text-xs leading-4 text-muted-foreground"
             >
               {combinedSoundStatus}
             </div>
           </div>
 
           <button
+            ref={expandButtonRef}
+            type="button"
             aria-label="展开声音"
+            aria-controls={SOUND_PANEL_ID}
+            aria-expanded={isExpanded}
             title="展开声音"
             onClick={(e) => {
               e.stopPropagation();
-              setIsExpanded(true);
+              expandSoundPanel();
             }}
-            className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-muted-foreground"
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[var(--radius-control)] text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <ChevronDown className="w-4 h-4" />
           </button>
         </div>
       )}
     </div>
+    </>
   );
 }

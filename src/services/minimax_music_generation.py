@@ -11,7 +11,7 @@ from typing import Any, Dict, Mapping, Optional
 import httpx
 from sqlalchemy.orm import Session
 
-from src.database.models import GeneratedMusicAsset
+from src.database.models import GamePlaylist, GeneratedMusicAsset
 from src.services.local_ai_music_library import LocalAiMusicLibraryService
 from src.services.minimax_config import MiniMaxConfig, build_minimax_config
 from src.services.music_scene_matching import MiniMaxMusicPromptBuilder, MusicSceneFitProfile
@@ -240,6 +240,7 @@ class StoryMusicGenerationService:
         settings = request.generation_settings()
         brief_hash = music_brief_hash(brief, request.model, settings)
         repository = GeneratedMusicAssetRepository(db)
+        active_asset_ids = _playlist_generated_asset_ids(db, game_id)
         ready_asset = repository.find_ready_asset(
             game_id=game_id,
             provider=self.provider.provider,
@@ -247,6 +248,8 @@ class StoryMusicGenerationService:
             brief_hash=brief_hash,
             generation_settings=settings,
         )
+        if ready_asset is not None and int(ready_asset.asset_id) in active_asset_ids:
+            ready_asset = None
         if ready_asset is None:
             local_library = LocalAiMusicLibraryService()
             try:
@@ -257,6 +260,7 @@ class StoryMusicGenerationService:
                     provider=self.provider.provider,
                     model=request.model,
                     generation_settings=settings,
+                    excluded_asset_ids=active_asset_ids,
                 )
                 if local_match.hit:
                     return local_library.reuse_match(
@@ -301,6 +305,33 @@ class StoryMusicGenerationService:
             scene_fit_diagnostics=stored_brief.get("scene_fit_diagnostics")
             or brief.scene_fit_diagnostics,
         )
+
+
+def _playlist_generated_asset_ids(db: Session, game_id: int) -> set[int]:
+    """Return generated asset ids already active for one game's playback queue."""
+    playlist = db.query(GamePlaylist).filter(GamePlaylist.game_id == game_id).one_or_none()
+    if playlist is None:
+        return set()
+
+    asset_ids: set[int] = set()
+    songs = [
+        playlist.current_song_json,
+        *(playlist.queue_json or []),
+    ]
+    for song in songs:
+        if not isinstance(song, Mapping):
+            continue
+        asset_id = song.get("asset_id")
+        if asset_id is None:
+            song_id = str(song.get("id") or "")
+            if song_id.startswith("ai-generated-"):
+                asset_id = song_id.removeprefix("ai-generated-")
+        try:
+            if asset_id is not None:
+                asset_ids.add(int(asset_id))
+        except (TypeError, ValueError):
+            continue
+    return asset_ids
 
 
 class GeneratedMusicAssetRepository:

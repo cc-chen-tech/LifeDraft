@@ -1,9 +1,10 @@
 "use client";
 
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Package, Wand2, Loader2, Plus, Image } from "lucide-react";
+import { FeedbackNotice } from "@/components/story101";
+import { Package, Wand2, Loader2, Plus, Image as ImageIcon } from "lucide-react";
 import { useCollectionStore } from "@/stores/useCollectionStore";
 import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem, RecognizedEntity } from "@/lib/types";
 
@@ -94,6 +95,37 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [entityToDelete, setEntityToDelete] = useState<EntityToDelete | null>(null);
   const [isInitialSyncing, setIsInitialSyncing] = useState(false);
+  const detailReturnFocusRef = useRef<HTMLElement | null>(null);
+  const recognizeReturnFocusRef = useRef<HTMLElement | null>(null);
+  const addItemReturnFocusRef = useRef<HTMLElement | null>(null);
+  const deleteReturnFocusRef = useRef<HTMLElement | null>(null);
+
+  const rememberDialogOpener = (targetRef: { current: HTMLElement | null }) => {
+    targetRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  };
+
+  const restoreDialogOpener = (targetRef: { current: HTMLElement | null }) => (event: Event) => {
+    event.preventDefault();
+    const target = targetRef.current;
+    targetRef.current = null;
+    if (target?.isConnected) {
+      target.focus();
+    }
+  };
+
+  const restoreDeleteDialogOpener = (event: Event) => {
+    event.preventDefault();
+    const target = deleteReturnFocusRef.current;
+    deleteReturnFocusRef.current = null;
+    const fallbackTarget = document.getElementById(
+      `collection-tab-${activeTab}`,
+    );
+    if (target?.isConnected) {
+      target.focus();
+    } else if (fallbackTarget instanceof HTMLElement) {
+      fallbackTarget.focus();
+    }
+  };
 
   // 初始加载
   useLayoutEffect(() => {
@@ -127,6 +159,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   // ==================== 点击处理函数 ====================
 
   const handleCharacterClick = (character: CharacterCollectionItem) => {
+    rememberDialogOpener(detailReturnFocusRef);
     setShowRegenerateInput(false);
     setRegenerateFeedback("");
     setRegenerateType(null);
@@ -134,6 +167,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   };
 
   const handleItemClick = (item: ItemCollectionItem) => {
+    rememberDialogOpener(detailReturnFocusRef);
     setShowRegenerateInput(false);
     setRegenerateFeedback("");
     setRegenerateType(null);
@@ -141,6 +175,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   };
 
   const handleLandmarkClick = (landmark: LandmarkCollectionItem) => {
+    rememberDialogOpener(detailReturnFocusRef);
     setShowRegenerateInput(false);
     setRegenerateFeedback("");
     setRegenerateType(null);
@@ -221,6 +256,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   // ==================== 识别处理函数 ====================
 
   const handleOpenRecognize = async () => {
+    rememberDialogOpener(recognizeReturnFocusRef);
     setShowRecognizeDialog(true);
     const result = await recognizeEntities(gameId);
     if (result) {
@@ -277,6 +313,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   // ==================== 手动添加处理函数 ====================
 
   const handleOpenAddItem = () => {
+    rememberDialogOpener(addItemReturnFocusRef);
     setShowAddItemDialog(true);
     setNewItemName("");
     setGenerateDescForNewItem(true);
@@ -297,6 +334,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   // ==================== 删除处理函数 ====================
 
   const handleOpenDeleteConfirm = (type: "character" | "item" | "landmark", name: string) => {
+    rememberDialogOpener(deleteReturnFocusRef);
     setEntityToDelete({ type, name });
     setShowDeleteConfirm(true);
   };
@@ -326,7 +364,10 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div
+      className="flex h-full w-full min-w-0 max-w-full flex-col overflow-x-hidden overflow-y-hidden"
+      data-slot="collection-panel"
+    >
       {/* 标题 */}
       <div className="p-4 border-b flex-shrink-0">
         <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -348,13 +389,14 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
       />
 
       {/* 操作按钮 */}
-      <div className="px-4 pt-2 flex gap-2 flex-shrink-0">
+      <div className="grid flex-shrink-0 grid-cols-1 px-4 pt-2">
         <Button
-          variant="outline"
-          size="sm"
+          type="button"
+          variant="quiet"
+          size="touch"
           onClick={handleOpenRecognize}
           disabled={isRecognizing}
-          className="flex-1"
+          className="w-full justify-start rounded-none border-b border-[var(--border-default)] px-0"
         >
           {isRecognizing ? (
             <Loader2 className="w-4 h-4 mr-1 animate-spin" />
@@ -365,10 +407,11 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
         </Button>
         {activeTab === "items" && (
           <Button
-            variant="outline"
-            size="sm"
+            type="button"
+            variant="quiet"
+            size="touch"
             onClick={handleOpenAddItem}
-            className="flex-1"
+            className="w-full justify-start rounded-none border-b border-[var(--border-default)] px-0"
           >
             <Plus className="w-4 h-4 mr-1" />
             手动添加
@@ -376,16 +419,17 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
         )}
         {activeTab === "landmarks" && landmarks.some((l) => !l.image_generated) && (
           <Button
-            variant="outline"
-            size="sm"
+            type="button"
+            variant="quiet"
+            size="touch"
             onClick={handleBatchGenerateLandmarkImages}
             disabled={!!generatingImageFor}
-            className="flex-1"
+            className="w-full justify-start rounded-none border-b border-[var(--border-default)] px-0"
           >
             {generatingImageFor ? (
               <Loader2 className="w-4 h-4 mr-1 animate-spin" />
             ) : (
-              <Image className="w-4 h-4 mr-1" />
+              <ImageIcon className="w-4 h-4 mr-1" />
             )}
             批量生成图片
           </Button>
@@ -393,8 +437,13 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
       </div>
 
       {/* 可滚动的内容区域 */}
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="p-4">
+      <ScrollArea className="min-h-0 min-w-0 flex-1">
+        <div
+          id={`collection-panel-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`collection-tab-${activeTab}`}
+          className="min-w-0 p-4"
+        >
           {activeTab === "characters" && (
             <CharacterList
               characters={characters}
@@ -425,6 +474,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
       <CharacterDetail
         character={selectedCharacter}
         onClose={handleCloseDetail}
+        onCloseAutoFocus={restoreDialogOpener(detailReturnFocusRef)}
         onGenerateImage={handleGenerateCharacterImage}
         onStartRegenerate={handleStartRegenerateCharacter}
         onCancelRegenerate={handleCancelRegenerate}
@@ -443,6 +493,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
       <ItemDetail
         item={selectedItem}
         onClose={handleCloseDetail}
+        onCloseAutoFocus={restoreDialogOpener(detailReturnFocusRef)}
         onGenerateImage={handleGenerateItemImage}
         onGenerateDescription={handleGenerateItemDescription}
         onStartRegenerate={handleStartRegenerateItem}
@@ -463,6 +514,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
       <LandmarkDetail
         landmark={selectedLandmark}
         onClose={handleCloseDetail}
+        onCloseAutoFocus={restoreDialogOpener(detailReturnFocusRef)}
         onGenerateImage={handleGenerateLandmarkImage}
         onGenerateDescription={handleGenerateLandmarkDescription}
         onOpenDeleteConfirm={(name) => handleOpenDeleteConfirm("landmark", name)}
@@ -473,11 +525,24 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
 
       {/* 错误提示 */}
       {error && (
-        <div className="p-4 border-t bg-destructive/10 flex-shrink-0">
-          <p className="text-sm text-destructive">{error}</p>
-          <Button variant="ghost" size="sm" onClick={clearError}>
-            关闭
-          </Button>
+        <div className="flex-shrink-0 border-t border-[var(--border-default)] p-4">
+          <FeedbackNotice
+            tone="danger"
+            action={
+              <Button
+                type="button"
+                variant="quiet"
+                size="touch"
+                className="w-full justify-start rounded-none border-t border-[var(--danger-border)] px-0"
+                aria-label="关闭收集错误"
+                onClick={clearError}
+              >
+                关闭
+              </Button>
+            }
+          >
+            {error}
+          </FeedbackNotice>
         </div>
       )}
 
@@ -485,6 +550,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
       <RecognizeDialog
         open={showRecognizeDialog}
         onClose={handleCloseRecognize}
+        onCloseAutoFocus={restoreDialogOpener(recognizeReturnFocusRef)}
         onSubmit={handleSubmitRecognizedEntities}
         isRecognizing={isRecognizing}
         isLoading={isLoading}
@@ -501,6 +567,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
       <AddItemDialog
         open={showAddItemDialog}
         onClose={handleCloseAddItem}
+        onCloseAutoFocus={restoreDialogOpener(addItemReturnFocusRef)}
         onSubmit={handleSubmitAddItem}
         itemName={newItemName}
         onItemNameChange={setNewItemName}
@@ -513,6 +580,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
       <DeleteConfirmDialog
         open={showDeleteConfirm}
         onClose={handleCloseDeleteConfirm}
+        onCloseAutoFocus={restoreDeleteDialogOpener}
         onConfirm={handleConfirmDelete}
         entityToDelete={entityToDelete}
         isDeleting={isDeleting}

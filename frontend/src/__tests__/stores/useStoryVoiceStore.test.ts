@@ -299,7 +299,7 @@ describe('useStoryVoiceStore', () => {
     });
   });
 
-  it('ducks active music while voice reading is active and restores it when stopped', async () => {
+  it('ducks active music only after voice playback begins and restores it when stopped', async () => {
     jest.useFakeTimers();
     const audio = {
       currentTime: 0,
@@ -335,6 +335,13 @@ describe('useStoryVoiceStore', () => {
 
     await act(async () => {
       await useStoryVoiceStore.getState().startReading(baseContext);
+    });
+
+    expect(useStoryVoiceStore.getState().musicDuckState).toBe('idle');
+    expect(audio.volume).toBeCloseTo(0.5);
+
+    act(() => {
+      useStoryVoiceStore.getState().markAudioPlaying();
     });
 
     expect(useStoryVoiceStore.getState().musicDuckState).toBe('ducked');

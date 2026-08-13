@@ -7,6 +7,15 @@ import { SettingDisplay } from '@/components/game/SettingDisplay';
 
 describe('SettingDisplay', () => {
   describe('rendering', () => {
+    it('uses a quiet section rather than a nested card surface', () => {
+      const { container } = render(
+        <SettingDisplay stepKey="era" data={{ year: 2020 }} />,
+      );
+
+      expect(container.querySelector('[data-slot="card"]')).not.toBeInTheDocument();
+      expect(container.querySelector('[data-slot="setting-display"]')).toBeInTheDocument();
+    });
+
     it('renders era setting correctly', () => {
       const eraData = {
         year: 2020,
@@ -86,10 +95,41 @@ describe('SettingDisplay', () => {
       render(<SettingDisplay stepKey="traits" data={traitsData} />);
 
       // Should render traits content
-      expect(screen.getByText(/乐观|坚韧|性格/i)).toBeInTheDocument();
+      expect(screen.getByRole('listitem')).toHaveTextContent('性格: 乐观,坚韧');
     });
 
-    it('renders wealth setting correctly', () => {
+    it('contains long text for every trait in full-width wrapping rows', () => {
+      const longTrait = '在复杂环境中持续观察细节并把不确定信息转化为可执行计划的能力';
+
+      render(
+        <SettingDisplay
+          stepKey="traits"
+          data={{
+            personality: longTrait,
+            abilities: longTrait,
+            interests: longTrait,
+            strengths: longTrait,
+            weaknesses: longTrait,
+          }}
+        />,
+      );
+
+      const rows = screen.getAllByRole('listitem');
+      expect(rows).toHaveLength(5);
+      expect(rows.map((row) => row.textContent)).toEqual([
+        `性格: ${longTrait}`,
+        `能力: ${longTrait}`,
+        `兴趣: ${longTrait}`,
+        `优点: ${longTrait}`,
+        `缺点: ${longTrait}`,
+      ]);
+      rows.forEach((row) => {
+        expect(row).toHaveClass('w-full', 'min-w-0', 'whitespace-normal', 'break-words');
+        expect(row).toHaveTextContent(longTrait);
+      });
+    });
+
+    it('hides retired wealth settings from legacy payloads', () => {
       const wealthData = {
         wealth_level: '中等',
         assets: '一套房产',
@@ -97,8 +137,7 @@ describe('SettingDisplay', () => {
 
       render(<SettingDisplay stepKey="wealth" data={wealthData} />);
 
-      // Should render wealth content
-      expect(screen.getByText(/中等|财富|资产/i)).toBeInTheDocument();
+      expect(screen.queryByText(/中等|财富|资产/i)).not.toBeInTheDocument();
     });
   });
 
@@ -116,12 +155,13 @@ describe('SettingDisplay', () => {
   });
 
   describe('isNew prop', () => {
-    it('shows AI generated badge when isNew is true', () => {
+    it('marks newly generated content without AI branding or decorative sparkle copy', () => {
       const data = { test: 'value' };
 
       render(<SettingDisplay stepKey="unknown" data={data} isNew={true} />);
 
-      expect(screen.getByText(/AI 生成/)).toBeInTheDocument();
+      expect(screen.getByText('刚刚生成')).toBeInTheDocument();
+      expect(screen.queryByText(/AI/)).not.toBeInTheDocument();
     });
 
     it('does not show badge when isNew is false', () => {

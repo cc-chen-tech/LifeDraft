@@ -12,6 +12,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { FeedbackNotice, FormField, Surface } from "@/components/story101";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 import { api } from "@/lib/api";
 import { streamRewrite } from "@/lib/sse";
 import { useGameStore } from "@/stores/useGameStore";
@@ -94,6 +98,13 @@ interface ChatBarProps {
   className?: string;
 }
 
+export type ChatBarAction = "chat" | "rewrite" | "summary" | "close";
+
+export interface ChatBarCommand {
+  id: number;
+  action: ChatBarAction;
+}
+
 /**
  * ChatBar — 底部固定剧情助手 chat bar
  * - 收起态：小圆按钮
@@ -132,6 +143,89 @@ export function ChatBar({
   const chatEndRef = useRef<HTMLDivElement>(null);
   const rewriteAbortRef = useRef<AbortController | null>(null);
   const accumulatedStoryRef = useRef("");
+  const handledCommandIdRef = useRef<number | null>(null);
+  const surfaceReturnFocusRef = useRef<HTMLElement | null>(null);
+  const reportedSurfaceOpenRef = useRef(false);
+
+  const fullStoryOverLimit = !isWithinInputLimit(
+    storyText,
+    INPUT_LIMITS.fullStory,
+  );
+  const rewriteDisabled =
+    isViewingHistory ||
+    isStoryBusy ||
+    !storyText.trim() ||
+    fullStoryOverLimit;
+
+  const captureSurfaceReturnFocus = useCallback(() => {
+    const activeElement = document.activeElement;
+    if (
+      activeElement instanceof HTMLElement &&
+      activeElement !== document.body
+    ) {
+      surfaceReturnFocusRef.current = activeElement;
+    }
+  }, []);
+
+  const reportUnifiedSurfaceOpen = useCallback(
+    (open: boolean) => {
+      if (showLauncher || reportedSurfaceOpenRef.current === open) return;
+      reportedSurfaceOpenRef.current = open;
+      onSurfaceOpenChange?.(open);
+    },
+    [onSurfaceOpenChange, showLauncher],
+  );
+
+  const restoreSurfaceFocus = useCallback(() => {
+    const returnTarget = surfaceReturnFocusRef.current;
+    surfaceReturnFocusRef.current = null;
+    queueMicrotask(() => returnTarget?.focus());
+  }, []);
+
+  const closeAssistantSurfaces = useCallback(() => {
+    if (!showLauncher && isRewriting) {
+      setIsExpanded(false);
+      setIsSummaryOpen(false);
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    const focusIsInsideAssistantSurface =
+      activeElement instanceof HTMLElement &&
+      [
+        document.querySelector('[data-testid="chat-bar-panel"]'),
+        document.querySelector('[data-testid="inline-rewrite-sheet"]'),
+        document.querySelector('[data-testid="life-summary-panel"]'),
+      ].some((surface) => surface?.contains(activeElement));
+    const shouldRestoreFocus =
+      !showLauncher &&
+      focusIsInsideAssistantSurface &&
+      Boolean(surfaceReturnFocusRef.current);
+
+    if (!shouldRestoreFocus) {
+      surfaceReturnFocusRef.current = null;
+    }
+    setIsExpanded(false);
+    setIsRewriteOpen(false);
+    setIsSummaryOpen(false);
+    if (shouldRestoreFocus) restoreSurfaceFocus();
+  }, [isRewriting, restoreSurfaceFocus, showLauncher]);
+
+  const unifiedSurfaceOpen =
+    !showLauncher && (isExpanded || isRewriteOpen || isSummaryOpen);
+
+  useEffect(() => {
+    reportUnifiedSurfaceOpen(unifiedSurfaceOpen);
+  }, [reportUnifiedSurfaceOpen, unifiedSurfaceOpen]);
+
+  useEffect(
+    () => () => {
+      if (!reportedSurfaceOpenRef.current) return;
+      reportedSurfaceOpenRef.current = false;
+      onSurfaceOpenChange?.(false);
+    },
+    [onSurfaceOpenChange],
+  );
 
   useEffect(() => {
     if (isExpanded && inputRef.current) {
@@ -144,11 +238,20 @@ export function ChatBar({
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory]);
 
+  useEffect(() => {
+    if (!isStoryBusy && !isViewingHistory) return;
+
+    closeAssistantSurfaces();
+  }, [closeAssistantSurfaces, isStoryBusy, isViewingHistory]);
+
   // 生成总结并显示在专用总结面板中
   const handleGenerateSummary = useCallback(async () => {
-    if (!gameId || isGeneratingSummary || isStoryBusy) return;
+    if (!gameId || isStoryBusy) return;
 
+    reportUnifiedSurfaceOpen(true);
     setIsSummaryOpen(true);
+    if (isGeneratingSummary) return;
+
     setLifeSummaryError(null);
     setIsGeneratingSummary(true);
     
@@ -168,11 +271,58 @@ export function ChatBar({
     } finally {
       setIsGeneratingSummary(false);
     }
-  }, [gameId, isGeneratingSummary, isStoryBusy]);
+  }, [gameId, isGeneratingSummary, isStoryBusy, reportUnifiedSurfaceOpen]);
+
+  useEffect(() => {
+    if (!command || handledCommandIdRef.current === command.id) return;
+
+    handledCommandIdRef.current = command.id;
+    if (command.action === "close") {
+      closeAssistantSurfaces();
+      return;
+    }
+
+    if (isStoryBusy || isViewingHistory) return;
+    if (command.action === "rewrite" && rewriteDisabled) return;
+
+    reportUnifiedSurfaceOpen(true);
+    captureSurfaceReturnFocus();
+
+    if (command.action === "chat") {
+      setIsRewriteOpen(false);
+      setIsSummaryOpen(false);
+      setIsExpanded(true);
+      return;
+    }
+
+    setIsExpanded(false);
+    if (command.action === "rewrite") {
+      setIsSummaryOpen(false);
+      setIsRewriteOpen(true);
+      return;
+    }
+
+    setIsRewriteOpen(false);
+    void handleGenerateSummary();
+  }, [
+    captureSurfaceReturnFocus,
+    closeAssistantSurfaces,
+    command,
+    handleGenerateSummary,
+    isStoryBusy,
+    isViewingHistory,
+    reportUnifiedSurfaceOpen,
+    rewriteDisabled,
+  ]);
 
   const handleSend = useCallback(async () => {
     const text = message.trim();
-    if (!text || !gameId || isSending) return;
+    if (
+      !text ||
+      !gameId ||
+      isSending ||
+      !isWithinInputLimit(text, INPUT_LIMITS.storyDialogue)
+    ) return;
 
     // Add user message
     const userMsg: ChatMessage = { role: "user", content: text };
@@ -230,7 +380,15 @@ export function ChatBar({
   const handleRewrite = useCallback(async (): Promise<void> => {
     const instruction = rewriteInstruction.trim();
     const fullStory = storyText.trim();
-    if (!instruction || !gameId || !fullStory || isRewriting || isStoryBusy) return;
+    if (
+      !instruction ||
+      !gameId ||
+      !fullStory ||
+      isRewriting ||
+      isStoryBusy ||
+      !isWithinInputLimit(instruction, INPUT_LIMITS.rewriteInstruction) ||
+      !isWithinInputLimit(fullStory, INPUT_LIMITS.fullStory)
+    ) return;
 
     setIsRewriting(true);
     accumulatedStoryRef.current = "";
@@ -242,7 +400,7 @@ export function ChatBar({
         gameId,
         fullStory,
         instruction,
-        fullStory,
+        "",
         "zh",
         {
           onStory: (text) => {
@@ -252,6 +410,10 @@ export function ChatBar({
             });
           },
           onStatus: (status) => {
+            if (status.phase === "retry") {
+              // The server discards the prior attempt before streaming a replacement.
+              accumulatedStoryRef.current = "";
+            }
             const message = getRewriteProgressMessage(status);
             setRewriteProgressMessage(message);
             showRewriteToast("loading", message);
@@ -274,7 +436,9 @@ export function ChatBar({
             setRewriteInstruction("");
             setIsRewriting(false);
             showRewriteToast("success", "故事已改写");
-            setTimeout(() => setIsRewriteOpen(false), 500);
+            if (showLauncher) {
+              setTimeout(() => setIsRewriteOpen(false), 500);
+            }
           },
           onError: (error) => {
             setRewriteProgressMessage("");
@@ -335,43 +499,106 @@ export function ChatBar({
     isStoryBusy,
     onRewriteComplete,
     rewriteInstruction,
+    showLauncher,
     showRewriteToast,
     storyText,
   ]);
 
-  if (!gameId) return null;
+  if (!gameId || isStoryBusy || isViewingHistory) return null;
 
   const storyBusyTitle = "故事生成完成后可用";
   const storyActionDisabled = isViewingHistory || isStoryBusy;
-  const rewriteDisabled = storyActionDisabled || !storyText.trim();
   const summaryDisabled = isGeneratingSummary || isSending || isStoryBusy;
 
   const rewriteSheet = (
-    <Sheet open={isRewriteOpen} onOpenChange={setIsRewriteOpen}>
+    <Sheet
+      open={isRewriteOpen}
+      onOpenChange={(open) => {
+        if (!open && !showLauncher && isRewriting) return;
+        setIsRewriteOpen(open);
+      }}
+    >
       <SheetContent
         side="bottom"
         data-testid="inline-rewrite-sheet"
-        className="bg-card border-t border-border"
+        showCloseButton={false}
+        overlayClassName="z-[60]"
+        className="z-[61] max-h-[88dvh] gap-0 overflow-y-auto rounded-t-[var(--radius-overlay)] border-[var(--border-default)] bg-[var(--surface-overlay)] p-0"
+        onCloseAutoFocus={(event) => {
+          if (!showLauncher) {
+            event.preventDefault();
+            if (surfaceReturnFocusRef.current) restoreSurfaceFocus();
+          }
+        }}
       >
-        <SheetHeader>
-          <SheetTitle className="text-foreground">故事调整</SheetTitle>
-          <SheetDescription className="text-muted-foreground">
+        <SheetHeader className="border-b border-[var(--border-default)] px-5 py-4 pr-16 text-left">
+          <SheetTitle className="text-[var(--text-primary)]">故事调整</SheetTitle>
+          <SheetDescription className="text-[var(--text-secondary)]">
             告诉我你希望如何修改这段故事
           </SheetDescription>
         </SheetHeader>
+        <Button
+          type="button"
+          variant="quiet"
+          size="icon-touch"
+          className="absolute right-3 top-3"
+          aria-label="关闭故事调整"
+          aria-busy={!showLauncher && isRewriting ? true : undefined}
+          disabled={!showLauncher && isRewriting}
+          onClick={() => setIsRewriteOpen(false)}
+        >
+          <X className="h-4 w-4" />
+        </Button>
 
-        <div className="space-y-4 mt-4">
-          <Textarea
-            value={rewriteInstruction}
-            onChange={(e) => setRewriteInstruction(e.target.value)}
-            placeholder="描述你想要的修改，例如：让场景更加温馨、增加一些对话、改变结局..."
-            className="min-h-[120px] bg-secondary border-border text-sm"
-            disabled={isRewriting}
-          />
+        <div className="space-y-4 px-5 pb-[max(1.25rem,var(--safe-area-inset-bottom))] pt-5">
+          <FormField
+            id="story-rewrite-instruction"
+            label="改写要求"
+            description="说明想保留和调整的部分。"
+            error={
+              isWithinInputLimit(rewriteInstruction, INPUT_LIMITS.rewriteInstruction)
+                ? undefined
+                : `改写要求不能超过 ${INPUT_LIMITS.rewriteInstruction} 字`
+            }
+          >
+            {({ describedBy, invalid }) => (
+              <>
+                <Textarea
+                  id="story-rewrite-instruction"
+                  value={rewriteInstruction}
+                  onChange={(e) => setRewriteInstruction(e.target.value)}
+                  placeholder="描述你想要的修改，例如：让场景更温暖、增加对话或调整节奏"
+                  surface="filled"
+                  controlSize="touch"
+                  className="min-h-[120px] text-sm"
+                  disabled={isRewriting}
+                  aria-invalid={invalid}
+                  aria-describedby={[
+                    describedBy,
+                    "story-rewrite-instruction-count",
+                  ].filter(Boolean).join(" ")}
+                />
+                <LengthIndicator
+                  id="story-rewrite-instruction-count"
+                  value={rewriteInstruction}
+                  limit={INPUT_LIMITS.rewriteInstruction}
+                  announce={false}
+                />
+              </>
+            )}
+          </FormField>
           <Button
+            type="button"
+            variant="narrative"
+            size="touch"
             onClick={() => handleRewrite()}
-            disabled={!rewriteInstruction.trim() || isRewriting || !storyText.trim() || isStoryBusy}
-            className="w-full touch-target"
+            disabled={
+              !rewriteInstruction.trim() ||
+              isRewriting ||
+              rewriteDisabled ||
+              !isWithinInputLimit(rewriteInstruction, INPUT_LIMITS.rewriteInstruction)
+            }
+            className="w-full"
           >
             {isRewriting ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -380,39 +607,64 @@ export function ChatBar({
             )}
             改写故事
           </Button>
-          {isRewriting && rewriteProgressMessage && (
-            <p
-              aria-live="polite"
-              className="text-xs text-muted-foreground"
-              data-testid="rewrite-progress-message"
+          {!showLauncher && rewriteToast && (
+            <FeedbackNotice
+              tone={
+                rewriteToast.type === "success"
+                  ? "success"
+                  : rewriteToast.type === "loading"
+                    ? "info"
+                    : "danger"
+              }
             >
-              {rewriteProgressMessage}
-            </p>
+              <span
+                className="flex items-center gap-2"
+                data-testid={
+                  rewriteToast.type === "loading"
+                    ? "rewrite-progress-message"
+                    : undefined
+                }
+              >
+                {rewriteToast.type === "success" ? (
+                  <Check className="h-4 w-4" />
+                ) : rewriteToast.type === "loading" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <X className="h-4 w-4" />
+                )}
+                {rewriteToast.type === "loading" && rewriteProgressMessage
+                  ? rewriteProgressMessage
+                  : rewriteToast.message}
+              </span>
+            </FeedbackNotice>
           )}
         </div>
       </SheetContent>
     </Sheet>
   );
 
-  const rewriteToastNode = rewriteToast && (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-4 duration-300">
-      <div className={cn(
-        "flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-white",
-        rewriteToast.type === "success"
-          ? "bg-green-600"
-          : rewriteToast.type === "loading"
-          ? "bg-blue-600"
-          : "bg-red-600"
-      )}>
+  const rewriteToastNode = rewriteToast && showLauncher && (
+    <div className="play-feedback fixed left-1/2 z-[80] w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2">
+      <FeedbackNotice
+        tone={
+          rewriteToast.type === "success"
+            ? "success"
+            : rewriteToast.type === "loading"
+              ? "info"
+              : "danger"
+        }
+      >
+        <span className="flex items-center gap-2">
         {rewriteToast.type === "success" ? (
-          <Check className="w-5 h-5" />
+          <Check className="h-4 w-4" />
         ) : rewriteToast.type === "loading" ? (
-          <Loader2 className="w-5 h-5 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
-          <X className="w-5 h-5" />
+          <X className="h-4 w-4" />
         )}
-        <span className="text-sm font-medium">{rewriteToast.message}</span>
-      </div>
+          <span className="text-sm font-medium">{rewriteToast.message}</span>
+        </span>
+      </FeedbackNotice>
     </div>
   );
 
@@ -421,18 +673,31 @@ export function ChatBar({
       summary={lifeSummary}
       isLoading={isGeneratingSummary}
       error={lifeSummaryError}
-      onClose={() => setIsSummaryOpen(false)}
+      onClose={() => {
+        setIsSummaryOpen(false);
+        if (!showLauncher) restoreSurfaceFocus();
+      }}
       className={className}
     />
   );
 
   if (!isExpanded) {
+    if (!showLauncher) {
+      return (
+        <>
+          {rewriteSheet}
+          {lifeSummaryPanel}
+          {rewriteToastNode}
+        </>
+      );
+    }
+
     return (
       <>
         <div
           data-testid="chat-bar-launcher"
           className={cn(
-            "fixed bottom-4 right-4 z-50 flex flex-wrap justify-end items-center gap-2 pointer-events-none",
+            "fixed bottom-4 right-4 z-50 flex flex-wrap justify-end items-center gap-2 pointer-events-none animate-in fade-in duration-200",
             "max-w-[calc(100vw-2rem)]",
             className
           )}
@@ -468,6 +733,8 @@ export function ChatBar({
                 ? "历史回顾模式下不可用"
                 : !storyText.trim()
                 ? "暂无可改写的故事"
+                : fullStoryOverLimit
+                ? `当前故事超过 ${INPUT_LIMITS.fullStory} 字，无法提交改写`
                 : "改写当前故事"
             }
           >
@@ -506,17 +773,25 @@ export function ChatBar({
   }
 
   return (
+    <Surface asChild variant="overlay">
     <div
       data-testid="chat-bar-panel"
+      data-presentation={showLauncher ? "legacy" : "unified"}
       className={cn(
-        "fixed bottom-4 left-4 right-4 sm:left-auto sm:w-[min(28rem,calc(100vw-2rem))] max-w-md z-50",
-        "bg-card/95 backdrop-blur-sm border border-border shadow-xl rounded-lg",
-        "p-3 safe-area-pb",
+        "fixed left-4 right-4 z-[70] max-w-md p-3 safe-area-pb sm:left-auto sm:w-[min(28rem,calc(100vw-2rem))]",
+        showLauncher ? "bottom-4" : "play-chat-surface",
         className
       )}
     >
       {/* Quick actions row */}
       <div className="flex items-center gap-2 mb-2">
+        {!showLauncher && (
+          <h2 className="text-sm font-medium text-[var(--text-primary)]">
+            剧情助手
+          </h2>
+        )}
+        {showLauncher && (
+          <>
         <Button
           size="sm"
           variant="outline"
@@ -546,6 +821,8 @@ export function ChatBar({
               ? "历史回顾模式下不可用"
               : !storyText.trim()
               ? "暂无可改写的故事"
+              : fullStoryOverLimit
+              ? `当前故事超过 ${INPUT_LIMITS.fullStory} 字，无法提交改写`
               : undefined
           }
         >
@@ -589,15 +866,18 @@ export function ChatBar({
           )}
           人生总结
         </Button>
+          </>
+        )}
 
         <div className="flex-1" />
 
         {chatHistory.length > 0 && (
           <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8 text-muted-foreground"
+            size={showLauncher ? "icon" : "icon-touch"}
+            variant={showLauncher ? "ghost" : "quiet"}
+            className={cn(showLauncher && "h-8 w-8 text-muted-foreground")}
             onClick={() => setChatHistory([])}
+            aria-label="清空对话"
             title="清空对话"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -605,10 +885,13 @@ export function ChatBar({
         )}
 
         <Button
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8"
-          onClick={() => setIsExpanded(false)}
+          size={showLauncher ? "icon" : "icon-touch"}
+          variant={showLauncher ? "ghost" : "quiet"}
+          className={cn(showLauncher && "h-8 w-8")}
+          onClick={() => {
+            setIsExpanded(false);
+            if (!showLauncher) restoreSurfaceFocus();
+          }}
           aria-label="关闭剧情助手"
           title="关闭剧情助手"
         >
@@ -622,11 +905,19 @@ export function ChatBar({
           {chatHistory.map((msg, i) => (
             <div
               key={i}
+              data-slot={showLauncher ? undefined : "chat-message"}
               className={cn(
-                "text-sm rounded-lg px-3 py-2 max-w-[85%]",
+                "text-sm",
+                showLauncher
+                  ? "max-w-[85%] rounded-lg px-3 py-2"
+                  : "max-w-none rounded-none border-b border-[var(--border-default)] bg-transparent px-0 py-3",
                 msg.role === "user"
-                  ? "bg-primary/20 text-foreground ml-auto"
-                  : "bg-secondary text-muted-foreground prose prose-sm prose-invert max-w-none"
+                  ? showLauncher
+                    ? "ml-auto bg-primary/20 text-foreground"
+                    : "text-[var(--text-primary)]"
+                  : showLauncher
+                    ? "bg-secondary text-muted-foreground prose prose-sm prose-invert max-w-none"
+                    : "prose-story max-w-none text-[var(--text-secondary)]",
               )}
             >
               {msg.role === "user" ? (
@@ -639,7 +930,14 @@ export function ChatBar({
             </div>
           ))}
           {(isSending || isGeneratingSummary) && (
-            <div className="bg-secondary text-muted-foreground text-sm rounded-lg px-3 py-2 max-w-[85%] flex items-center gap-2">
+            <div
+              className={cn(
+                "flex items-center gap-2 text-sm",
+                showLauncher
+                  ? "max-w-[85%] rounded-lg bg-secondary px-3 py-2 text-muted-foreground"
+                  : "max-w-none rounded-none border-b border-[var(--border-default)] bg-transparent px-0 py-3 text-[var(--text-secondary)]",
+              )}
+            >
               <Loader2 className="w-3 h-3 animate-spin" />
               {isGeneratingSummary ? "正在生成总结..." : "思考中..."}
             </div>
@@ -649,38 +947,73 @@ export function ChatBar({
       )}
 
       {/* Input row */}
-      <div className="flex gap-2">
-        <Input
-          ref={inputRef}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="向剧情助手提问..."
-          className="flex-1 bg-secondary border-border text-sm h-10"
-          disabled={isSending}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.nativeEvent.isComposing && message.trim()) {
-              handleSend();
-            }
-          }}
-        />
-        <Button
-          size="icon"
-          className="h-10 w-10"
-          disabled={!message.trim() || isSending}
-          onClick={handleSend}
-          aria-label="发送消息"
-          title="发送消息"
-        >
-          {isSending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Send className="w-4 h-4" />
-          )}
-        </Button>
-      </div>
+      <FormField
+        id="story-assistant-question"
+        label="剧情助手问题"
+        error={
+          isWithinInputLimit(message, INPUT_LIMITS.storyDialogue)
+            ? undefined
+            : `问题不能超过 ${INPUT_LIMITS.storyDialogue} 字`
+        }
+      >
+        {({ describedBy, invalid }) => (
+          <>
+            <div className="flex gap-2">
+              <Input
+                id="story-assistant-question"
+                ref={inputRef}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="向剧情助手提问..."
+                surface={showLauncher ? "default" : "filled"}
+                controlSize={showLauncher ? "default" : "touch"}
+                className={cn("flex-1 text-sm", showLauncher && "h-10 bg-secondary border-border")}
+                disabled={isSending}
+                aria-invalid={invalid}
+                aria-describedby={[
+                  describedBy,
+                  "story-assistant-question-count",
+                ].filter(Boolean).join(" ")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing && message.trim()) {
+                    handleSend();
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                size={showLauncher ? "icon" : "icon-touch"}
+                variant={showLauncher ? "default" : "narrative"}
+                className={cn(showLauncher && "h-10 w-10")}
+                disabled={
+                  !message.trim() ||
+                  isSending ||
+                  !isWithinInputLimit(message, INPUT_LIMITS.storyDialogue)
+                }
+                onClick={handleSend}
+                aria-label="发送消息"
+                title="发送消息"
+              >
+                {isSending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </Button>
+            </div>
+            <LengthIndicator
+              id="story-assistant-question-count"
+              value={message}
+              limit={INPUT_LIMITS.storyDialogue}
+              announce={false}
+            />
+          </>
+        )}
+      </FormField>
       {rewriteSheet}
       {lifeSummaryPanel}
       {rewriteToastNode}
     </div>
+    </Surface>
   );
 }

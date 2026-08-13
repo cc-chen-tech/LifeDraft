@@ -1,7 +1,6 @@
 """Game initialization - creates new game sessions from character settings."""
 
 import logging
-import re
 from typing import Any, Dict, Optional, Tuple
 
 from config.settings import settings
@@ -10,53 +9,6 @@ from src.database.db import GameDatabase
 from src.game.game_loop import GameLoop
 
 logger = logging.getLogger(__name__)
-
-
-def _coerce_initial_wealth_amount(value: Any) -> Optional[int]:
-    """Coerce explicit generated wealth values while ignoring qualitative labels."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return max(0, min(1_000_000, int(value)))
-    if not isinstance(value, str):
-        return None
-
-    text = value.strip()
-    if not text:
-        return None
-
-    compact = re.sub(r"[\s,，￥¥$元人民币rmbRMB]+", "", text)
-    if not compact:
-        return None
-
-    ten_thousand_match = re.search(r"(\d+(?:\.\d+)?)万", compact)
-    if ten_thousand_match:
-        return max(0, min(1_000_000, int(float(ten_thousand_match.group(1)) * 10_000)))
-
-    number_match = re.search(r"\d+(?:\.\d+)?", compact)
-    if not number_match:
-        return None
-
-    return max(0, min(1_000_000, int(float(number_match.group(0)))))
-
-
-def extract_initial_wealth_from_settings(character_settings: Dict[str, Any]) -> Optional[int]:
-    """Return numeric initial wealth from character settings, if explicitly generated."""
-    wealth_setting = character_settings.get("wealth")
-    if not isinstance(wealth_setting, dict):
-        return None
-
-    for key in ("wealth", "starting_wealth", "initial_wealth_amount", "initial_wealth"):
-        wealth = _coerce_initial_wealth_amount(wealth_setting.get(key))
-        if wealth is not None:
-            return wealth
-
-    return None
-
-
-def _initial_wealth_from_settings(character_settings: Dict[str, Any]) -> int:
-    configured_wealth = extract_initial_wealth_from_settings(character_settings)
-    return configured_wealth if configured_wealth is not None else settings.INITIAL_WEALTH
 
 
 class GameInitializer:
@@ -122,7 +74,6 @@ class GameInitializer:
             "energy": settings.INITIAL_ENERGY,
             "mood": settings.INITIAL_MOOD,
             "knowledge": settings.INITIAL_KNOWLEDGE,
-            "wealth": _initial_wealth_from_settings(character_settings),
             "relationships": {},
             "characters": {},
             "decision_history": [],
@@ -158,11 +109,6 @@ class GameInitializer:
 
         ledger = ContinuityLedger.from_state(initial_state)
         ledger.persist(initial_state)
-
-        from src.game.wealth_ledger import WealthLedger
-
-        wealth_ledger = WealthLedger.from_player_state(initial_state)
-        wealth_ledger.persist(initial_state)
 
         # 提取 narrative_style_id（从 character_settings 中获取，默认 None）
         style_id = character_settings.get("narrative_style_id") if character_settings else None

@@ -1,5 +1,7 @@
 """No-mock contracts for evidence-grounded life summaries."""
 
+import pytest
+
 from src.services.life_summary_grounding import (
     build_grounded_fallback,
     build_life_summary_prompt,
@@ -60,8 +62,10 @@ def test_prompt_bounds_long_history_while_retaining_timeline_endpoints() -> None
     prompt = build_life_summary_prompt(long_history, start_week=1, end_week=100)
 
     assert len(prompt) <= 25_000
-    assert "第1周故事证据" in prompt
+    assert "第1周" in prompt
     assert "第100周选择" in prompt
+    assert "完整事件正文保存在原始记录中" in prompt
+    assert "..." not in prompt
 
 
 def test_unsafe_provider_summary_falls_back_to_grounded_exact_range() -> None:
@@ -83,6 +87,37 @@ def test_unsafe_provider_summary_falls_back_to_grounded_exact_range() -> None:
     assert "19.9" not in result
     assert "学识95" not in result
     assert "身份列为待核实" in result
+    assert result.endswith(("。", "！", "？"))
+    assert "..." not in result
+
+
+def test_provider_history_dump_falls_back_to_a_compact_summary() -> None:
+    """A life summary must aggregate history instead of replaying every round."""
+    history = [
+        {
+            "week": week,
+            "round": week % 3,
+            "story_text": f"第{week + 1}周影院改造事件：" + ("现场细节" * 200),
+            "choice_text": f"第{week + 1}周选择：确认本周安排",
+        }
+        for week in range(9)
+    ]
+    provider_dump = "\n".join(
+        f"{entry['story_text']}\n{entry['choice_text']}" for entry in history
+    )
+
+    result = validate_or_fallback_life_summary(
+        provider_dump,
+        history,
+        start_week=1,
+        end_week=9,
+    )
+
+    assert result.startswith("第1-9周：")
+    assert result != provider_dump
+    assert len(result) <= len(provider_dump) // 4
+    assert result.endswith(("。", "！", "？"))
+    assert "..." not in result
 
 
 def test_safe_grounded_provider_summary_is_preserved() -> None:
@@ -99,6 +134,99 @@ def test_safe_grounded_provider_summary_is_preserved() -> None:
             end_week=4,
         )
         == safe
+    )
+
+
+def test_tracked_wealth_or_exact_balance_summary_falls_back_even_when_evidenced() -> None:
+    history = [
+        {
+            "week": 0,
+            "round": 0,
+            "story_text": "林晓的账户余额达到50000元。",
+            "choice_text": "继续储蓄",
+        }
+    ]
+
+    for tracked_summary in (
+        "第1周，林晓的财富达到50000元。",
+        "第1周，林晓的账户余额达到50000元。",
+        "第1周，林晓的当前财富值有所提升。",
+        "第1周，林晓的财富不再增长。",
+        "第1周，Lin's wealth did not increase.",
+        "第1周，林晓的月薪八千元。",
+        "第1周，林晓获得奖金三万元。",
+        "第1周，林晓的余额五万元。",
+        "第1周，林晓的月薪八千美元。",
+        "第1周，林晓获得奖金三万人民币。",
+        "第1周，林晓的余额五千欧元。",
+    ):
+        result = validate_or_fallback_life_summary(
+            tracked_summary,
+            history,
+            start_week=1,
+            end_week=1,
+        )
+        assert result != tracked_summary
+
+
+def test_qualitative_economic_summary_is_preserved() -> None:
+    history = [
+        {
+            "week": 0,
+            "round": 0,
+            "story_text": "项目收入有所改善，但家庭仍面临经济压力，消费也更加谨慎。",
+            "choice_text": "暂缓非必要开支",
+        }
+    ]
+    summary = "第1周，项目收入有所改善，但家庭仍面临经济压力，消费更加谨慎。"
+
+    assert (
+        validate_or_fallback_life_summary(summary, history, start_week=1, end_week=1)
+        == summary
+    )
+
+
+@pytest.mark.parametrize(
+    "value_statement",
+    (
+        "财富不代表幸福",
+        "财富不能定义成功",
+        "wealth does not define success",
+        "wealth cannot measure happiness",
+    ),
+)
+def test_non_metric_wealth_value_summary_is_preserved(value_statement: str) -> None:
+    history = [
+        {
+            "week": 0,
+            "round": 0,
+            "story_text": value_statement,
+            "choice_text": "陪伴家人",
+        }
+    ]
+    summary = f"第1周，{value_statement}。"
+
+    assert (
+        validate_or_fallback_life_summary(summary, history, start_week=1, end_week=1)
+        == summary
+    )
+
+
+@pytest.mark.parametrize("lookalike", ("他们讨论二元关系", "他们走过三元桥"))
+def test_currency_lookalike_summary_is_preserved(lookalike: str) -> None:
+    history = [
+        {
+            "week": 0,
+            "round": 0,
+            "story_text": lookalike,
+            "choice_text": "继续讨论",
+        }
+    ]
+    summary = f"第1周，{lookalike}。"
+
+    assert (
+        validate_or_fallback_life_summary(summary, history, start_week=1, end_week=1)
+        == summary
     )
 
 

@@ -4,7 +4,9 @@ import json
 import uuid
 from typing import Any, Dict, List
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+from src.game.effects import normalize_gameplay_effects
 
 
 class EventOption(BaseModel):
@@ -13,6 +15,12 @@ class EventOption(BaseModel):
     text: str = Field(..., max_length=200)  # Increased for longer option text
     effects: Dict[str, Any] = Field(...)
     likely_choice: bool = Field(default=False)  # Whether this is the character's likely choice
+
+    @field_validator("effects", mode="before")
+    @classmethod
+    def normalize_effects(cls, value: Any) -> Dict[str, Any]:
+        """Keep resources and validated relationship effects; discard other keys."""
+        return normalize_gameplay_effects(value)
 
 
 class GameEvent(BaseModel):

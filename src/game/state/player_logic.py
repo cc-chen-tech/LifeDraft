@@ -45,7 +45,6 @@ class PlayerLogicMixin:
     energy: int
     mood: int
     knowledge: int
-    wealth: int
     relationships: Dict[str, int]
     week: int
     age: int
@@ -59,7 +58,6 @@ class PlayerLogicMixin:
         energy: Optional[int] = None,
         mood: Optional[int] = None,
         knowledge: Optional[int] = None,
-        wealth: Optional[int] = None,
         relationships: Optional[Dict[str, int]] = None,
     ) -> None:
         """
@@ -69,7 +67,6 @@ class PlayerLogicMixin:
             energy: Change in energy (can be negative)
             mood: Change in mood (can be negative)
             knowledge: Change in knowledge (can be negative)
-            wealth: Change in wealth (can be negative)
             relationships: Dict of relationship changes {name: change}
         """
         if energy is not None:
@@ -85,9 +82,6 @@ class PlayerLogicMixin:
                 settings.MIN_RESOURCE,
                 min(settings.MAX_RESOURCE, self.knowledge + knowledge),
             )
-
-        if wealth is not None:
-            self.wealth = max(0, self.wealth + wealth)  # Wealth has no upper limit
 
         if relationships is not None:
             for name, change in relationships.items():

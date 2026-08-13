@@ -31,7 +31,7 @@ export const CREATION_STEPS: CreationStep[] = [
 export const MANUAL_STEPS: CreationStep[] = ["era", "age", "gender", "world", "portrait"];
 
 // 后台自动生成的步骤
-export const AUTO_ADVANCE_STEPS: string[] = ["family", "relationships", "traits", "wealth"];
+export const AUTO_ADVANCE_STEPS: string[] = ["family", "relationships", "traits"];
 
 interface CharacterState {
   // Character creation

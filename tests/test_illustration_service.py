@@ -422,14 +422,14 @@ class TestGenerateRoundIllustrationAsync:
     """Test generate_round_illustration_async method."""
 
     def test_async_generation_starts_thread(self):
-        """Test that async generation starts a thread."""
+        """Async callers submit exactly one job to the shared image worker pool."""
         service = RoundIllustrationService(
             image_client=MagicMock(),
             image_storage=MagicMock(),
             db_session=MagicMock(),
         )
 
-        with patch("threading.Thread") as mock_thread:
+        with patch("src.game.round.illustration_service.get_image_thread_pool") as get_pool:
             service.generate_round_illustration_async(
                 game_id=1,
                 round_number=1,
@@ -439,8 +439,31 @@ class TestGenerateRoundIllustrationAsync:
                 existing_images=[],
             )
 
-            mock_thread.assert_called_once()
-            mock_thread.return_value.start.assert_called_once()
+        get_pool.assert_called_once()
+        get_pool.return_value.submit.assert_called_once()
+        assert get_pool.return_value.submit.call_args.args[0] == service._generate_round_illustration_sync
+
+    def test_sync_generation_stays_on_the_callers_worker(self):
+        """The bounded gameplay media worker must not fan out into image-gen workers."""
+        service = RoundIllustrationService(
+            image_client=MagicMock(),
+            image_storage=MagicMock(),
+            db_session=MagicMock(),
+        )
+        service._generate_round_illustration_sync = MagicMock()
+
+        with patch("src.game.round.illustration_service.get_image_thread_pool") as image_pool:
+            service.generate_round_illustration(
+                game_id=1,
+                round_number=1,
+                story_text="Test story",
+                character_settings={},
+                player_name="Player",
+                existing_images=[],
+            )
+
+        service._generate_round_illustration_sync.assert_called_once()
+        image_pool.assert_not_called()
 
 
 class TestSyncGeneration:

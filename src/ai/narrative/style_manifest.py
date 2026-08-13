@@ -11,6 +11,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from config.feature_flags import get_feature
+from src.ai.narrative.legacy_style_lengths import LEGACY_STYLE_AVG_LENGTHS
+
 logger = logging.getLogger(__name__)
 
 # Compute the project root based on this file's location
@@ -159,6 +162,13 @@ class StyleLoader:
         if not isinstance(raw, dict):
             logger.warning("Style file %s does not contain a JSON object, skipping.", file_path)
             return None
+
+        if not get_feature("unified_narrative_budgets"):
+            legacy_avg_length = LEGACY_STYLE_AVG_LENGTHS.get(file_path.name)
+            if legacy_avg_length:
+                structure = raw.setdefault("structure", {})
+                chapter_rules = structure.setdefault("chapter_rules", {})
+                chapter_rules["avg_length"] = legacy_avg_length
 
         # 验证必填字段
         missing = _REQUIRED_FIELDS - set(raw.keys())

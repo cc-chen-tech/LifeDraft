@@ -304,7 +304,7 @@ export interface paths {
          * Update Character Settings
          * @description Persist late character creation settings for an existing game.
          *
-         *     The create flow may add generated family, relationship, trait, and wealth
+         *     The create flow may add generated family, relationship, and trait
          *     settings after the initial game record exists. This endpoint preserves the
          *     manually selected settings and merges the generated settings into the saved
          *     player state before opening story generation starts.
@@ -407,7 +407,7 @@ export interface paths {
         put?: never;
         /**
          * Generate Setting
-         * @description Generate a character setting (era, age, gender, world, family, relationships, traits, wealth).
+         * @description Generate a character setting (era, age, gender, world, family, relationships, traits).
          */
         post: operations["generate_setting_api_character_setting_post"];
         delete?: never;
@@ -447,7 +447,7 @@ export interface paths {
         put?: never;
         /**
          * Generate Attributes
-         * @description Generate initial character attributes (energy, mood, knowledge, wealth).
+         * @description Generate initial character attributes (energy, mood, knowledge).
          */
         post: operations["generate_attributes_api_character_attributes_post"];
         delete?: never;
@@ -925,6 +925,66 @@ export interface paths {
          *     人物形象默认并行生成4张不同姿势的全身像
          */
         post: operations["generate_image_api_images_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images/character/generate-async": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue Character Portrait
+         * @description Queue a durable main-character portrait without holding the browser request open.
+         */
+        post: operations["enqueue_character_portrait_api_images_character_generate_async_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images/character/jobs/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Latest Character Portrait Job
+         * @description Return the latest durable portrait job for the authenticated game owner.
+         */
+        get: operations["get_latest_character_portrait_job_api_images_character_jobs_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images/character/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Character Portrait Job
+         * @description Return an owned portrait job by id for polling after refresh or relogin.
+         */
+        get: operations["get_character_portrait_job_api_images_character_jobs__job_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1880,6 +1940,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AddEntitiesRequest
+         * @description 批量添加实体请求
+         */
+        AddEntitiesRequest: {
+            /** Items */
+            items?: components["schemas"]["RecognizedEntityWrite"][];
+            /** Characters */
+            characters?: components["schemas"]["RecognizedEntityWrite"][];
+            /** Landmarks */
+            landmarks?: components["schemas"]["RecognizedEntityWrite"][];
+        };
         /** AuthResponse */
         AuthResponse: {
             /** Token */
@@ -2270,9 +2342,10 @@ export interface components {
         GenerateSettingRequest: {
             /**
              * Setting Type
-             * @description era|age|gender|world|family|relationships|traits|wealth
+             * @description era|age|gender|world|family|relationships|traits
+             * @enum {string}
              */
-            setting_type: string;
+            setting_type: "era" | "age" | "gender" | "world" | "family" | "relationships" | "traits";
             /** Player Name */
             player_name: string;
             /** Life Vision */
@@ -2649,6 +2722,30 @@ export interface components {
             /** Keywords */
             keywords?: string[] | null;
         };
+        /**
+         * PortraitImageGenerationJobResponse
+         * @description Safe public state for a durable main-character portrait job.
+         */
+        PortraitImageGenerationJobResponse: {
+            /** Job Id */
+            job_id: number;
+            /** Game Id */
+            game_id: number;
+            /** Status */
+            status: string;
+            /** Image Id */
+            image_id?: number | null;
+            /** Attempt Count */
+            attempt_count: number;
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** PresetInfo */
         PresetInfo: {
             /** Preset Id */
@@ -2687,6 +2784,45 @@ export interface components {
             text_hash: string;
             /** Text */
             text: string;
+        };
+        /**
+         * RecognizedEntityWrite
+         * @description New entity write payload; response and stored entity models stay permissive.
+         */
+        RecognizedEntityWrite: {
+            /**
+             * Name
+             * @description 实体名称
+             */
+            name: string;
+            /**
+             * Description
+             * @description 详细描述
+             */
+            description: string;
+            /**
+             * Category
+             * @description 类别
+             * @default other
+             */
+            category: string;
+            /**
+             * Importance
+             * @description 重要程度
+             * @default normal
+             */
+            importance: string;
+            /**
+             * Appear Count
+             * @description 出现次数
+             * @default 1
+             */
+            appear_count: number;
+            /**
+             * Appear Contexts
+             * @description 出现的上下文片段
+             */
+            appear_contexts?: string[];
         };
         /**
          * RegenerateCharacterImageRequest
@@ -4794,6 +4930,101 @@ export interface operations {
             };
         };
     };
+    enqueue_character_portrait_api_images_character_generate_async_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitImageGenerationJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_latest_character_portrait_job_api_images_character_jobs_latest_get: {
+        parameters: {
+            query: {
+                game_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitImageGenerationJobResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_character_portrait_job_api_images_character_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitImageGenerationJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     batch_generate_character_images_api_images_batch_characters_post: {
         parameters: {
             query?: never;
@@ -5594,9 +5825,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["AddEntitiesRequest"];
             };
         };
         responses: {

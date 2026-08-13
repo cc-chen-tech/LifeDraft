@@ -150,7 +150,6 @@ export interface PlayerState {
   energy: number;
   mood: number;
   knowledge: number;
-  wealth: number;
   
   // Time tracking
   age: number;
@@ -307,7 +306,6 @@ export interface EffectValues {
   energy?: number;
   mood?: number;
   knowledge?: number;
-  wealth?: number;
   [key: string]: unknown;
 }
 

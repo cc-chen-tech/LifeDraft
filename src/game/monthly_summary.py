@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from src.ai.generator import EventGenerator
 from src.ai.professional_risk import apply_professional_risk_guardrail
-from src.ai.system_prompts import get_system_prompt
+from src.ai.summary_generator import SummaryGenerator
 from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,6 @@ class MonthlySummaryGenerator:
             "mood": current_state.mood - previous_state.get("mood", current_state.mood),
             "knowledge": current_state.knowledge
             - previous_state.get("knowledge", current_state.knowledge),
-            "wealth": current_state.wealth - previous_state.get("wealth", current_state.wealth),
         }
 
         # Generate AI summary
@@ -99,7 +98,7 @@ class MonthlySummaryGenerator:
             decision_texts = [d.get("choice", "") for d in decisions]
 
             if language == "zh":
-                prompt = f"""请为第{month}个月生成一段月度总结（80-150字）。
+                prompt = f"""请为第{month}个月生成一段月度总结。
 
 这个月从第{start_week}周到第{end_week}周，年龄从{previous_state.get('age', current_state.age)}岁到{current_state.age}岁。
 
@@ -107,16 +106,15 @@ class MonthlySummaryGenerator:
 - 精力：{changes['energy']:+d}
 - 情绪：{changes['mood']:+d}
 - 学识：{changes['knowledge']:+d}
-- 财富：{changes['wealth']:+,}
 
 本月决策：{len(decisions)}个
 关键决策：{', '.join(decision_texts[:3]) if decision_texts else '无'}
 
-当前状态：精力{current_state.energy}/100，情绪{current_state.mood}/100，学识{current_state.knowledge}/100，财富¥{current_state.wealth:,}
+当前状态：精力{current_state.energy}/100，情绪{current_state.mood}/100，学识{current_state.knowledge}/100
 
 请生成一段生动的月度总结，描述这个月的主要变化、重要事件和感受。"""
             else:
-                prompt = f"""Generate a summary for month {month} (80-150 words).
+                prompt = f"""Generate a summary for month {month}.
 
 This month spans from week {start_week} to week {end_week}, age from {previous_state.get('age', current_state.age)} to {current_state.age}.
 
@@ -124,20 +122,22 @@ Monthly changes:
 - Energy: {changes['energy']:+d}
 - Mood: {changes['mood']:+d}
 - Knowledge: {changes['knowledge']:+d}
-- Wealth: {changes['wealth']:+,}
 
 Decisions made: {len(decisions)}
 Key decisions: {', '.join(decision_texts[:3]) if decision_texts else 'None'}
 
-Current state: Energy {current_state.energy}/100, Mood {current_state.mood}/100, Knowledge {current_state.knowledge}/100, Wealth ¥{current_state.wealth:,}
+Current state: Energy {current_state.energy}/100, Mood {current_state.mood}/100, Knowledge {current_state.knowledge}/100
 
 Generate a vivid monthly summary describing the main changes, important events, and feelings of this month."""
 
-            summary = self.ai_generator.generate_completion(
+            summary = SummaryGenerator.for_compatibility_generator(
+                self.ai_generator
+            ).generate_display_summary(
+                summary_kind="month",
                 prompt=prompt,
-                system_prompt=get_system_prompt("narrative_summary", self.language),
+                language=language,
+                fallback=self._get_fallback_summary(month, changes, language),
                 temperature=0.7,
-                max_tokens=4096,
             )
             return apply_professional_risk_guardrail(summary, language=language)
         except Exception as e:
@@ -147,6 +147,6 @@ Generate a vivid monthly summary describing the main changes, important events, 
     def _get_fallback_summary(self, month: int, changes: Dict[str, int], language: str) -> str:
         """Get fallback summary."""
         if language == "zh":
-            return f"第{month}个月过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}，财富变化{changes['wealth']:+,}。"
+            return f"第{month}个月过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}。"
         else:
-            return f"Month {month} passed. Energy {changes['energy']:+d}, Mood {changes['mood']:+d}, Knowledge {changes['knowledge']:+d}, Wealth {changes['wealth']:+,}."
+            return f"Month {month} passed. Energy {changes['energy']:+d}, Mood {changes['mood']:+d}, Knowledge {changes['knowledge']:+d}."

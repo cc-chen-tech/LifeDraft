@@ -19,14 +19,15 @@ const config = {
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
     '!src/**/types.ts',
+    '!src/**/__tests__/**',
   ],
   // M-11: Coverage thresholds aligned with codecov.yml (temporarily lowered due to Phase 2-3 refactoring)
   coverageThreshold: {
     global: {
-      branches: 60,
-      functions: 60,
-      lines: 60,
-      statements: 60,
+      branches: 70,
+      functions: 70,
+      lines: 70,
+      statements: 70,
     },
   },
   transformIgnorePatterns: [

@@ -8,7 +8,8 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { ensureAuthenticated } from './helpers/auth';
+import { ensureActiveGame, ensureAuthenticated } from './helpers/auth';
+import { openPlayTools } from './helpers/play-tools';
 import { startNetworkMonitoring, waitForNetworkIdle, formatNetworkErrors } from './helpers/network-monitor';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
@@ -155,26 +156,26 @@ test.describe('Full Game Flow - Game Loop', () => {
     expect(route404).toHaveLength(0);
   });
 
-  test('5. Verify all game page API endpoints', async ({ page }) => {
+  test('5. Verify all game page API endpoints', async ({ page, context }) => {
+    await ensureActiveGame(page, context, { player_name: '历史接口测试角色' });
     const monitor = startNetworkMonitoring(page);
 
     // 访问游戏页面
     await page.goto(`${BASE_URL}/play`);
     await waitForNetworkIdle(page);
 
-    // 如果有游戏，尝试打开历史面板
-    const historyButton = page.locator('header button').first();
-    if (await historyButton.isVisible().catch(() => false)) {
-      monitor.clear();
-      await historyButton.click();
-      await page.waitForLoadState('domcontentloaded');
+    const tools = await openPlayTools(page);
+    monitor.clear();
+    await tools.getByRole('button', { name: '打开历史回顾', exact: true }).click();
 
-      const errors = monitor.get4xxErrors();
-      if (errors.length > 0) {
-        console.error('History panel errors:', formatNetworkErrors(errors));
-      }
-      expect(monitor.get404Errors()).toHaveLength(0);
+    const history = page.getByRole('dialog', { name: '历史回顾', exact: true });
+    await expect(history).toBeVisible({ timeout: 10000 });
+
+    const errors = monitor.get4xxErrors();
+    if (errors.length > 0) {
+      console.error('History panel errors:', formatNetworkErrors(errors));
     }
+    expect(monitor.get404Errors()).toHaveLength(0);
   });
 });
 
@@ -183,28 +184,30 @@ test.describe('Full Game Flow - Save and Load', () => {
     await ensureAuthenticated(page, context);
   });
 
-  test('6. Save game flow', async ({ page }) => {
+  test('6. Save game flow', async ({ page, context }) => {
+    await ensureActiveGame(page, context, { player_name: '存档接口测试角色' });
     const monitor = startNetworkMonitoring(page);
 
     // 进入游戏页面
     await page.goto(`${BASE_URL}/play`);
     await waitForNetworkIdle(page);
 
-    // 查找保存按钮
-    const saveButton = page.getByRole('button', { name: /保存|Save/i }).first();
+    const tools = await openPlayTools(page);
+    monitor.clear();
+    const saveResponsePromise = page.waitForResponse(response =>
+      /\/api\/games\/\d+\/save$/.test(response.url()) &&
+      response.request().method() === 'POST'
+    );
+    await tools.getByRole('button', { name: '保存游戏', exact: true }).click();
+    const saveResponse = await saveResponsePromise;
+    await waitForNetworkIdle(page);
 
-    if (await saveButton.isVisible().catch(() => false)) {
-      monitor.clear();
-      await saveButton.click();
-      await page.waitForResponse(resp => resp.url().includes('/api/')).catch(() => {});
-      await waitForNetworkIdle(page);
-
-      const errors = monitor.get4xxErrors();
-      if (errors.length > 0) {
-        console.error('Save game errors:', formatNetworkErrors(errors));
-      }
-      expect(monitor.get404Errors()).toHaveLength(0);
+    expect(saveResponse.ok()).toBeTruthy();
+    const errors = monitor.get4xxErrors();
+    if (errors.length > 0) {
+      console.error('Save game errors:', formatNetworkErrors(errors));
     }
+    expect(monitor.get404Errors()).toHaveLength(0);
   });
 
   test('7. Load game from saves page', async ({ page }) => {

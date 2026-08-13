@@ -16,10 +16,12 @@
     "test:e2e:ui": "playwright test --ui",
     "test:types": "tsc --noEmit --strict",
     "export:openapi": "cd .. && python3 scripts/export_openapi.py",
+    "export:input-limits": "cd .. && python3 scripts/export_input_limits.py",
     "generate:api-types": "openapi-typescript src/types/openapi-schema.json -o src/types/api-generated.d.ts",
-    "sync:api-types": "npm run export:openapi && npm run generate:api-types"
+    "sync:api-types": "npm run export:openapi && npm run export:input-limits && npm run generate:api-types"
   },
   "dependencies": {
+    "@fontsource-variable/spline-sans": "5.3.0",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@sentry/nextjs": "^10.48.0",
     "class-variance-authority": "^0.7.1",

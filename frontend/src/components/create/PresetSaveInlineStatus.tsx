@@ -1,6 +1,7 @@
 "use client";
 
 import type { PresetSaveStatus } from "@/hooks/useCharacterCreation";
+import { FeedbackNotice } from "@/components/story101";
 
 interface PresetSaveInlineStatusProps {
   status: PresetSaveStatus;
@@ -13,19 +14,12 @@ export function PresetSaveInlineStatus({
 }: PresetSaveInlineStatusProps) {
   if (!message || status === "idle") return null;
 
-  const isError = status === "error";
-
   return (
-    <p
-      role={isError ? "alert" : "status"}
-      aria-live={isError ? "assertive" : "polite"}
-      className={
-        isError
-          ? "rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          : "rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-sm text-primary"
-      }
+    <FeedbackNotice
+      tone={status === "error" ? "danger" : "info"}
+      className="p-3"
     >
-      {message}
-    </p>
+      <p>{message}</p>
+    </FeedbackNotice>
   );
 }

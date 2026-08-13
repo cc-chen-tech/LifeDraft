@@ -684,7 +684,7 @@
           "Games"
         ],
         "summary": "Update Character Settings",
-        "description": "Persist late character creation settings for an existing game.\n\nThe create flow may add generated family, relationship, trait, and wealth\nsettings after the initial game record exists. This endpoint preserves the\nmanually selected settings and merges the generated settings into the saved\nplayer state before opening story generation starts.",
+        "description": "Persist late character creation settings for an existing game.\n\nThe create flow may add generated family, relationship, and trait\nsettings after the initial game record exists. This endpoint preserves the\nmanually selected settings and merges the generated settings into the saved\nplayer state before opening story generation starts.",
         "operationId": "update_character_settings_api_games__game_id__character_settings_patch",
         "security": [
           {
@@ -998,7 +998,7 @@
           "Character"
         ],
         "summary": "Generate Setting",
-        "description": "Generate a character setting (era, age, gender, world, family, relationships, traits, wealth).",
+        "description": "Generate a character setting (era, age, gender, world, family, relationships, traits).",
         "operationId": "generate_setting_api_character_setting_post",
         "requestBody": {
           "content": {
@@ -1078,7 +1078,7 @@
           "Character"
         ],
         "summary": "Generate Attributes",
-        "description": "Generate initial character attributes (energy, mood, knowledge, wealth).",
+        "description": "Generate initial character attributes (energy, mood, knowledge).",
         "operationId": "generate_attributes_api_character_attributes_post",
         "requestBody": {
           "content": {
@@ -2317,6 +2317,157 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/images/character/generate-async": {
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Enqueue Character Portrait",
+        "description": "Queue a durable main-character portrait without holding the browser request open.",
+        "operationId": "enqueue_character_portrait_api_images_character_generate_async_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateImageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortraitImageGenerationJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/images/character/jobs/latest": {
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Get Latest Character Portrait Job",
+        "description": "Return the latest durable portrait job for the authenticated game owner.",
+        "operationId": "get_latest_character_portrait_job_api_images_character_jobs_latest_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PortraitImageGenerationJobResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Latest Character Portrait Job Api Images Character Jobs Latest Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/character/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Get Character Portrait Job",
+        "description": "Return an owned portrait job by id for polling after refresh or relogin.",
+        "operationId": "get_character_portrait_job_api_images_character_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortraitImageGenerationJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/images/batch-characters": {
@@ -3665,9 +3816,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": true,
-                "title": "Request"
+                "$ref": "#/components/schemas/AddEntitiesRequest"
               }
             }
           }
@@ -4792,6 +4941,34 @@
   },
   "components": {
     "schemas": {
+      "AddEntitiesRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecognizedEntityWrite"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "characters": {
+            "items": {
+              "$ref": "#/components/schemas/RecognizedEntityWrite"
+            },
+            "type": "array",
+            "title": "Characters"
+          },
+          "landmarks": {
+            "items": {
+              "$ref": "#/components/schemas/RecognizedEntityWrite"
+            },
+            "type": "array",
+            "title": "Landmarks"
+          }
+        },
+        "type": "object",
+        "title": "AddEntitiesRequest",
+        "description": "批量添加实体请求"
+      },
       "AuthResponse": {
         "properties": {
           "token": {
@@ -4819,7 +4996,8 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Character Settings",
-            "description": "角色设定（包含family和relationships）"
+            "description": "角色设定（包含family和relationships）",
+            "x-maxBytes": 262144
           },
           "language": {
             "type": "string",
@@ -5034,14 +5212,17 @@
           "character_settings": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Character Settings"
+            "title": "Character Settings",
+            "x-maxBytes": 262144
           },
           "player_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Player Name"
           },
           "life_vision": {
             "type": "string",
+            "maxLength": 500,
             "title": "Life Vision"
           },
           "language": {
@@ -5067,23 +5248,26 @@
         "properties": {
           "preset_name": {
             "type": "string",
-            "maxLength": 100,
+            "maxLength": 50,
             "minLength": 1,
             "title": "Preset Name"
           },
           "player_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Player Name"
           },
           "life_vision": {
             "type": "string",
+            "maxLength": 500,
             "title": "Life Vision",
             "default": ""
           },
           "character_settings": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Character Settings"
+            "title": "Character Settings",
+            "x-maxBytes": 262144
           }
         },
         "type": "object",
@@ -5098,7 +5282,8 @@
           "save_name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 50
               },
               {
                 "type": "null"
@@ -5116,6 +5301,7 @@
         "properties": {
           "custom_text": {
             "type": "string",
+            "maxLength": 500,
             "minLength": 1,
             "title": "Custom Text"
           }
@@ -5268,7 +5454,8 @@
           "character_settings": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Character Settings"
+            "title": "Character Settings",
+            "x-maxBytes": 262144
           },
           "language": {
             "type": "string",
@@ -5295,6 +5482,7 @@
           },
           "entity_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Entity Name",
             "description": "人物名/地点名/物品名"
           },
@@ -5325,7 +5513,8 @@
             "anyOf": [
               {
                 "additionalProperties": true,
-                "type": "object"
+                "type": "object",
+                "x-maxBytes": 262144
               },
               {
                 "type": "null"
@@ -5337,7 +5526,8 @@
           "feedback": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 500
               },
               {
                 "type": "null"
@@ -5365,6 +5555,7 @@
           },
           "story_text": {
             "type": "string",
+            "maxLength": 32000,
             "title": "Story Text",
             "description": "开场故事文本"
           },
@@ -5372,7 +5563,8 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Character Settings",
-            "description": "角色设定"
+            "description": "角色设定",
+            "x-maxBytes": 262144
           },
           "player_image_id": {
             "anyOf": [
@@ -5388,6 +5580,7 @@
           },
           "player_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Player Name",
             "description": "角色姓名"
           }
@@ -5405,16 +5598,19 @@
         "properties": {
           "player_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Player Name"
           },
           "life_vision": {
             "type": "string",
+            "maxLength": 500,
             "title": "Life Vision"
           },
           "previous_settings": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Previous Settings"
+            "title": "Previous Settings",
+            "x-maxBytes": 262144
           },
           "existing_people": {
             "items": {
@@ -5437,7 +5633,8 @@
           "feedback": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 500
               },
               {
                 "type": "null"
@@ -5483,6 +5680,7 @@
           },
           "story_text": {
             "type": "string",
+            "maxLength": 32000,
             "title": "Story Text",
             "description": "该轮的故事文本"
           },
@@ -5490,10 +5688,12 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Character Settings",
-            "description": "角色设定"
+            "description": "角色设定",
+            "x-maxBytes": 262144
           },
           "player_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Player Name",
             "description": "角色姓名"
           },
@@ -5553,26 +5753,39 @@
         "properties": {
           "setting_type": {
             "type": "string",
+            "enum": [
+              "era",
+              "age",
+              "gender",
+              "world",
+              "family",
+              "relationships",
+              "traits"
+            ],
             "title": "Setting Type",
-            "description": "era|age|gender|world|family|relationships|traits|wealth"
+            "description": "era|age|gender|world|family|relationships|traits"
           },
           "player_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Player Name"
           },
           "life_vision": {
             "type": "string",
+            "maxLength": 500,
             "title": "Life Vision"
           },
           "previous_settings": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Previous Settings"
+            "title": "Previous Settings",
+            "x-maxBytes": 262144
           },
           "feedback": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 500
               },
               {
                 "type": "null"
@@ -5965,6 +6178,7 @@
           },
           "story_text": {
             "type": "string",
+            "maxLength": 32000,
             "title": "Story Text"
           },
           "analysis": {
@@ -6005,6 +6219,7 @@
         "properties": {
           "story_text": {
             "type": "string",
+            "maxLength": 32000,
             "title": "Story Text"
           },
           "game_id": {
@@ -6027,7 +6242,8 @@
             "anyOf": [
               {
                 "additionalProperties": true,
-                "type": "object"
+                "type": "object",
+                "x-maxBytes": 262144
               },
               {
                 "type": "null"
@@ -6240,14 +6456,17 @@
           "character_settings": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Character Settings"
+            "title": "Character Settings",
+            "x-maxBytes": 262144
           },
           "player_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Player Name"
           },
           "life_vision": {
             "type": "string",
+            "maxLength": 500,
             "title": "Life Vision"
           },
           "language": {
@@ -6327,6 +6546,90 @@
         ],
         "title": "PlaylistUpdateRequest",
         "description": "Request body for updating a game playlist with new recommendation songs."
+      },
+      "PortraitImageGenerationJobResponse": {
+        "properties": {
+          "job_id": {
+            "type": "integer",
+            "title": "Job Id"
+          },
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Id"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "title": "Attempt Count"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "game_id",
+          "status",
+          "attempt_count"
+        ],
+        "title": "PortraitImageGenerationJobResponse",
+        "description": "Safe public state for a durable main-character portrait job."
       },
       "PresetInfo": {
         "properties": {
@@ -6439,6 +6742,7 @@
           },
           "text": {
             "type": "string",
+            "maxLength": 32000,
             "minLength": 1,
             "title": "Text"
           }
@@ -6452,10 +6756,59 @@
         ],
         "title": "ReadingContext"
       },
+      "RecognizedEntityWrite": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "title": "Name",
+            "description": "实体名称"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "详细描述"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "类别",
+            "default": "other"
+          },
+          "importance": {
+            "type": "string",
+            "title": "Importance",
+            "description": "重要程度",
+            "default": "normal"
+          },
+          "appear_count": {
+            "type": "integer",
+            "title": "Appear Count",
+            "description": "出现次数",
+            "default": 1
+          },
+          "appear_contexts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Appear Contexts",
+            "description": "出现的上下文片段"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "RecognizedEntityWrite",
+        "description": "New entity write payload; response and stored entity models stay permissive."
+      },
       "RegenerateCharacterImageRequest": {
         "properties": {
           "feedback": {
             "type": "string",
+            "maxLength": 500,
             "title": "Feedback",
             "description": "用户修改意见，例如：头发变长一点、换一件蓝色衣服"
           },
@@ -6508,7 +6861,8 @@
           "feedback": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 500
               },
               {
                 "type": "null"
@@ -6541,6 +6895,7 @@
         "properties": {
           "feedback": {
             "type": "string",
+            "maxLength": 500,
             "title": "Feedback",
             "description": "用户修改意见"
           }
@@ -6560,6 +6915,7 @@
           },
           "story_text": {
             "type": "string",
+            "maxLength": 32000,
             "title": "Story Text",
             "description": "开场故事文本"
           },
@@ -6567,7 +6923,8 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Character Settings",
-            "description": "角色设定"
+            "description": "角色设定",
+            "x-maxBytes": 262144
           },
           "player_image_id": {
             "anyOf": [
@@ -6583,11 +6940,13 @@
           },
           "player_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Player Name",
             "description": "角色姓名"
           },
           "user_prompt": {
             "type": "string",
+            "maxLength": 500,
             "title": "User Prompt",
             "description": "用户自定义提示词/修改意见"
           },
@@ -6621,6 +6980,7 @@
           },
           "story_text": {
             "type": "string",
+            "maxLength": 32000,
             "title": "Story Text",
             "description": "该轮的故事文本"
           },
@@ -6628,15 +6988,18 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Character Settings",
-            "description": "角色设定"
+            "description": "角色设定",
+            "x-maxBytes": 262144
           },
           "player_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Player Name",
             "description": "角色姓名"
           },
           "user_prompt": {
             "type": "string",
+            "maxLength": 500,
             "title": "User Prompt",
             "description": "用户自定义提示词/修改意见"
           },
@@ -6723,16 +7086,19 @@
         "properties": {
           "player_name": {
             "type": "string",
+            "maxLength": 50,
             "title": "Player Name"
           },
           "life_vision": {
             "type": "string",
+            "maxLength": 500,
             "title": "Life Vision"
           },
           "previous_settings": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Previous Settings"
+            "title": "Previous Settings",
+            "x-maxBytes": 262144
           },
           "key_people": {
             "items": {
@@ -6759,12 +7125,14 @@
         "properties": {
           "full_story": {
             "type": "string",
+            "maxLength": 32000,
             "title": "Full Story"
           },
           "segment_to_replace": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 12000
               },
               {
                 "type": "null"
@@ -6774,6 +7142,7 @@
           },
           "user_instruction": {
             "type": "string",
+            "maxLength": 2000,
             "title": "User Instruction"
           },
           "language": {
@@ -7134,6 +7503,7 @@
         "properties": {
           "message": {
             "type": "string",
+            "maxLength": 2000,
             "minLength": 1,
             "title": "Message"
           },
@@ -7301,12 +7671,14 @@
             "additionalProperties": true,
             "type": "object",
             "minProperties": 1,
-            "title": "Character Settings"
+            "title": "Character Settings",
+            "x-maxBytes": 262144
           },
           "player_name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 50
               },
               {
                 "type": "null"
@@ -7317,7 +7689,8 @@
           "life_vision": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 500
               },
               {
                 "type": "null"
@@ -7642,7 +8015,8 @@
           "sample_name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 50
               },
               {
                 "type": "null"
@@ -7661,5 +8035,17 @@
         "scheme": "bearer"
       }
     }
+  },
+  "x-input-limits": {
+    "name": 50,
+    "lifeVision": 500,
+    "feedback": 500,
+    "customAction": 500,
+    "storyDialogue": 2000,
+    "rewriteInstruction": 2000,
+    "replacementSegment": 12000,
+    "fullStory": 32000,
+    "voiceText": 32000,
+    "characterSettingsBytes": 262144
   }
 }

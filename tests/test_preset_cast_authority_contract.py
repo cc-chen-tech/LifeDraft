@@ -294,6 +294,32 @@ def test_quick_validator_uses_relationships_list_for_required_cast() -> None:
     assert any("没有使用预设关键人物" in issue for issue in result.issues)
 
 
+def test_quick_validator_rejects_unapproved_role_alias_with_single_preset_person() -> None:
+    """A single configured person must not permit a new named relative to lead a scene."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = {
+        "relationships": {
+            "key_people": [
+                {"name": "王天成", "role": "创业伙伴", "relationship": "伙伴"},
+            ]
+        }
+    }
+
+    result = quick_validate_story(
+        story_text=(
+            "周叔端着生煎走进咖啡馆，催林澈立刻放下访谈计划。"
+            "王天成只能坐在一旁，整件事都由周叔安排。"
+        ),
+        character_settings=settings,
+        available_people=["王天成"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外命名角色" in issue for issue in result.issues)
+
+
 def test_quick_validator_rejects_partial_cast_when_new_named_network_dominates() -> None:
     """Two preset names are not enough if the scene is still led by a new cast."""
     from config.prompts._helpers import _collect_available_people
@@ -337,6 +363,80 @@ def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
     )
 
     assert result.passed
+
+
+def test_quick_validator_does_not_treat_weekend_phrase_as_invented_cast() -> None:
+    """Calendar language must not trigger the strict relationship-network guard."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然把需求复盘表递给林清，提醒她先确认用户反馈。"
+            "陈晓雨陪她梳理下午的访谈记录，并约好下次一起核对方案。"
+            "周末的复盘仍由她们安排，林清决定先把今天的结论整理出来。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+
+
+def test_quick_validator_ignores_surname_shaped_sentence_openers() -> None:
+    """Normal prose must not turn sentence-opening adverbs into invented cast."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在会议室复盘项目。"
+            "周围的灯光暗下来，于是陈越把预算表递给两人。"
+            "安静地等了一会儿后，她们确认了下一步的测算安排。"
+        ),
+        character_settings=settings,
+        available_people=["陈越", "陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+
+
+def test_quick_validator_ignores_protagonist_verb_phrases_outside_relationship_cast() -> None:
+    """The protagonist may be absent from relationship people without becoming fake cast."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然在晨会前提醒团队核对风控模块的测试结果。"
+            "陈越走进会议室。陈越脱下大衣。陈越抬头看向投影屏幕。"
+            "她把昨晚整理的风险清单递给陆昊然，等待他的意见。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+
+
+def test_quick_validator_ignores_protagonist_action_phrases_seen_in_live_retry() -> None:
+    """Action prose must not make the protagonist look like several invented people."""
+    from src.ai.quick_validator import QuickValidator
+
+    validator = QuickValidator()
+    candidates = validator._extract_likely_chinese_person_names(
+        text=(
+            "陈越也没有立刻回答。陈越收起手机，陈越坦然看向林悦。"
+            "她随后陈越放下咖啡，陈越问赵思琪是否愿意一起梳理路线。"
+            "陈越伸出手，等待两人的回应。"
+        ),
+        allowed_names=["林悦", "赵思琪"],
+    )
+
+    assert candidates == []
 
 
 def test_quick_validator_rejects_single_new_role_substitute_for_preset_network() -> None:
@@ -703,6 +803,7 @@ def test_scheduled_event_generation_retries_when_story_replaces_preset_cast() ->
     )
 
     assert len(client.calls) == 2
+    assert all(call["thinking"] is False for call in client.calls)
     assert event is not None
     assert "没有使用预设关键人物" in client.calls[1]["user_prompt"]
     assert "陆昊然" in event.event_description

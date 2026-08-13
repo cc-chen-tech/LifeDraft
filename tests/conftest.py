@@ -42,11 +42,11 @@ def _patched_iter_lines(self):
 httpx.Response.iter_lines = _patched_iter_lines
 
 
-@pytest.fixture(autouse=True)
-def _disable_constraint_harness_in_tests(monkeypatch):
-    """Keep harness behavior deterministic for regular unit tests."""
+@pytest.fixture
+def constraint_harness_disabled(monkeypatch):
+    """Explicitly select the non-Harness production configuration."""
     monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "false")
-    yield
+
 
 # ==================== FastAPI Client Fixtures ====================
 
@@ -652,7 +652,6 @@ def sample_player_state_with_creative():
     state.energy = 80
     state.mood = 70
     state.knowledge = 60
-    state.wealth = 5000
     state.age = 28
     state.week = 12
     state.decision_history = [

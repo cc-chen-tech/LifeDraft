@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { ensureAuthenticated, API_URL } from "./helpers/auth";
+import { openPlayTools } from "./helpers/play-tools";
 
 // 通过 API 直接创建测试游戏
 async function createTestGame(
@@ -42,23 +43,17 @@ test.describe("叙事质量持久化", () => {
     await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
-    // 打开齿轮按钮菜单
-    const settingsButton = page.locator("button[title='设置']").first();
-    await expect(settingsButton).toBeVisible({ timeout: 20000 });
-    await settingsButton.click();
-
-    // 展开叙事质量子菜单
-    await page.locator("text=叙事质量").first().hover();
-    await page.waitForTimeout(300);
+    // 从当前视口的真实入口打开统一游戏工具面板
+    const toolsDialog = await openPlayTools(page);
 
     // 选择大师
-    const masterItem = page.locator("[role='menuitemradio']:has-text('大师')");
+    const masterItem = toolsDialog.getByRole("radio", { name: "大师", exact: true });
     const settingsUpdate = page.waitForResponse((response) =>
       response.url().includes(`/api/games/${gameId}/settings`) &&
       response.request().method() === "PATCH" &&
       response.ok()
     );
-    await masterItem.click();
+    await masterItem.check();
     await settingsUpdate;
 
     // Selecting a radio item closes the Radix menu. Verify the durable API
@@ -75,12 +70,13 @@ test.describe("叙事质量持久化", () => {
     await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
-    // 再次打开菜单验证
-    await settingsButton.click();
-    await page.locator("text=叙事质量").first().hover();
-    await page.waitForTimeout(300);
+    // 再次打开工具面板验证
+    const toolsDialogAfterReload = await openPlayTools(page);
 
-    const masterItemAfterReload = page.locator("[role='menuitemradio']:has-text('大师')");
-    await expect(masterItemAfterReload).toHaveAttribute("data-state", "checked");
+    const masterItemAfterReload = toolsDialogAfterReload.getByRole("radio", {
+      name: "大师",
+      exact: true,
+    });
+    await expect(masterItemAfterReload).toBeChecked();
   });
 });

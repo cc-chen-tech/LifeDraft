@@ -1,11 +1,25 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-
 /**
  * E2E Test: Character Creation Flow
  * Tests for the character creation wizard including all steps and navigation
  */
 import { test, expect } from '@playwright/test';
-import { waitForPageReady, waitForNetworkIdle } from './helpers/wait-helpers';
+import {
+  FRONTEND_ORIGIN,
+  installEraGenerationFixture,
+  type CharacterSettingRequest,
+} from './helpers/character-setting-fixture';
+
+function expectSingleEraRequest(requests: CharacterSettingRequest[]) {
+  expect(requests).toEqual([
+    {
+      method: 'POST',
+      origin: FRONTEND_ORIGIN,
+      path: '/api/character/setting',
+      search: '',
+      settingType: 'era',
+    },
+  ]);
+}
 
 test.describe('Character Creation - Page Load', () => {
   test.beforeEach(async ({ page }) => {
@@ -17,12 +31,17 @@ test.describe('Character Creation - Page Load', () => {
   });
 
   test('should have step indicator showing progress', async ({ page }) => {
-    // Step indicator dots
-    const stepDots = page.locator('button[class*="rounded-full"]');
-    const dotCount = await stepDots.count();
-    
-    // Should have multiple steps (era, age, gender, world, portrait = 5)
-    expect(dotCount).toBeGreaterThanOrEqual(3);
+    const stepNavigation = page.getByRole('navigation', { name: '角色创建步骤' });
+    const stepNames = ['时代背景', '年龄阶段', '性别', '世界观', '人物形象'];
+
+    await expect(stepNavigation.getByRole('button')).toHaveCount(5);
+    for (const name of stepNames) {
+      await expect(stepNavigation.getByRole('button', { name: `前往${name}` })).toBeVisible();
+    }
+    await expect(stepNavigation.getByRole('button', { name: '前往时代背景' })).toHaveAttribute(
+      'aria-current',
+      'step',
+    );
   });
 
   test('should show step count in header', async ({ page }) => {
@@ -46,11 +65,14 @@ test.describe('Character Creation - Player Name Input', () => {
   });
 
   test('should allow entering player name', async ({ page }) => {
+    const requests = await installEraGenerationFixture(page);
     await page.goto('/create');
-    
+
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
     await expect(nameInput).toHaveValue('测试角色');
+    await expect(page.getByText('刚刚生成')).toBeVisible();
+    expectSingleEraRequest(requests);
   });
 
   test('should have optional life vision textarea', async ({ page }) => {
@@ -64,10 +86,8 @@ test.describe('Character Creation - Player Name Input', () => {
 test.describe('Character Creation - Step Content', () => {
   test('should display era step initially', async ({ page }) => {
     await page.goto('/create');
-    
-    // Era step should show era label
-    const eraLabel = page.locator('text=/时代背景/');
-    await expect(eraLabel).toBeVisible();
+
+    await expect(page.getByRole('heading', { name: '时代背景', level: 2 })).toBeVisible();
   });
 
   test('should show step description', async ({ page }) => {
@@ -88,41 +108,35 @@ test.describe('Character Creation - Step Content', () => {
 
   test('should disable next button when name is empty', async ({ page }) => {
     await page.goto('/create');
-    
-    // Use .first() to avoid matching Next.js Dev Tools button
-    const nextButton = page.getByRole('button', { name: /下一步|Next/i }).first();
-    
-    // Enter name to enable
+
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
-    await nameInput.fill('测试角色');
-    
-    // Wait for auto-generation to potentially start
-    await page.waitForLoadState('domcontentloaded');
+    const nextButton = page.getByRole('button', { name: '下一步' });
+    await expect(nameInput).toHaveValue('');
+    await expect(nextButton).toBeDisabled();
+    await expect(page.getByText('请先输入角色姓名')).toBeVisible();
   });
 });
 
 test.describe('Character Creation - Navigation', () => {
   test('should navigate to next step after filling name', async ({ page }) => {
+    const requests = await installEraGenerationFixture(page);
     await page.goto('/create');
-    
-    // Enter name
+
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
-    
-    // Wait for generation
-    await page.waitForLoadState('domcontentloaded');
-    
-    // Use .first() to avoid matching Next.js Dev Tools button
-    const nextButton = page.getByRole('button', { name: /下一步|Next/i }).first();
-    
-    // Click next if enabled
-    if (await nextButton.isEnabled()) {
-      await nextButton.click();
-      await page.waitForLoadState('domcontentloaded');
-      
-      // Step indicator should show progress - check if still on create page
-      await expect(page).toHaveURL('/create');
-    }
+
+    await expect(page.getByText('刚刚生成')).toBeVisible();
+    expectSingleEraRequest(requests);
+    const nextButton = page.getByRole('button', { name: '下一步' });
+    await expect(nextButton).toBeEnabled();
+    await nextButton.click();
+
+    const stepNavigation = page.getByRole('navigation', { name: '角色创建步骤' });
+    await expect(stepNavigation.getByRole('button', { name: '前往年龄阶段' })).toHaveAttribute(
+      'aria-current',
+      'step',
+    );
+    await expect(page).toHaveURL('/create');
   });
 
   test('should return to home when clicking return button', async ({ page }) => {
@@ -134,88 +148,185 @@ test.describe('Character Creation - Navigation', () => {
     await expect(page).toHaveURL('/');
   });
 
-  test('should allow clicking on previous step dots', async ({ page }) => {
+  test('should return through a previous named step', async ({ page }) => {
+    const requests = await installEraGenerationFixture(page);
     await page.goto('/create');
-    
-    // Enter name and proceed to step 2
+
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
-    await page.waitForLoadState('domcontentloaded');
-    
-    const nextButton = page.getByRole('button', { name: /下一步|Next/i }).first();
-    if (await nextButton.isEnabled()) {
-      await nextButton.click();
-      await page.waitForLoadState('domcontentloaded');
-      
-      // Now click on first dot to go back
-      const stepDots = page.locator('button[class*="rounded-full"]');
-      if (await stepDots.count() > 0) {
-        await stepDots.first().click();
-      }
-    }
+    await expect(page.getByText('刚刚生成')).toBeVisible();
+    expectSingleEraRequest(requests);
+
+    await page.getByRole('button', { name: '下一步' }).click();
+    const stepNavigation = page.getByRole('navigation', { name: '角色创建步骤' });
+    const ageStep = stepNavigation.getByRole('button', { name: '前往年龄阶段' });
+    const eraStep = stepNavigation.getByRole('button', { name: '前往时代背景' });
+    await expect(ageStep).toHaveAttribute('aria-current', 'step');
+    await expect(eraStep).toBeEnabled();
+
+    await eraStep.click();
+    await expect(eraStep).toHaveAttribute('aria-current', 'step');
+    await expect(page.getByRole('heading', { name: '时代背景', level: 2 })).toBeVisible();
   });
 });
 
 test.describe('Character Creation - Auto Generation', () => {
-  test('should show loading state during generation', async ({ page }) => {
+  test('era fixture fails closed for malformed setting requests', async ({ page }) => {
+    let escapedRequests = 0;
+    await page.route(/\/api\/character\/setting(?:\?.*)?$/, async (route) => {
+      escapedRequests += 1;
+      await route.fulfill({
+        status: 599,
+        contentType: 'application/json',
+        headers: { 'access-control-allow-origin': '*' },
+        body: JSON.stringify({ message: 'escaped fixture guard' }),
+      });
+    });
+    const requests = await installEraGenerationFixture(page, 0);
     await page.goto('/create');
-    
+
+    const alternateOrigin = FRONTEND_ORIGIN.replace('localhost', '127.0.0.1');
+    const invalidRequests = [
+      {
+        url: '/api/character/setting?unexpected=1',
+        method: 'POST',
+        body: { setting_type: 'era' },
+        simpleCrossOrigin: false,
+      },
+      {
+        url: '/api/character/setting',
+        method: 'GET',
+        body: null,
+        simpleCrossOrigin: false,
+      },
+      {
+        url: '/api/character/setting',
+        method: 'POST',
+        body: { setting_type: 'age' },
+        simpleCrossOrigin: false,
+      },
+      {
+        url: `${alternateOrigin}/api/character/setting`,
+        method: 'POST',
+        body: { setting_type: 'era' },
+        simpleCrossOrigin: true,
+      },
+    ] as const;
+
+    const statuses: number[] = [];
+    for (const invalidRequest of invalidRequests) {
+      statuses.push(
+        await page.evaluate(async ({ url, method, body, simpleCrossOrigin }) => {
+          try {
+            const response = await fetch(url, {
+              method,
+              headers: body
+                ? {
+                    'content-type': simpleCrossOrigin
+                      ? 'text/plain'
+                      : 'application/json',
+                  }
+                : undefined,
+              body: body ? JSON.stringify(body) : undefined,
+            });
+            return response.status;
+          } catch {
+            return -1;
+          }
+        }, invalidRequest),
+      );
+    }
+
+    expect(statuses).toEqual([418, 418, 418, 418]);
+    expect(escapedRequests).toBe(0);
+    expect(requests).toEqual([
+      {
+        method: 'POST',
+        origin: FRONTEND_ORIGIN,
+        path: '/api/character/setting',
+        search: '?unexpected=1',
+        settingType: 'era',
+      },
+      {
+        method: 'GET',
+        origin: FRONTEND_ORIGIN,
+        path: '/api/character/setting',
+        search: '',
+        settingType: '',
+      },
+      {
+        method: 'POST',
+        origin: FRONTEND_ORIGIN,
+        path: '/api/character/setting',
+        search: '',
+        settingType: 'age',
+      },
+      {
+        method: 'POST',
+        origin: alternateOrigin,
+        path: '/api/character/setting',
+        search: '',
+        settingType: 'era',
+      },
+    ]);
+  });
+
+  test('should show loading state during generation', async ({ page }) => {
+    const requests = await installEraGenerationFixture(page, 500);
+    await page.goto('/create');
+
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
-    
-    // Look for loading indicator
-    await page.waitForLoadState('domcontentloaded');
-    
-    const loadingIndicator = page.locator('text=/生成中|AI正在生成/');
-    const spinner = page.locator('[class*="animate-spin"]');
-    
-    // Either loading indicator or generated content should appear
+
+    const loading = page.getByRole('status');
+    await expect(
+      loading.getByRole('heading', { name: '角色设定，正在成形' }),
+    ).toBeVisible();
+    await expect(loading).toContainText('时代背景');
+    await expect(page.getByText('刚刚生成')).toBeVisible();
+    expectSingleEraRequest(requests);
   });
 
   test('should display generated content after loading', async ({ page }) => {
-    test.setTimeout(120000);
+    const requests = await installEraGenerationFixture(page);
     await page.goto('/create');
-    
+
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
 
-    await expect
-      .poll(
-        async () => {
-          const isGenerating = await page.getByText(/AI正在生成|生成中/).isVisible().catch(() => false);
-          const canAdvance = await page.getByRole('button', { name: /下一步|Next/i }).isEnabled().catch(() => false);
-          const hasFeedback = await page.getByPlaceholder(/不满意|你的想法/i).isVisible().catch(() => false);
-          const hasError = await page.getByText(/生成失败|请重试/i).isVisible().catch(() => false);
-          return !isGenerating && (canAdvance || hasFeedback || hasError);
-        },
-        {
-          message: 'character generation should finish with generated content or a visible retry state',
-          timeout: 90000,
-        },
-      )
-      .toBe(true);
+    await expect(page.getByText('刚刚生成')).toBeVisible();
+    await expect(page.getByText('2026年')).toBeVisible();
+    await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
+    expectSingleEraRequest(requests);
   });
 
   test('should have regenerate button for generated content', async ({ page }) => {
+    const requests = await installEraGenerationFixture(page);
     await page.goto('/create');
-    
+
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
-    await page.waitForLoadState('domcontentloaded');
-    
-    // Regenerate button (refresh icon)
-    const regenerateButton = page.getByRole('button').filter({ has: page.locator('svg') });
+    await expect(page.getByText('刚刚生成')).toBeVisible();
+    expectSingleEraRequest(requests);
+
+    const regenerateButton = page.getByRole('button', { name: '重新生成时代背景' });
+    await expect(regenerateButton).toBeVisible();
+    await expect(regenerateButton).toBeEnabled();
   });
 
   test('should have feedback input for regeneration', async ({ page }) => {
+    const requests = await installEraGenerationFixture(page);
     await page.goto('/create');
-    
+
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
-    await page.waitForLoadState('domcontentloaded');
-    
-    // Feedback input
-    const feedbackInput = page.getByPlaceholder(/不满意|你的想法/i);
+    await expect(page.getByText('刚刚生成')).toBeVisible();
+    expectSingleEraRequest(requests);
+
+    const feedbackInput = page.getByRole('textbox', { name: '时代背景修改意见' });
+    await expect(feedbackInput).toBeEditable();
+    await feedbackInput.fill('保留城市背景，增加更多生活细节');
+    await expect(feedbackInput).toHaveValue('保留城市背景，增加更多生活细节');
   });
 });
 
@@ -259,17 +370,25 @@ test.describe('Character Creation - Preset Sheet', () => {
 
 test.describe('Character Creation - Error Handling', () => {
   test('should show error toast on generation failure', async ({ page }) => {
-    // Simulate network error
-    await page.route('**/api/character/**', route => route.abort('failed'));
-    
+    let interceptedRequests = 0;
+    await page.route('**/api/character/**', async (route) => {
+      interceptedRequests += 1;
+      await route.fulfill({
+        status: 422,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'deterministic character generation failure' }),
+      });
+    });
+
     await page.goto('/create');
-    
+
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
-    
-    await page.waitForLoadState('domcontentloaded');
-    
-    // Error toast should appear
-    const errorToast = page.locator('text=/失败|错误|重试/');
+
+    const errorToast = page
+      .locator('[data-slot="feedback-notice"]')
+      .getByRole('alert');
+    await expect(errorToast).toContainText('生成失败，请重试');
+    expect(interceptedRequests).toBe(1);
   });
 });

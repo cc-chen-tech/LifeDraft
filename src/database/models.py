@@ -250,6 +250,40 @@ class Image(Base):
     )
 
 
+class PortraitImageGenerationJob(Base):
+    """Durable background job for a game's main-character portrait."""
+
+    __tablename__ = "portrait_image_generation_jobs"
+
+    job_id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False, index=True)
+    entity_key = Column(String(100), nullable=False, default="player_main")
+    request_json = Column(JSON, nullable=False)
+    image_id = Column(Integer, ForeignKey("images.image_id"), nullable=True)
+    status = Column(String(20), nullable=False, index=True, default="queued")
+    attempt_count = Column(Integer, nullable=False, default=0)
+    error_code = Column(String(80), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    game = relationship("Game")
+    user = relationship("User")
+    image = relationship("Image")
+
+    __table_args__ = (
+        Index(
+            "ix_portrait_image_jobs_active_lookup",
+            "game_id",
+            "user_id",
+            "entity_key",
+            "status",
+            "created_at",
+        ),
+    )
+
+
 class SceneImage(Base):
     """Scene image model - 场景插图"""
 

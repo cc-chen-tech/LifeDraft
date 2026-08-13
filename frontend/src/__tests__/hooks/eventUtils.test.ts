@@ -251,7 +251,7 @@ describe('eventUtils', () => {
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('options');
     });
 
-    it('does not let a delayed completion phase override a newly started generation', () => {
+    it('does not let a delayed completion phase override a newer run even when it is no longer generating', () => {
       setupDefaultState({
         storyText: '同一段稳定的前端故事文本，complete 只需要稍后切换到选项阶段。',
         currentEvent: {
@@ -260,11 +260,13 @@ describe('eventUtils', () => {
         },
       });
 
-      const localHandlers: EventHandlers = {
+      let isCurrentRun = true;
+      const localHandlers = {
         ...mockHandlers,
         setPhase: jest.fn(),
         generatingRef: { current: true },
-      };
+        isCurrentRun: () => isCurrentRun,
+      } as EventHandlers & { isCurrentRun: () => boolean };
 
       handleEventComplete({
         event_description: '同一段稳定的前端故事文本，complete 只需要稍后切换到选项阶段。',
@@ -272,13 +274,74 @@ describe('eventUtils', () => {
       } as Record<string, unknown>, localHandlers);
 
       expect(localHandlers.generatingRef.current).toBe(false);
-      localHandlers.generatingRef.current = true;
+      isCurrentRun = false;
+      localHandlers.generatingRef.current = false;
 
       act(() => {
         jest.advanceTimersByTime(600);
       });
 
       expect(localHandlers.setPhase).not.toHaveBeenCalledWith('options');
+    });
+
+    it('stops a remaining-text continuation as soon as its run becomes stale', () => {
+      const frontendStory = 'This is a sufficiently long frontend prefix';
+      const backendStory = `${frontendStory}，但后端还有一段必须渐进补齐的剩余文字。`;
+      setupDefaultState({ storyText: frontendStory, currentEvent: null });
+      let isCurrentRun = true;
+      const localHandlers = {
+        ...mockHandlers,
+        appendStoryText: jest.fn(),
+        setCurrentEvent: jest.fn(),
+        setPhase: jest.fn(),
+        generatingRef: { current: true },
+        isCurrentRun: () => isCurrentRun,
+      } as EventHandlers & { isCurrentRun: () => boolean };
+
+      handleEventComplete({
+        event_description: backendStory,
+        options: [{ text: '继续' }],
+      }, localHandlers);
+
+      expect(localHandlers.appendStoryText).toHaveBeenCalledTimes(1);
+      isCurrentRun = false;
+      localHandlers.generatingRef.current = false;
+      act(() => { jest.advanceTimersByTime(200); });
+
+      expect(localHandlers.appendStoryText).toHaveBeenCalledTimes(1);
+      expect(localHandlers.setCurrentEvent).not.toHaveBeenCalledWith({
+        story: backendStory,
+        options: [{ text: '继续' }],
+      });
+      expect(localHandlers.setPhase).not.toHaveBeenCalledWith('options');
+    });
+
+    it('does not leak retry ownership from an older run into a current completion', () => {
+      const oldRunRetryRef = { current: false };
+      handleStatusUpdate(
+        { phase: 'retry' },
+        jest.fn(),
+        undefined,
+        () => { oldRunRetryRef.current = true; },
+      );
+      expect(oldRunRetryRef.current).toBe(true);
+      const frontendStory = 'A'.repeat(150);
+      setupDefaultState({ storyText: frontendStory, currentEvent: null });
+      const localHandlers = {
+        ...mockHandlers,
+        hadRetryRef: { current: false },
+      } as EventHandlers & { hadRetryRef: React.MutableRefObject<boolean> };
+
+      handleEventComplete({
+        event_description: '旧 run 留下的摘要'.repeat(8),
+        options: [{ text: '继续' }],
+      }, localHandlers);
+
+      expect(localHandlers.setStoryText).not.toHaveBeenCalledWith('旧 run 留下的摘要'.repeat(8));
+      expect(localHandlers.setCurrentEvent).toHaveBeenCalledWith({
+        story: frontendStory,
+        options: [{ text: '继续' }],
+      });
     });
 
     it('does not replace long accumulated story with short retry fallback unless required', () => {
@@ -313,11 +376,13 @@ describe('eventUtils', () => {
       expect(setProcessing).toHaveBeenCalledWith(true, 'retrying');
     });
 
-    it('handles retry status by clearing story', () => {
+    it('reports retry ownership to the current run without writing the store directly', () => {
       const setProcessing = jest.fn();
+      const onRetry = jest.fn();
       const setStateSpy = jest.spyOn(useGameStore, 'setState');
-      handleStatusUpdate({ phase: 'retry' }, setProcessing);
-      expect(setStateSpy).toHaveBeenCalledWith({ storyText: '' });
+      handleStatusUpdate({ phase: 'retry' }, setProcessing, undefined, onRetry);
+      expect(onRetry).toHaveBeenCalledTimes(1);
+      expect(setStateSpy).not.toHaveBeenCalled();
       expect(setProcessing).toHaveBeenCalledWith(true, 'retrying');
       setStateSpy.mockRestore();
     });
@@ -436,59 +501,21 @@ describe('eventUtils', () => {
     });
   });
 
-  describe('markRetry and checkAndClearRetry', () => {
-    it('markRetry sets hadRetry flag', () => {
-      const { markRetry } = require('@/hooks/game/eventUtils');
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-      markRetry();
-      expect(consoleSpy).toHaveBeenCalledWith('[eventUtils] Retry marked, will force use backend story on complete');
-      consoleSpy.mockRestore();
-    });
-
-    it('checkAndClearRetry returns true after markRetry', () => {
-      const { markRetry, checkAndClearRetry } = require('@/hooks/game/eventUtils');
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-      markRetry();
-      const result = checkAndClearRetry();
-      expect(result).toBe(true);
-      expect(consoleSpy).toHaveBeenCalledWith('[eventUtils] Retry detected, clearing flag');
-      consoleSpy.mockRestore();
-    });
-
-    it('checkAndClearRetry returns false without markRetry', () => {
-      jest.isolateModules(() => {
-        const { checkAndClearRetry } = require('@/hooks/game/eventUtils');
-        const result = checkAndClearRetry();
-        expect(result).toBe(false);
-      });
-    });
-
-    it('checkAndClearRetry resets the flag', () => {
-      const { markRetry, checkAndClearRetry } = require('@/hooks/game/eventUtils');
-      jest.spyOn(console, 'log').mockImplementation();
-      markRetry();
-      const firstResult = checkAndClearRetry();
-      const secondResult = checkAndClearRetry();
-      expect(firstResult).toBe(true);
-      expect(secondResult).toBe(false);
-    });
-  });
-
   describe('handleEventComplete with retry', () => {
     it('uses backend story when retry was detected and frontend is short', () => {
       jest.isolateModules(() => {
         const { useGameStore } = require('@/stores/useGameStore');
         useGameStore.setState({ storyText: 'Short', currentEvent: null } as never);
 
-        const { markRetry, handleEventComplete: localHandleEventComplete } = require('@/hooks/game/eventUtils');
+        const { handleEventComplete: localHandleEventComplete } = require('@/hooks/game/eventUtils');
         jest.spyOn(console, 'log').mockImplementation();
-        markRetry();
 
         const localHandlers = {
           setStoryText: jest.fn(), setOptions: jest.fn(), setCurrentEvent: jest.fn(),
           setPhase: jest.fn(), setGameOver: jest.fn(), setRoundSummary: jest.fn(),
           setProcessing: jest.fn(), setConnectionStatus: jest.fn(), appendStoryText: jest.fn(),
           generatingRef: { current: true }, isRetryingRef: { current: false },
+          hadRetryRef: { current: true },
         };
 
         localHandleEventComplete({
@@ -506,15 +533,15 @@ describe('eventUtils', () => {
         const { useGameStore } = require('@/stores/useGameStore');
         useGameStore.setState({ storyText: 'A'.repeat(200), currentEvent: null } as never);
 
-        const { markRetry, handleEventComplete: localHandleEventComplete } = require('@/hooks/game/eventUtils');
+        const { handleEventComplete: localHandleEventComplete } = require('@/hooks/game/eventUtils');
         jest.spyOn(console, 'log').mockImplementation();
-        markRetry();
 
         const localHandlers = {
           setStoryText: jest.fn(), setOptions: jest.fn(), setCurrentEvent: jest.fn(),
           setPhase: jest.fn(), setGameOver: jest.fn(), setRoundSummary: jest.fn(),
           setProcessing: jest.fn(), setConnectionStatus: jest.fn(), appendStoryText: jest.fn(),
           generatingRef: { current: true }, isRetryingRef: { current: false },
+          hadRetryRef: { current: true },
         };
 
         localHandleEventComplete({
@@ -539,15 +566,15 @@ describe('eventUtils', () => {
         ].join('\n').repeat(10);
         useGameStore.setState({ storyText: streamedStory, currentEvent: null } as never);
 
-        const { markRetry, handleEventComplete: localHandleEventComplete } = require('@/hooks/game/eventUtils');
+        const { handleEventComplete: localHandleEventComplete } = require('@/hooks/game/eventUtils');
         jest.spyOn(console, 'log').mockImplementation();
-        markRetry();
 
         const localHandlers = {
           setStoryText: jest.fn(), setOptions: jest.fn(), setCurrentEvent: jest.fn(),
           setPhase: jest.fn(), setGameOver: jest.fn(), setRoundSummary: jest.fn(),
           setProcessing: jest.fn(), setConnectionStatus: jest.fn(), appendStoryText: jest.fn(),
           generatingRef: { current: true }, isRetryingRef: { current: false },
+          hadRetryRef: { current: true },
         };
         const options = [{ text: '细读合作条款' }, { text: '请伙伴一起把关' }, { text: '先锁定关键风险' }];
         const shortSummary = [

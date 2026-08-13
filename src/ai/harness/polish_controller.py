@@ -5,7 +5,11 @@
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
+
+from src.ai.budgets import (GenerationBudgetError, GenerationCallTracker,
+                            NarrativeBudget)
+from src.ai.generation_budget import get_generation_budget
 
 if TYPE_CHECKING:
     from ..client import AIClient
@@ -31,6 +35,8 @@ class PolishController:
         original_prompt: str,
         sys_prompt: str,
         max_rounds: int = 2,
+        narrative_budget: Optional[NarrativeBudget] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> str:
         """
         执行多轮精修，每轮精修后重新校验，
@@ -41,12 +47,28 @@ class PolishController:
             polish_prompt = self._build_polish_prompt(
                 current_text, diagnostic_report, original_prompt
             )
-            current_text = self.client.call(
-                system_prompt=sys_prompt,
-                user_prompt=polish_prompt,
-                temperature=0.4,
-                max_tokens=8192,
-            )
+            try:
+                if generation_tracker is not None:
+                    generation_tracker.consume("prose")
+                current_text = self.client.call(
+                    system_prompt=sys_prompt,
+                    user_prompt=polish_prompt,
+                    temperature=0.4,
+                    max_tokens=(
+                        narrative_budget.max_output_tokens
+                        if narrative_budget is not None
+                        else get_generation_budget("master").max_tokens
+                    ),
+                    request_timeout=(
+                        max(0.001, generation_tracker.remaining_seconds)
+                        if generation_tracker is not None
+                        else None
+                    ),
+                    generation_tracker=generation_tracker,
+                )
+            except GenerationBudgetError as exc:
+                logger.warning("Polish stopped by original request budget: %s", exc)
+                break
             logger.info(f"Polish round {round_idx + 1}/{max_rounds} completed")
         return current_text
 

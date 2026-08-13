@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 from config.prompts._helpers import _build_time_context, _format_people_names
+from src.utils.financial_narrative import sanitize_authoritative_fact_records
 
 
 def _build_weekly_summary_time_guard(
@@ -193,10 +194,11 @@ def get_story_compression_prompt(
 
     # Build established facts context
     facts_context = ""
-    if established_facts:
+    safe_established_facts = sanitize_authoritative_fact_records(established_facts)
+    if safe_established_facts:
         if language == "zh":
             lines = ["\n【当前已建立的世界事实】"]
-            for f in established_facts:
+            for f in safe_established_facts:
                 cat = {"location": "地点", "role": "角色", "situation": "事务"}.get(
                     f.get("category", ""), "事实"
                 )
@@ -204,7 +206,7 @@ def get_story_compression_prompt(
             facts_context = "\n".join(lines)
         else:
             lines = ["\n[Current Established Facts]"]
-            for f in established_facts:
+            for f in safe_established_facts:
                 cat = {
                     "location": "Location",
                     "role": "Role",
@@ -972,7 +974,7 @@ Effects: {_format_effects(r.get('effects', {}), language)}
 【输出JSON格式】
 {{
     "summary": "本周总结文本...",
-    "bonus_effects": {{"energy": 0, "mood": 0, "knowledge": 0, "wealth": 0}}
+    "bonus_effects": {{"energy": 0, "mood": 0, "knowledge": 0}}
 }}
 
 【加成规则】
@@ -996,7 +998,7 @@ Please generate:
 [Output JSON Format]
 {{
     "summary": "Weekly summary text...",
-    "bonus_effects": {{"energy": 0, "mood": 0, "knowledge": 0, "wealth": 0}}
+    "bonus_effects": {{"energy": 0, "mood": 0, "knowledge": 0}}
 }}
 
 [Bonus Rules]
@@ -1027,16 +1029,15 @@ def _format_effects(effects: Dict[str, Any], language: str) -> str:
 
     parts = []
     labels = {
-        "zh": {"energy": "精力", "mood": "情绪", "knowledge": "学识", "wealth": "财富"},
+        "zh": {"energy": "精力", "mood": "情绪", "knowledge": "学识"},
         "en": {
             "energy": "Energy",
             "mood": "Mood",
             "knowledge": "Knowledge",
-            "wealth": "Wealth",
         },
     }
 
-    for key in ["energy", "mood", "knowledge", "wealth"]:
+    for key in ["energy", "mood", "knowledge"]:
         val = effects.get(key, 0)
         if val != 0:
             label = labels.get(language, labels["en"]).get(key, key)

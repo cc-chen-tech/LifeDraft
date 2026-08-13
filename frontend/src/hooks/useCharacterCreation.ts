@@ -7,6 +7,8 @@ import { useUIStore } from "@/stores/useUIStore";
 import { useImageStore } from "@/stores/useImageStore";
 import type { CharacterSettings } from "@/lib/types";
 import api from "@/lib/api";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit, unicodeCharacterLength } from "@/lib/inputLimits";
 
 const STEP_LABELS: Record<string, string> = {
   era: "时代背景",
@@ -17,7 +19,6 @@ const STEP_LABELS: Record<string, string> = {
   family: "家庭背景",
   relationships: "人际关系",
   traits: "性格特征",
-  wealth: "财富状况",
 };
 
 const STEP_DESCRIPTIONS: Record<string, string> = {
@@ -29,7 +30,6 @@ const STEP_DESCRIPTIONS: Record<string, string> = {
   family: "AI将为你生成家庭背景",
   relationships: "AI将为你创造关键人物关系",
   traits: "AI将基于你的设定生成性格特征",
-  wealth: "AI将确定你的初始财富水平",
 };
 
 type RelationshipPerson = Record<string, unknown> & {
@@ -136,6 +136,7 @@ export interface UseCharacterCreationReturn {
     characterSettings: CharacterSettings,
     feedback?: string
   ) => Promise<void>;
+  refreshPortraitImageJob: (gameId: number) => Promise<void>;
   regeneratePlayerImage: (feedback: string) => Promise<void>;
   regenerateFreshPlayerImage: () => Promise<void>;
   
@@ -161,7 +162,6 @@ export interface UseCharacterCreationReturn {
   autoGenPhase: "idle" | "generating" | "done";
   setAutoGenPhase: (phase: "idle" | "generating" | "done") => void;
   autoGenLabel: string;
-  autoGenProgress: string;
   showDetails: boolean;
   setShowDetails: (show: boolean) => void;
   isBackgroundGenerating: boolean;
@@ -218,6 +218,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     imageFeedback,
     setSelectedImageIndex,
     generatePlayerImage,
+    refreshPortraitImageJob,
     regeneratePlayerImage,
     regenerateFreshPlayerImage,
     setImageFeedback,
@@ -250,7 +251,6 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     allAutoSettingsPresent ? "done" : "idle"
   );
   const [autoGenLabel, setAutoGenLabel] = useState("");
-  const [autoGenProgress, setAutoGenProgress] = useState("");
   const [showDetails, setShowDetails] = useState(false);
 
   const autoGenTriggeredRef = useRef<Record<string, boolean>>({});
@@ -263,7 +263,10 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   const isFirstStep = creationStep === 0;
   const isLastStep = creationStep === CREATION_STEPS.length - 1;
   const isPortraitStep = currentStepKey === "portrait";
-  const hasBasicInfo = playerName.trim().length > 0;
+  const hasBasicInfo =
+    playerName.trim().length > 0 &&
+    isWithinInputLimit(playerName, INPUT_LIMITS.name) &&
+    isWithinInputLimit(lifeVision, INPUT_LIMITS.lifeVision);
 
   const invalidateEraGeneration = useCallback(() => {
     basicInfoVersionRef.current += 1;
@@ -317,6 +320,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       } catch (err) {
         lastError = err;
         console.warn(`Attempt ${attempt}/${maxRetries} failed:`, err);
+        if ((err as { status?: number } | null)?.status === 422) {
+          throw err;
+        }
         if (attempt < maxRetries) {
           await new Promise((r) => setTimeout(r, delayMs * attempt));
         }
@@ -327,7 +333,10 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
 
   const handleGenerate = useCallback(
     async (fb?: string) => {
-      if (!hasBasicInfo) return;
+      if (
+        !hasBasicInfo ||
+        (fb != null && !isWithinInputLimit(fb, INPUT_LIMITS.feedback))
+      ) return;
       const requestInput = { currentStepKey, playerName, lifeVision };
       const requestBasicInfoVersion = basicInfoVersionRef.current;
       setIsGenerating(true);
@@ -416,6 +425,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     if (
       isPortraitStep &&
       gameId &&
+      hasBasicInfo &&
       playerImages.length === 0 &&
       !isGeneratingImage &&
       !imageGenerationError &&
@@ -436,10 +446,15 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     generatePlayerImage,
     playerName,
     characterSettings,
+    hasBasicInfo,
   ]);
 
   // Background generation for auto-advance steps
   const runAutoGeneration = useCallback(async () => {
+    if (!hasBasicInfo) {
+      showToast("error", "角色姓名或人生愿景超过允许长度，请修改后重试");
+      return;
+    }
     console.log("[runAutoGeneration] Starting background generation...");
     
     const settings = { ...useGameStore.getState().characterSettings };
@@ -456,6 +471,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     for (let i = 0; i < stepsToGenerate.length; i++) {
       const step = stepsToGenerate[i];
       console.log(`[runAutoGeneration] Generating ${step} (${i + 1}/${stepsToGenerate.length})...`);
+      setAutoGenLabel(STEP_LABELS[step] ?? "剩余角色背景");
 
       try {
         let result: Record<string, unknown>;
@@ -464,6 +480,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
           const people: Record<string, unknown>[] = [];
           for (let pi = 0; pi < 3; pi++) {
             console.log(`[runAutoGeneration] Generating relationship person ${pi + 1}/3...`);
+            setAutoGenLabel("生成关键人物");
             const person = await withRetry(() =>
               api.character.generateRelationship({
                 player_name: playerName,
@@ -478,6 +495,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
             people.push(person);
           }
           console.log(`[runAutoGeneration] Generating relationships summary...`);
+          setAutoGenLabel("整理人际关系");
           const summaryResult = await withRetry(() =>
             api.character.generateRelationshipsSummary({
               player_name: playerName,
@@ -516,7 +534,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     }
 
     setAutoGenPhase("done");
-  }, [playerName, lifeVision, language, updateCharacterSetting, showToast]);
+  }, [playerName, lifeVision, language, updateCharacterSetting, showToast, hasBasicInfo]);
 
   // Start background generation on portrait step
   useEffect(() => {
@@ -558,6 +576,10 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   }, [isPortraitStep, gameId, characterSettings, isBackgroundGenerating, runAutoGeneration]);
 
   const handleAcceptAndNext = useCallback(async () => {
+    if (!hasBasicInfo) {
+      showToast("error", "角色姓名或人生愿景超过允许长度，请修改后重试");
+      return;
+    }
     let acceptedCharacterSettings = characterSettings;
     if (!isPortraitStep && generatedContent) {
       acceptedCharacterSettings = {
@@ -616,7 +638,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       } else if (isBackgroundGenerating) {
         console.log("[portrait] Background generation still in progress, showing loading...");
         setAutoGenPhase("generating");
-        setAutoGenLabel("剩余角色背景");
+        setAutoGenLabel((currentLabel) => currentLabel || "剩余角色背景");
         
         const checkInterval = setInterval(() => {
           const settings = useGameStore.getState().characterSettings;
@@ -655,10 +677,12 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   }, [
     isPortraitStep, generatedContent, currentStepKey, gameId, characterSettings,
     playerName, lifeVision, language, isLastStep, isBackgroundGenerating,
-    updateCharacterSetting, setGameSession, nextCreationStep, showToast, runAutoGeneration
+    updateCharacterSetting, setGameSession, nextCreationStep, showToast, runAutoGeneration,
+    hasBasicInfo
   ]);
 
   const handleRegenerate = useCallback(() => {
+    if (!isWithinInputLimit(feedback, INPUT_LIMITS.feedback)) return;
     handleGenerate(feedback || undefined);
     setFeedback("");
   }, [handleGenerate, feedback]);
@@ -683,6 +707,12 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     if (!gameId) {
       console.error("[regenerateSetting] No gameId available");
       throw new Error("游戏未创建");
+    }
+    if (
+      !hasBasicInfo ||
+      !isWithinInputLimit(feedback, INPUT_LIMITS.feedback)
+    ) {
+      throw new Error("输入内容超过允许长度，请缩短后重试");
     }
 
     setIsGenerating(true);
@@ -762,10 +792,14 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     } finally {
       setIsGenerating(false);
     }
-  }, [gameId, playerName, lifeVision, characterSettings, language, updateCharacterSetting]);
+  }, [gameId, playerName, lifeVision, characterSettings, language, updateCharacterSetting, hasBasicInfo]);
 
   const handleSavePreset = useCallback(async () => {
-    if (!presetName.trim()) return;
+    if (
+      !presetName.trim() ||
+      !isWithinInputLimit(presetName, INPUT_LIMITS.name) ||
+      !hasBasicInfo
+    ) return;
     setIsSavingPreset(true);
     setPresetSaveStatus("saving");
     setPresetSaveMessage("正在保存角色预设...");
@@ -789,7 +823,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     } finally {
       setIsSavingPreset(false);
     }
-  }, [presetName, playerName, lifeVision, characterSettings, handleSetShowPresetSheet, showToast]);
+  }, [presetName, playerName, lifeVision, characterSettings, handleSetShowPresetSheet, showToast, hasBasicInfo]);
 
   const handleStartGame = useCallback(async () => {
     if (isGenerating) {
@@ -801,13 +835,22 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       showToast("error", "请先输入角色姓名");
       return;
     }
+
+    if (!hasBasicInfo) {
+      showToast("error", "角色姓名或人生愿景超过允许长度，请修改后重试");
+      return;
+    }
     
     setIsGenerating(true);
     
     try {
       console.log("[create] Starting game creation...");
       
-      const autoPresetName = `${playerName}_${new Date().toLocaleDateString("zh-CN").replace(/\//g, "-")}`;
+      const presetSuffix = `_${new Date().toLocaleDateString("zh-CN").replace(/\//g, "-")}`;
+      const autoPresetName =
+        unicodeCharacterLength(playerName) + unicodeCharacterLength(presetSuffix) <= INPUT_LIMITS.name
+          ? `${playerName}${presetSuffix}`
+          : playerName;
       try {
         await api.presets.create({
           preset_name: autoPresetName,
@@ -858,7 +901,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     } finally {
       setIsGenerating(false);
     }
-  }, [isGenerating, playerName, lifeVision, characterSettings, gameId, language, router, showToast]);
+  }, [isGenerating, playerName, lifeVision, characterSettings, gameId, language, router, showToast, hasBasicInfo]);
 
   return {
     // Router
@@ -894,6 +937,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     setSelectedImageIndex,
     setImageFeedback,
     generatePlayerImage,
+    refreshPortraitImageJob,
     regeneratePlayerImage,
     regenerateFreshPlayerImage,
     
@@ -919,7 +963,6 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     autoGenPhase,
     setAutoGenPhase,
     autoGenLabel,
-    autoGenProgress,
     showDetails,
     setShowDetails,
     isBackgroundGenerating,

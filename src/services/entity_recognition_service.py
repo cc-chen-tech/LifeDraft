@@ -88,7 +88,10 @@ class EntityRecognitionService(BaseExtractionService):
             logger.info(f"AI raw response (first 500 chars): {response[:500]}")
 
             result = self._parse_recognition_response(response)
-            story_character_names = self._extract_named_people(story_text)
+            story_character_names = self._extract_named_people(
+                story_text,
+                known_person_names=existing_characters,
+            )
             effective_character_names = self._ordered_unique(
                 [*(eligible_character_names or []), *story_character_names]
             )
@@ -305,7 +308,10 @@ class EntityRecognitionService(BaseExtractionService):
             "landmarks": list(result.get("landmarks", [])),
         }
 
-        story_character_names = self._extract_named_people(story_text)
+        story_character_names = self._extract_named_people(
+            story_text,
+            known_person_names=existing_characters,
+        )
         character_candidates = self._ordered_unique(
             [*(eligible_character_names or []), *story_character_names]
         )
@@ -420,7 +426,11 @@ class EntityRecognitionService(BaseExtractionService):
             entities.append(build_entity(name, story_text, appear_count))
             known_names.add(name)
 
-    def _extract_named_people(self, story_text: str) -> List[str]:
+    def _extract_named_people(
+        self,
+        story_text: str,
+        known_person_names: Optional[List[str]] = None,
+    ) -> List[str]:
         """提取中文故事中明确命名的人物。"""
         single_surnames = (
             "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜姚"
@@ -431,7 +441,7 @@ class EntityRecognitionService(BaseExtractionService):
         compound_surnames = "欧阳|司马|上官|诸葛"
         name_boundary = r"(?:(?<![\u4e00-\u9fff])|(?<=[见与和向问对请找叫邀同]))"
         person_actions = (
-            "说|问|答|道|提醒|递|交|带|走|来|去|把|将|在|从|与|和|向|看|笑|皱|捧|"
+            "说|问|答|道|提醒|递|交|带|走|来|去|把|将|在|从|向|看|笑|皱|捧|"
             "提出|要求|承认|否认|表示|解释|反驳|递来|打来|联系|签|站|沉默|扶|扶住|"
             "握|握紧|赶|赶来|守|苦笑|又|、|，|。|：|:"
         )
@@ -446,11 +456,15 @@ class EntityRecognitionService(BaseExtractionService):
             (
                 rf"{name_boundary}{surname}[\u4e00-\u9fff]{{2}}"
                 rf"(?=(?:的|当年|一直|曾经|已经|正|也|都|从|在|把|将|说|问|提醒|低声|缓缓|"
-                rf"提出|承认|否认|表示|解释|反驳|联系|沉默|扶|握|赶|留下|，|。|、|：|:))"
+                rf"提出|承认|否认|表示|解释|反驳|联系|沉默|扶|握|赶|留下|与|和|，|。|、|：|:))"
             ),
             (
                 rf"{name_boundary}{surname}[\u4e00-\u9fff]{{1,2}}?"
                 rf"(?=(?:随后|接着|立即|马上|{person_actions}))"
+            ),
+            (
+                rf"{name_boundary}{surname}[\u4e00-\u9fff]"
+                rf"(?=和{surname}[\u4e00-\u9fff]{{0,2}}?(?:{titles}))"
             ),
         ]
         names = []
@@ -460,6 +474,9 @@ class EntityRecognitionService(BaseExtractionService):
             name
             for name in (self._clean_entity_name(raw) for raw in names)
             if self._looks_like_person_name(name)
+            and not self._is_known_name_action_fragment(
+                name, known_person_names or []
+            )
         )
         return self._prune_person_aliases(candidates)
 
@@ -468,6 +485,13 @@ class EntityRecognitionService(BaseExtractionService):
         if len(name) < 2 or len(name) > 5:
             return False
         false_positive_tokens = (
+            "谢谢",
+            "请问",
+            "您好",
+            "麻烦",
+            "抱歉",
+            "对不起",
+            "劳烦",
             "周初",
             "周中",
             "周末",
@@ -499,6 +523,33 @@ class EntityRecognitionService(BaseExtractionService):
         if name.endswith(("上", "下", "前", "后", "里", "中", "处")):
             return False
         return True
+
+    def _is_known_name_action_fragment(
+        self,
+        name: str,
+        known_person_names: Iterable[str],
+    ) -> bool:
+        """Reject a known name plus one narrative action character."""
+        action_suffixes = (
+            "站",
+            "坐",
+            "扶",
+            "握",
+            "看",
+            "问",
+            "说",
+            "道",
+            "守",
+            "来",
+            "去",
+        )
+        return any(
+            known_name
+            and name.startswith(known_name)
+            and len(name) == len(known_name) + 1
+            and name.endswith(action_suffixes)
+            for known_name in known_person_names
+        )
 
     def _prune_person_aliases(self, names: List[str]) -> List[str]:
         """Drop short title aliases when a fuller explicit name is present."""

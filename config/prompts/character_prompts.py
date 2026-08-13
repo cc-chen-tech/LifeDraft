@@ -13,6 +13,7 @@ Contains:
 from typing import Any, Dict, List, Optional
 
 from config.prompts._helpers import build_realistic_modern_world_boundary
+from src.ai.budgets import NarrativeKind, resolve_prompt_length_requirement
 from src.ai.prompt_sanitizer import sanitize_life_vision, sanitize_player_name
 
 
@@ -87,9 +88,7 @@ def get_character_profile_synthesis_prompt(
     """
     # 清洗角色名称输入，防止 prompt 注入
     sanitized_character_name = sanitize_player_name(character_name)
-    traits_str = (
-        "、".join(character_settings_traits) if character_settings_traits else "未设定"
-    )
+    traits_str = "、".join(character_settings_traits) if character_settings_traits else "未设定"
 
     evidence_str = (
         "\n".join(f"  - {e}" for e in behavioral_evidence)
@@ -195,7 +194,7 @@ def get_character_setting_prompt(
 
     Args:
         setting_type: One of 'era', 'age', 'gender', 'world', 'family',
-                      'relationships', 'traits', 'wealth'.
+                      'relationships', or 'traits'.
         player_name: Player's chosen name.
         life_vision: Player's life vision text.
         previous_settings: Already-generated settings dict.
@@ -303,37 +302,6 @@ def get_character_setting_prompt(
     "weaknesses": "缺点"
 }}
 """,
-            "wealth": f"""{base_context}
-请根据角色的家庭背景、时代背景、年龄和能力，生成角色的初始财富和货币单位。
-
-要求：
-1. 财富金额（wealth）：根据家庭经济状况、时代背景、年龄和角色能力合理设定（1000-1000000）
-   - 富裕家庭 → 财富较高（50000-200000）
-   - 中产家庭 → 财富中等（20000-80000）
-   - 贫困家庭 → 财富较低（1000-15000，但绝对不能为0）
-   - 现代时代 → 财富金额较高
-   - 古代时代 → 财富金额较低
-   - 年龄较大 → 可能有更多积累
-   - 商业/投资能力强 → 可能有更多收入
-   - **重要：财富金额绝对不能为0，最低应为1000**
-2. 货币单位（currency）：根据时代背景和世界设定选择合适的货币单位
-   - 现代中国：人民币（¥）
-   - 现代美国：美元（$）
-   - 古代中国：两、文、贯等
-   - 古代欧洲：金币、银币等
-   - 未来/科幻：信用点、星币等
-   - 其他时代/地区：根据设定选择合适的货币单位
-
-返回JSON格式：
-{{
-    "wealth": <根据家庭背景和时代合理设定的财富数值>,
-    "currency": "<货币符号，如：¥/$/金币/信用点等>",
-    "currency_name": "<货币名称，如：人民币/美元/金币/信用点等>",
-    "wealth_description": "财富来源和初始经济状况的详细描述（50-100字）"
-}}
-
-**重要提醒：wealth 字段必须是正整数，范围在 1000-1000000 之间，绝对不能为 0。**
-""",
         }
     else:
         base_context = f"""
@@ -416,46 +384,13 @@ Return JSON format:
     "weaknesses": "Weaknesses"
 }}
 """,
-            "wealth": f"""{base_context}
-Generate the character's initial wealth and currency unit based on family background, era, age, and abilities.
-
-Requirements:
-1. Wealth amount (wealth): Reasonably set based on family economy, era, age, and character abilities (1000-1000000)
-   - Wealthy family → higher wealth (50000-200000)
-   - Middle-class family → moderate wealth (20000-80000)
-   - Poor family → lower wealth (1000-15000, but NEVER 0)
-   - Modern era → higher wealth amount
-   - Ancient era → lower wealth amount
-   - Older age → may have more savings
-   - Strong business/investment abilities → may have more income
-   - **IMPORTANT: Wealth amount must NEVER be 0, minimum should be 1000**
-2. Currency unit (currency): Choose appropriate currency unit based on era and world setting
-   - Modern China: RMB (¥)
-   - Modern USA: Dollar ($)
-   - Ancient China: Liang, Wen, Guan, etc.
-   - Ancient Europe: Gold coins, Silver coins, etc.
-   - Future/Sci-fi: Credits, Star coins, etc.
-   - Other eras/regions: Choose appropriate currency unit based on setting
-
-Return JSON format:
-{{
-    "wealth": <wealth amount based on family background and era>,
-    "currency": "<currency symbol, e.g.: $/¥/gold coins/credits>",
-    "currency_name": "<currency name, e.g.: Dollar/Yuan/Gold Coin/Credit>",
-    "wealth_description": "Detailed description of wealth source and initial economic status (50-100 words)"
-}}
-
-**IMPORTANT REMINDER: The wealth field must be a positive integer between 1000-1000000, and must NEVER be 0.**
-""",
         }
 
     prompt = prompts.get(setting_type, "")
 
     if feedback:
         if language == "zh":
-            prompt += (
-                f"\n\n用户反馈：{feedback}\n请根据反馈重新生成，确保满足用户的要求。"
-            )
+            prompt += f"\n\n用户反馈：{feedback}\n请根据反馈重新生成，确保满足用户的要求。"
         else:
             prompt += f"\n\nUser Feedback: {feedback}\nPlease regenerate based on the feedback to meet user requirements."
 
@@ -711,29 +646,22 @@ def get_initial_attributes_prompt(
 - 精力（energy）：反映角色的体力和活力水平（0-100）
 - 情绪（mood）：反映角色的心理状态和乐观程度（0-100）
 - 学识（knowledge）：反映角色的知识水平和学习能力（0-100）
-- 财富（wealth）：反映角色的初始经济状况（0-1000000，根据家庭背景、时代背景和年龄合理设定）
 
 返回JSON格式：
 {{
   "energy": 70,
   "mood": 60,
-  "knowledge": 50,
-  "wealth": 10000
+  "knowledge": 50
 }}
 
 要求：
 1. 精力、情绪、学识范围：0-100
-2. 财富范围：0-1000000，需根据以下因素合理设定：
-   - 家庭经济状况（富裕家庭 → 财富较高，贫困家庭 → 财富较低）
-   - 时代背景（现代 → 财富较高，古代 → 财富较低）
-   - 年龄（年龄较大 → 可能有更多积累）
-   - 角色能力（能力强 → 可能有更多收入）
-3. 性格外向/乐观 → mood较高
-4. 能力强/有天赋 → knowledge较高
-5. 体力好/年轻 → energy较高
-6. 性格内向/悲观 → mood较低
-7. 能力弱/缺乏经验 → knowledge较低
-8. 体弱/年长 → energy较低
+2. 性格外向/乐观 → mood较高
+3. 能力强/有天赋 → knowledge较高
+4. 体力好/年轻 → energy较高
+5. 性格内向/悲观 → mood较低
+6. 能力弱/缺乏经验 → knowledge较低
+7. 体弱/年长 → energy较低
 """
     else:
         return f"""Based on the following character traits, generate initial core attribute values:
@@ -758,29 +686,22 @@ Please generate initial attribute values based on the character's personality, a
 - Energy: Reflects the character's physical strength and vitality (0-100)
 - Mood: Reflects the character's psychological state and optimism (0-100)
 - Knowledge: Reflects the character's knowledge level and learning ability (0-100)
-- Wealth: Reflects the character's initial economic status (0-1000000, reasonably set based on family background, era, and age)
 
 Return JSON format:
 {{
   "energy": 70,
   "mood": 60,
-  "knowledge": 50,
-  "wealth": 10000
+  "knowledge": 50
 }}
 
 Requirements:
 1. Energy, mood, knowledge range: 0-100
-2. Wealth range: 0-1000000, reasonably set based on:
-   - Family economy (wealthy family → higher wealth, poor family → lower wealth)
-   - Era background (modern → higher wealth, ancient → lower wealth)
-   - Age (older → may have more savings)
-   - Character abilities (strong abilities → may have more income)
-3. Extroverted/optimistic personality → higher mood
-4. Strong abilities/talented → higher knowledge
-5. Good physical condition/young → higher energy
-6. Introverted/pessimistic personality → lower mood
-7. Weak abilities/lack of experience → lower knowledge
-8. Weak physical condition/older → lower energy
+2. Extroverted/optimistic personality → higher mood
+3. Strong abilities/talented → higher knowledge
+4. Good physical condition/young → higher energy
+5. Introverted/pessimistic personality → lower mood
+6. Weak abilities/lack of experience → lower knowledge
+7. Weak physical condition/older → lower energy
 """
 
 
@@ -790,6 +711,7 @@ def get_opening_story_prompt(
     life_vision: str,
     formatted_family_members: str,
     language: str = "zh",
+    length_requirement: Optional[str] = None,
 ) -> str:
     """Generate prompt for creating the opening story.
 
@@ -811,7 +733,6 @@ def get_opening_story_prompt(
     family = character_settings.get("family", {})
     relationships = character_settings.get("relationships", {})
     traits = character_settings.get("traits", {})
-    wealth = character_settings.get("wealth", {})
     key_people = relationships.get("key_people", []) if isinstance(relationships, dict) else []
     key_people_lines: List[str] = []
     if isinstance(key_people, list):
@@ -836,7 +757,10 @@ def get_opening_story_prompt(
     modern_world_boundary = build_realistic_modern_world_boundary(character_settings, language)
 
     if language == "zh":
-        return f"""请基于以下角色设定，生成一个生动的开场故事（300-400字）。
+        localized_length = length_requirement or resolve_prompt_length_requirement(
+            NarrativeKind.OPENING, "expert", language
+        )
+        return f"""请基于以下角色设定，生成一个生动的开场故事（{localized_length}）。
 
 【主角身份硬约束 - 违反即失败】
 主角姓名必须是：{sanitized_player_name}
@@ -889,10 +813,6 @@ def get_opening_story_prompt(
 优点：{traits.get('strengths', '')}
 缺点：{traits.get('weaknesses', '')}
 
-【财富状况】
-当前财富：{wealth.get('currency', '')}{wealth.get('wealth', '')}
-{wealth.get('wealth_description', '')}
-
 请生成一个引人入胜的开场故事，要求：
 1. 以第三人称视角叙述
 2. 生动描绘角色所处的环境和氛围
@@ -903,7 +823,10 @@ def get_opening_story_prompt(
 7. 只返回故事文本，不要任何JSON格式或其他标记
 """
     else:
-        return f"""Generate a vivid opening story (300-400 words) based on the following character settings.
+        localized_length = length_requirement or resolve_prompt_length_requirement(
+            NarrativeKind.OPENING, "expert", language
+        )
+        return f"""Generate a vivid opening story ({localized_length}) based on the following character settings.
 
 [Protagonist Identity - Hard Constraint]
 The protagonist's exact name must be: {sanitized_player_name}
@@ -949,10 +872,6 @@ The opening story must prioritize the listed family members and key people when 
 Personality: {traits.get('personality', '')}
 Strengths: {traits.get('strengths', '')}
 Weaknesses: {traits.get('weaknesses', '')}
-
-【Wealth】
-Current: {wealth.get('currency', '')}{wealth.get('wealth', '')}
-{wealth.get('wealth_description', '')}
 
 Generate an engaging opening story with:
 1. Third-person narrative

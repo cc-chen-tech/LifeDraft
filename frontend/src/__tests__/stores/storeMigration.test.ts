@@ -11,6 +11,7 @@ import { useImageStore } from '@/stores/useImageStore';
 import { useEventStore } from '@/stores/useEventStore';
 import { useCharacterStore } from '@/stores/useCharacterStore';
 import { useGameListStore } from '@/stores/useGameListStore';
+import * as SessionStoreModule from '@/stores/useSessionStore';
 
 describe('Store Migration Compatibility', () => {
   beforeEach(() => {
@@ -199,6 +200,59 @@ describe('Store Migration Compatibility', () => {
   });
 
   describe('Hydration works with split stores', () => {
+    it('recursively migrates retired wealth keys and historical effects', () => {
+      const migrate = (
+        SessionStoreModule as unknown as {
+          migratePersistedSessionState?: (value: unknown) => Record<string, unknown>;
+        }
+      ).migratePersistedSessionState;
+
+      expect(typeof migrate).toBe('function');
+      const migrated = migrate!({
+        version: 0,
+        state: {
+          gameId: 77,
+          playerState: {
+            player_name: '旧缓存',
+            wealth: 50_000,
+            character_settings: {
+              family: { wealth_ledger: { balance: 50_000 } },
+            },
+            round_history: [
+              {
+                effects: {
+                  energy: 2,
+                  wealth: 500,
+                  relationships: { 苏晚晴: 3 },
+                },
+                effects_requested: {
+                  mood: 1,
+                  _active_wealth_transaction_id: 'legacy-tx',
+                },
+              },
+            ],
+          },
+        },
+      });
+
+      expect(migrated).toEqual({
+        version: 1,
+        state: {
+          gameId: 77,
+          playerState: {
+            player_name: '旧缓存',
+            character_settings: { family: {} },
+            round_history: [
+              {
+                effects: { energy: 2, relationships: { 苏晚晴: 3 } },
+                effects_requested: { mood: 1 },
+              },
+            ],
+          },
+        },
+      });
+    });
+
     it('should handle state initialization correctly', () => {
       // Simulate fresh app load
       act(() => {

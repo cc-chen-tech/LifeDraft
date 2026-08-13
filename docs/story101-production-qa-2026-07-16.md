@@ -1,5 +1,14 @@
 # Story101 Production QA - 2026-07-16
 
+## P1: Choice continuation misclassified player grammar as new cast
+
+- Reproduced on production after a Week 1 choice: a continuation using the player
+  name in normal Chinese grammar (for example, `陈越把` and `陈越的`) and timeline
+  prose (`时间上`) exhausted the cast-drift retry budget and returned an SSE error.
+- The quick validator now treats the configured player name as an allowed person and
+  ignores timeline and narrative prefixes. The regression contract verifies that the
+  continuation completes on the first generation while unfamiliar-cast checks remain.
+
 ## P1: Choice continuation blocked by first-person validation
 
 - Reproduced on production after the first Week 1 choice: the second quick-validation

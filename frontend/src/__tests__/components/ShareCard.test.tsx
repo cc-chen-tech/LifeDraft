@@ -75,6 +75,41 @@ describe("ShareCard", () => {
       const button = screen.getByText("保存分享卡片").closest("button");
       expect(button).not.toBeDisabled();
     });
+
+    it("keeps the exported PNG target, render options, and filename stable", async () => {
+      const user = userEvent.setup();
+      const clickSpy = jest
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(() => undefined);
+      const mockedHtml2canvas = jest.requireMock("html2canvas").default as jest.Mock;
+
+      try {
+        render(<ShareCard {...baseProps} />);
+        await user.click(screen.getByRole("button", { name: "保存分享卡片" }));
+
+        await waitFor(() => expect(mockedHtml2canvas).toHaveBeenCalledTimes(1));
+        const [captureTarget, options] = mockedHtml2canvas.mock.calls[0] as [
+          HTMLElement,
+          Record<string, unknown>,
+        ];
+        expect(captureTarget).toContainElement(screen.getByText("The Hero's Journey"));
+        expect(options).toEqual({
+          backgroundColor: "#0f172a",
+          scale: 2,
+          useCORS: true,
+          logging: false,
+        });
+
+        const canvas = await mockedHtml2canvas.mock.results[0].value;
+        expect(canvas.toDataURL).toHaveBeenCalledWith("image/png");
+        expect(clickSpy).toHaveBeenCalledTimes(1);
+        const link = clickSpy.mock.instances[0] as HTMLAnchorElement;
+        expect(link.download).toBe("TestPlayer_人生回顾.png");
+        expect(link.href).toBe("data:image/png;base64,test");
+      } finally {
+        clickSpy.mockRestore();
+      }
+    });
   });
 
   describe("Footer branding", () => {

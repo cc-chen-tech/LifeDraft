@@ -193,23 +193,21 @@ class TestCharacterCreatorGenerateSetting:
         result = creator.generate_setting("age", "张三", "成功", {"era": {"year": 2024}})
         assert result["birth_year"] == 1999  # 2024 - 25
 
-    def test_generate_wealth_setting_zero_retry(self):
-        """Test wealth=0 triggers retry and eventually uses fallback."""
+    def test_generate_retired_wealth_setting_has_no_special_handling(self):
         creator = self._make_creator()
         creator.ai_generator.generate_completion.return_value = json.dumps(
             {"wealth": 0, "currency": "¥"}
         )
         result = creator.generate_setting("wealth", "张三", "成功", {})
-        assert result["wealth"] >= 1000  # Either retried or fallback
+        assert result == {"wealth": 0, "currency": "¥"}
 
-    def test_generate_wealth_low_adjusted(self):
-        """Test low wealth is adjusted to minimum."""
+    def test_generate_retired_wealth_setting_is_not_adjusted(self):
         creator = self._make_creator()
         creator.ai_generator.generate_completion.return_value = json.dumps(
             {"wealth": 500, "currency": "¥"}
         )
         result = creator.generate_setting("wealth", "张三", "成功", {})
-        assert result["wealth"] >= 1000
+        assert result == {"wealth": 500, "currency": "¥"}
 
     def test_generate_setting_ai_failure_fallback(self):
         """Test fallback when AI fails all retries."""
@@ -268,6 +266,41 @@ class TestCharacterCreatorGenerateSetting:
         names = [member["name"] for member in result["family_members"]]
         assert names == ["张卫国", "张秀兰"]
 
+    def test_family_setting_does_not_invent_names_for_unnamed_relatives(self):
+        """Family roles named without a legal name stay title-only in the saved facts."""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion.return_value = json.dumps(
+            {
+                "family_description": "父母住在宁波，弟弟在杭州读大学。",
+                "family_members": [
+                    {"name": "林建国", "role": "父亲", "relationship": "父亲住在宁波"},
+                    {"name": "王秀英", "role": "母亲", "relationship": "母亲住在宁波"},
+                    {"name": "林涛", "role": "弟弟", "relationship": "弟弟在杭州读大学"},
+                ],
+                "family_economy": "中等",
+                "family_relationships": "互相关心",
+            },
+            ensure_ascii=False,
+        )
+
+        result = creator.generate_setting(
+            "family",
+            "林岚",
+            "父母住宁波，弟弟林涛在杭州读大学。",
+            {},
+        )
+
+        assert [member["name"] for member in result["family_members"]] == [
+            "父亲",
+            "母亲",
+            "林涛",
+        ]
+        descriptions = " ".join(
+            str(member.get("relationship", "")) for member in result["family_members"]
+        )
+        assert "林建国" not in descriptions
+        assert "王秀英" not in descriptions
+
     def test_generate_setting_en_fallback(self):
         """Test English fallback settings."""
         creator = self._make_creator("en")
@@ -302,6 +335,28 @@ class TestCharacterCreatorRelationships:
         assert result["role"] == "同事"
         assert "affinity" in result
         assert "sexual_orientation" in result
+
+    def test_generate_single_person_preserves_title_only_name_from_life_vision(self):
+        """A title-only person in the premise must not receive an invented legal name."""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion_json.return_value = {
+            "name": "周德明",
+            "role": "房东",
+            "relationship_desc": "周德明是社区老街坊，也是林岚的房东。",
+        }
+
+        result = creator.generate_single_relationship_person(
+            "林岚",
+            "2026年杭州经营社区小影院；房东仅称周师傅。",
+            {},
+            [],
+            0,
+            3,
+        )
+
+        assert result["name"] == "周师傅"
+        assert "周德明" not in result["relationship_desc"]
+        assert "周师傅" in result["relationship_desc"]
 
     def test_generate_single_person_defaults(self):
         """Test defaults are applied for missing fields."""
@@ -423,7 +478,7 @@ class TestCharacterCreatorAttributes:
         result = creator.generate_initial_attributes({})
         assert result["energy"] == 100
         assert result["mood"] == 0
-        assert result["wealth"] == 1000000
+        assert "wealth" not in result
 
     def test_generate_initial_attributes_fallback(self):
         """Test rule-based fallback when AI fails."""
@@ -449,8 +504,7 @@ class TestCharacterCreatorAttributes:
         result = creator.generate_initial_attributes({"traits": {"personality": "体弱多病"}})
         assert result["energy"] <= 60
 
-    def test_rules_wealthy_family(self):
-        """Test wealth boost for wealthy family."""
+    def test_rules_wealthy_family_does_not_create_resource(self):
         creator = self._make_creator()
         creator.ai_generator.generate_completion_json.side_effect = Exception("fail")
         result = creator.generate_initial_attributes(
@@ -461,10 +515,9 @@ class TestCharacterCreatorAttributes:
                 "age": {"age": 30},
             }
         )
-        assert result["wealth"] > 30000
+        assert "wealth" not in result
 
-    def test_rules_poor_family_ancient(self):
-        """Test wealth reduction for poor family in ancient era."""
+    def test_rules_poor_family_does_not_create_resource(self):
         creator = self._make_creator()
         creator.ai_generator.generate_completion_json.side_effect = Exception("fail")
         result = creator.generate_initial_attributes(
@@ -475,7 +528,7 @@ class TestCharacterCreatorAttributes:
                 "age": {"age": 22},
             }
         )
-        assert result["wealth"] < 20000
+        assert "wealth" not in result
 
     def test_rules_list_traits(self):
         """Test rules handle list-format traits."""
@@ -487,6 +540,29 @@ class TestCharacterCreatorAttributes:
 
 class TestCharacterCreatorMisc:
     """Test miscellaneous CharacterCreator methods."""
+
+    def test_opening_story_disables_thinking(self):
+        """Removing the opening policy must expose DeepSeek's default thinking mode."""
+        from src.game.character_creation import CharacterCreator
+
+        class RecordingGenerator:
+            def __init__(self):
+                self.calls = []
+
+            def generate_stream(self, **kwargs):
+                self.calls.append(kwargs)
+                return iter(["opening"])
+
+        generator = RecordingGenerator()
+        result = CharacterCreator(generator, language="zh").generate_opening_story(
+            character_settings={},
+            player_name="林岚",
+            life_vision="经营社区影院",
+        )
+
+        assert list(result) == ["opening"]
+        assert len(generator.calls) == 1
+        assert generator.calls[0]["thinking"] is False
 
     def test_format_family_members_empty(self):
         from src.game.character_creation import CharacterCreator
@@ -524,7 +600,6 @@ class TestCharacterCreatorMisc:
             "family",
             "relationships",
             "traits",
-            "wealth",
         ]:
             fallback = creator._get_fallback_setting(setting_type)
             assert isinstance(fallback, dict)
@@ -596,6 +671,31 @@ class TestCheckAndFixMissingAttributes:
         state.relationships = {}
         creator.check_and_fix_missing_attributes(state)
         assert isinstance(state.character_settings["family"]["family_members"][0], dict)
+
+    def test_legacy_family_upgrade_preserves_unnamed_roles(self):
+        """A legacy family list cannot invent parent names absent from the premise."""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion_json.return_value = {
+            "members": [
+                {"name": "林建国", "role": "父亲", "relationship": "林建国住在宁波"},
+                {"name": "王秀英", "role": "母亲", "relationship": "王秀英住在宁波"},
+                {"name": "林涛", "role": "弟弟", "relationship": "林涛在杭州读大学"},
+            ]
+        }
+        state = Mock()
+        state.character_settings = {"family": {"family_members": ["父亲", "母亲", "弟弟"]}}
+        state.player_name = "林岚"
+        state.life_vision = "父母住宁波，弟弟林涛在杭州读大学。"
+        state.relationships = {}
+
+        creator.check_and_fix_missing_attributes(state)
+
+        assert [member["name"] for member in state.character_settings["family"]["family_members"]] == [
+            "父亲",
+            "母亲",
+            "林涛",
+        ]
+        assert set(state.relationships) == {"父亲", "母亲", "林涛"}
 
     def test_no_fix_needed(self):
         """Test no changes when nothing is missing."""

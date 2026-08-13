@@ -291,6 +291,7 @@ run_preflight() {
     print_layer_header "0" "前置校验 (preflight)" "OpenSpec、前端类型、关键回归夹具漂移"
     cd "$PROJECT_DIR"
     activate_python_env
+    ensure_test_dirs
 
     echo -e "${YELLOW}运行 OpenSpec strict 校验...${NC}"
     openspec validate --all --strict
@@ -322,11 +323,9 @@ run_preflight() {
         tests/test_continuity_ledger.py \
         tests/test_continuity_ledger_integration.py \
         tests/test_assistant_grounding.py \
-        tests/test_wealth_ledger.py \
-        tests/test_wealth_ledger_integration.py \
+        tests/test_wealth_removal_contract.py \
         tests/test_opening_story_contract.py \
         tests/test_character_creation_deep.py::TestCharacterCreatorGenerateSetting::test_generate_era_feedback_still_aligns_with_modern_life_vision \
-        tests/test_api_games.py::TestCreateGame::test_create_game_preserves_generated_initial_wealth \
         tests/test_music_degradation_no_mock.py \
         tests/test_minimax_audio_generation_contract.py \
         tests/test_sse_timeout_contract.py \
@@ -341,14 +340,32 @@ run_preflight() {
     cd "$PROJECT_DIR"
 
     echo -e "${YELLOW}运行 OpenAPI 类型漂移检查...${NC}"
-    python scripts/export_openapi.py
+    local openapi_check_dir="$TEST_RUN_DIR/openapi-check"
+    local generated_openapi_schema="$openapi_check_dir/openapi-schema.json"
+    local generated_openapi_types="$openapi_check_dir/api-generated.d.ts"
+    local generated_input_limits="$openapi_check_dir/input-limits.generated.ts"
+    rm -rf "$openapi_check_dir"
+    mkdir -p "$openapi_check_dir"
+    python scripts/export_openapi.py "$generated_openapi_schema"
     local openapi_export_code=$?
+    python scripts/export_input_limits.py "$generated_input_limits"
+    local input_limits_export_code=$?
     cd "$PROJECT_DIR/frontend"
-    npx openapi-typescript src/types/openapi-schema.json -o src/types/api-generated.d.ts
+    npx openapi-typescript "$generated_openapi_schema" -o "$generated_openapi_types"
     local openapi_ts_code=$?
     cd "$PROJECT_DIR"
-    git diff --exit-code -- frontend/src/types/openapi-schema.json frontend/src/types/api-generated.d.ts
-    local openapi_diff_code=$?
+    cmp -s "$generated_openapi_schema" frontend/src/types/openapi-schema.json
+    local openapi_schema_diff_code=$?
+    cmp -s "$generated_openapi_types" frontend/src/types/api-generated.d.ts
+    local openapi_types_diff_code=$?
+    cmp -s "$generated_input_limits" frontend/src/types/input-limits.generated.ts
+    local input_limits_diff_code=$?
+    local openapi_diff_code=0
+    if [ $openapi_schema_diff_code -ne 0 ] || [ $openapi_types_diff_code -ne 0 ] || [ $input_limits_export_code -ne 0 ] || [ $input_limits_diff_code -ne 0 ]; then
+        echo -e "${RED}OpenAPI 生成物与受版本控制的前端类型不一致。${NC}" >&2
+        echo -e "${YELLOW}请执行 npm run sync:api-types 后提交生成物。${NC}" >&2
+        openapi_diff_code=1
+    fi
 
     echo -e "${YELLOW}运行前端 preflight Jest 回归测试...${NC}"
     cd "$PROJECT_DIR/frontend"
@@ -408,7 +425,6 @@ run_mypy() {
         src/services/minimax_music_generation.py
         src/game/relationship_authority.py
         src/game/assistant_grounding.py
-        src/game/wealth_ledger.py
         src/services/story_tts_provider.py
         src/services/story_voice_reading.py
         src/services/story_voice_repository.py
@@ -469,6 +485,7 @@ run_contract() {
     echo -e "${YELLOW}运行 API 契约测试...${NC}"
     python -m pytest \
         tests/test_api_contract.py \
+        tests/test_input_limits_contract.py \
         tests/test_player_name_in_prompts_contract.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_music_playlist_contract.py \
@@ -620,7 +637,7 @@ run_e2e_browser_impl() {
     API_HOST=127.0.0.1 API_PORT="$E2E_BACKEND_PORT" \
     E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT="$E2E_BACKEND_PORT" \
     DATABASE_URL="$LOCAL_E2E_DB_URL" \
-    E2E_CONTRACT_PROBE_FAST=1 STORY_TTS_ALLOW_REQUEST_PROVIDER=1 \
+    E2E_CONTRACT_PROBE_FAST=1 E2E_DETERMINISTIC_STORY=1 STORY_TTS_ALLOW_REQUEST_PROVIDER=1 \
     MINIMAX_E2E_LOCAL_AUDIO=1 MINIMAX_E2E_LOCAL_IMAGE=1 NETEASE_E2E_LOCAL_MUSIC=1 API_RELOAD=false \
     python run_api.py > "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!
@@ -709,70 +726,6 @@ run_e2e_browser_impl() {
     run_playwright_command "core" npx playwright test --project=core --reporter=dot --workers=1
     local core_result=$?
 
-    echo -e "${YELLOW}运行现实主义叙事风格对齐 E2E 浏览器测试...${NC}"
-    run_playwright_command "realistic-style-alignment" npx playwright test e2e/realistic-style-alignment.spec.ts \
-        --project=core \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local realistic_style_alignment_result=$?
-
-    echo -e "${YELLOW}运行无障碍交互名称 E2E 浏览器测试...${NC}"
-    run_playwright_command "accessible-control-names" npx playwright test e2e/accessible-control-names.spec.ts \
-        --project=core \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local accessible_control_names_result=$?
-
-    echo -e "${YELLOW}运行世界事实边界 E2E 浏览器测试...${NC}"
-    run_playwright_command "world-fact-safety" npx playwright test e2e/world-fact-safety.spec.ts \
-        --project=core \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local world_fact_safety_result=$?
-
-    echo -e "${YELLOW}运行开场可见完成门控 E2E 浏览器测试...${NC}"
-    run_playwright_command "opening-visible-completion" npx playwright test e2e/opening-visible-completion.spec.ts \
-        --project=core \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local opening_visible_completion_result=$?
-
-    echo -e "${YELLOW}运行实体识别可靠性 E2E 浏览器测试...${NC}"
-    run_playwright_command "entity-collection-reliability" npx playwright test e2e/entity-collection-reliability.spec.ts \
-        --project=core \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local entity_collection_reliability_result=$?
-
-    echo -e "${YELLOW}运行音频重新生成状态 E2E 浏览器测试...${NC}"
-    run_playwright_command "audio-regeneration-state" npx playwright test e2e/audio-regeneration-state.spec.ts \
-        --project=core \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local audio_regeneration_state_result=$?
-
-    echo -e "${YELLOW}运行人生总结事实边界 E2E 浏览器测试...${NC}"
-    run_playwright_command "life-summary-grounding" npx playwright test e2e/life-summary-grounding.spec.ts \
-        --project=core \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local life_summary_grounding_result=$?
-
-    echo -e "${YELLOW}运行快速生成预算 E2E 浏览器测试...${NC}"
-    run_playwright_command "fast-generation-budget" npx playwright test e2e/fast-generation-budget.spec.ts \
-        --project=core \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local fast_generation_budget_result=$?
-
     echo -e "${YELLOW}运行会员 AI 音乐队列补充 E2E 测试...${NC}"
     run_playwright_command "music-player" npx playwright test e2e/music-player.spec.ts \
         --project=ai-heavy \
@@ -790,35 +743,8 @@ run_e2e_browser_impl() {
         --no-deps
     local character_settings_result=$?
 
-    echo -e "${YELLOW}运行读故事 E2E 浏览器测试...${NC}"
-    run_playwright_command "story-voice" npx playwright test e2e/story-voice-reading.spec.ts \
-        --project=core \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local story_voice_result=$?
-
-    echo -e "${YELLOW}运行 MiniMax 故事音频生成 E2E 浏览器测试...${NC}"
-    run_playwright_command "minimax-audio" npx playwright test e2e/minimax-story-audio-generation.spec.ts \
-        --project=core \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local minimax_audio_result=$?
-
-    echo -e "${YELLOW}运行实体收集与识别 E2E 浏览器测试...${NC}"
-    run_playwright_command "collection-recognition" npx playwright test \
-        e2e/collection.spec.ts \
-        e2e/collection-panel-cache.spec.ts \
-        e2e/entity-recognition.spec.ts \
-        --project=core \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local collection_recognition_result=$?
-
     local result=0
-    if [ $core_result -ne 0 ] || [ $realistic_style_alignment_result -ne 0 ] || [ $accessible_control_names_result -ne 0 ] || [ $world_fact_safety_result -ne 0 ] || [ $opening_visible_completion_result -ne 0 ] || [ $entity_collection_reliability_result -ne 0 ] || [ $audio_regeneration_state_result -ne 0 ] || [ $life_summary_grounding_result -ne 0 ] || [ $fast_generation_budget_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ] || [ $collection_recognition_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ]; then
         result=1
     fi
 

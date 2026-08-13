@@ -4,6 +4,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from src.ai.budgets import GenerationCallTracker
+from src.ai.generation_budget import get_generation_budget
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
 
@@ -68,6 +70,8 @@ class ConsistencyValidator:
         language: str,
         story_history: Optional[List[Dict[str, Any]]] = None,
         run_ai_validation: bool = True,
+        generation_tracker: Optional[GenerationCallTracker] = None,
+        max_output_tokens: int = 4096,
     ) -> ValidationResult:
         """
         Validate a generated story for consistency with the world model.
@@ -134,53 +138,6 @@ class ConsistencyValidator:
                         fix_instructions=authoritative.fix_instructions,
                     )
 
-            wealth_ledger = getattr(world_model, "wealth_ledger", None)
-            if wealth_ledger is not None:
-                current_balance = max(0, int(player_state_dict.get("wealth", 0)))
-                active_transaction_id = player_state_dict.get(
-                    "_active_wealth_transaction_id"
-                )
-                wealth_result = wealth_ledger.validate_narrative(
-                    story_text,
-                    current_balance=current_balance,
-                    active_transaction_id=(
-                        str(active_transaction_id) if active_transaction_id else None
-                    ),
-                )
-                if not wealth_result.passed:
-                    source_event_id = (
-                        str(active_transaction_id)
-                        if active_transaction_id
-                        else (
-                            f"candidate-w{player_state_dict.get('week', 0)}-"
-                            f"r{player_state_dict.get('current_round', 0)}"
-                        )
-                    )
-                    wealth_ledger.record_validation_conflicts(
-                        wealth_result.issues,
-                        source_event_id=source_event_id,
-                    )
-                    source_state = getattr(world_model, "continuity_source_state", None)
-                    if source_state is not None:
-                        wealth_ledger.persist(source_state)
-                    issues = [
-                        ConsistencyIssue(
-                            dimension="wealth",
-                            severity="CRITICAL",
-                            description=issue.message,
-                            fix_suggestion=(
-                                f"使用权威余额 {current_balance:,}；"
-                                "没有交易支持时删除精确金额变化"
-                            ),
-                        )
-                        for issue in wealth_result.issues
-                    ]
-                    return ValidationResult(
-                        passed=False,
-                        issues=issues,
-                        fix_instructions=wealth_result.fix_instructions,
-                    )
-
             if not run_ai_validation:
                 return ValidationResult(passed=True)
 
@@ -205,11 +162,18 @@ class ConsistencyValidator:
 
             system_prompt = get_system_prompt("consistency_validator", language)
 
+            if generation_tracker is not None:
+                generation_tracker.consume("validation")
             response = self.client.call(
                 system_prompt=system_prompt,
                 user_prompt=prompt,
                 temperature=0.3,
-                max_tokens=4096,
+                max_tokens=max_output_tokens,
+                thinking=False,
+                request_timeout=(
+                    generation_tracker.remaining_seconds if generation_tracker is not None else None
+                ),
+                generation_tracker=generation_tracker,
             )
 
             # ★ 解析 AI 的验证结果（已移除硬性判断逻辑）
@@ -219,6 +183,33 @@ class ConsistencyValidator:
             logger.error(f"Consistency validation failed: {e}")
             # On error, pass through (don't block story generation)
             return ValidationResult(passed=True)
+
+    @staticmethod
+    def _invalid_response_result(language: str) -> ValidationResult:
+        """Reject validator output that cannot be interpreted as a JSON object."""
+        if language == "zh":
+            description = "一致性校验未返回可解析的 JSON"
+            fix_suggestion = "重新生成故事并再次执行一致性校验"
+            fix_instructions = "\n\n【一致性校验响应无效】请重新生成故事并再次校验。"
+        else:
+            description = "Consistency validation returned no parseable JSON"
+            fix_suggestion = "Regenerate the story and run consistency validation again"
+            fix_instructions = (
+                "\n\n[INVALID CONSISTENCY RESPONSE] Regenerate the story and validate again."
+            )
+
+        return ValidationResult(
+            passed=False,
+            issues=[
+                ConsistencyIssue(
+                    dimension="validation_response",
+                    severity="CRITICAL",
+                    description=description,
+                    fix_suggestion=fix_suggestion,
+                )
+            ],
+            fix_instructions=fix_instructions,
+        )
 
     def _parse_validation_response(self, response: str, language: str) -> ValidationResult:
         """
@@ -234,9 +225,9 @@ class ConsistencyValidator:
         """
         try:
             data = extract_json(response)
-            if not data:
-                logger.warning("Could not parse validation response as JSON, treating as pass")
-                return ValidationResult(passed=True)
+            if not isinstance(data, dict):
+                logger.warning("Could not parse validation response as a JSON object; rejecting")
+                return self._invalid_response_result(language)
 
             issues = []
             raw_issues = data.get("issues", [])
@@ -421,7 +412,7 @@ class ConsistencyValidator:
 
         except Exception as e:
             logger.error(f"Failed to parse validation response: {e}")
-            return ValidationResult(passed=True)
+            return self._invalid_response_result(language)
 
     def validate_with_history(
         self,
@@ -430,6 +421,8 @@ class ConsistencyValidator:
         dynamic_facts: List[Any],
         character_settings: Dict[str, Any],
         language: str,
+        generation_tracker: Optional[GenerationCallTracker] = None,
+        max_output_tokens: Optional[int] = None,
     ) -> ValidationResult:
         """
         ★ 增强验证：结合数据库历史故事进行交叉验证。
@@ -528,11 +521,19 @@ class ConsistencyValidator:
 
             system_prompt = get_system_prompt("consistency_validator", language)
 
+            if generation_tracker is not None:
+                generation_tracker.consume("validation")
             response = self.client.call(
                 system_prompt=system_prompt,
                 user_prompt=prompt,
                 temperature=0.3,
-                max_tokens=4096,
+                max_tokens=(
+                    max_output_tokens
+                    if max_output_tokens is not None
+                    else get_generation_budget("expert").max_tokens
+                ),
+                thinking=False,
+                generation_tracker=generation_tracker,
             )
 
             return self._parse_validation_response(response, language)

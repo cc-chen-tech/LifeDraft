@@ -657,6 +657,79 @@ describe('MusicPlayer', () => {
     ).toBe(true);
   });
 
+  it('当前歌曲加载失败后优先推进持久化队列里的 AI 曲目', async () => {
+    const currentSong = {
+      id: 1,
+      name: '网易云 当前曲',
+      artists: ['Score'],
+      album: '影视配乐',
+      duration: 180000,
+      url: 'https://example.com/current.mp3',
+      source: 'netease' as const,
+    };
+    const queuedAiSong = {
+      id: 'ai-generated-77',
+      name: 'AI MiniMax 雨夜追逐',
+      artists: ['MiniMax'],
+      album: 'AI Generated',
+      duration: 120000,
+      url: '/api/music/generated/ai-generated-77.mp3',
+      source: 'ai_generated' as const,
+      provider: 'minimax',
+      model: 'music-01',
+    };
+    (global.fetch as jest.Mock).mockReset();
+    (global.fetch as jest.Mock).mockResolvedValue(
+      playlistResponse(77, queuedAiSong, [])
+    );
+    useMusicStore.setState({
+      recommendation: {
+        mood: '紧张',
+        scene_type: '雨夜追逐',
+        keywords: ['雨夜追逐'],
+        songs: [currentSong],
+      },
+      playlistGameId: 77,
+      currentSong,
+      queue: [queuedAiSong],
+      playedSongs: [],
+      audioElement: null,
+      isPlaying: false,
+    });
+
+    render(
+      <MusicPlayer
+        storyText="雨夜码头追逐，主角发现旧账册线索。"
+        gameId={77}
+        autoFetchRecommendation={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '播放' }));
+    const firstAudio = createdAudioInstances.find((audio) =>
+      audio.src.includes('current.mp3')
+    );
+    expect(firstAudio).toBeDefined();
+
+    act(() => {
+      firstAudio?.onerror?.();
+    });
+
+    await waitFor(() => {
+      expect(useMusicStore.getState().currentSong?.name).toBe('AI MiniMax 雨夜追逐');
+    });
+    expect(
+      (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
+        String(call[0]).includes('/api/music/playlist/77/advance')
+      )
+    ).toBe(true);
+    expect(
+      createdAudioInstances.some((audio) =>
+        audio.src.includes('ai-generated-77.mp3') && audio.play.mock.calls.length === 1
+      )
+    ).toBe(true);
+  });
+
   it('有基础歌曲时仍提示 MiniMax 原创音乐正在后台生成', () => {
     useMusicStore.setState({
       recommendation: {
@@ -741,7 +814,19 @@ describe('MusicPlayer', () => {
         mood: '悬疑',
         scene_type: '都市调查悬疑',
         keywords: ['都市调查 悬疑配乐'],
-        songs: [],
+        songs: [
+          {
+            id: 'ai-generated-88',
+            name: 'AI MiniMax 都市调查悬疑',
+            artists: ['MiniMax'],
+            album: 'AI Generated',
+            duration: 180000,
+            url: '/api/music/generated/reused.mp3',
+            source: 'ai_generated',
+            library_reused: true,
+            match_score: 88,
+          },
+        ],
       },
       currentSong: {
         id: 'ai-generated-88',
@@ -770,7 +855,55 @@ describe('MusicPlayer', () => {
     );
 
     expect(screen.getByTestId('sound-music-console-status')).toHaveTextContent(
-      'MiniMax · AI Generated · AI 本地库 · 已匹配当前场景'
+      '悬疑 · 都市调查悬疑 · MiniMax · AI Generated · AI 本地库 · 已匹配当前场景'
+    );
+  });
+
+  it('在新推荐保留旧曲目时不把新场景标签贴到旧曲目上', () => {
+    useMusicStore.setState({
+      recommendation: {
+        mood: '轻松',
+        scene_type: '海边重逢',
+        keywords: ['海边 原声'],
+        songs: [
+          {
+            id: 99,
+            name: '新场景候选曲',
+            artists: ['New Artist'],
+            album: 'New Album',
+            duration: 180000,
+            url: 'https://example.com/new-scene.mp3',
+            source: 'netease',
+          },
+        ],
+      },
+      currentSong: {
+        id: 42,
+        name: '上一场景保留曲',
+        artists: ['Previous Artist'],
+        album: 'Previous Album',
+        duration: 180000,
+        url: 'https://example.com/previous-scene.mp3',
+        source: 'netease',
+      },
+      isLoadingRecommendation: false,
+      recommendationError: null,
+    } as never);
+
+    render(
+      <MusicPlayer
+        storyText="海边重逢后，主角决定暂时留下。"
+        gameId={77}
+        autoFetchRecommendation={false}
+        consoleControls
+      />
+    );
+
+    expect(screen.getByTestId('sound-music-console-status')).toHaveTextContent(
+      'Previous Artist · Previous Album'
+    );
+    expect(screen.getByTestId('sound-music-console-status')).not.toHaveTextContent(
+      '轻松 · 海边重逢'
     );
   });
 

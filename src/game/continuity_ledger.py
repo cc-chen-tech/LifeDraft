@@ -13,6 +13,10 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from src.game.relationship_authority import extract_required_key_people
+from src.utils.financial_narrative import (
+    is_authoritative_financial_record,
+    sanitize_authoritative_financial_clauses,
+)
 
 LEDGER_VERSION = 1
 MAX_TIMELINE_ENTRIES = 600
@@ -117,6 +121,29 @@ _COMMON_SURNAMES = set(
 )
 
 
+def _sanitize_timeline_entry(value: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(value, Mapping):
+        return None
+    entry = copy.deepcopy(dict(value))
+    entry["summary"] = sanitize_authoritative_financial_clauses(
+        _text(entry.get("summary"))
+    )
+    entry["choice"] = sanitize_authoritative_financial_clauses(
+        _text(entry.get("choice"))
+    )
+    return entry
+
+
+def _sanitize_record_map(value: Any) -> Dict[str, Dict[str, Any]]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        str(key): copy.deepcopy(dict(record))
+        for key, record in value.items()
+        if isinstance(record, Mapping) and not is_authoritative_financial_record(record)
+    }
+
+
 @dataclass(frozen=True)
 class ContinuityIssue:
     code: str
@@ -152,15 +179,17 @@ class ContinuityLedger:
         self.immutable_identities: Dict[str, Dict[str, Any]] = dict(
             raw.get("immutable_identities") or {}
         )
-        self.timeline: List[Dict[str, Any]] = list(raw.get("timeline") or [])
-        self.completed_events: Dict[str, Dict[str, Any]] = dict(
-            raw.get("completed_events") or {}
-        )
+        self.timeline = [
+            entry
+            for value in list(raw.get("timeline") or [])
+            if (entry := _sanitize_timeline_entry(value)) is not None
+        ]
+        self.completed_events = _sanitize_record_map(raw.get("completed_events"))
         mutable = dict(raw.get("mutable_states") or {})
         self.mutable_states: Dict[str, Dict[str, Dict[str, Any]]] = {
-            "health": dict(mutable.get("health") or {}),
-            "relationships": dict(mutable.get("relationships") or {}),
-            "facts": dict(mutable.get("facts") or {}),
+            "health": _sanitize_record_map(mutable.get("health")),
+            "relationships": _sanitize_record_map(mutable.get("relationships")),
+            "facts": _sanitize_record_map(mutable.get("facts")),
         }
         self.corrections: List[Dict[str, Any]] = list(raw.get("corrections") or [])
         self.conflicts: List[Dict[str, Any]] = list(raw.get("conflicts") or [])
@@ -279,6 +308,14 @@ class ContinuityLedger:
         for week, round_number, record in sorted(records, key=lambda item: item[:2]):
             event_description = _text(record.get("event_description"))
             continuation = _text(record.get("story_continuation"))
+            record_date_info = record.get("date_info")
+            date_info: Mapping[str, Any] = (
+                record_date_info if isinstance(record_date_info, Mapping) else {}
+            )
+            record_effects = record.get("effects")
+            effects: Mapping[str, Any] = (
+                record_effects if isinstance(record_effects, Mapping) else {}
+            )
             story_text = "\n\n".join(
                 part for part in (event_description, continuation) if part
             )
@@ -286,15 +323,12 @@ class ContinuityLedger:
                 event_id=f"w{week}-r{round_number}",
                 week=week,
                 round_number=round_number,
-                date_info=(
-                    record.get("date_info")
-                    if isinstance(record.get("date_info"), Mapping)
-                    else {}
-                ),
+                date_info=date_info,
                 summary=_text(record.get("summary")),
                 choice=_text(record.get("choice")),
                 story_text=story_text,
                 fact_updates=[],
+                effects=effects,
             )
 
     def _seed_identity(
@@ -336,12 +370,20 @@ class ContinuityLedger:
         }
 
     def to_dict(self) -> Dict[str, Any]:
+        timeline = [
+            entry
+            for value in self.timeline[-MAX_TIMELINE_ENTRIES:]
+            if (entry := _sanitize_timeline_entry(value)) is not None
+        ]
         return {
             "version": LEDGER_VERSION,
             "immutable_identities": copy.deepcopy(self.immutable_identities),
-            "timeline": copy.deepcopy(self.timeline[-MAX_TIMELINE_ENTRIES:]),
-            "completed_events": copy.deepcopy(self.completed_events),
-            "mutable_states": copy.deepcopy(self.mutable_states),
+            "timeline": timeline,
+            "completed_events": _sanitize_record_map(self.completed_events),
+            "mutable_states": {
+                category: _sanitize_record_map(self.mutable_states.get(category))
+                for category in ("health", "relationships", "facts")
+            },
             "corrections": copy.deepcopy(self.corrections),
             "conflicts": copy.deepcopy(self.conflicts[-MAX_CONFLICTS:]),
         }
@@ -371,8 +413,12 @@ class ContinuityLedger:
         if self.timeline:
             lines.append("最近已提交时间线：")
             for entry in self.timeline[-8:]:
-                summary = _text(entry.get("summary"))
-                choice = _text(entry.get("choice"))
+                summary = sanitize_authoritative_financial_clauses(
+                    _text(entry.get("summary"))
+                )
+                choice = sanitize_authoritative_financial_clauses(
+                    _text(entry.get("choice"))
+                )
                 evidence = summary or choice or "已提交事件"
                 if choice and choice != summary:
                     evidence += f"；玩家已选择：{choice}"
@@ -383,6 +429,8 @@ class ContinuityLedger:
         if self.completed_events:
             lines.append("已完成事件（不得回滚成未办理）：")
             for record in list(self.completed_events.values())[-12:]:
+                if is_authoritative_financial_record(record):
+                    continue
                 lines.append(
                     f"- {record.get('subject')}：{record.get('fact')}"
                     f"（来源 {record.get('source_event_id')}）"
@@ -392,6 +440,8 @@ class ContinuityLedger:
             if records:
                 lines.append(f"{title}（变化必须有来源事件）：")
                 for subject, record in records.items():
+                    if is_authoritative_financial_record(record):
+                        continue
                     lines.append(
                         f"- {subject}：{record.get('fact')}（来源 {record.get('source_event_id')}）"
                     )
@@ -399,6 +449,8 @@ class ContinuityLedger:
         if current_facts:
             lines.append("当前可变事实（变化必须有来源事件）：")
             for record in list(current_facts.values())[-20:]:
+                if is_authoritative_financial_record(record):
+                    continue
                 lines.append(
                     f"- [{record.get('category')}] {record.get('subject')}：{record.get('fact')}"
                     f"（来源 {record.get('source_event_id')}）"
@@ -657,6 +709,7 @@ class ContinuityLedger:
         choice: str,
         story_text: str,
         fact_updates: Iterable[Mapping[str, Any]],
+        effects: Optional[Mapping[str, Any]] = None,
     ) -> bool:
         if any(entry.get("event_id") == event_id for entry in self.timeline):
             return False
@@ -684,8 +737,9 @@ class ContinuityLedger:
                 "week": week,
                 "round": round_number,
                 "date_info": dict(date_info),
-                "summary": summary,
-                "choice": choice,
+                "summary": sanitize_authoritative_financial_clauses(summary),
+                "choice": sanitize_authoritative_financial_clauses(choice),
+                "effects": copy.deepcopy(dict(effects or {})),
                 "story_hash": _story_hash(story_text),
                 "status": "committed",
             }
@@ -716,6 +770,8 @@ class ContinuityLedger:
             category = _text(update.get("category") or "fact").lower()
             fact = _text(update.get("fact") or update.get("description"))
             if not subject or not fact or action == "remove":
+                continue
+            if is_authoritative_financial_record(update):
                 continue
             if (
                 category in {"identity", "immutable_identity", "role"}

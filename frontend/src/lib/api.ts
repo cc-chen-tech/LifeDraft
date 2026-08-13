@@ -9,7 +9,6 @@ import type {
   CurrentEventData,
   CharacterSettings,
   EffectValues,
-  EventOption,
   StoryVoiceReadingRequest,
   StoryVoiceReadingResponse,
   VoiceReadingJobResponse,
@@ -22,6 +21,18 @@ import { resolveApiBase } from './apiBase';
 
 const API_BASE = resolveApiBase();
 export const LIFE_SUMMARY_REQUEST_TIMEOUT_MS = 30_000;
+
+export interface PortraitImageGenerationJob {
+  job_id: number;
+  game_id: number;
+  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  image_id: number | null;
+  attempt_count: number;
+  error_code?: string | null;
+  error_message?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
 
 /**
  * 401 重定向防抖：防止并发请求竞态导致多次重定向
@@ -49,6 +60,7 @@ function handle401Redirect() {
 
 export function shouldRetryApiResponse(status: number, url: string, attemptIndex: number): boolean {
   if (url.includes('/voice-reading/')) return false;
+  if (isChoiceMutation(url)) return false;
   if (isImageGenerationMutation(url)) return false;
   if (status === 502 || status === 504) return true;
   if (status >= 500) return true;
@@ -58,8 +70,13 @@ export function shouldRetryApiResponse(status: number, url: string, attemptIndex
 
 export function shouldRetryApiError(url: string, attemptIndex: number, retries: number): boolean {
   if (url.includes('/voice-reading/')) return false;
+  if (isChoiceMutation(url)) return false;
   if (isImageGenerationMutation(url)) return false;
   return attemptIndex < retries - 1;
+}
+
+function isChoiceMutation(url: string): boolean {
+  return url.endsWith('/choice-sync') || url.endsWith('/custom-choice-sync');
 }
 
 function isImageGenerationMutation(url: string): boolean {
@@ -72,6 +89,7 @@ function isImageGenerationMutation(url: string): boolean {
 
   return [
     '/images/generate',
+    '/images/character/generate-async',
     '/images/player',
     '/images/regenerate',
     '/images/regenerate-fresh',
@@ -79,6 +97,24 @@ function isImageGenerationMutation(url: string): boolean {
     '/images/scene/generate',
     '/images/scene/regenerate',
   ].some((path) => url === path || url.startsWith(`${path}?`) || url.startsWith(`${path}/`));
+}
+
+function sleepWithSignal(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const handleAbort = () => {
+      clearTimeout(timeoutId);
+      reject(new DOMException('The operation was aborted.', 'AbortError'));
+    };
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener('abort', handleAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', handleAbort, { once: true });
+  });
 }
 
 /**
@@ -89,13 +125,26 @@ async function fetchWithRetry(
   url: string, 
   options: RequestInit & { timeout?: number }, 
   retries = 3
-): Promise<Response> {
+): Promise<{ response: Response; cleanup: () => void }> {
   const { timeout, ...fetchOptions } = options;
+  const externalSignal = fetchOptions.signal;
   let lastError: Error | null = null;
   
   for (let i = 0; i < retries; i++) {
+    if (externalSignal?.aborted) {
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    }
     const controller = new AbortController();
     const timeoutId = timeout ? setTimeout(() => controller.abort(), timeout) : null;
+    const abortFromExternalSignal = () => controller.abort();
+    externalSignal?.addEventListener('abort', abortFromExternalSignal, { once: true });
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      externalSignal?.removeEventListener('abort', abortFromExternalSignal);
+    };
     
     try {
       const response = await fetch(`${API_BASE}${url}`, {
@@ -108,17 +157,18 @@ async function fetchWithRetry(
         credentials: 'include',
       });
       
-      if (timeoutId) clearTimeout(timeoutId);
-      
       if (response.ok || !shouldRetryApiResponse(response.status, url, i)) {
-        return response;
+        // Keep the timeout and caller signal linked until fetchJson finishes
+        // consuming the body. Aborting only the header fetch is insufficient.
+        return { response, cleanup };
       }
 
       // Server error - will retry
+      cleanup();
       lastError = new Error(`Server error: ${response.status}`);
       console.warn(`[API] Server error (${response.status}), attempt ${i + 1}/${retries}`);
     } catch (error) {
-      if (timeoutId) clearTimeout(timeoutId);
+      cleanup();
       
       // Don't retry on abort
       if (error instanceof Error && error.name === 'AbortError') {
@@ -135,37 +185,89 @@ async function fetchWithRetry(
     }
     
     // Exponential backoff: 1s, 2s, 4s, ...
-    await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+    await sleepWithSignal(Math.pow(2, i) * 1000, externalSignal || undefined);
   }
   
   throw lastError || new Error('Max retries exceeded');
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: number }): Promise<T> {
-  const response = await fetchWithRetry(url, options || {});
+  const { response, cleanup } = await fetchWithRetry(url, options || {});
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
-    const detail = error.detail;
-    let errorMessage = error.message || response.statusText || 'Request failed';
-    let errorCode: string | undefined;
-    let retryable: boolean | undefined;
-    if (typeof detail === 'string') {
-      errorMessage = detail;
-    } else if (detail && typeof detail === 'object') {
-      const detailRecord = detail as Record<string, unknown>;
-      errorCode = typeof detailRecord.code === 'string' ? detailRecord.code : undefined;
-      retryable = typeof detailRecord.retryable === 'boolean' ? detailRecord.retryable : undefined;
-      const detailParts = [detailRecord.error, detailRecord.message]
-        .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
-      if (detailParts.length > 0) {
-        errorMessage = detailParts.join(': ');
+  try {
+    if (!response.ok) {
+      const error = await response.json().catch((bodyError: unknown) => {
+        if (
+          options?.signal?.aborted ||
+          (bodyError instanceof Error && bodyError.name === 'AbortError')
+        ) {
+          throw bodyError;
+        }
+        return { message: response.statusText };
+      });
+      const detail = error.detail;
+      let errorMessage = error.message || response.statusText || 'Request failed';
+      let errorCode: string | undefined;
+      let retryable: boolean | undefined;
+      if (typeof detail === 'string') {
+        errorMessage = detail;
+      } else if (detail && typeof detail === 'object') {
+        const detailRecord = detail as Record<string, unknown>;
+        errorCode = typeof detailRecord.code === 'string' ? detailRecord.code : undefined;
+        retryable = typeof detailRecord.retryable === 'boolean' ? detailRecord.retryable : undefined;
+        const detailParts = [detailRecord.error, detailRecord.message]
+          .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
+        if (detailParts.length > 0) {
+          errorMessage = detailParts.join(': ');
+        }
       }
-    }
 
-    // ★ 401 未授权 - 对于 /auth/me 这是正常的未登录状态，不显示错误日志
-    if (response.status === 401 && url === '/auth/me') {
-      // 静默处理，不显示错误日志
+      // ★ 401 未授权 - 对于 /auth/me 这是正常的未登录状态，不显示错误日志
+      if (response.status === 401 && url === '/auth/me') {
+        // 静默处理，不显示错误日志
+        throw Object.assign(new Error(errorMessage), {
+          status: response.status,
+          code: errorCode,
+          retryable,
+        });
+      }
+
+      // ★ 401 未授权 - 收集面板请求静默处理，不触发重定向
+      if (response.status === 401 && url.includes('/collection/')) {
+        console.warn(`[API] Collection API 401 — cookie may not have been forwarded: ${url}`);
+        throw Object.assign(new Error(errorMessage || 'Authentication required'), {
+          status: response.status,
+          code: errorCode,
+          retryable,
+        });
+      }
+
+      if (response.status === 401 && url.includes('/voice-reading/')) {
+        console.warn(`[API] Voice reading API 401 — falling back without redirect: ${url}`);
+        throw Object.assign(new Error(error.message || 'Authentication required'), {
+          status: response.status,
+          code: errorCode,
+          retryable,
+        });
+      }
+
+      // ★ 404 未找到 - 对于场景图片查询，这是正常的未生成状态，不显示错误日志
+      if (response.status === 404 && url.includes('/images/scene/')) {
+        // 静默处理，前端会轮询直到图片生成完成
+        throw Object.assign(new Error(errorMessage), {
+          status: response.status,
+          code: errorCode,
+          retryable,
+        });
+      }
+
+      console.error(`[API Error] ${url} failed with ${response.status}:`, errorMessage);
+
+      // ★ 401 未授权 - 使用防竞态的重定向处理
+      if (response.status === 401) {
+        handle401Redirect();
+      }
+
       throw Object.assign(new Error(errorMessage), {
         status: response.status,
         code: errorCode,
@@ -173,50 +275,10 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
       });
     }
 
-    // ★ 401 未授权 - 收集面板请求静默处理，不触发重定向
-    if (response.status === 401 && url.includes('/collection/')) {
-      console.warn(`[API] Collection API 401 — cookie may not have been forwarded: ${url}`);
-      throw Object.assign(new Error(errorMessage || 'Authentication required'), {
-        status: response.status,
-        code: errorCode,
-        retryable,
-      });
-    }
-
-    if (response.status === 401 && url.includes('/voice-reading/')) {
-      console.warn(`[API] Voice reading API 401 — falling back without redirect: ${url}`);
-      throw Object.assign(new Error(error.message || 'Authentication required'), {
-        status: response.status,
-        code: errorCode,
-        retryable,
-      });
-    }
-
-    // ★ 404 未找到 - 对于场景图片查询，这是正常的未生成状态，不显示错误日志
-    if (response.status === 404 && url.includes('/images/scene/')) {
-      // 静默处理，前端会轮询直到图片生成完成
-      throw Object.assign(new Error(errorMessage), {
-        status: response.status,
-        code: errorCode,
-        retryable,
-      });
-    }
-
-    console.error(`[API Error] ${url} failed with ${response.status}:`, errorMessage);
-    
-    // ★ 401 未授权 - 使用防竞态的重定向处理
-    if (response.status === 401) {
-      handle401Redirect();
-    }
-    
-    throw Object.assign(new Error(errorMessage), {
-      status: response.status,
-      code: errorCode,
-      retryable,
-    });
+    return await response.json();
+  } finally {
+    cleanup();
   }
-
-  return response.json();
 }
 
 export const api = {
@@ -260,7 +322,7 @@ export const api = {
       fetchJson<{ success: boolean }>(`/games/${gameId}/save`, { method: 'POST' }),
     delete: (gameId: number) =>
       fetchJson<{ success: boolean }>(`/games/${gameId}`, { method: 'DELETE' }),
-    getActive: () =>
+    getActive: (signal?: AbortSignal) =>
       fetchJson<{
         game_id: number;
         player_state: PlayerState;
@@ -268,7 +330,7 @@ export const api = {
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
         constraint_level: "fast" | "expert" | "master";
-      }>('/games/active'),
+      }>('/games/active', { signal }),
     updateSettings: (gameId: number, data: { constraint_level?: string }) =>
       fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/settings`, {
         method: 'PATCH',
@@ -324,7 +386,7 @@ export const api = {
 
   // Gameplay
   gameplay: {
-    getState: (gameId: number) =>
+    getState: (gameId: number, signal?: AbortSignal) =>
       fetchJson<{
         player_state: PlayerState;
         progress: GameProgress;
@@ -333,7 +395,7 @@ export const api = {
         constraint_level: "fast" | "expert" | "master";
         narrative_style_id?: string | null;
         narrative_style_name?: string | null;
-      }>(`/games/${gameId}`),
+      }>(`/games/${gameId}`, { signal }),
     generateEvent: (gameId: number, data?: { custom_choices?: string[] }) =>
       fetchJson<{
         story: string;
@@ -386,8 +448,9 @@ export const api = {
       }>(`/games/${gameId}/choice-sync`, {
         method: 'POST',
         body: JSON.stringify(data),
+        signal,
       }),
-    makeCustomChoiceSync: (gameId: number, data: { custom_text: string }) =>
+    makeCustomChoiceSync: (gameId: number, data: { custom_text: string }, signal?: AbortSignal) =>
       fetchJson<{
         story_continuation: string;
         summary: string;
@@ -400,6 +463,7 @@ export const api = {
       }>(`/games/${gameId}/custom-choice-sync`, {
         method: 'POST',
         body: JSON.stringify(data),
+        signal,
       }),
   },
 
@@ -519,6 +583,24 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    enqueueCharacterPortrait: (data: {
+      game_id: number;
+      image_type: 'character';
+      entity_name: string;
+      description: string;
+      entity_key: 'player_main';
+      era?: string;
+      extra_context?: Record<string, unknown>;
+      feedback?: string;
+    }) =>
+      fetchJson<PortraitImageGenerationJob>('/images/character/generate-async', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getCharacterPortraitJob: (jobId: number) =>
+      fetchJson<PortraitImageGenerationJob>(`/images/character/jobs/${jobId}`),
+    getLatestCharacterPortraitJob: (gameId: number) =>
+      fetchJson<PortraitImageGenerationJob | null>(`/images/character/jobs/latest?game_id=${gameId}`),
     regenerate: (imageId: number, data?: { prompt?: string; feedback?: string }) =>
       fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>(`/images/regenerate`, {
         method: 'POST',

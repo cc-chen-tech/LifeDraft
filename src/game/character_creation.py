@@ -6,11 +6,15 @@ import random
 import re
 from typing import Any, Dict, List, Optional
 
+from config.feature_flags import get_feature
 from config.prompts import (get_character_setting_prompt,
                             get_initial_attributes_prompt,
                             get_opening_story_prompt,
                             get_relationship_person_prompt,
                             get_relationships_summary_prompt)
+from src.ai.budgets import (GenerationCallTracker, GenerationOperation,
+                            NarrativeKind, format_length_requirement,
+                            resolve_narrative_budget)
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
@@ -78,6 +82,11 @@ ANTI_MODERN_LIFE_VISION_CUES = (
     "避免现代",
     "避开现代",
 )
+TITLE_ONLY_RELATIONSHIP_RE = re.compile(
+    r"(?P<role>房东|老师|导师|师父|医生|老板|同事|邻居|亲戚)?"
+    r"(?:仅称|只称|仅被称为|只被称为|只叫)"
+    r"(?P<name>[\u4e00-\u9fff]{1,4}(?:师傅|老师|先生|女士|姐|哥|叔|姨))"
+)
 
 
 def assign_sexual_orientation() -> str:
@@ -133,6 +142,129 @@ def _strip_placeholder_surname_from_family_members(
     return normalized_setting
 
 
+def _title_only_relationships(life_vision: str) -> List[Dict[str, str]]:
+    """Return people the player explicitly chose to identify only by a title."""
+    return [
+        {
+            "name": match.group("name"),
+            "role": match.group("role") or "",
+        }
+        for match in TITLE_ONLY_RELATIONSHIP_RE.finditer(life_vision)
+    ]
+
+
+def _preserve_title_only_relationship_names(
+    relationship: Dict[str, Any], life_vision: str
+) -> Dict[str, Any]:
+    """Prevent generated relationship data from assigning a legal name to a title-only person."""
+    normalized = dict(relationship)
+    generated_name = str(normalized.get("name") or "").strip()
+    if not generated_name:
+        return normalized
+
+    context = " ".join(
+        str(normalized.get(field) or "")
+        for field in ("role", "relationship", "relationship_desc", "occupation")
+    )
+    for protected_person in _title_only_relationships(life_vision):
+        canonical_name = protected_person["name"]
+        protected_role = protected_person["role"]
+        shares_surname = generated_name[0] == canonical_name[0]
+        has_matching_role = not protected_role or protected_role in context
+        if generated_name == canonical_name or not (shares_surname and has_matching_role):
+            continue
+
+        normalized["name"] = canonical_name
+        for field in ("relationship", "relationship_desc", "description"):
+            value = normalized.get(field)
+            if isinstance(value, str):
+                normalized[field] = value.replace(generated_name, canonical_name)
+        break
+
+    return normalized
+
+
+def _family_role_label(member: Dict[str, Any]) -> str:
+    """Return a stable family-role label without inferring a legal name."""
+    role = " ".join(
+        str(member.get(field) or "") for field in ("role", "relationship", "relationship_desc")
+    )
+    if "父" in role:
+        return "父亲"
+    if "母" in role:
+        return "母亲"
+    if "哥哥" in role:
+        return "哥哥"
+    if "姐姐" in role:
+        return "姐姐"
+    if "弟" in role:
+        return "弟弟"
+    if "妹" in role:
+        return "妹妹"
+    return ""
+
+
+def _life_vision_mentions_family_role(life_vision: str, role_label: str) -> bool:
+    if role_label in life_vision:
+        return True
+    return role_label in {"父亲", "母亲"} and "父母" in life_vision
+
+
+def _preserve_explicit_family_member_names(
+    family_setting: Dict[str, Any], life_vision: str
+) -> Dict[str, Any]:
+    """Do not turn unnamed family roles in the premise into invented legal names."""
+    if not isinstance(life_vision, str) or not life_vision.strip():
+        return family_setting
+
+    members = family_setting.get("family_members")
+    if not isinstance(members, list):
+        return family_setting
+
+    normalized_setting = dict(family_setting)
+    normalized_members: list[Any] = []
+    replacements: list[tuple[str, str]] = []
+    for raw_member in members:
+        if not isinstance(raw_member, dict):
+            normalized_members.append(raw_member)
+            continue
+
+        member = dict(raw_member)
+        generated_name = str(member.get("name") or "").strip()
+        role_label = _family_role_label(member)
+        if (
+            generated_name
+            and role_label
+            and generated_name not in life_vision
+            and _life_vision_mentions_family_role(life_vision, role_label)
+        ):
+            member["name"] = role_label
+            replacements.append((generated_name, role_label))
+        normalized_members.append(member)
+
+    if not replacements:
+        return family_setting
+
+    for member in normalized_members:
+        if not isinstance(member, dict):
+            continue
+        for field in ("relationship", "relationship_desc", "description"):
+            value = member.get(field)
+            if isinstance(value, str):
+                for generated_name, role_label in replacements:
+                    value = value.replace(generated_name, role_label)
+                member[field] = value
+
+    for field in ("family_description", "family_relationships"):
+        value = normalized_setting.get(field)
+        if isinstance(value, str):
+            for generated_name, role_label in replacements:
+                value = value.replace(generated_name, role_label)
+            normalized_setting[field] = value
+    normalized_setting["family_members"] = normalized_members
+    return normalized_setting
+
+
 def _extract_explicit_modern_year(life_vision: str) -> int:
     years = [
         int(match)
@@ -160,8 +292,7 @@ def _era_setting_is_historical_conflict(era_setting: Dict[str, Any]) -> bool:
         return True
 
     text = " ".join(
-        str(era_setting.get(key) or "")
-        for key in ["era_name", "era_description", "world_context"]
+        str(era_setting.get(key) or "") for key in ["era_name", "era_description", "world_context"]
     )
     return any(cue in text for cue in ANCIENT_ERA_CUES)
 
@@ -172,10 +303,11 @@ def _era_setting_has_modern_markers(era_setting: Dict[str, Any]) -> bool:
         return True
 
     text = " ".join(
-        str(era_setting.get(key) or "")
-        for key in ["era_name", "era_description", "world_context"]
+        str(era_setting.get(key) or "") for key in ["era_name", "era_description", "world_context"]
     )
-    return any(cue in text for cue in ("现代", "当代", "互联网", "AI", "产品经理", "公司", "创业", "科技"))
+    return any(
+        cue in text for cue in ("现代", "当代", "互联网", "AI", "产品经理", "公司", "创业", "科技")
+    )
 
 
 def _era_setting_conflicts_with_modern_life_vision(
@@ -195,8 +327,7 @@ def _classical_alignment_profile(year: int) -> Dict[str, str]:
     return {
         "era_name": f"{max(year, 800)}年前后的古代中国",
         "era_description": (
-            "古代中国，围绕家族、师承与乡土关系展开，"
-            "人物在秩序、道德与责任中成长。"
+            "古代中国，围绕家族、师承与乡土关系展开，" "人物在秩序、道德与责任中成长。"
         ),
         "world_context": (
             "乡里结构、行会网络与家族责任主导的社会环境。"
@@ -319,7 +450,7 @@ class CharacterCreator:
                     prompt=prompt,
                     system_prompt=get_system_prompt("world_building", "en"),
                     temperature=1.0,  # Use 1.0 for better JSON stability with DeepSeek
-                    max_tokens=4096,  # Increased to avoid truncation for traits/wealth
+                    max_tokens=4096,
                 )
 
                 # Unified JSON extraction (handles code blocks, regex fallback, etc.)
@@ -327,7 +458,6 @@ class CharacterCreator:
                 if result is None:
                     raise ValueError(f"Failed to extract JSON from response: {content[:200]}")
 
-                # Validate wealth if it's the wealth setting
                 if setting_type == "era":
                     result = _align_era_setting_with_life_vision(
                         result,
@@ -337,37 +467,6 @@ class CharacterCreator:
 
                 if setting_type == "world":
                     result = qualify_generated_world_facts(result, language=self.language)
-
-                # Validate wealth if it's the wealth setting
-                if setting_type == "wealth":
-                    wealth = result.get("wealth", 0)
-                    # If wealth is 0 or missing, retry API call
-                    if wealth == 0 or wealth is None:
-                        if attempt < max_retries - 1:
-                            logger.warning(
-                                f"Generated wealth is 0 or missing (attempt {attempt + 1}/{max_retries}), retrying API call..."
-                            )
-                            # Add more explicit instruction to the prompt for retry
-                            if self.language == "zh":
-                                prompt += "\n\n**重要：请确保 wealth 字段是一个正整数（1000-1000000），绝对不能为 0。如果角色来自贫困家庭，财富至少应为 1000-5000。**"
-                            else:
-                                prompt += "\n\n**IMPORTANT: Please ensure the wealth field is a positive integer (1000-1000000), and must NEVER be 0. If the character comes from a poor family, wealth should be at least 1000-5000.**"
-                            continue  # Retry API call
-                        else:
-                            # Last attempt failed, use fallback
-                            logger.error(
-                                f"Failed to generate valid wealth after {max_retries} attempts, using fallback"
-                            )
-                            fallback = self._get_fallback_setting(setting_type)
-                            if fallback.get("wealth", 0) == 0:
-                                fallback["wealth"] = 30000
-                            return fallback
-                    elif wealth < 1000:
-                        # If wealth is too low (but not 0), ensure minimum
-                        result["wealth"] = max(1000, wealth)
-                        logger.warning(
-                            f"Generated wealth {wealth} is too low, adjusted to {result['wealth']}"
-                        )
 
                 # Validate and calculate birth_year for age setting
                 if setting_type == "age":
@@ -391,6 +490,7 @@ class CharacterCreator:
 
                 if setting_type == "family":
                     result = _strip_placeholder_surname_from_family_members(result, player_name)
+                    result = _preserve_explicit_family_member_names(result, life_vision)
 
                 return result
 
@@ -406,9 +506,6 @@ class CharacterCreator:
                     )
                     logger.error(f"Error type: {type(e).__name__}, Error details: {str(e)}")
                     fallback = self._get_fallback_setting(setting_type)
-                    # Ensure wealth fallback is not 0
-                    if setting_type == "wealth" and fallback.get("wealth", 0) == 0:
-                        fallback["wealth"] = 30000
                     # Mark as fallback for debugging
                     fallback["_is_fallback"] = True
                     fallback["_error"] = f"{type(e).__name__}: {str(e)}"
@@ -427,9 +524,6 @@ class CharacterCreator:
                     )
                     logger.error(f"Error type: {type(e).__name__}, Error details: {str(e)}")
                     fallback = self._get_fallback_setting(setting_type)
-                    # Ensure wealth fallback is not 0
-                    if setting_type == "wealth" and fallback.get("wealth", 0) == 0:
-                        fallback["wealth"] = 30000
                     # Mark as fallback for debugging
                     fallback["_is_fallback"] = True
                     fallback["_error"] = f"{type(e).__name__}: {str(e)}"
@@ -438,8 +532,6 @@ class CharacterCreator:
 
         # Should not reach here, but just in case
         fallback = self._get_fallback_setting(setting_type)
-        if setting_type == "wealth" and fallback.get("wealth", 0) == 0:
-            fallback["wealth"] = 30000
         return fallback
 
     def generate_single_relationship_person(
@@ -484,6 +576,19 @@ class CharacterCreator:
                     language=self.language,
                     feedback=feedback,
                 )
+                title_only_people = _title_only_relationships(life_vision)
+                if title_only_people:
+                    protected_names = "、".join(person["name"] for person in title_only_people)
+                    if is_zh:
+                        prompt += (
+                            "\n\n【玩家明确的称谓约束】"
+                            f"以下人物只能使用其已给出的称谓，禁止擅自补充姓名：{protected_names}。"
+                        )
+                    else:
+                        prompt += (
+                            "\n\n[Player-specified title-only identities] "
+                            f"Use these names exactly and do not invent legal names: {protected_names}."
+                        )
 
                 # ★ 错误反馈注入：重试时追加上次失败原因
                 if attempt > 0 and last_error:
@@ -512,6 +617,8 @@ class CharacterCreator:
                     result["relationship"] = result["relationship_desc"]
                 elif "relationship" in result and "relationship_desc" not in result:
                     result["relationship_desc"] = result["relationship"]
+
+                result = _preserve_title_only_relationship_names(result, life_vision)
 
                 # Set defaults for missing optional fields
                 result.setdefault("age", 25)
@@ -723,14 +830,14 @@ class CharacterCreator:
         self, character_settings: Dict[str, Any], language: str = "zh"
     ) -> Dict[str, int]:
         """
-        Generate initial core attributes (energy, mood, knowledge, wealth) based on character traits.
+        Generate initial core attributes (energy, mood, knowledge) based on character traits.
 
         Args:
             character_settings: Complete character settings dictionary
             language: Language code
 
         Returns:
-            Dictionary with energy, mood, knowledge, wealth values
+            Dictionary with energy, mood, and knowledge values
         """
         prompt = get_initial_attributes_prompt(character_settings, language)
 
@@ -754,13 +861,11 @@ class CharacterCreator:
             energy = max(0, min(100, result.get("energy", 70)))
             mood = max(0, min(100, result.get("mood", 60)))
             knowledge = max(0, min(100, result.get("knowledge", 50)))
-            wealth = max(0, min(1000000, result.get("wealth", 10000)))
 
             return {
                 "energy": energy,
                 "mood": mood,
                 "knowledge": knowledge,
-                "wealth": wealth,
             }
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"AI生成初始属性失败: {e}")
@@ -785,17 +890,16 @@ class CharacterCreator:
 
         Args:
             traits: Character traits dictionary
-            character_settings: Complete character settings (optional, for wealth generation)
+            character_settings: Complete character settings (optional)
 
         Returns:
-            Dictionary with energy, mood, knowledge, wealth values
+            Dictionary with energy, mood, and knowledge values
         """
         logger.debug(f"规则生成属性开始: traits_type={type(traits)}")
         # Default values
         energy = 70
         mood = 60
         knowledge = 50
-        wealth = 10000
 
         # 辅助函数：将 traits 值转换为小写字符串
         def to_lower_str(value) -> str:
@@ -855,59 +959,15 @@ class CharacterCreator:
         ):
             knowledge -= 20
 
-        # Wealth: based on family background, era, and abilities
-        if character_settings:
-            family = character_settings.get("family", {})
-            family_economy = family.get("family_economy", "").lower()
-            family.get("family_description", "").lower()
-
-            era = character_settings.get("era", {})
-            era_description = era.get("era_description", "").lower()
-            era.get("world_context", "").lower()
-
-            age_info = character_settings.get("age", {})
-            age = age_info.get("age", 22)
-
-            # Family economy adjustments
-            if any(
-                word in family_economy for word in ["富裕", "富有", "wealthy", "rich", "affluent"]
-            ):
-                wealth += 50000
-            elif any(word in family_economy for word in ["中产", "中等", "middle", "moderate"]):
-                wealth += 20000
-            elif any(word in family_economy for word in ["贫困", "贫穷", "poor", "poverty"]):
-                wealth -= 5000
-
-            # Era adjustments
-            if any(word in era_description for word in ["现代", "当代", "modern", "contemporary"]):
-                wealth += 10000
-            elif any(word in era_description for word in ["古代", "ancient", "medieval"]):
-                wealth -= 5000
-
-            # Age adjustments (older characters may have more savings)
-            if age >= 30:
-                wealth += 15000
-            elif age >= 25:
-                wealth += 5000
-
-            # Ability adjustments
-            if any(
-                word in abilities
-                for word in ["商业", "投资", "business", "investment", "entrepreneur"]
-            ):
-                wealth += 20000
-
         # Clamp values
         energy = max(30, min(100, energy))
         mood = max(30, min(100, mood))
         knowledge = max(20, min(100, knowledge))
-        wealth = max(0, min(1000000, wealth))
 
         result = {
             "energy": energy,
             "mood": mood,
             "knowledge": knowledge,
-            "wealth": wealth,
         }
         logger.debug(f"规则生成属性完成: {result}")
         return result
@@ -982,12 +1042,6 @@ class CharacterCreator:
                     "strengths": "适应力强",
                     "weaknesses": "经验不足",
                 },
-                "wealth": {
-                    "wealth": 30000,
-                    "currency": "¥",
-                    "currency_name": "人民币",
-                    "wealth_description": "普通家庭的初始财富，主要来自家庭支持和少量个人积蓄。",
-                },
             }
         else:
             fallbacks = {
@@ -1042,12 +1096,6 @@ class CharacterCreator:
                     "strengths": "Strong adaptability",
                     "weaknesses": "Lack of experience",
                 },
-                "wealth": {
-                    "wealth": 30000,
-                    "currency": "$",
-                    "currency_name": "Dollar",
-                    "wealth_description": "Initial wealth from average family, mainly from family support and small personal savings.",
-                },
             }
 
         return fallbacks.get(setting_type, {})  # type: ignore[return-value]
@@ -1075,12 +1123,27 @@ class CharacterCreator:
         formatted_members = self._format_family_members(
             family.get("family_members", []), self.language
         )
+        narrative_budget = None
+        generation_tracker = None
+        length_requirement = None
+        if get_feature("unified_narrative_budgets"):
+            quality_level = str(getattr(self.ai_generator, "quality_level", None) or "expert")
+            narrative_budget = resolve_narrative_budget(
+                NarrativeKind.OPENING,
+                GenerationOperation.GENERATE,
+                quality_level,
+                self.language,
+            )
+            generation_tracker = GenerationCallTracker(narrative_budget)
+            length_requirement = format_length_requirement(narrative_budget)
+
         prompt = get_opening_story_prompt(
             character_settings=character_settings,
             player_name=player_name,
             life_vision=life_vision,
             formatted_family_members=formatted_members,
             language=self.language,
+            length_requirement=length_requirement,
         )
 
         try:
@@ -1089,7 +1152,16 @@ class CharacterCreator:
                 prompt=prompt,
                 system_prompt="You are a skilled storyteller. Create engaging narrative openings based on character backgrounds.",
                 temperature=0.9,
-                max_tokens=4096,  # Maximum tokens - no truncation
+                max_tokens=(
+                    narrative_budget.max_output_tokens if narrative_budget is not None else 4096
+                ),
+                thinking=False,
+                generation_tracker=generation_tracker,
+                request_timeout=(
+                    max(0.001, generation_tracker.remaining_seconds)
+                    if generation_tracker is not None
+                    else None
+                ),
             )
 
             return response  # type: ignore[return-value, no-any-return]  # Return the stream object
@@ -1215,13 +1287,19 @@ class CharacterCreator:
                         raw_members, character_settings, player_name
                     )
                     if new_members:
-                        family["family_members"] = new_members
+                        family["family_members"] = _preserve_explicit_family_member_names(
+                            {"family_members": new_members},
+                            getattr(player_state, "life_vision", ""),
+                        )["family_members"]
                         fixed_any = True
                         logger.debug(
-                            f"升级 family_members 成功: {[m.get('name') for m in new_members]}"
+                            "升级 family_members 成功: "
+                            f"{[m.get('name') for m in family['family_members'] if isinstance(m, dict)]}"
                         )
 
-                        for member in new_members:
+                        for member in family["family_members"]:
+                            if not isinstance(member, dict):
+                                continue
                             name = member.get("name", "")
                             if name and name not in player_state.relationships:
                                 player_state.relationships[name] = 60

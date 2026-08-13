@@ -86,7 +86,6 @@ EFFECT_SANITY_CHECKS = {
     "energy": {"min": -50, "max": 50, "warning_threshold": 30},
     "mood": {"min": -50, "max": 50, "warning_threshold": 30},
     "knowledge": {"min": -50, "max": 50, "warning_threshold": 30},
-    "wealth": {"min": -50000, "max": 50000, "warning_threshold": 10000},
 }
 
 # Relationship affinity defaults

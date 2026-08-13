@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from src.api.deps import get_current_user_optional, get_db
 from src.api.schemas import CreatePresetRequest, MessageResponse, PresetInfo
+from src.utils.legacy_data import strip_retired_wealth_keys
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -24,7 +25,7 @@ async def create_preset(
             preset_name=req.preset_name,
             player_name=req.player_name,
             life_vision=req.life_vision,
-            character_settings=req.character_settings,
+            character_settings=strip_retired_wealth_keys(req.character_settings),
             user_id=user_id,
         )
         return PresetInfo(
@@ -32,7 +33,7 @@ async def create_preset(
             preset_name=req.preset_name,
             player_name=req.player_name,
             life_vision=req.life_vision,
-            character_settings=req.character_settings,
+            character_settings=strip_retired_wealth_keys(req.character_settings),
         )
     except Exception as e:
         logger.error(f"Failed to create preset: {e}")
@@ -53,7 +54,7 @@ async def list_presets(
             preset_name=str(p.preset_name),  # type: ignore[arg-type]
             player_name=str(p.player_name),  # type: ignore[arg-type]
             life_vision=str(p.life_vision) if p.life_vision else None,  # type: ignore[arg-type]
-            character_settings=p.character_settings or {},  # type: ignore[arg-type]
+            character_settings=strip_retired_wealth_keys(p.character_settings or {}),  # type: ignore[arg-type]
             created_at=p.created_at.isoformat() if p.created_at else None,
         )
         for p in presets
@@ -75,7 +76,7 @@ async def get_preset(
         preset_name=preset["preset_name"],
         player_name=preset["player_name"],
         life_vision=preset.get("life_vision"),
-        character_settings=preset.get("character_settings", {}),
+        character_settings=strip_retired_wealth_keys(preset.get("character_settings", {})),
         created_at=preset.get("created_at"),
     )
 

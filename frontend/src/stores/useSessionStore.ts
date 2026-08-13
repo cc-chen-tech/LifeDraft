@@ -22,17 +22,62 @@ import api from "@/lib/api";
 
 // ★ 同步读取 localStorage 中的持久化数据
 const PERSIST_KEY = "game-store";
+export const SESSION_PERSIST_VERSION = 1;
+const RETIRED_WEALTH_KEYS = new Set([
+  "wealth",
+  "wealth_ledger",
+  "_active_wealth_transaction_id",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stripRetiredWealthKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripRetiredWealthKeys);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !RETIRED_WEALTH_KEYS.has(key))
+      .map(([key, nested]) => [key, stripRetiredWealthKeys(nested)])
+  );
+}
+
+function hasRetiredWealthKeys(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasRetiredWealthKeys);
+  if (!isRecord(value)) return false;
+  return Object.entries(value).some(
+    ([key, nested]) => RETIRED_WEALTH_KEYS.has(key) || hasRetiredWealthKeys(nested)
+  );
+}
+
+interface PersistedSessionState {
+  state: { gameId: number | null; playerState: PlayerState | null };
+  version: number;
+}
+
+export function migratePersistedSessionState(value: unknown): PersistedSessionState {
+  const root = isRecord(value) ? value : {};
+  const state = isRecord(root.state) ? root.state : {};
+  const gameId = typeof state.gameId === "number" ? state.gameId : null;
+  const cleanedPlayerState = stripRetiredWealthKeys(state.playerState);
+  return {
+    state: {
+      gameId,
+      playerState: isRecord(cleanedPlayerState) ? cleanedPlayerState as PlayerState : null,
+    },
+    version: SESSION_PERSIST_VERSION,
+  };
+}
 
 function _readPersistedState(): { gameId: number | null; playerState: PlayerState | null } {
   if (typeof window === "undefined") return { gameId: null, playerState: null };
   try {
     const raw = window.localStorage.getItem(PERSIST_KEY);
     if (!raw) return { gameId: null, playerState: null };
-    const data = JSON.parse(raw);
-    return {
-      gameId: data?.state?.gameId ?? null,
-      playerState: data?.state?.playerState ?? null,
-    };
+    const migrated = migratePersistedSessionState(JSON.parse(raw));
+    window.localStorage.setItem(PERSIST_KEY, JSON.stringify(migrated));
+    return migrated.state;
   } catch {
     return { gameId: null, playerState: null };
   }
@@ -41,7 +86,7 @@ function _readPersistedState(): { gameId: number | null; playerState: PlayerStat
 function _writePersistedState(gameId: number | null, playerState: PlayerState | null): void {
   if (typeof window === "undefined") return;
   try {
-    const data = { state: { gameId, playerState }, version: 0 };
+    const data = migratePersistedSessionState({ state: { gameId, playerState } });
     window.localStorage.setItem(PERSIST_KEY, JSON.stringify(data));
   } catch { /* ignore quota errors */ }
 }
@@ -88,7 +133,10 @@ function shallowChanged(
 ): boolean {
   if (newVal === oldVal) return false;
   if (!newVal || !oldVal) return true;
-  return keyFields.some((key) => (newVal as Record<string, unknown>)[key] !== (oldVal as Record<string, unknown>)[key]);
+  return (
+    keyFields.some((key) => (newVal as Record<string, unknown>)[key] !== (oldVal as Record<string, unknown>)[key]) ||
+    resumeViewChanged(newVal, oldVal)
+  );
 }
 
 export interface SessionState {
@@ -149,7 +197,7 @@ export const useSessionStore = create<SessionState>()(
       const rawEvent = state.current_event as CurrentEventData | null;
       const event = recoverCurrentEvent(rawEvent);
 
-      const playerState = state.player_state;
+      const playerState = stripRetiredWealthKeys(state.player_state) as PlayerState;
 
       const storyText = resolveRecoveredStoryText({
         eventStory: event?.story,
@@ -167,7 +215,7 @@ export const useSessionStore = create<SessionState>()(
 
       set({
         gameId: state.game_id,
-        playerState: state.player_state,
+        playerState,
         progress: state.progress,
         roundInfo: state.round_info,
         isGameOver: false,
@@ -185,20 +233,31 @@ export const useSessionStore = create<SessionState>()(
       };
     },
 
-    syncState: async () => {
-      const { gameId } = get();
+    syncState: async (options) => {
+      const gameId = options?.gameId ?? get().gameId;
+      const isCurrentRequest = () =>
+        !options?.signal?.aborted && get().gameId === gameId;
       console.log(`[syncState] Syncing game ${gameId}`);
       if (!gameId) return;
 
       let state;
       try {
-        state = await api.gameplay.getState(gameId);
+        state = await api.gameplay.getState(gameId, options?.signal);
+        if (!isCurrentRequest()) return;
       } catch (err) {
+        if (!isCurrentRequest()) return;
         const error = err as { status?: number; message?: string };
         if (error.status === 404 || String(error.message || "").includes("404")) {
+          // A run-owned initialization must never enter the legacy mutating
+          // reload path. Its caller decides how to recover after rechecking
+          // the captured game/run identity.
+          if (options?.gameId !== undefined || options?.signal) {
+            throw err;
+          }
           console.warn("[syncState] Session expired (404), reloading game to restore session...");
           try {
             const loaded = await get().loadGameState(gameId);
+            if (!isCurrentRequest()) return;
             console.log("[syncState] Game reloaded successfully");
             return {
               event: loaded.event,
@@ -230,8 +289,12 @@ export const useSessionStore = create<SessionState>()(
       const currentState = get();
       const updates: Partial<SessionState> = {};
 
-      if (shallowChanged(state.player_state, currentState.playerState)) {
-        updates.playerState = state.player_state;
+      const playerState = stripRetiredWealthKeys(state.player_state) as PlayerState;
+      if (
+        hasRetiredWealthKeys(currentState.playerState) ||
+        shallowChanged(playerState, currentState.playerState)
+      ) {
+        updates.playerState = playerState;
       }
       if (shallowChanged(state.progress, currentState.progress, ["week", "current_round", "rounds_per_week"])) {
         updates.progress = state.progress;
@@ -243,6 +306,7 @@ export const useSessionStore = create<SessionState>()(
         updates.constraintLevel = state.constraint_level;
       }
 
+      if (!isCurrentRequest()) return;
       if (Object.keys(updates).length > 0) {
         console.log(`[syncState] Updating fields: ${Object.keys(updates).join(', ')}`);
         set(updates as SessionState);
@@ -285,8 +349,12 @@ export const useSessionStore = create<SessionState>()(
       const currentState = get();
       const updates: Partial<SessionState> = {};
 
-      if (shallowChanged(state.player_state, currentState.playerState)) {
-        updates.playerState = state.player_state;
+      const playerState = stripRetiredWealthKeys(state.player_state) as PlayerState;
+      if (
+        hasRetiredWealthKeys(currentState.playerState) ||
+        shallowChanged(playerState, currentState.playerState)
+      ) {
+        updates.playerState = playerState;
       }
       if (shallowChanged(state.progress, currentState.progress, ["week", "current_round", "rounds_per_week"])) {
         updates.progress = state.progress;

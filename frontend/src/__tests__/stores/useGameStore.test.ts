@@ -208,7 +208,7 @@ describe('useGameStore', () => {
     });
 
     it('has correct auto advance steps', () => {
-      expect(AUTO_ADVANCE_STEPS).toEqual(['family', 'relationships', 'traits', 'wealth']);
+      expect(AUTO_ADVANCE_STEPS).toEqual(['family', 'relationships', 'traits']);
     });
 
     it('sets player name', () => {
@@ -792,7 +792,10 @@ describe('useGameStore', () => {
     it('clears state when game no longer exists', async () => {
       act(() => {
         useGameStore.getState().setGameSession(42, 'session-42');
-        useGameStore.getState().setStoryText('Some story');
+        useGameStore.getState().setCurrentEvent({
+          story: 'Some story',
+          options: [{ text: 'Continue' }],
+        });
       });
 
       const error404 = { status: 404, message: 'Session not found' };
@@ -812,7 +815,53 @@ describe('useGameStore', () => {
       const state = useGameStore.getState();
       expect(state.gameId).toBeNull();
       expect(state.playerState).toBeNull();
+      expect(state.currentEvent).toBeNull();
       expect(state.storyText).toBe('');
+    });
+
+    it('does not clear a newer facade event when a legacy sync rejects after session reset', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+        useGameStore.getState().setCurrentEvent({
+          story: 'Old game story',
+          options: [{ text: 'Old choice' }],
+        });
+      });
+
+      const originalSyncState = useSessionStore.getState().syncState;
+      let rejectLegacySync!: (reason: unknown) => void;
+      useSessionStore.setState({
+        syncState: jest.fn(() => new Promise((_resolve, reject) => {
+          rejectLegacySync = reject;
+        })),
+      } as never);
+
+      try {
+        const legacySync = useGameStore.getState().syncState();
+        const newerEvent = {
+          story: 'New game story',
+          options: [{ text: 'New choice' }],
+        };
+
+        act(() => {
+          useSessionStore.setState({ gameId: null });
+          useGameStore.setState({
+            gameId: 99,
+            currentEvent: newerEvent,
+            storyText: newerEvent.story,
+          });
+        });
+
+        rejectLegacySync(Object.assign(new Error('Game not found'), { status: 404 }));
+        await expect(legacySync).resolves.toBeUndefined();
+        expect(useGameStore.getState()).toEqual(expect.objectContaining({
+          gameId: 99,
+          currentEvent: newerEvent,
+          storyText: newerEvent.story,
+        }));
+      } finally {
+        useSessionStore.setState({ syncState: originalSyncState } as never);
+      }
     });
 
     it('does nothing when gameId is null', async () => {

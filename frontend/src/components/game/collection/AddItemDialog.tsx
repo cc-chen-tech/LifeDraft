@@ -10,6 +10,9 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Loader2 } from "lucide-react";
 import type { AddItemDialogProps } from "./types";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
+import { isWithinInputLimit } from "@/lib/inputLimits";
 
 /**
  * 手动添加物品对话框 - 允许用户手动添加物品到收集
@@ -17,6 +20,7 @@ import type { AddItemDialogProps } from "./types";
 export function AddItemDialog({
   open,
   onClose,
+  onCloseAutoFocus,
   onSubmit,
   itemName,
   onItemNameChange,
@@ -25,14 +29,22 @@ export function AddItemDialog({
   isLoading,
 }: AddItemDialogProps) {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && itemName.trim()) {
+    if (
+      e.key === "Enter" &&
+      itemName.trim() &&
+      isWithinInputLimit(itemName, INPUT_LIMITS.name)
+    ) {
       onSubmit();
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent
+        className="z-[81] max-w-md"
+        overlayClassName="z-[80]"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="w-5 h-5" />
@@ -54,6 +66,7 @@ export function AddItemDialog({
               className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               onKeyDown={handleKeyDown}
             />
+            <LengthIndicator value={itemName} limit={INPUT_LIMITS.name} />
           </div>
 
           <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -72,7 +85,11 @@ export function AddItemDialog({
           </Button>
           <Button
             onClick={onSubmit}
-            disabled={!itemName.trim() || isLoading}
+            disabled={
+              !itemName.trim() ||
+              isLoading ||
+              !isWithinInputLimit(itemName, INPUT_LIMITS.name)
+            }
             className="flex-1"
           >
             {isLoading ? (

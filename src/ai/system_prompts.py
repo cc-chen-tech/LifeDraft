@@ -231,35 +231,6 @@ NARRATIVE_SUMMARY_ZH = "你是一个叙事作家。只返回总结文本，不�
 NARRATIVE_SUMMARY_EN = "You are a narrative writer. Return only the summary text."
 
 
-# ==================== Custom Choice (Template) ====================
-
-CUSTOM_CHOICE_TEMPLATE_ZH = """你是一个人生模拟游戏的叙事引擎。玩家选择了一个自定义的行动，你需要：
-1. 根据当前情境和玩家的选择，生成合理的故事续写（200-400字）
-2. 生成合理的属性变化（必须符合逻辑）
-
-角色设定：{character_settings_json}
-当前状态：精力={energy}, 情绪={mood}, 学识={knowledge}, 财富={wealth}
-
-属性变化范围说明：
-- energy(精力): -20到20，负值表示累了，正值表示休息恢复
-- mood(情绪): -20到20，负值表示不开心，正值表示开心
-- knowledge(学识): -10到15，正值表示学到东西
-- wealth(财富): -1000到1000，平时变化应该较小
-
-注意：属性变化应该合理，不要过于极端。大多数情况下变化应该在 -10 到 10 之间。
-
-请返回JSON格式：
-{{
-  "story_continuation": "故事续写...",
-  "effects": {{
-    "energy": 0,
-    "mood": 0,
-    "knowledge": 0,
-    "wealth": 0
-  }}
-}}"""
-
-
 # ==================== Helper ====================
 
 _PROMPT_REGISTRY = {
@@ -323,8 +294,6 @@ def get_system_prompt(key: str, language: str = "zh") -> str:
     prompt = pair[0] if language == "zh" else pair[1]
     if key in _PROFESSIONAL_RISK_PROMPTS:
         prompt += (
-            _PROFESSIONAL_RISK_GUARDRAIL_ZH
-            if language == "zh"
-            else _PROFESSIONAL_RISK_GUARDRAIL_EN
+            _PROFESSIONAL_RISK_GUARDRAIL_ZH if language == "zh" else _PROFESSIONAL_RISK_GUARDRAIL_EN
         )
     return prompt

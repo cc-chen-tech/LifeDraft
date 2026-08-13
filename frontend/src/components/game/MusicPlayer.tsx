@@ -223,6 +223,12 @@ export function MusicPlayer({
       isLoadingSongRef.current = true;
       setIsSwitchingSong(true); // 显示切换加载状态
     }
+
+    const reusablePreloadedAudio = !isPreload &&
+      preloadedAudioRef.current &&
+      preloadedSongRef.current?.id === song.id
+      ? preloadedAudioRef.current
+      : null;
     
     try {
       // 如果是预加载，不清理当前播放的音频
@@ -248,12 +254,16 @@ export function MusicPlayer({
           audioElement.onerror = null;
         }
         
-        // 清理预加载的音频
-        if (preloadedAudioRef.current) {
+        // A ready next track can become the active player without another network load.
+        if (preloadedAudioRef.current && preloadedAudioRef.current !== reusablePreloadedAudio) {
           preloadedAudioRef.current.pause();
           preloadedAudioRef.current.src = "";
           preloadedAudioRef.current = null;
           preloadedSongRef.current = null;
+        } else if (reusablePreloadedAudio) {
+          preloadedAudioRef.current = null;
+          preloadedSongRef.current = null;
+          reusablePreloadedAudio.oncanplaythrough = null;
         }
         
         // 重置音频元素状态
@@ -264,7 +274,7 @@ export function MusicPlayer({
       }
 
       // 获取播放地址（优先使用歌曲自带的 URL，后端已批量返回）
-      let url = song.url || songUrlMapRef.current.get(song.id);
+      let url = song.url || songUrlMapRef.current.get(song.id) || reusablePreloadedAudio?.src;
       
       // 如果没有 URL，尝试实时获取（降级方案）
       if (!url && !isPreload && typeof song.id === "number") {
@@ -314,8 +324,8 @@ export function MusicPlayer({
         return;
       }
 
-      // 创建新的音频元素
-      const audio = new Audio(url);
+      // Reuse the preloaded element when it matches the target track.
+      const audio = reusablePreloadedAudio || new Audio(url);
       audio.volume = volume;
 
       // 绑定事件
@@ -389,30 +399,42 @@ export function MusicPlayer({
         audio.pause();
         audio.src = "";
         
-        // 播放出错时尝试下一首
-        if (recommendation?.songs.length) {
-          const currentIndex = recommendation.songs.findIndex((s) => s.id === song.id);
-          // 找到下一首未跳过的歌曲
-          let nextIndex = (currentIndex + 1) % recommendation.songs.length;
-          let attempts = 0;
-          const maxAttempts = recommendation.songs.length;
-          
-          while (attempts < maxAttempts) {
-            const nextSong = recommendation.songs[nextIndex];
-            if (!skippedSongsRef.current.has(nextSong.id)) {
-              console.log(`[MusicPlayer] Error occurred, trying next song: ${nextSong.name}`);
-              setTimeout(() => loadAndPlaySong(nextSong), 800);
-              return;
-            }
-            nextIndex = (nextIndex + 1) % recommendation.songs.length;
-            attempts++;
+        // 优先保持持久化队列顺序，确保后台生成的原创曲目不会被错误回退跳过。
+        void (async () => {
+          await advanceQueue();
+          const queuedNextSong = useMusicStore.getState().currentSong;
+          if (
+            queuedNextSong &&
+            queuedNextSong.id !== song.id &&
+            !skippedSongsRef.current.has(queuedNextSong.id)
+          ) {
+            console.log(`[MusicPlayer] Error occurred, advancing playlist: ${queuedNextSong.name}`);
+            await loadAndPlaySong(queuedNextSong);
+            return;
           }
-          
-          // 所有歌曲都跳过了，清空列表重试
-          console.log('[MusicPlayer] All songs skipped, resetting skip list');
-          skippedSongsRef.current = new Set();
-          setSkippedSongs(new Set());
-        }
+
+          if (recommendation?.songs.length) {
+            const currentIndex = recommendation.songs.findIndex((s) => s.id === song.id);
+            let nextIndex = (currentIndex + 1) % recommendation.songs.length;
+            let attempts = 0;
+            const maxAttempts = recommendation.songs.length;
+
+            while (attempts < maxAttempts) {
+              const nextSong = recommendation.songs[nextIndex];
+              if (!skippedSongsRef.current.has(nextSong.id)) {
+                console.log(`[MusicPlayer] Error occurred, trying next song: ${nextSong.name}`);
+                setTimeout(() => loadAndPlaySong(nextSong), 800);
+                return;
+              }
+              nextIndex = (nextIndex + 1) % recommendation.songs.length;
+              attempts++;
+            }
+
+            console.log('[MusicPlayer] All songs skipped, resetting skip list');
+            skippedSongsRef.current = new Set();
+            setSkippedSongs(new Set());
+          }
+        })();
       };
 
       // 先设置当前歌曲（不播放），等待音频准备好
@@ -657,8 +679,14 @@ export function MusicPlayer({
 
   if (consoleControls) {
     const artists = displaySong?.artists?.join(" / ") || "";
+    const displaySongMatchesRecommendation = Boolean(
+      displaySong && recommendation?.songs.some((song) => song.id === displaySong.id)
+    );
+    const storyContext = displaySongMatchesRecommendation
+      ? [recommendation?.mood, recommendation?.scene_type].filter(Boolean).join(" · ")
+      : "";
     const subtitle = displaySong
-      ? [artists, displaySong.album, provenanceLabel].filter(Boolean).join(" · ") || sourceLabel || "当前音乐"
+      ? [storyContext, artists, displaySong.album, provenanceLabel].filter(Boolean).join(" · ") || sourceLabel || "当前音乐"
       : isLoadingRecommendation
         ? "正在匹配故事氛围"
         : recommendationError

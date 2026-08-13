@@ -15,7 +15,6 @@ class TestPlayerState:
         assert state.energy == settings.INITIAL_ENERGY
         assert state.mood == settings.INITIAL_MOOD
         assert state.knowledge == settings.INITIAL_KNOWLEDGE
-        assert state.wealth == settings.INITIAL_WEALTH
         assert state.age == settings.STARTING_AGE
         assert state.week == 0
         assert state.current_round == 0
