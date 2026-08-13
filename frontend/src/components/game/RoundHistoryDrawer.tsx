@@ -168,6 +168,7 @@ export function RoundHistoryDrawer({
                           className="space-y-0"
                         >
                           <button
+                            data-slot="history-round-row"
                             aria-label={item.story_date
                               ? `${roundName}：${hasStory ? "阅读正文" : "查看摘要"}`
                               : `第 ${item.week + 1} 周 ${roundName}：${hasStory ? "阅读正文" : "查看摘要"}`}
