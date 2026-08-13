@@ -35,6 +35,9 @@ export function checkAndClearRetry(): boolean {
 // ==================== Types ====================
 
 export interface EventData {
+  event_id?: string;
+  revision?: number;
+  story_date?: string;
   event_description?: string;
   story?: string;
   options?: EventOption[];
@@ -44,7 +47,13 @@ export interface EventData {
 export interface EventHandlers {
   setStoryText: (text: string) => void;
   setOptions: (options: EventOption[]) => void;
-  setCurrentEvent: (event: { story: string; options: EventOption[] } | null) => void;
+  setCurrentEvent: (event: {
+    story: string;
+    options: EventOption[];
+    event_id?: string;
+    revision?: number;
+    story_date?: string;
+  } | null) => void;
   setPhase: (phase: string) => void;
   setGameOver: (gameOver: boolean) => void;
   setRoundSummary: (summary: string | null) => void;
@@ -53,6 +62,16 @@ export interface EventHandlers {
   appendStoryText: (text: string) => void;
   generatingRef: React.MutableRefObject<boolean>;
   isRetryingRef?: React.MutableRefObject<boolean>;
+}
+
+function buildCurrentEvent(eventData: EventData, story: string, options: EventOption[]) {
+  return {
+    story,
+    options,
+    ...(eventData.event_id ? { event_id: eventData.event_id } : {}),
+    ...(typeof eventData.revision === "number" ? { revision: eventData.revision } : {}),
+    ...(eventData.story_date ? { story_date: eventData.story_date } : {}),
+  };
 }
 
 function enterRetryableCompleteError(
@@ -202,7 +221,7 @@ export function handleEventComplete(
       console.log(`[onComplete] Retry detected but backend story is shorter than streamed story (${backendStory.length}/${frontendStory.length} chars), using frontend story`);
       setStoryText(frontendStory);
       setOptions(receivedOptions);
-      setCurrentEvent({ story: frontendStory, options: receivedOptions });
+      setCurrentEvent(buildCurrentEvent(eventData, frontendStory, receivedOptions));
       setPhase("options");
       setRoundSummary(null);
       return;
@@ -210,7 +229,7 @@ export function handleEventComplete(
     console.log(`[onComplete] Retry detected, forcing backend story (${backendStory.length} chars)`);
     setStoryText(backendStory);
     setOptions(receivedOptions);
-    setCurrentEvent({ story: backendStory, options: receivedOptions });
+    setCurrentEvent(buildCurrentEvent(eventData, backendStory, receivedOptions));
     setPhase("options");
     setRoundSummary(null);
     return;
@@ -221,7 +240,7 @@ export function handleEventComplete(
     console.log(`[onComplete] Replacing streamed story with backend complete story (${result.finalStory.length} chars)`);
     setStoryText(result.finalStory);
     setOptions(receivedOptions);
-    setCurrentEvent({ story: result.finalStory, options: receivedOptions });
+    setCurrentEvent(buildCurrentEvent(eventData, result.finalStory, receivedOptions));
     setPhase("options");
     setRoundSummary(null);
     return;
@@ -236,7 +255,7 @@ export function handleEventComplete(
         console.warn("[onComplete] Skipping stale remaining-text completion because a new generation is active");
         return;
       }
-      setCurrentEvent({ story: backendStory, options: receivedOptions });
+      setCurrentEvent(buildCurrentEvent(eventData, backendStory, receivedOptions));
       setPhase("options");
     }, 3, 20, () => !generatingRef.current);
     return;
@@ -251,7 +270,7 @@ export function handleEventComplete(
   if (optionsChanged) setOptions(receivedOptions);
   if (storyChanged) setStoryText(result.finalStory);
   if (optionsChanged || storyChanged) {
-    setCurrentEvent({ story: result.finalStory, options: receivedOptions });
+    setCurrentEvent(buildCurrentEvent(eventData, result.finalStory, receivedOptions));
   }
   // 延迟切换到 options 阶段，让用户看到完整故事后再选择
   setTimeout(() => {

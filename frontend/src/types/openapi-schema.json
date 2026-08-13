@@ -5214,6 +5214,18 @@
             ],
             "title": "Current Event"
           },
+          "timeline": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeline"
+          },
           "constraint_level": {
             "type": "string",
             "title": "Constraint Level",
@@ -5502,6 +5514,29 @@
             "title": "Stage",
             "description": "场景阶段: event(事件故事) 或 result(结果故事)",
             "default": "result"
+          },
+          "story_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Story Date"
+          },
+          "day_index": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Index"
           }
         },
         "type": "object",
@@ -5837,6 +5872,29 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Option Index"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
           }
         },
         "type": "object",
@@ -6598,6 +6656,29 @@
             ],
             "title": "Player Image Id",
             "description": "可选：已有的人物图片ID"
+          },
+          "story_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Story Date"
+          },
+          "day_index": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Index"
           }
         },
         "type": "object",
@@ -6726,6 +6807,28 @@
           "round_number": {
             "type": "integer",
             "title": "Round Number"
+          },
+          "story_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Story Date"
+          },
+          "day_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Index"
           },
           "stage": {
             "type": "string",

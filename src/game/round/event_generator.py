@@ -5,6 +5,7 @@ Handles the generation of events for each round in the game.
 
 import logging
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Any, Callable, Optional
 
@@ -31,6 +32,18 @@ from src.game.relationship_authority import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def apply_daily_event_metadata(event: GameEvent, player_state: Any) -> GameEvent:
+    """Stamp every daily event path, including scheduled-event fast paths."""
+    from src.game.daily_timeline import is_daily_timeline
+
+    if is_daily_timeline(player_state):
+        timeline = player_state.timeline
+        event.event_id = f"day-{timeline['day_index']}-{uuid.uuid4().hex}"
+        event.revision = 1
+        event.story_date = timeline["current_date"]
+    return event
 
 
 class RoundEventGenerator:
@@ -306,13 +319,20 @@ class RoundEventGenerator:
         logger.info(f"Generating round event: {week_display}, round={current_round}")
 
         # ★ 步骤0: 检查是否有预定事件需要触发
-        scheduled_events = player_state.get_pending_scheduled_events(current_week, current_round)
+        from src.game.daily_timeline import is_daily_timeline
+
+        scheduled_events = (
+            player_state.get_pending_scheduled_events()
+            if is_daily_timeline(player_state)
+            else player_state.get_pending_scheduled_events(current_week, current_round)
+        )
         if scheduled_events:
             logger.info(f"检测到 {len(scheduled_events)} 个预定事件需要触发")
             event = self._generate_scheduled_event(  # type: ignore[assignment]
                 scheduled_events, player_state, stream_callback, status_callback
             )
             if event:
+                apply_daily_event_metadata(event, player_state)
                 self._current_event = event  # type: ignore[assignment]
                 player_state.current_event_data = event.model_dump()
                 # 标记预定事件已触发
@@ -434,6 +454,8 @@ class RoundEventGenerator:
 
             if not event:
                 raise StoryGenerationFailure("AI generator returned no round event")
+
+            apply_daily_event_metadata(event, player_state)
 
             self._current_event = event
 

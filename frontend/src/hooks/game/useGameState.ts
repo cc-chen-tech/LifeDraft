@@ -19,7 +19,7 @@ interface UseGameStateParams {
   setPhase: (phase: Phase | ((prev: Phase) => Phase)) => void;
   setStoryText: (text: string) => void;
   appendStoryText: (text: string) => void;
-  setCurrentEvent: (event: { story: string; options: EventOption[] } | null) => void;
+  setCurrentEvent: (event: { story: string; options: EventOption[]; event_id?: string; revision?: number; story_date?: string } | null) => void;
   setOptions: (options: EventOption[]) => void;
   setProcessing: (processing: boolean, message?: string) => void;
   generatingRef: React.MutableRefObject<boolean>;
@@ -195,6 +195,9 @@ export function useGameState({
               generatingRef.current = false;
 
               const eventData = data as {
+                event_id?: string;
+                revision?: number;
+                story_date?: string;
                 event_description?: string;
                 story?: string;
                 options?: EventOption[];
@@ -225,6 +228,9 @@ export function useGameState({
                 setCurrentEvent({
                   story: finalStory,
                   options: receivedOptions,
+                  ...(eventData.event_id ? { event_id: eventData.event_id } : {}),
+                  ...(typeof eventData.revision === "number" ? { revision: eventData.revision } : {}),
+                  ...(eventData.story_date ? { story_date: eventData.story_date } : {}),
                 });
                 setPhase("options");
                 setRoundSummary(null);

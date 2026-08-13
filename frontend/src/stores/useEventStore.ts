@@ -39,6 +39,7 @@ export const useEventStore = create<EventState>((set, get) => ({
     const currentStory = get().storyText;
     const newStory = currentStory || event.story || "";
     const newEvent: GameEvent = { 
+      ...event,
       story: newStory, 
       options: event.options || [] 
     };

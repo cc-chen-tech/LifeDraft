@@ -155,6 +155,9 @@ export interface PlayerState {
   // Time tracking
   age: number;
   week: number;
+  timeline?: DailyTimeline | null;
+  timeline_version?: number | null;
+  day_history?: DayHistoryEntry[];
   
   // Multi-round system
   current_round: number;
@@ -200,9 +203,39 @@ export interface SavedResumeView {
  * Current event data stored in player state
  */
 export interface CurrentEventData {
+  event_id?: string;
+  revision?: number;
+  story_date?: string;
   event_description?: string;
   story_text?: string;
   options?: EventOption[];
+}
+
+export interface DailyTimeline {
+  version: 2;
+  start_date: string;
+  current_date: string;
+  day_index: number;
+  day_number: number;
+  completed_days: number;
+  week_number: number;
+  weekday: number;
+  total_days: number;
+  game_over?: boolean;
+}
+
+export interface DayHistoryEntry {
+  event_id: string;
+  revision: number;
+  day_index: number;
+  story_date: string;
+  event_description: string;
+  options: EventOption[];
+  choice: string;
+  effects_requested?: EffectValues;
+  effects_applied?: EffectValues;
+  resource_warnings?: Array<Record<string, unknown>>;
+  postprocessing_status?: "pending" | "complete" | "failed";
 }
 
 /**
@@ -319,6 +352,9 @@ export interface PresetInfo {
 export interface GameEvent {
   story: string;
   options: EventOption[];
+  event_id?: string;
+  revision?: number;
+  story_date?: string;
 }
 
 export interface EventOption {
@@ -361,6 +397,8 @@ export interface RoundSceneImage {
   scene_id: number;
   week: number;
   round_number: number;
+  story_date?: string;
+  day_index?: number;
   stage: string;
   image_url: string;
   scene_description: string;

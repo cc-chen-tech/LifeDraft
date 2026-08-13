@@ -9,7 +9,7 @@
  */
 
 import React, { Profiler, useState } from "react";
-import { render, waitFor } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { useMusicStore } from "@/stores/useMusicStore";
 
 // 提供一个极简的 HTMLAudioElement 替代物，仅需 volume 属性
@@ -33,6 +33,7 @@ function VolumeDisplay() {
 
 describe("fadeVolume — 不应对 store 产生高频更新", () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     useMusicStore.setState({
       volume: 0.5,
       audioElement: null,
@@ -43,6 +44,14 @@ describe("fadeVolume — 不应对 store 产生高频更新", () => {
     });
   });
 
+  afterEach(() => {
+    const fadeInterval = useMusicStore.getState().fadeInterval;
+    if (fadeInterval) clearInterval(fadeInterval);
+    useMusicStore.setState({ fadeInterval: null });
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
   it("fadeVolume 结束后 volume 应同步回 store 一次", async () => {
     const store = useMusicStore.getState();
     const audio = createFakeAudio(0.5);
@@ -51,16 +60,14 @@ describe("fadeVolume — 不应对 store 产生高频更新", () => {
     store.fadeVolume(0.8, 200);
 
     // 渐变期间（200ms），store volume 不应变化
-    await new Promise((r) => setTimeout(r, 100));
+    act(() => jest.advanceTimersByTime(100));
     expect(useMusicStore.getState().volume).toBe(0.5);
     expect(audio.volume).toBeGreaterThan(0.5);
 
     // 等待渐变完全结束
-    await new Promise((r) => setTimeout(r, 200));
-    await waitFor(() => {
-      expect(useMusicStore.getState().volume).toBe(0.8);
-      expect(audio.volume).toBeCloseTo(0.8, 1);
-    });
+    act(() => jest.advanceTimersByTime(100));
+    expect(useMusicStore.getState().volume).toBe(0.8);
+    expect(audio.volume).toBeCloseTo(0.8, 1);
   });
 
   it("fadeVolume 执行期间组件渲染次数应 <= 2", async () => {
@@ -85,18 +92,16 @@ describe("fadeVolume — 不应对 store 产生高频更新", () => {
     // 触发 fadeVolume（200ms 内不应触发额外渲染）
     store.fadeVolume(0.9, 200);
 
-    await new Promise((r) => setTimeout(r, 100));
+    act(() => jest.advanceTimersByTime(100));
     const duringCount = renderCount;
     // 渐变期间不应有新渲染
     expect(duringCount).toBe(initialCount);
 
     // 等待渐变结束
-    await new Promise((r) => setTimeout(r, 200));
-    await waitFor(() => {
-      // 结束时最多再渲染一次（同步最终 volume）
-      expect(renderCount).toBeLessThanOrEqual(initialCount + 1);
-      expect(useMusicStore.getState().volume).toBe(0.9);
-    });
+    act(() => jest.advanceTimersByTime(100));
+    // 结束时最多再渲染一次（同步最终 volume）
+    expect(renderCount).toBeLessThanOrEqual(initialCount + 1);
+    expect(useMusicStore.getState().volume).toBe(0.9);
   });
 
   it("fadeVolume 从 0 渐变到 1 时 audio.volume 应逐步变化", async () => {
@@ -109,7 +114,7 @@ describe("fadeVolume — 不应对 store 产生高频更新", () => {
 
     // 在 50ms、100ms、150ms 采样 audio.volume
     for (let t = 50; t <= 150; t += 50) {
-      await new Promise((r) => setTimeout(r, 50));
+      act(() => jest.advanceTimersByTime(50));
       checkpoints.push(audio.volume);
     }
 
@@ -119,11 +124,9 @@ describe("fadeVolume — 不应对 store 产生高频更新", () => {
     }
 
     // 最终应接近 1.0
-    await new Promise((r) => setTimeout(r, 200));
-    await waitFor(() => {
-      expect(audio.volume).toBeCloseTo(1.0, 1);
-      expect(useMusicStore.getState().volume).toBe(1.0);
-    });
+    act(() => jest.advanceTimersByTime(150));
+    expect(audio.volume).toBeCloseTo(1.0, 1);
+    expect(useMusicStore.getState().volume).toBe(1.0);
   });
 
   it("连续调用 fadeVolume 时应取消前一个 interval，避免多个渐变冲突", async () => {
@@ -135,7 +138,7 @@ describe("fadeVolume — 不应对 store 产生高频更新", () => {
     store.fadeVolume(1.0, 300);
 
     // 等待 100ms（渐变中）
-    await new Promise((r) => setTimeout(r, 100));
+    act(() => jest.advanceTimersByTime(100));
     const volumeAfterFirstFadeMid = audio.volume;
     expect(volumeAfterFirstFadeMid).toBeGreaterThan(0.1);
 
@@ -143,7 +146,7 @@ describe("fadeVolume — 不应对 store 产生高频更新", () => {
     store.fadeVolume(0.0, 150);
 
     // 等待第二次完成
-    await new Promise((r) => setTimeout(r, 250));
+    act(() => jest.advanceTimersByTime(150));
 
     // 如果第一次 interval 没被清除，audio.volume 会朝 1.0 走
     // 实际应该朝 0.0 走
@@ -151,7 +154,7 @@ describe("fadeVolume — 不应对 store 产生高频更新", () => {
     expect(useMusicStore.getState().volume).toBe(0.0);
 
     // 再等待一段时间（确保第一个 interval 的残留不会把音量拉回去）
-    await new Promise((r) => setTimeout(r, 300));
+    act(() => jest.advanceTimersByTime(300));
     expect(audio.volume).toBeCloseTo(0.0, 1);
   });
 });

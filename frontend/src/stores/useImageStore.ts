@@ -16,6 +16,8 @@ export interface RoundSceneImage {
   scene_id: number;
   week: number;
   round_number: number;
+  story_date?: string;
+  day_index?: number;
   stage: string;
   image_url: string;
   scene_description: string;

@@ -8,7 +8,7 @@
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -56,6 +56,9 @@ class RoundIllustrationService:
         week: Optional[int] = None,  # ★ 新增 week 参数
         world_model_data: Optional[Dict[str, Any]] = None,
         established_facts: Optional[List[Dict[str, Any]]] = None,
+        story_date: Optional[str] = None,
+        day_index: Optional[int] = None,
+        validity_callback: Optional[Callable[[], bool]] = None,
     ) -> None:
         """
         异步生成每轮场景插画（不阻塞主流程）
@@ -85,6 +88,9 @@ class RoundIllustrationService:
             week,  # ★ 传递 week 参数
             world_model_data,
             established_facts,
+            story_date,
+            day_index,
+            validity_callback,
         )
         week_display = f"第{week + 1}周" if week is not None else "未知周"
         logger.info(
@@ -103,6 +109,9 @@ class RoundIllustrationService:
         week: Optional[int] = None,  # ★ 新增 week 参数
         world_model_data: Optional[Dict[str, Any]] = None,
         established_facts: Optional[List[Dict[str, Any]]] = None,
+        story_date: Optional[str] = None,
+        day_index: Optional[int] = None,
+        validity_callback: Optional[Callable[[], bool]] = None,
     ) -> None:
         """同步生成每轮场景插画（在后台线程中执行）
 
@@ -209,6 +218,18 @@ class RoundIllustrationService:
                 era=char_info["era"],
             )
 
+            # A rewrite/regeneration may have replaced this event while image
+            # generation was running. Never write media derived from a stale
+            # revision back into the current day's cache.
+            if validity_callback is not None and not validity_callback():
+                logger.info(
+                    "[RoundIllustration] Discarding stale daily illustration: "
+                    "game=%s day=%s",
+                    game_id,
+                    day_index,
+                )
+                return
+
             # Step 4: 保存图片 - 包含完整层级信息
             # ★ week 从0开始，entity_name 显示时 +1，与前端一致
             display_week = (week + 1) if week is not None else 0
@@ -234,6 +255,8 @@ class RoundIllustrationService:
                 storage_type=storage_type,
                 referenced_images=referenced_image_ids,
                 importance_score="high",  # 由DeepSeek分析得出
+                story_date=story_date,
+                day_index=day_index,
             )
 
             self.db.add(scene_image)

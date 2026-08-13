@@ -106,6 +106,9 @@ describe('usePlayGame', () => {
         current_event: {
           event_description: 'Test event',
           options: [{ text: 'Option 1' }],
+          event_id: 'daily-event-42',
+          revision: 3,
+          story_date: '2026-08-13',
         },
       };
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockActiveGame));
@@ -114,6 +117,11 @@ describe('usePlayGame', () => {
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledWith('/api/games/active', expect.objectContaining({ credentials: 'include' }));
+      });
+      expect(useGameStore.getState().currentEvent).toMatchObject({
+        event_id: 'daily-event-42',
+        revision: 3,
+        story_date: '2026-08-13',
       });
     });
 

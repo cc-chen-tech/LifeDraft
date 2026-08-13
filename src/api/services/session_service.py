@@ -101,6 +101,9 @@ class SessionService:
 
             # Create GameLoop and load state
             game_loop = GameLoop(language=language)
+            game_loop._daily_postprocess_persist_callback = lambda: get_game_db().save_game_progress(
+                game_id, game_loop.get_state()
+            )
             game_loop.load_game(state_data)
 
             # Store in session

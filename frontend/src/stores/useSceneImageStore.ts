@@ -66,6 +66,8 @@ interface SceneImageState {
     enableSceneImage: boolean;
     week: number;
     stage?: string;
+    storyDate?: string;
+    dayIndex?: number;
   }) => Promise<void>;
   fetchRoundSceneImage: (
     gameId: number,
@@ -196,7 +198,7 @@ export const useSceneImageStore = create<SceneImageState>()(
         : [...state.roundSceneImages, image],
     })),
 
-    generateRoundSceneImage: async ({ gameId, roundNumber, storyText, characterSettings, playerName, enableSceneImage, week, stage = 'result' }) => {
+    generateRoundSceneImage: async ({ gameId, roundNumber, storyText, characterSettings, playerName, enableSceneImage, week, stage = 'result', storyDate, dayIndex }) => {
       const { playerImages, selectedImageIndex } = useImageStore.getState();
 
       if (!gameId || !storyText) {
@@ -224,12 +226,16 @@ export const useSceneImageStore = create<SceneImageState>()(
           player_image_id: playerImageId,
           stage,
           week,
+          story_date: storyDate,
+          day_index: dayIndex,
         });
 
         const newScene: RoundSceneImage = {
           scene_id: result.scene_id,
           week: result.week ?? week,
           round_number: result.round_number,
+          story_date: result.story_date,
+          day_index: result.day_index,
           stage: result.stage || stage,
           image_url: result.image_url,
           scene_description: result.scene_description,
@@ -270,7 +276,7 @@ export const useSceneImageStore = create<SceneImageState>()(
       }
 
       const promise = (async () => {
-        const applyRoundScene = (scene: { scene_id: number; week?: number; round_number?: number; stage?: string | null; image_url: string; scene_description: string; created_at: string; referenced_images?: number[] }) => {
+        const applyRoundScene = (scene: { scene_id: number; week?: number; round_number?: number; story_date?: string; day_index?: number; stage?: string | null; image_url: string; scene_description: string; created_at: string; referenced_images?: number[] }) => {
           const sceneWeek = scene.week ?? week;
           const sceneRound = scene.round_number ?? roundNumber;
           const sceneStage = scene.stage || stage || 'result';
@@ -288,6 +294,8 @@ export const useSceneImageStore = create<SceneImageState>()(
             scene_id: scene.scene_id,
             week: sceneWeek,
             round_number: sceneRound,
+            story_date: scene.story_date,
+            day_index: scene.day_index,
             stage: sceneStage,
             image_url: scene.image_url,
             scene_description: scene.scene_description,
@@ -524,6 +532,8 @@ export const useSceneImageStore = create<SceneImageState>()(
             scene_id: scene.scene_id,
             week: scene.week ?? week,
             round_number: scene.round_number,
+            story_date: scene.story_date,
+            day_index: scene.day_index,
             stage: scene.stage || stage || 'result',
             image_url: scene.image_url,
             scene_description: scene.scene_description,
@@ -590,6 +600,8 @@ export const useSceneImageStore = create<SceneImageState>()(
           scene_id: result.scene_id,
           week: result.week ?? week,
           round_number: result.round_number,
+          story_date: result.story_date,
+          day_index: result.day_index,
           stage: result.stage ?? stage,
           image_url: result.image_url,
           scene_description: result.scene_description,

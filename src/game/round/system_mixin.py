@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 from src.ai.models import GameEvent
 from src.game.round.character_introduction import CharacterIntroductionService
 from src.game.round.choice_processor import RoundChoiceProcessor
+from src.game.round.daily_choice_processor import DailyChoiceProcessor
 from src.game.round.event_generator import RoundEventGenerator
 from src.game.round.finalizer import RoundFinalizer
 
@@ -93,6 +94,18 @@ class RoundSystemMixin:
                 self._event_generator_service, "current_event", e
             ),
             result_callback=getattr(self, "result_callback", None),
+        )
+        self._daily_choice_processor = DailyChoiceProcessor(
+            player_state_getter=lambda: self.player_state,
+            current_event_getter=lambda: self._event_generator_service.current_event,
+            current_event_setter=lambda e: setattr(
+                self._event_generator_service, "current_event", e
+            ),
+            result_callback=getattr(self, "result_callback", None),
+            postprocess_callback=getattr(
+                self, "_queue_daily_postprocessing", None
+            ),
+            settlement_lock=getattr(self, "_daily_mutation_lock", None),
         )
 
         # Finalizer service
@@ -184,10 +197,22 @@ class RoundSystemMixin:
         option_index: int,
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        event_id: Optional[str] = None,
+        revision: Optional[int] = None,
+        persist_callback: Optional[Callable[[Any], bool]] = None,
     ) -> Dict[str, Any]:
         """Process round choice. Delegates to RoundChoiceProcessor."""
         if not hasattr(self, "_choice_processor"):
             self._init_round_services()
+        from src.game.daily_timeline import is_daily_timeline
+
+        if is_daily_timeline(self.player_state):
+            return self._daily_choice_processor.make_choice(
+                event_id=event_id or "",
+                revision=revision or 0,
+                option_index=option_index,
+                persist_callback=persist_callback,
+            )
         return self._choice_processor.make_round_choice(
             option_index=option_index,
             stream_callback=stream_callback,
@@ -202,6 +227,10 @@ class RoundSystemMixin:
         status_callback: Optional[Callable[[str], None]] = None,
     ) -> Dict[str, Any]:
         """Process custom choice. Delegates to RoundChoiceProcessor."""
+        from src.game.daily_timeline import is_daily_timeline
+
+        if is_daily_timeline(self.player_state):
+            raise ValueError("custom_choice_disabled")
         if not hasattr(self, "_choice_processor"):
             self._init_round_services()
         return self._choice_processor.make_custom_choice(
@@ -237,6 +266,20 @@ class RoundSystemMixin:
 
     def get_round_info(self) -> Dict[str, Any]:
         """Get round info. Delegates to RoundFinalizer."""
+        from src.game.daily_timeline import is_daily_timeline, normalize_daily_timeline
+
+        if is_daily_timeline(self.player_state):
+            timeline = normalize_daily_timeline(self.player_state.timeline)
+            return {
+                **timeline,
+                # Transitional media/UI aliases. They are derived from the
+                # daily authority and never drive progression.
+                "week": timeline["day_index"] // 7,
+                "current_round": timeline["day_index"],
+                "rounds_per_week": 7,
+                "round_name": f"第 {timeline['day_number']} 天",
+                "is_last_round": timeline["day_number"] == timeline["total_days"],
+            }
         if not hasattr(self, "_finalizer"):
             self._init_round_services()
         return self._finalizer.get_round_info()

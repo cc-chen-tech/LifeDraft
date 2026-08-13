@@ -221,13 +221,17 @@ export async function streamChoice(
   gameId: number,
   choiceIndex: number,
   callbacks: StreamCallbacks,
-  options?: { signal?: AbortSignal }
+  options?: { signal?: AbortSignal; eventId?: string; revision?: number }
 ): Promise<void> {
   const response = await fetchSSEWithRetry(`/api/games/${gameId}/choice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ option_index: choiceIndex }),
+    body: JSON.stringify({
+      option_index: choiceIndex,
+      event_id: options?.eventId,
+      revision: options?.revision,
+    }),
     signal: options?.signal,
   }, callbacks);
 

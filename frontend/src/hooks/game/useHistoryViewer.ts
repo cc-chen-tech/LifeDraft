@@ -16,6 +16,10 @@ interface RoundHistoryItem {
   effects?: Record<string, unknown>;
   date_info?: { date_string?: string; year?: number; month?: number };
   scene_image?: SceneImageInfo | null;
+  day_index?: number;
+  story_date?: string;
+  legacy_week?: number;
+  legacy_round?: number;
 }
 
 interface UseHistoryViewerParams {
@@ -66,7 +70,28 @@ export function useHistoryViewer({
 
   // Get round history from player state
   const roundHistory = useMemo(
-    () => (playerState?.round_history || []) as RoundHistoryItem[],
+    () => {
+      const daily = playerState?.day_history;
+      if (Array.isArray(daily)) {
+        return daily.map((item) => {
+          const entry = item as Record<string, unknown>;
+          const dayIndex = Number(entry.day_index || 0);
+          const legacyWeek = Number(entry.legacy_week);
+          const legacyRound = Number(entry.legacy_round);
+          const hasLegacyCoordinates =
+            Number.isFinite(legacyWeek) && Number.isFinite(legacyRound);
+          return {
+            ...entry,
+            week: hasLegacyCoordinates ? legacyWeek : Math.floor(dayIndex / 7),
+            round: hasLegacyCoordinates ? legacyRound : dayIndex,
+            day_index: dayIndex,
+            story_date: String(entry.story_date || ""),
+            effects: entry.effects_applied,
+          } as RoundHistoryItem;
+        });
+      }
+      return (playerState?.round_history || []) as RoundHistoryItem[];
+    },
     [playerState]
   );
 

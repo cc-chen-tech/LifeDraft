@@ -22,7 +22,7 @@ from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
 from src.ai.harness.validation_pipeline import ValidationPipeline
 from src.ai.harness.retry_controller import RetryController
 from src.ai.harness.quality_level import PROFILES, QualityLevel
-from src.ai.generation_budget import get_generation_budget
+from src.ai.generation_budget import get_daily_generation_budget, get_generation_budget
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.system_prompts import get_system_prompt
@@ -531,7 +531,29 @@ class StoryGenerator:
             style_constraints=style_constraints,
             quality_level=self.quality_level.value,
         )
-        generation_budget = get_generation_budget(self.quality_level.value)
+        timeline = player_state.get("timeline")
+        daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
+        generation_budget = (
+            get_daily_generation_budget(self.quality_level.value)
+            if daily_mode
+            else get_generation_budget(self.quality_level.value)
+        )
+        if daily_mode:
+            prior = (player_state.get("day_history") or [])[-1:]
+            prior_context = ""
+            if prior and isinstance(prior[0], dict):
+                prior_context = (
+                    f"昨日完整故事：{prior[0].get('event_description', '')}\n"
+                    f"昨日选择：{prior[0].get('choice', '')}\n"
+                    f"昨日实际结算：{prior[0].get('effects_applied', {})}"
+                )
+            prompt += (
+                "\n\n【每日故事模式 v2】\n"
+                f"今天是 {timeline.get('current_date')}（第{timeline.get('day_number')}天）。\n"
+                f"{prior_context}\n"
+                "生成今天的完整故事，必须承接昨日选择和实际结算；"
+                "故事结尾只形成今天唯一的决策点，选项用于决定明天的承接。"
+            )
 
         # Step 1: Generate story text (with optional streaming)
         sys_prompt = get_system_prompt("story_novelist", language)

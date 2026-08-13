@@ -91,7 +91,8 @@ class TestImageClientInit:
         with pytest.raises(ImageGenerationError) as exc_info:
             client.generate_image("test prompt")
 
-        assert "API key" in str(exc_info.value)
+        assert exc_info.value.code == "image_provider_not_configured"
+        assert "API key" not in exc_info.value.public_message
 
     @patch("src.ai.image_generator.settings")
     @patch("src.ai.image_config.settings")
@@ -110,7 +111,8 @@ class TestImageClientInit:
         with pytest.raises(ImageGenerationError) as exc_info:
             client.generate_image("test prompt")
 
-        assert "base URL" in str(exc_info.value)
+        assert exc_info.value.code == "image_provider_not_configured"
+        assert "base URL" not in exc_info.value.public_message
 
 
 class TestImageGenerationError:

@@ -8,6 +8,8 @@ interface StepPlayerInfoProps {
   lifeVision: string;
   onPlayerNameChange: (name: string) => void;
   onLifeVisionChange: (vision: string) => void;
+  startDate?: string;
+  onStartDateChange?: (date: string) => void;
 }
 
 export function StepPlayerInfo({
@@ -15,6 +17,8 @@ export function StepPlayerInfo({
   lifeVision,
   onPlayerNameChange,
   onLifeVisionChange,
+  startDate = "",
+  onStartDateChange,
 }: StepPlayerInfoProps) {
   return (
     <div className="space-y-4 mb-8">
@@ -30,6 +34,22 @@ export function StepPlayerInfo({
           autoFocus
         />
       </div>
+      {onStartDateChange && (
+        <div>
+          <label className="text-sm text-muted-foreground mb-1 block">
+            故事开始日期（可选）
+          </label>
+          <Input
+            type="date"
+            value={startDate}
+            onChange={(e) => onStartDateChange(e.target.value)}
+            className="bg-secondary border-border h-12 text-base"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            留空时使用时代年份的 1 月 1 日
+          </p>
+        </div>
+      )}
       <div>
         <label className="text-sm text-muted-foreground mb-1 block">
           人生愿景（可选）

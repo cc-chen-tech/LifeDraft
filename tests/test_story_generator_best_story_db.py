@@ -8,7 +8,10 @@ Layer 4: DB 集成测试 — 生成链路完整性。
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.ai.harness.quality_level import QualityLevel
+from src.ai.story_exceptions import StoryGenerationFailure
 from src.ai.story_generator import StoryGenerator
 
 
@@ -79,8 +82,8 @@ class TestStoryGeneratorBestStoryFallback:
         assert len(event.event_description) > 50
         assert event.event_description == long_story
 
-    def test_fallback_used_when_no_best_story(self):
-        """没有任何有效故事生成时才使用 fallback"""
+    def test_generation_fails_closed_when_no_valid_story(self):
+        """没有任何有效故事时不得伪造一个可玩的 fallback。"""
         gen, client = self._make_generator(QualityLevel.MASTER)
 
         # 所有调用都返回极短文本
@@ -94,16 +97,14 @@ class TestStoryGeneratorBestStoryFallback:
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
             mock_quick.return_value = MagicMock(passed=True, issues=[], warnings=[])
 
-            event = gen.generate_round_event(
-                player_state={"game_id": 1, "current_week": 1},
-                language="zh",
-                round_number=0,
-                round_context="",
-                option_generator=mock_option_gen,
-            )
-
-        # 当没有有效故事时，fallback 到 "平静的一天"
-        assert "平静" in event.event_description or "This day" in event.event_description
+            with pytest.raises(StoryGenerationFailure):
+                gen.generate_round_event(
+                    player_state={"game_id": 1, "current_week": 1},
+                    language="zh",
+                    round_number=0,
+                    round_context="",
+                    option_generator=mock_option_gen,
+                )
 
     def test_best_story_tracks_longest_across_attempts(self):
         """best_story_text 应记录所有尝试中最长的文本"""

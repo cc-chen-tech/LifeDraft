@@ -9,7 +9,8 @@ import { Send, Loader2, ChevronRight } from "lucide-react";
 interface OptionCardsProps {
   options: { text: string; potential_effects?: Record<string, unknown> }[];
   onSelect: (index: number) => void;
-  onCustomChoice: (text: string) => void;
+  onCustomChoice?: (text: string) => void;
+  allowCustomChoice?: boolean;
   disabled?: boolean;
   className?: string;
 }
@@ -24,6 +25,7 @@ export function OptionCards({
   options,
   onSelect,
   onCustomChoice,
+  allowCustomChoice = true,
   disabled = false,
   className,
 }: OptionCardsProps) {
@@ -39,7 +41,7 @@ export function OptionCards({
   const handleCustomSubmit = () => {
     if (!customText.trim() || disabled) return;
     setSelectedIndex(-1); // -1 = custom
-    onCustomChoice(customText.trim());
+    onCustomChoice?.(customText.trim());
     setCustomText("");
   };
 
@@ -103,8 +105,8 @@ export function OptionCards({
         </button>
       ))}
 
-      {/* Custom input */}
-      <div className="pt-3 mt-1">
+      {/* Custom input is legacy-only. Daily timeline accepts generated options. */}
+      {allowCustomChoice && onCustomChoice && <div className="pt-3 mt-1">
         <div className="flex items-end gap-2">
           <div className="flex-1 relative">
             <Textarea
@@ -147,7 +149,7 @@ export function OptionCards({
             )}
           </Button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -119,6 +119,8 @@ class SceneImageService:
         week: Optional[int] = None,
         get_week_func: Optional[Callable[[], int]] = None,
         get_player_image_func: Optional[Callable[[int, Optional[int]], tuple]] = None,
+        story_date: Optional[str] = None,
+        day_index: Optional[int] = None,
     ) -> "SceneImage":
         """
         自动生成每轮场景插画
@@ -425,6 +427,8 @@ class SceneImageService:
                 storage_type=storage_type,
                 referenced_images=referenced_image_ids,
                 importance_score="medium",
+                story_date=story_date,
+                day_index=day_index,
             )
             self.db.add(new_scene)
             try:

@@ -534,20 +534,31 @@ export const useGameStore = create<GameState>()(
     },
 
     fetchRoundSceneImage: async (roundNumber, stage, options) => {
-      const { gameId, progress } = useSessionStore.getState();
+      const { gameId, progress, playerState } = useSessionStore.getState();
       if (!gameId) return;
-      const week = (progress?.week as number) ?? 0;
+      const dailyTimeline = playerState?.timeline?.version === 2 ? playerState.timeline : null;
+      const dailyIndex = dailyTimeline?.day_index;
+      const sceneRound = typeof dailyIndex === "number" ? dailyIndex : roundNumber;
+      const week = typeof dailyIndex === "number"
+        ? Math.floor(dailyIndex / 7)
+        : (progress?.week as number) ?? 0;
       await useSceneImageStore
         .getState()
-        .fetchRoundSceneImage(gameId, roundNumber, week, stage, options);
+        .fetchRoundSceneImage(gameId, sceneRound, week, stage, options);
       get()._syncFromSubStores();
     },
 
     fetchAllRoundSceneImages: async () => {
-      const { gameId, progress, roundInfo } = useSessionStore.getState();
+      const { gameId, progress, roundInfo, playerState } = useSessionStore.getState();
       if (!gameId) return;
-      const currentRound = (roundInfo?.current_round as number) ?? 0;
-      const currentWeek = (progress?.week as number) ?? 0;
+      const dailyTimeline = playerState?.timeline?.version === 2 ? playerState.timeline : null;
+      const dailyIndex = dailyTimeline?.day_index;
+      const currentRound = typeof dailyIndex === "number"
+        ? dailyIndex
+        : (roundInfo?.current_round as number) ?? 0;
+      const currentWeek = typeof dailyIndex === "number"
+        ? Math.floor(dailyIndex / 7)
+        : (progress?.week as number) ?? 0;
       await useSceneImageStore.getState().fetchAllRoundSceneImages(gameId, currentRound, currentWeek);
       get()._syncFromSubStores();
     },

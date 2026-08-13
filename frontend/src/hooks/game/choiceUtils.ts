@@ -104,7 +104,7 @@ export function handleChoiceComplete(
   result: Record<string, unknown>,
   handlers: ChoiceHandlers
 ): void {
-  const { setRoundSummary, setSummaryText, setCurrentEvent, setGameOver, setOptions, setPhase, setProcessing, setConnectionStatus } = handlers;
+  const { setRoundSummary, setSummaryText, setCurrentEvent, setGameOver, setOptions, setStoryText, setPhase, setProcessing, setConnectionStatus } = handlers;
 
   setProcessing(false);
   setConnectionStatus(null);
@@ -145,6 +145,14 @@ export function handleChoiceComplete(
   }
 
   const resourceWarningText = formatResourceWarnings(result);
+  const isDaily = Boolean(result.next_timeline);
+  if (isDaily && result.effects_applied && typeof result.effects_applied === "object") {
+    window.dispatchEvent(
+      new CustomEvent("story2:daily-settlement", {
+        detail: result.effects_applied,
+      })
+    );
+  }
   if (result.summary && typeof result.summary === "string") {
     setRoundSummary(`${result.summary}${resourceWarningText}`);
   } else if (resourceWarningText) {
@@ -155,12 +163,12 @@ export function handleChoiceComplete(
 
   setCurrentEvent(null);
 
-  // ★ 故事完成后，异步生成结果插画 (stage='result')
+  // Legacy rounds have a result illustration; daily mode has one story image.
   const state = useGameStore.getState();
   const roundNumber = (state.roundInfo?.current_round as number) || 0;
   const storyText = state.storyText;
   
-  if (roundNumber >= 0 && storyText) {
+  if (!isDaily && roundNumber >= 0 && storyText) {
     // 异步生成，不阻塞主流程
     useGameStore.getState().generateRoundSceneImage(roundNumber, storyText, 'result').catch(err => {
       console.error('[handleChoiceComplete] Scene image generation failed:', err);
@@ -169,9 +177,21 @@ export function handleChoiceComplete(
 
   // ★ 同步 player_state 以获取最新的 week/round 等状态
   // 这确保前端显示的周数与后端一致
-  useGameStore.getState().syncPlayerState().catch(err => {
+  const syncPromise = useGameStore.getState().syncPlayerState().catch(err => {
     console.warn('[handleChoiceComplete] Failed to sync player state:', err);
   });
+
+  if (isDaily && !result.game_over) {
+    setOptions([]);
+    setStoryText("");
+    setPhase("loading");
+    void syncPromise.then(() => {
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("story2:generate-next-day"));
+      }, 350);
+    });
+    return;
+  }
 
   if (result.need_weekly_summary && result.weekly_summary) {
     setSummaryText(result.weekly_summary as string);
@@ -340,7 +360,12 @@ export async function handleFallbackChoice(
     if (context.customText !== undefined) {
       result = await gameplay.makeCustomChoiceSync(gameId, { custom_text: context.customText });
     } else if (context.optionIndex !== undefined) {
-      result = await gameplay.makeChoiceSync(gameId, { option_index: context.optionIndex });
+      const currentEvent = useGameStore.getState().currentEvent;
+      result = await gameplay.makeChoiceSync(gameId, {
+        option_index: context.optionIndex,
+        event_id: currentEvent?.event_id,
+        revision: currentEvent?.revision,
+      });
     } else {
       return false;
     }

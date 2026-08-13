@@ -5,6 +5,7 @@ import re
 from typing import Any, Dict, Optional, Tuple
 
 from config.settings import settings
+from config.feature_flags import get_feature
 from src.database.db import GameDatabase
 from src.game.game_loop import GameLoop
 
@@ -99,6 +100,8 @@ class GameInitializer:
         if not player_name:
             raise ValueError("player_name is required")
         character_settings = dict(character_settings)
+        if get_feature("daily_timeline_v2"):
+            character_settings = self._normalize_daily_start_date(character_settings)
         character_settings["relationships"] = self._normalize_relationships_settings(
             character_settings.get("relationships", {})
         )
@@ -135,6 +138,15 @@ class GameInitializer:
             "pending_character_introductions": [],
             "constraint_level": constraint_level,
         }
+        if get_feature("daily_timeline_v2"):
+            from src.game.daily_timeline import build_daily_timeline
+
+            initial_state["timeline_version"] = 2
+            initial_state["timeline"] = build_daily_timeline(
+                start_date=character_settings["start_date"], day_index=0
+            )
+            initial_state["day_history"] = []
+            initial_state["next_age_day"] = 365
 
         # Initialize relationships from character settings
         self._initialize_relationships(initial_state, character_settings)
@@ -203,6 +215,27 @@ class GameInitializer:
         game_loop.load_game(initial_state)
 
         return game_loop, game_id
+
+    @staticmethod
+    def _normalize_daily_start_date(
+        character_settings: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate the selected date and synchronize year-derived settings."""
+        from datetime import date
+
+        normalized = dict(character_settings)
+        era = dict(normalized.get("era") or {})
+        age = dict(normalized.get("age") or {})
+        era_year = int(era.get("year", 2024))
+        raw_start = normalized.get("start_date") or f"{era_year:04d}-01-01"
+        parsed = date.fromisoformat(str(raw_start))
+        era["year"] = parsed.year
+        if "age" in age:
+            age["birth_year"] = parsed.year - int(age["age"])
+        normalized["start_date"] = parsed.isoformat()
+        normalized["era"] = era
+        normalized["age"] = age
+        return normalized
 
     def _initialize_relationships(
         self, initial_state: Dict[str, Any], character_settings: Dict[str, Any]

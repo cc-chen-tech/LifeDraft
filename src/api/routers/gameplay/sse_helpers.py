@@ -75,6 +75,30 @@ def persist_rewritten_current_event(game_loop, game_id: int, rewritten_story: st
         logger.exception(f"Auto-save unexpected error after rewrite: {e}")
 
 
+def invalidate_daily_media_after_event_replacement(game_loop, game_id: int) -> None:
+    """Invalidate only today's derived media after a candidate commits."""
+    from src.game.daily_timeline import is_daily_timeline
+
+    player_state = getattr(game_loop, "player_state", None)
+    if not is_daily_timeline(player_state):
+        return
+    try:
+        from src.database.models import SceneImage, SessionLocal
+
+        day_index = int(player_state.timeline["day_index"])
+        db = SessionLocal()
+        try:
+            db.query(SceneImage).filter(
+                SceneImage.game_id == game_id,
+                SceneImage.day_index == day_index,
+            ).delete(synchronize_session=False)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Failed to invalidate daily media cache: %s", exc)
+
+
 def shutdown_sse_thread_pool(wait: bool = True) -> None:
     """关闭 SSE 线程池（用于应用退出时清理）。"""
     global _sse_thread_pool
@@ -99,6 +123,7 @@ def _trigger_round_illustration_generation(
     """
 
     def generate_illustration():
+        illustration_stage = stage
         try:
             from src.ai.image_client import ImageClient
             from src.database.models import Game
@@ -127,25 +152,56 @@ def _trigger_round_illustration_generation(
                 # 获取当前轮次和周数
                 round_number = player_state.current_round
                 week = player_state.week  # ★ 获取周数
+                timeline = getattr(player_state, "timeline", None)
+                story_date = (
+                    timeline.get("current_date")
+                    if isinstance(timeline, dict) and timeline.get("version") == 2
+                    else None
+                )
+                day_index = (
+                    timeline.get("day_index")
+                    if isinstance(timeline, dict) and timeline.get("version") == 2
+                    else None
+                )
+                if day_index is not None:
+                    round_number = int(day_index)
+                    week = int(day_index) // 7
+                    illustration_stage = "event"
+                expected_event_id = getattr(event, "event_id", None)
+                expected_revision = getattr(event, "revision", None)
+
+                def daily_illustration_is_current() -> bool:
+                    if day_index is None:
+                        return True
+                    current = getattr(game_loop, "current_event", None)
+                    current_timeline = getattr(player_state, "timeline", None)
+                    return (
+                        current is not None
+                        and getattr(current, "event_id", None) == expected_event_id
+                        and getattr(current, "revision", None) == expected_revision
+                        and isinstance(current_timeline, dict)
+                        and current_timeline.get("day_index") == day_index
+                    )
 
                 # ★ 检查是否已存在该周该轮该阶段的插画
                 from src.database.models import SceneImage
 
-                existing = (
-                    db.query(SceneImage)
-                    .filter(
-                        SceneImage.game_id == game_id,
-                        SceneImage.week == week,  # ★ 加入 week 条件
-                        SceneImage.round_number == round_number,
-                        SceneImage.stage == stage,  # ★ 区分阶段
-                    )
-                    .first()
+                existing_query = db.query(SceneImage).filter(
+                    SceneImage.game_id == game_id,
+                    SceneImage.week == week,
+                    SceneImage.round_number == round_number,
+                    SceneImage.stage == illustration_stage,
                 )
+                if day_index is not None:
+                    existing_query = existing_query.filter(
+                        SceneImage.day_index == day_index
+                    )
+                existing = existing_query.first()
 
                 if existing:
                     week_display = f"第{week + 1}周" if week is not None else "未知周"
                     logger.info(
-                        f"[RoundIllustration] {week_display} round {round_number} stage={stage} 插画已存在"
+                        f"[RoundIllustration] {week_display} round {round_number} stage={illustration_stage} 插画已存在"
                     )
                     if not settings.AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES:
                         logger.info(
@@ -231,15 +287,18 @@ def _trigger_round_illustration_generation(
                     character_settings=character_settings,
                     player_name=player_name,
                     existing_images=existing_images,
-                    stage=stage,  # ★ 传递 stage 参数
+                    stage=illustration_stage,  # ★ 传递 stage 参数
                     week=week,  # ★ 传递 week 参数
                     world_model_data=world_model_data,
                     established_facts=established_facts,
+                    story_date=story_date,
+                    day_index=day_index,
+                    validity_callback=daily_illustration_is_current,
                 )
 
                 week_display = f"第{week + 1}周" if week is not None else "未知周"
                 logger.info(
-                    f"[RoundIllustration] 触发异步生成: game={game_id}, {week_display}, round {round_number}, stage={stage}"
+                    f"[RoundIllustration] 触发异步生成: game={game_id}, {week_display}, round {round_number}, stage={illustration_stage}"
                 )
 
             finally:
@@ -490,6 +549,12 @@ def _persist_generated_event_state(game_loop, game_id: int) -> None:
         logger.exception(f"Auto-save unexpected error after event generation: {e}")
 
 
+def _daily_persist_callback(game_id: int):
+    """Return the strict persistence boundary used by daily mutations."""
+    db = get_db()
+    return lambda candidate: db.save_game_progress(game_id, candidate)
+
+
 def _set_generation_resume_view(
     game_loop,
     game_id: int,
@@ -532,6 +597,16 @@ def _persist_choice_state(game_loop, game_id: int) -> None:
 def build_event_generation_key(game_id: int, game_loop) -> EventGenerationKey:
     """Build the stable identity for the current round event."""
     player_state = game_loop.player_state
+    from src.game.daily_timeline import is_daily_timeline, normalize_daily_timeline
+
+    if is_daily_timeline(player_state):
+        timeline = normalize_daily_timeline(player_state.timeline)
+        return EventGenerationKey(
+            game_id=game_id,
+            week=int(timeline["week_number"] - 1),
+            round_number=int(timeline["day_index"]),
+            stage="event",
+        )
     return EventGenerationKey(
         game_id=game_id,
         week=int(player_state.week),
@@ -647,6 +722,8 @@ async def stream_choice(
     last_event_id: Optional[int] = None,
     is_custom: bool = False,
     custom_text: str = "",
+    event_id: Optional[str] = None,
+    revision: Optional[int] = None,
 ):
     """
     Async generator that streams choice processing (story continuation) via SSE.
@@ -660,6 +737,9 @@ async def stream_choice(
     """
     loop = asyncio.get_running_loop()
     q: asyncio.Queue = asyncio.Queue()
+    from src.game.daily_timeline import is_daily_timeline
+
+    daily_mode = is_daily_timeline(game_loop.player_state)
 
     # ★ 标记连接是否已关闭，避免向已关闭的事件循环发送回调
     closed = [False]
@@ -685,6 +765,9 @@ async def stream_choice(
 
     def run():
         try:
+            game_loop._daily_postprocess_persist_callback = lambda: _persist_choice_state(
+                game_loop, game_id
+            )
             if is_custom:
                 result_holder[0] = game_loop.make_custom_choice(
                     custom_text=custom_text,
@@ -692,12 +775,22 @@ async def stream_choice(
                     status_callback=status_cb,
                 )
             else:
+                persist_callback = None
+                if daily_mode:
+                    db = get_db()
+
+                    def persist_callback(candidate):
+                        return db.save_game_progress(game_id, candidate)
+
                 result_holder[0] = game_loop.make_round_choice(
                     option_index=option_index,
                     stream_callback=stream_cb,
                     status_callback=status_cb,
+                    event_id=event_id,
+                    revision=revision,
+                    persist_callback=persist_callback,
                 )
-            if result_holder[0] is not None:
+            if result_holder[0] is not None and not daily_mode:
                 _persist_choice_state(game_loop, game_id)
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"[stream_choice] Data error in run(): {e}")
@@ -809,6 +902,24 @@ async def stream_regenerate(
     Yields SSE events: status, story (chunks), complete (final event).
     """
     loop = asyncio.get_running_loop()
+
+    from src.game.daily_timeline import is_daily_timeline
+
+    if is_daily_timeline(game_loop.player_state):
+        from src.game.daily_event_revision import regenerate_daily_event_atomically
+
+        try:
+            yield make_sse_event("status", {"phase": "regenerating"})
+            event = await asyncio.to_thread(
+                regenerate_daily_event_atomically,
+                game_loop,
+                persist_callback=_daily_persist_callback(game_id),
+            )
+            invalidate_daily_media_after_event_replacement(game_loop, game_id)
+            yield make_sse_event("complete", event.model_dump())
+        except Exception as exc:
+            yield make_sse_event("error", {"error": str(exc)})
+        return
     q: asyncio.Queue = asyncio.Queue()
 
     # ★ 标记连接是否已关闭
@@ -1044,6 +1155,35 @@ async def stream_rewrite(
     Yields SSE events: status, story (chunks), complete (final result).
     """
     loop = asyncio.get_running_loop()
+
+    from src.game.daily_timeline import is_daily_timeline
+
+    if is_daily_timeline(game_loop.player_state):
+        from src.game.daily_event_revision import rewrite_daily_event_atomically
+
+        try:
+            yield make_sse_event("status", {"phase": "rewriting"})
+            event = await asyncio.to_thread(
+                rewrite_daily_event_atomically,
+                game_loop,
+                full_story=full_story,
+                segment_to_replace=segment_to_replace,
+                user_instruction=user_instruction,
+                language=language,
+                persist_callback=_daily_persist_callback(game_id),
+            )
+            invalidate_daily_media_after_event_replacement(game_loop, game_id)
+            yield make_sse_event(
+                "complete",
+                {
+                    "new_story": event.event_description,
+                    "rewritten_story": event.event_description,
+                    "event": event.model_dump(),
+                },
+            )
+        except Exception as exc:
+            yield make_sse_event("error", {"error": str(exc)})
+        return
     q: asyncio.Queue = asyncio.Queue()
 
     # ★ 标记连接是否已关闭

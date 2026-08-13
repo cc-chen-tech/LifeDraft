@@ -500,6 +500,40 @@ class TestSyncGeneration:
         mock_db.add.assert_called_once()
         mock_db.commit.assert_called_once()
 
+    def test_sync_generation_discards_stale_daily_revision_before_storage(self):
+        mock_client = MagicMock()
+        mock_client.analyze_story_for_illustration.return_value = (
+            "雨夜码头",
+            "主角站在码头旧仓库前。",
+        )
+        mock_storage = MagicMock()
+        mock_db = MagicMock()
+        service = RoundIllustrationService(
+            image_client=mock_client,
+            image_storage=mock_storage,
+            db_session=mock_db,
+        )
+        service._generate_scene_image = MagicMock(
+            return_value=(b"stale-image", "stale prompt")
+        )
+
+        service._generate_round_illustration_sync(
+            game_id=1,
+            round_number=0,
+            story_text="已被改写替换的旧故事",
+            character_settings={},
+            player_name="林舟",
+            existing_images=[],
+            stage="event",
+            week=0,
+            story_date="2026-08-13",
+            day_index=0,
+            validity_callback=lambda: False,
+        )
+
+        mock_storage.save_image.assert_not_called()
+        mock_db.add.assert_not_called()
+
     def test_sync_generation_content_error(self):
         """Test handling of ContentInspectionError."""
         mock_client = MagicMock()

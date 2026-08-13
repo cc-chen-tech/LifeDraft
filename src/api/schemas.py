@@ -63,6 +63,7 @@ class GameStateResponse(BaseModel):
     progress: Dict[str, Any]
     round_info: Dict[str, Any]
     current_event: Optional[Dict[str, Any]] = None
+    timeline: Optional[Dict[str, Any]] = None
     constraint_level: str = "expert"
     narrative_style_id: Optional[str] = None
     narrative_style_name: Optional[str] = None
@@ -222,6 +223,8 @@ class PresetInfo(BaseModel):
 
 class MakeChoiceRequest(BaseModel):
     option_index: int = Field(..., ge=0)
+    event_id: Optional[str] = None
+    revision: Optional[int] = Field(default=None, ge=1)
 
 
 class CustomChoiceRequest(BaseModel):
@@ -242,6 +245,7 @@ class ChoiceResultResponse(BaseModel):
     weekly_summary: Optional[str] = None
     bonus_effects: Optional[Dict[str, Any]] = None
     game_over: bool = False
+    next_timeline: Optional[Dict[str, Any]] = None
 
 
 class VoiceReadingSettingsResponse(BaseModel):
@@ -527,6 +531,8 @@ class RegenerateRoundSceneRequest(BaseModel):
     user_prompt: str = Field(..., description="用户自定义提示词/修改意见")
     current_scene_id: int = Field(..., description="当前场景插画ID，作为参考")
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
+    story_date: Optional[str] = None
+    day_index: Optional[int] = Field(default=None, ge=0)
 
 
 class GenerateRoundSceneRequest(BaseModel):
@@ -540,6 +546,8 @@ class GenerateRoundSceneRequest(BaseModel):
     player_name: str = Field(..., description="角色姓名")
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
     stage: str = Field("result", description="场景阶段: event(事件故事) 或 result(结果故事)")
+    story_date: Optional[str] = None
+    day_index: Optional[int] = Field(default=None, ge=0)
 
 
 class RoundSceneResponse(BaseModel):
@@ -549,6 +557,8 @@ class RoundSceneResponse(BaseModel):
     game_id: int
     week: int = 0  # ★ 新增：周数
     round_number: int
+    story_date: Optional[str] = None
+    day_index: Optional[int] = None
     stage: str = "result"  # ★ 场景阶段
     image_url: str
     scene_description: str

@@ -605,6 +605,7 @@ class WorldModelUpdater:
 
         from src.game.scheduled_events import \
             create_scheduled_event_from_commitment
+        from src.game.daily_timeline import is_daily_timeline, resolve_scheduled_date
 
         current_week = player_state.week
 
@@ -647,6 +648,21 @@ class WorldModelUpdater:
                 importance=importance,
                 event_hint=event_hint,
             )
+            if is_daily_timeline(player_state):
+                time_reference = str(commitment.get("time_reference") or "").strip()
+                if time_reference:
+                    try:
+                        event.scheduled_date = resolve_scheduled_date(
+                            player_state.timeline["current_date"], time_reference
+                        )
+                    except ValueError:
+                        event.scheduled_date = ""
+                if not event.scheduled_date:
+                    from datetime import date, timedelta
+
+                    start_date = date.fromisoformat(player_state.timeline["start_date"])
+                    legacy_index = max(0, scheduled_week * 7 + (0, 2, 6)[scheduled_round])
+                    event.scheduled_date = (start_date + timedelta(days=legacy_index)).isoformat()
 
             # 添加到 player_state
             player_state.add_scheduled_event(event)

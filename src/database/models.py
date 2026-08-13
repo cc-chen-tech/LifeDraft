@@ -259,6 +259,8 @@ class SceneImage(Base):
     game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
     week = Column(Integer, nullable=False, default=0)  # ★ 新增：周数
     round_number = Column(Integer, nullable=False)  # 对应游戏轮次
+    story_date = Column(String(10), nullable=True, index=True)
+    day_index = Column(Integer, nullable=True, index=True)
     stage = Column(String(20), default="result")  # ★ event(事件故事) | result(结果故事)
 
     # 场景信息
@@ -287,6 +289,13 @@ class SceneImage(Base):
             "game_id",
             "week",
             "round_number",
+            "stage",
+            unique=True,
+        ),
+        Index(
+            "ix_scene_images_game_day_stage",
+            "game_id",
+            "day_index",
             "stage",
             unique=True,
         ),
@@ -548,6 +557,10 @@ def _ensure_legacy_columns() -> None:
         "character_presets": {
             "narrative_style_id": "VARCHAR DEFAULT 'chinese_classic_saga'",
             "constraint_level": "VARCHAR DEFAULT 'expert'",
+        },
+        "scene_images": {
+            "story_date": "VARCHAR(10)",
+            "day_index": "INTEGER",
         },
     }
 

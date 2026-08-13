@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { streamRewrite } from "@/lib/sse";
 import { useGameStore } from "@/stores/useGameStore";
+import type { EventOption } from "@/lib/types";
 import { LifeSummaryPanel, type LifeSummaryData } from "./LifeSummaryPanel";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -80,10 +81,16 @@ interface ChatBarProps {
   onSave?: () => void;
   onRegenerate?: () => void;
   storyText?: string;
-  onRewriteComplete?: (newStory: string) => void;
+  onRewriteComplete?: (newStory: string, event?: {
+    event_id?: string;
+    revision?: number;
+    story_date?: string;
+    options?: EventOption[];
+  }) => void;
   isSaving?: boolean;
   isStoryBusy?: boolean;
   isViewingHistory?: boolean;  // ★ 是否在历史回顾模式
+  isDailyTimeline?: boolean;
   className?: string;
 }
 
@@ -102,6 +109,7 @@ export function ChatBar({
   isSaving = false,
   isStoryBusy = false,
   isViewingHistory = false,
+  isDailyTimeline = false,
   className,
 }: ChatBarProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -249,11 +257,19 @@ export function ChatBar({
             showRewriteToast("loading", message);
           },
           onComplete: (data) => {
-            const newStory =
-              (data as { new_story?: string; rewritten_story?: string }).new_story ||
-              (data as { new_story?: string; rewritten_story?: string }).rewritten_story;
+            const payload = data as {
+              new_story?: string;
+              rewritten_story?: string;
+              event?: {
+                event_id?: string;
+                revision?: number;
+                story_date?: string;
+                options?: EventOption[];
+              };
+            };
+            const newStory = payload.new_story || payload.rewritten_story;
             if (newStory) {
-              setTimeout(() => onRewriteComplete?.(newStory), 0);
+              setTimeout(() => onRewriteComplete?.(newStory, payload.event), 0);
             }
             setRewriteInstruction("");
             setIsRewriting(false);
@@ -436,7 +452,7 @@ export function ChatBar({
             }
           >
             <RotateCcw className="w-3 h-3 mr-1" />
-            重新生成
+            {isDailyTimeline ? "重新生成今天" : "重新生成"}
           </Button>
           <Button
             size="sm"
@@ -456,7 +472,7 @@ export function ChatBar({
             }
           >
             <Pencil className="w-3 h-3 mr-1" />
-            改写
+            {isDailyTimeline ? "改写今天" : "改写"}
           </Button>
           <Button
             size="sm"
@@ -534,7 +550,7 @@ export function ChatBar({
           }
         >
           <Pencil className="w-3 h-3 mr-1" />
-          改写
+          {isDailyTimeline ? "改写今天" : "改写"}
         </Button>
 
         <Button
@@ -555,7 +571,7 @@ export function ChatBar({
           }
         >
           <RotateCcw className="w-3 h-3 mr-1" />
-          重新生成
+          {isDailyTimeline ? "重新生成今天" : "重新生成"}
         </Button>
 
         <Button

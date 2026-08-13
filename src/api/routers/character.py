@@ -159,6 +159,17 @@ async def generate_opening_story(req: OpeningStoryRequest):
         last_activity = [time.time()]
         finish_reason_holder = [None]
 
+        def publish(event_type: str, data) -> None:
+            """Publish only while the subscriber event loop is still available."""
+            if loop.is_closed():
+                return
+            try:
+                loop.call_soon_threadsafe(q.put_nowait, (event_type, data))
+            except RuntimeError:
+                # The client may disconnect or a timeout test may close the loop
+                # before the background provider thread exits.
+                return
+
         def run():
             try:
                 stream_response = creator.generate_opening_story(
@@ -176,17 +187,17 @@ async def generate_opening_story(req: OpeningStoryRequest):
                             text = delta.content
                             full_text_holder[0] += text
                             last_activity[0] = time.time()
-                            loop.call_soon_threadsafe(q.put_nowait, ("story", text))
+                            publish("story", text)
                     elif isinstance(chunk, str):
                         # Fallback story
                         full_text_holder[0] = chunk
                         last_activity[0] = time.time()
-                        loop.call_soon_threadsafe(q.put_nowait, ("story", chunk))
+                        publish("story", chunk)
                         break
             except Exception as e:
                 error_holder[0] = e
             finally:
-                loop.call_soon_threadsafe(q.put_nowait, ("__done__", None))
+                publish("__done__", None)
 
         # Immediate status so client knows connection is alive
         yield f"event: status\ndata: {json.dumps({'phase': 'preparing'}, ensure_ascii=False)}\n\n"
@@ -200,7 +211,7 @@ async def generate_opening_story(req: OpeningStoryRequest):
             try:
                 wait_time = max(0.1, next_heartbeat - time.time())
                 event_type, data = await asyncio.wait_for(q.get(), timeout=wait_time)
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, TimeoutError):
                 now = time.time()
                 if thread.is_alive() and now - last_activity[0] < OPENING_STORY_HARD_TIMEOUT:
                     next_heartbeat = now + OPENING_STORY_HEARTBEAT_INTERVAL

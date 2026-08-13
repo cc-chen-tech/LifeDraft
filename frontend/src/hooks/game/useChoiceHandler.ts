@@ -17,7 +17,7 @@ interface UseChoiceHandlerParams {
   setReconnectAttempt: (attempt: { current: number; max: number } | null) => void;
   setProcessing: (processing: boolean, message?: string) => void;
   appendStoryText: (text: string) => void;
-  setCurrentEvent: (event: { story: string; options: EventOption[] } | null) => void;
+  setCurrentEvent: (event: { story: string; options: EventOption[]; event_id?: string; revision?: number; story_date?: string } | null) => void;
   setGameOver: (gameOver: boolean) => void;
   setSummaryText: (text: string) => void;
   setRoundSummary: (summary: string | null) => void;
@@ -166,7 +166,12 @@ export function useChoiceHandler({
     };
 
     try {
-      await streamChoice(gameId, optionIndex, callbacks, { signal: abortRef.current.signal });
+      const currentEvent = useGameStore.getState().currentEvent;
+      await streamChoice(gameId, optionIndex, callbacks, {
+        signal: abortRef.current.signal,
+        eventId: currentEvent?.event_id,
+        revision: currentEvent?.revision,
+      });
     } catch (err) {
       if (abortRef.current?.signal.aborted) {
         return;

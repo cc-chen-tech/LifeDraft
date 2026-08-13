@@ -16,6 +16,7 @@ import type {
   VoiceReadingSettingsResponse,
   VoiceReadingSettingsUpdateRequest,
   VoiceUploadConsentRequest,
+  GameStateResponse,
 } from './types';
 import { resolveApiBase } from './apiBase';
 
@@ -242,7 +243,7 @@ export const api = {
     list: () =>
       fetchJson<Array<{ game_id: number; player_name: string; age: number; week: number; updated_at: string }>>('/games'),
     create: (data: { player_name: string; life_vision?: string; character_settings?: CharacterSettings; language?: string; constraint_level?: string }) =>
-      fetchJson<{ game_id: number }>('/games', {
+      fetchJson<GameStateResponse>('/games', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -371,7 +372,7 @@ export const api = {
         timeout: LIFE_SUMMARY_REQUEST_TIMEOUT_MS,
       }),
     // Synchronous choice methods (non-streaming)
-    makeChoiceSync: (gameId: number, data: { option_index: number }) =>
+    makeChoiceSync: (gameId: number, data: { option_index: number; event_id?: string; revision?: number }) =>
       fetchJson<{
         story_continuation: string;
         summary: string;
@@ -381,6 +382,7 @@ export const api = {
         need_weekly_summary: boolean;
         weekly_summary?: string;
         game_over?: boolean;
+        next_timeline?: import("./types").DailyTimeline;
       }>(`/games/${gameId}/choice-sync`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -575,6 +577,8 @@ export const api = {
         scene_id: number;
         week: number;
         round_number: number;
+        story_date?: string;
+        day_index?: number;
         stage: string;
         image_url: string;
         scene_description: string;
@@ -596,6 +600,8 @@ export const api = {
         scene_id: number;
         week: number;
         round_number: number;
+        story_date?: string;
+        day_index?: number;
         stage: string;
         image_url: string;
         scene_description: string;
@@ -612,6 +618,8 @@ export const api = {
           scene_id: number;
           week: number;
           round_number: number;
+          story_date?: string;
+          day_index?: number;
           stage: string;
           image_url: string;
           scene_description: string;
@@ -628,11 +636,15 @@ export const api = {
       player_image_id?: number;
       stage?: string;
       week?: number;
+      story_date?: string;
+      day_index?: number;
     }) =>
       fetchJson<{
         scene_id: number;
         week: number;
         round_number: number;
+        story_date?: string;
+        day_index?: number;
         stage: string;
         image_url: string;
         scene_description: string;

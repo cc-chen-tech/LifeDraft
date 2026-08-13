@@ -38,7 +38,9 @@ import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
 import { useMusicStore } from "@/stores/useMusicStore";
+import { useSceneImageStore } from "@/stores/useSceneImageStore";
 import { api } from "@/lib/api";
+import type { EventOption } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -87,6 +89,22 @@ export default function PlayPage() {
   const [narrativeStyleId, setNarrativeStyleId] = useState<string>("");
   const [narrativeStyleOptions, setNarrativeStyleOptions] = useState<Array<{ style_id: string; style_name: string; description: string }>>([]);
   const [styleLoading, setStyleLoading] = useState(false);
+  const [dailySettlement, setDailySettlement] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const showSettlement = (event: Event) => {
+      const effects = (event as CustomEvent<Record<string, number>>).detail;
+      setDailySettlement(effects);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setDailySettlement(null), 1800);
+    };
+    window.addEventListener("story2:daily-settlement", showSettlement);
+    return () => {
+      window.removeEventListener("story2:daily-settlement", showSettlement);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   const {
     // State
@@ -168,6 +186,10 @@ export default function PlayPage() {
   } = usePlayGame();
 
   const resultSceneRound = Math.max(0, currentRound - 1);
+  const isDailyTimeline = playerState?.timeline?.version === 2;
+  const dailyDateTitle = isDailyTimeline && playerState?.timeline?.current_date
+    ? `公元 ${playerState.timeline.current_date.slice(0, 4)} 年 ${Number(playerState.timeline.current_date.slice(5, 7))} 月 ${Number(playerState.timeline.current_date.slice(8, 10))} 日`
+    : null;
   const storyReadyForCompletedMedia =
     phase === "options" || phase === "result" || phase === "summary";
   const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
@@ -284,16 +306,27 @@ export default function PlayPage() {
   const historyPanelOpen =
     showHistory && (!showCollection || activeSidePanel === "history");
 
-  const handleRewriteComplete = useCallback((newStory: string) => {
-    setStoryText(newStory);
+  const handleRewriteComplete = useCallback((newStory: string, replacement?: {
+    event_id?: string;
+    revision?: number;
+    story_date?: string;
+    options?: EventOption[];
+  }) => {
     const currentEvent = useGameStore.getState().currentEvent;
+    useSceneImageStore.getState().clearCurrentRoundImages();
+    setStoryText(newStory);
     if (currentEvent) {
       useGameStore.getState().setCurrentEvent({
         ...currentEvent,
+        ...replacement,
         story: newStory,
+        options: replacement?.options || currentEvent.options,
       });
+      if (replacement?.options?.length) {
+        setOptions(replacement.options);
+      }
     }
-  }, [setStoryText]);
+  }, [setOptions, setStoryText]);
 
   // Don't render until hydrated
   if (!hydrated) {
@@ -490,6 +523,16 @@ export default function PlayPage() {
         ref={storyContainerRef}
         className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-28"
       >
+        {!isViewingHistory && dailyDateTitle && (
+          <div className="mb-5 text-center">
+            <h1 className="font-serif text-xl font-semibold tracking-wide text-foreground">
+              {dailyDateTitle}
+            </h1>
+            <p className="mt-1 text-xs text-muted-foreground">
+              第 {playerState?.timeline?.day_number} 天 · 共 {playerState?.timeline?.total_days} 天
+            </p>
+          </div>
+        )}
         {/* ★ 历史模式提示 */}
         {isViewingHistory && (
           <div className="mb-4 p-3 rounded-lg bg-muted/50 border border-muted">
@@ -540,7 +583,9 @@ export default function PlayPage() {
                 <div>
                   <p className="text-xs text-muted-foreground">历史回顾</p>
                   <h2 className="text-base font-medium text-foreground">
-                    第 {(currentHistoryRound?.week ?? 0) + 1} 周 · 第 {(currentHistoryRound?.round ?? 0) + 1} 轮
+                    {currentHistoryRound?.story_date
+                      ? `${currentHistoryRound.story_date} · 第 ${(currentHistoryRound.day_index ?? currentHistoryRound.round) + 1} 天`
+                      : `第 ${(currentHistoryRound?.week ?? 0) + 1} 周 · 第 ${(currentHistoryRound?.round ?? 0) + 1} 轮`}
                   </h2>
                 </div>
                 <Button variant="outline" size="sm" onClick={handleBackToCurrent}>
@@ -733,14 +778,15 @@ export default function PlayPage() {
             <OptionCards
               options={options}
               onSelect={handleChoice}
-              onCustomChoice={handleCustomChoice}
+              onCustomChoice={isDailyTimeline ? undefined : handleCustomChoice}
+              allowCustomChoice={!isDailyTimeline}
               disabled={false}
             />
           </div>
         )}
 
         {/* Result phase - waiting for user confirmation */}
-        {!isViewingHistory && phase === "result" && (
+        {!isDailyTimeline && !isViewingHistory && phase === "result" && (
           <div className="animate-fade-in-word space-y-4">
             {(() => {
               const currentRound = (roundInfo?.current_round as number) || 0;
@@ -782,7 +828,7 @@ export default function PlayPage() {
         )}
 
         {/* Weekly summary */}
-        {!isViewingHistory && phase === "summary" && (
+        {!isDailyTimeline && !isViewingHistory && phase === "summary" && (
           <div className="animate-page-enter space-y-6">
             <Card className="p-6 bg-card border-primary/20">
               <h3 className="text-lg font-bold text-primary mb-4">
@@ -854,6 +900,7 @@ export default function PlayPage() {
           isSaving={isSaving}
           isStoryBusy={isCurrentStoryBusy}
           isViewingHistory={isViewingHistory}
+          isDailyTimeline={isDailyTimeline}
         />
       )}
 
@@ -920,6 +967,14 @@ export default function PlayPage() {
               <><XCircle className="w-4 h-4" /> {regenerateToast.message}</>
             )}
           </div>
+        </div>
+      )}
+      {dailySettlement && (
+        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full border border-primary/20 bg-background/95 px-4 py-2 text-sm shadow-lg backdrop-blur">
+          {Object.entries(dailySettlement)
+            .filter(([, value]) => typeof value === "number" && value !== 0)
+            .map(([key, value]) => `${key} ${value > 0 ? "+" : ""}${value}`)
+            .join(" · ") || "今日选择已结算"}
         </div>
       )}
     </div>
