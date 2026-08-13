@@ -36,6 +36,26 @@ _thread_pool_lock = RLock()
 _background_jobs_enabled = True
 
 
+def invalidate_daily_media_after_event_replacement(game_loop, game_id: int) -> None:
+    """Invalidate today's persisted scene after a daily event replacement."""
+    from src.game.daily_timeline import is_daily_timeline
+
+    player_state = getattr(game_loop, "player_state", None)
+    if not is_daily_timeline(player_state):
+        return
+    from src.database.models import SceneImage, SessionLocal
+
+    db = SessionLocal()
+    try:
+        db.query(SceneImage).filter(
+            SceneImage.game_id == game_id,
+            SceneImage.day_index == int(player_state.timeline["day_index"]),
+        ).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
 @dataclass(frozen=True)
 class RoundIllustrationJob:
     """Immutable event context used by a delayed scene-generation task."""
@@ -131,35 +151,16 @@ def persist_rewritten_current_event(game_loop, game_id: int, rewritten_story: st
         logger.exception(f"Auto-save unexpected error after rewrite: {e}")
 
 
-def invalidate_daily_media_after_event_replacement(game_loop, game_id: int) -> None:
-    """Invalidate only today's derived media after a candidate commits."""
-    from src.game.daily_timeline import is_daily_timeline
-
-    player_state = getattr(game_loop, "player_state", None)
-    if not is_daily_timeline(player_state):
-        return
-    try:
-        from src.database.models import SceneImage, SessionLocal
-
-        day_index = int(player_state.timeline["day_index"])
-        db = SessionLocal()
-        try:
-            db.query(SceneImage).filter(
-                SceneImage.game_id == game_id,
-                SceneImage.day_index == day_index,
-            ).delete(synchronize_session=False)
-            db.commit()
-        finally:
-            db.close()
-    except Exception as exc:
-        logger.warning("Failed to invalidate daily media cache: %s", exc)
-
-
-def shutdown_sse_thread_pool(wait: bool = True) -> None:
-    """关闭 SSE 线程池（用于应用退出时清理）。"""
-    global _sse_thread_pool
-    if _sse_thread_pool is not None:
-        _sse_thread_pool.shutdown(wait=wait)
+def shutdown_sse_thread_pool(
+    wait: bool = True, prevent_new_background_jobs: bool = False
+) -> None:
+    """Close gameplay executors and optionally stop media admission permanently."""
+    global _sse_thread_pool, _background_thread_pool, _background_jobs_enabled
+    with _thread_pool_lock:
+        if prevent_new_background_jobs:
+            _background_jobs_enabled = False
+        story_pool = _sse_thread_pool
+        background_pool = _background_thread_pool
         _sse_thread_pool = None
         _background_thread_pool = None
 
@@ -217,87 +218,45 @@ def _generate_round_illustration(job: RoundIllustrationJob) -> None:
         from src.game.round.illustration_service import RoundIllustrationService
         from src.services.image_storage import ImageStorageService
 
-    def generate_illustration():
-        illustration_stage = stage
+        db = SessionLocal()
         try:
             game = db.query(Game).filter(Game.game_id == job.game_id).first()
             if not game:
                 logger.warning("[RoundIllustration] Game %s not found", job.game_id)
                 return
 
-            # 创建数据库会话
-            db = SessionLocal()
-
-            try:
-                # 获取游戏信息
-                game = db.query(Game).filter(Game.game_id == game_id).first()
-                if not game:
-                    logger.warning(f"[RoundIllustration] Game {game_id} not found")
-                    return
-
-                # 获取玩家状态
-                player_state = game_loop.player_state
-                if not player_state:
-                    logger.warning(f"[RoundIllustration] No player state for game {game_id}")
-                    return
-
-                # 获取当前轮次和周数
-                round_number = player_state.current_round
-                week = player_state.week  # ★ 获取周数
-                timeline = getattr(player_state, "timeline", None)
-                story_date = (
-                    timeline.get("current_date")
-                    if isinstance(timeline, dict) and timeline.get("version") == 2
-                    else None
+            existing = (
+                db.query(SceneImage)
+                .filter(
+                    SceneImage.game_id == job.game_id,
+                    SceneImage.week == job.week,
+                    SceneImage.round_number == job.round_number,
+                    SceneImage.stage == job.stage,
                 )
-                day_index = (
-                    timeline.get("day_index")
-                    if isinstance(timeline, dict) and timeline.get("version") == 2
-                    else None
-                )
-                if day_index is not None:
-                    round_number = int(day_index)
-                    week = int(day_index) // 7
-                    illustration_stage = "event"
-                expected_event_id = getattr(event, "event_id", None)
-                expected_revision = getattr(event, "revision", None)
+                .first()
+            )
+            images = (
+                db.query(ImageModel)
+                .filter(ImageModel.game_id == job.game_id, ImageModel.is_active.is_(True))
+                .all()
+            )
+            existing_images = [
+                {
+                    "image_id": image.image_id,
+                    "entity_name": image.entity_name,
+                    "image_type": image.image_type,
+                    "entity_key": image.entity_key,
+                }
+                for image in images
+            ]
 
-                def daily_illustration_is_current() -> bool:
-                    if day_index is None:
-                        return True
-                    current = getattr(game_loop, "current_event", None)
-                    current_timeline = getattr(player_state, "timeline", None)
-                    return (
-                        current is not None
-                        and getattr(current, "event_id", None) == expected_event_id
-                        and getattr(current, "revision", None) == expected_revision
-                        and isinstance(current_timeline, dict)
-                        and current_timeline.get("day_index") == day_index
-                    )
-
-                # ★ 检查是否已存在该周该轮该阶段的插画
-                from src.database.models import SceneImage
-
-                existing_query = db.query(SceneImage).filter(
-                    SceneImage.game_id == game_id,
-                    SceneImage.week == week,
-                    SceneImage.round_number == round_number,
-                    SceneImage.stage == illustration_stage,
-                )
-                if day_index is not None:
-                    existing_query = existing_query.filter(
-                        SceneImage.day_index == day_index
-                    )
-                existing = existing_query.first()
-
-                if existing:
-                    week_display = f"第{week + 1}周" if week is not None else "未知周"
-                    logger.info(
-                        f"[RoundIllustration] {week_display} round {round_number} stage={illustration_stage} 插画已存在"
-                    )
-                    if not settings.AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES:
-                        logger.info(
-                            "[RoundIllustration] Entity image backfill for scenes is disabled"
+            if existing:
+                if settings.AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES:
+                    snapshot_loop = SimpleNamespace(
+                        player_state=SimpleNamespace(
+                            character_settings=job.character_settings,
+                            world_model_data=job.world_model_data,
+                            established_facts=job.established_facts,
                         )
                     )
                     _ensure_entity_images_exist(
@@ -310,83 +269,27 @@ def _generate_round_illustration(job: RoundIllustrationJob) -> None:
                     )
                 return
 
-                # 获取故事文本
-                story_text = event.event_description if event else ""
-                if not story_text:
-                    week_display = f"第{week + 1}周" if week is not None else "未知周"
-                    logger.warning(
-                        f"[RoundIllustration] {week_display} round {round_number} 无故事文本"
-                    )
-                    return
-
-                # 获取角色设定
-                character_settings = player_state.character_settings or {}
-                player_name = player_state.player_name or "主角"
-
-                # 获取世界模型数据与已建立事实（用于更精确的实体/物品识别）
-                world_model_data = player_state.world_model_data or {}
-                established_facts = getattr(player_state, "established_facts", []) or []
-
-                # 获取已有图片
-                images = (
-                    db.query(ImageModel)
-                    .filter(ImageModel.game_id == game_id, ImageModel.is_active.is_(True))
-                    .all()
-                )
-
-                existing_images = [
-                    {
-                        "image_id": img.image_id,
-                        "entity_name": img.entity_name,
-                        "image_type": img.image_type,
-                        "entity_key": img.entity_key,
-                    }
-                    for img in images
-                ]
-
-                logger.info(
-                    f"[RoundIllustration] Found {len(existing_images)} existing images for game {game_id}"
-                )
-
-                # 创建服务实例
-                image_client = ImageClient()
-                image_storage = ImageStorageService()
-                illustration_service = RoundIllustrationService(
-                    image_client=image_client,
-                    image_storage=image_storage,
-                    db_session=db,
-                )
-
-                # 异步生成插画
-                illustration_service.generate_round_illustration_async(
-                    game_id=game_id,
-                    round_number=round_number,
-                    story_text=story_text,
-                    character_settings=character_settings,
-                    player_name=player_name,
-                    existing_images=existing_images,
-                    stage=illustration_stage,  # ★ 传递 stage 参数
-                    week=week,  # ★ 传递 week 参数
-                    world_model_data=world_model_data,
-                    established_facts=established_facts,
-                    story_date=story_date,
-                    day_index=day_index,
-                    validity_callback=daily_illustration_is_current,
-                )
-
-                week_display = f"第{week + 1}周" if week is not None else "未知周"
-                logger.info(
-                    f"[RoundIllustration] 触发异步生成: game={game_id}, {week_display}, round {round_number}, stage={illustration_stage}"
-                )
-
-            finally:
-                db.close()
-
-        except Exception as e:
-            logger.exception(f"[RoundIllustration] Unexpected error in generate_illustration: {e}")
-
-    # 在线程池中执行
-    _get_sse_thread_pool().submit(generate_illustration)
+            illustration_service = RoundIllustrationService(
+                image_client=ImageClient(),
+                image_storage=ImageStorageService(),
+                db_session=db,
+            )
+            illustration_service.generate_round_illustration(
+                game_id=job.game_id,
+                round_number=job.round_number,
+                story_text=job.story_text,
+                character_settings=job.character_settings,
+                player_name=job.player_name,
+                existing_images=existing_images,
+                stage=job.stage,
+                week=job.week,
+                world_model_data=job.world_model_data,
+                established_facts=job.established_facts,
+            )
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.exception("[RoundIllustration] Unexpected error: %s", exc)
 
 
 def _ensure_entity_images_exist(
@@ -628,12 +531,6 @@ def _persist_generated_event_state(game_loop, game_id: int) -> None:
         logger.exception(f"Auto-save unexpected error after event generation: {e}")
 
 
-def _daily_persist_callback(game_id: int):
-    """Return the strict persistence boundary used by daily mutations."""
-    db = get_db()
-    return lambda candidate: db.save_game_progress(game_id, candidate)
-
-
 def _set_generation_resume_view(
     game_loop,
     game_id: int,
@@ -844,9 +741,6 @@ async def stream_choice(
 
     def run():
         try:
-            game_loop._daily_postprocess_persist_callback = lambda: _persist_choice_state(
-                game_loop, game_id
-            )
             if is_custom:
                 result_holder[0] = game_loop.make_custom_choice(
                     custom_text=custom_text,
@@ -857,10 +751,9 @@ async def stream_choice(
                 persist_callback = None
                 if daily_mode:
                     db = get_db()
-
-                    def persist_callback(candidate):
-                        return db.save_game_progress(game_id, candidate)
-
+                    persist_callback = lambda candidate: db.save_game_progress(
+                        game_id, candidate
+                    )
                 result_holder[0] = game_loop.make_round_choice(
                     option_index=option_index,
                     stream_callback=stream_cb,
@@ -980,8 +873,6 @@ async def stream_regenerate(
 
     Yields SSE events: status, story (chunks), complete (final event).
     """
-    loop = asyncio.get_running_loop()
-
     from src.game.daily_timeline import is_daily_timeline
 
     if is_daily_timeline(game_loop.player_state):
@@ -989,16 +880,20 @@ async def stream_regenerate(
 
         try:
             yield make_sse_event("status", {"phase": "regenerating"})
+            db = get_db()
             event = await asyncio.to_thread(
                 regenerate_daily_event_atomically,
                 game_loop,
-                persist_callback=_daily_persist_callback(game_id),
+                persist_callback=lambda candidate: db.save_game_progress(
+                    game_id, candidate
+                ),
             )
             invalidate_daily_media_after_event_replacement(game_loop, game_id)
             yield make_sse_event("complete", event.model_dump())
         except Exception as exc:
             yield make_sse_event("error", {"error": str(exc)})
         return
+    loop = asyncio.get_running_loop()
     q: asyncio.Queue = asyncio.Queue()
 
     # ★ 标记连接是否已关闭
@@ -1233,8 +1128,6 @@ async def stream_rewrite(
 
     Yields SSE events: status, story (chunks), complete (final result).
     """
-    loop = asyncio.get_running_loop()
-
     from src.game.daily_timeline import is_daily_timeline
 
     if is_daily_timeline(game_loop.player_state):
@@ -1242,6 +1135,7 @@ async def stream_rewrite(
 
         try:
             yield make_sse_event("status", {"phase": "rewriting"})
+            db = get_db()
             event = await asyncio.to_thread(
                 rewrite_daily_event_atomically,
                 game_loop,
@@ -1249,20 +1143,19 @@ async def stream_rewrite(
                 segment_to_replace=segment_to_replace,
                 user_instruction=user_instruction,
                 language=language,
-                persist_callback=_daily_persist_callback(game_id),
+                persist_callback=lambda candidate: db.save_game_progress(
+                    game_id, candidate
+                ),
             )
             invalidate_daily_media_after_event_replacement(game_loop, game_id)
             yield make_sse_event(
                 "complete",
-                {
-                    "new_story": event.event_description,
-                    "rewritten_story": event.event_description,
-                    "event": event.model_dump(),
-                },
+                {"new_story": event.event_description, "event": event.model_dump()},
             )
         except Exception as exc:
             yield make_sse_event("error", {"error": str(exc)})
         return
+    loop = asyncio.get_running_loop()
     q: asyncio.Queue = asyncio.Queue()
 
     # ★ 标记连接是否已关闭

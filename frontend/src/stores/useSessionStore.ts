@@ -114,17 +114,18 @@ function recoverCurrentEvent(rawEvent: CurrentEventData | null): RecoveredCurren
 
 // 浅比较辅助函数
 const KEY_FIELDS = [
-  "energy",
-  "mood",
-  "knowledge",
-  "wealth",
-  "age",
-  "week",
-  "current_round",
-  "timeline_version",
-  "timeline",
-  "day_history",
+  "energy", "mood", "knowledge", "wealth", "age", "week", "current_round",
+  "timeline_version", "timeline", "day_history",
 ];
+
+function resumeViewChanged(
+  newVal: PlayerState | GameProgress | RoundInfo,
+  oldVal: PlayerState | GameProgress | RoundInfo
+): boolean {
+  const nextResumeView = (newVal as PlayerState).resume_view ?? null;
+  const previousResumeView = (oldVal as PlayerState).resume_view ?? null;
+  return JSON.stringify(nextResumeView) !== JSON.stringify(previousResumeView);
+}
 
 function shallowChanged(
   newVal: PlayerState | GameProgress | RoundInfo | null,
@@ -162,7 +163,7 @@ export interface SessionState {
     playerName?: string;
     constraintLevel?: "fast" | "expert" | "master";
   }>;
-  syncState: () => Promise<{
+  syncState: (options?: { gameId?: number; signal?: AbortSignal }) => Promise<{
     event: RecoveredCurrentEvent | null;
     hasNewOptions: boolean;
     eventStory?: string;

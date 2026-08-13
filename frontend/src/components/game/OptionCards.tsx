@@ -12,8 +12,8 @@ import { isWithinInputLimit } from "@/lib/inputLimits";
 
 interface OptionCardsProps {
   options: { text: string; potential_effects?: Record<string, unknown> }[];
-  onSelect: (index: number) => void;
-  onCustomChoice?: (text: string) => void;
+  onSelect: (index: number) => void | Promise<void>;
+  onCustomChoice?: (text: string) => void | Promise<void>;
   allowCustomChoice?: boolean;
   disabled?: boolean;
   className?: string;
@@ -63,10 +63,9 @@ export function OptionCards({
     ) return;
     const submittedText = customText.trim();
     setSelectedIndex(-1); // -1 = custom
-    onCustomChoice?.(customText.trim());
     setCustomText("");
     try {
-      const pendingSelection = onCustomChoice(submittedText);
+      const pendingSelection = onCustomChoice?.(submittedText);
       if (pendingSelection) await pendingSelection;
     } finally {
       setSelectedIndex(null);
@@ -143,25 +142,51 @@ export function OptionCards({
       ))}
 
       {/* Custom input is legacy-only. Daily timeline accepts generated options. */}
-      {allowCustomChoice && onCustomChoice && <div className="pt-3 mt-1">
-        <div className="flex items-end gap-2">
-          <div className="flex-1 relative">
-            <Textarea
-              value={customText}
-              onChange={(e) => setCustomText(e.target.value)}
-              placeholder="或者，描述你想做的事情..."
-              className={cn(
-                "min-h-[44px] max-h-[120px] pr-3",
-                "bg-background/50 border-border/40 text-sm resize-none",
-                "placeholder:text-muted-foreground/40",
-                "focus:border-primary/40 focus:bg-background/80",
-                "transition-colors duration-200"
-              )}
-              disabled={disabled}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleCustomSubmit();
+      {allowCustomChoice && onCustomChoice && <FormField
+        id={customChoiceId}
+        label="写下自己的选择"
+        description="回车提交，Shift + Enter 换行"
+        className="mt-6 border-t border-[var(--border-default)] pt-5"
+      >
+        {({ describedBy }) => (
+          <>
+            <div className="flex items-end gap-3">
+              <Textarea
+                id={customChoiceId}
+                value={customText}
+                onChange={(e) => setCustomText(e.target.value)}
+                placeholder="或者，描述你想做的事情..."
+                surface="underline"
+                controlSize="touch"
+                aria-describedby={[describedBy, customChoiceCountId].filter(Boolean).join(" ")}
+                aria-invalid={!customChoiceWithinLimit || undefined}
+                className={cn(
+                  "max-h-[160px] flex-1 resize-y pb-3 pr-2 text-sm leading-7",
+                  "placeholder:text-[var(--text-secondary)]",
+                  "transition-colors duration-200"
+                )}
+                disabled={controlsDisabled}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleCustomSubmit();
+                  }
+                }}
+              />
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="提交自定义选择"
+                className={cn(
+                  "h-11 w-11 flex-shrink-0 rounded-[var(--radius-control)]",
+                  "text-[var(--text-secondary)] hover:bg-transparent hover:text-[var(--text-primary)]",
+                  "transition-colors duration-200",
+                  customText.trim() && "text-[var(--text-primary)]"
+                )}
+                disabled={
+                  controlsDisabled ||
+                  !customText.trim() ||
+                  !customChoiceWithinLimit
                 }
                 onClick={() => void handleCustomSubmit()}
               >
@@ -179,28 +204,9 @@ export function OptionCards({
               announce={!customChoiceWithinLimit}
               className="mt-0"
             />
-          </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label="提交自定义选择"
-            className={cn(
-              "h-10 w-10 rounded-lg flex-shrink-0",
-              "text-muted-foreground/50 hover:text-primary hover:bg-primary/10",
-              "transition-all duration-200",
-              customText.trim() && "text-primary"
-            )}
-            disabled={disabled || !customText.trim()}
-            onClick={handleCustomSubmit}
-          >
-            {disabled && selectedIndex === -1 ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
-          </Button>
-        </div>
-      </div>}
+          </>
+        )}
+      </FormField>}
     </div>
   );
 }

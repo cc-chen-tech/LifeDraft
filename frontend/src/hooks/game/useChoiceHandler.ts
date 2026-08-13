@@ -142,16 +142,41 @@ export function useChoiceHandler({
       setPhase("error");
     };
 
-    try {
-      const currentEvent = useGameStore.getState().currentEvent;
-      await streamChoice(gameId, optionIndex, callbacks, {
-        signal: abortRef.current.signal,
-        eventId: currentEvent?.event_id,
-        revision: currentEvent?.revision,
-      });
-    } catch (err) {
-      if (abortRef.current?.signal.aborted) {
-        return;
+    const commitRecoveredSnapshot = (
+      snapshot: Awaited<ReturnType<typeof fetchGameplayStateSnapshot>>,
+    ): "complete" | "failed" | "pending" => {
+      if (!isLive()) return "pending";
+      const playerState = snapshot.playerState as Record<string, unknown> | null;
+      const resumeView = playerState?.resume_view;
+      const resume = resumeView && typeof resumeView === "object"
+        ? resumeView as Record<string, unknown>
+        : null;
+      const resumePhase = typeof resume?.phase === "string" ? resume.phase : "";
+      if (resumePhase === "failed") return "failed";
+
+      const history = Array.isArray(playerState?.round_history)
+        ? playerState.round_history.filter(
+            (entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object",
+          )
+        : [];
+      const normalizeChoice = (value: unknown) =>
+        typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+      const expectedChoice = normalizeChoice(target.choiceText);
+      const entriesWithChoice = history.filter((entry) => normalizeChoice(entry.choice));
+      const historyEntry = entriesWithChoice.length > 0
+        ? [...entriesWithChoice].reverse().find(
+            (entry) => normalizeChoice(entry.choice) === expectedChoice,
+          )
+        : history[history.length - 1];
+      const continuation = typeof historyEntry?.story_continuation === "string"
+        ? historyEntry.story_continuation.trim()
+        : "";
+      const resumeStory = typeof resume?.story_text === "string"
+        ? resume.story_text.trim()
+        : "";
+      const visibleResume = resumePhase === "result" || resumePhase === "summary" || resumePhase === "ending";
+      if (!continuation && !resumeStory && !visibleResume && !snapshot.gameOver) {
+        return "pending";
       }
 
       const recoveredStory = resumeStory || (
@@ -459,7 +484,12 @@ export function useChoiceHandler({
     armWatchdog();
     try {
       if (operation.kind === "normal") {
-        await streamChoice(gameId, operation.optionIndex, callbacks, { signal: controller.signal });
+        const currentEvent = useGameStore.getState().currentEvent;
+        await streamChoice(gameId, operation.optionIndex, callbacks, {
+          signal: controller.signal,
+          eventId: currentEvent?.event_id,
+          revision: currentEvent?.revision,
+        });
       } else {
         await streamCustomChoice(gameId, operation.customText, callbacks, { signal: controller.signal });
       }

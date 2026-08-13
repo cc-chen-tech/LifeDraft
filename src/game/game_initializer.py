@@ -51,7 +51,9 @@ class GameInitializer:
             raise ValueError("character_settings is required")
         if not player_name:
             raise ValueError("player_name is required")
-        character_settings = dict(character_settings)
+        from src.utils.legacy_data import strip_retired_wealth_keys
+
+        character_settings = strip_retired_wealth_keys(character_settings)
         if get_feature("daily_timeline_v2"):
             character_settings = self._normalize_daily_start_date(character_settings)
         character_settings["relationships"] = self._normalize_relationships_settings(

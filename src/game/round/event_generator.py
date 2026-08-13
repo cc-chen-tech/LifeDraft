@@ -7,7 +7,7 @@ import logging
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 from config.feature_flags import get_feature
 from config.prompts._helpers import (

@@ -94,6 +94,9 @@ interface ChatBarProps {
   isSaving?: boolean;
   isStoryBusy?: boolean;
   isViewingHistory?: boolean;  // ★ 是否在历史回顾模式
+  showLauncher?: boolean;
+  command?: ChatBarCommand | null;
+  onSurfaceOpenChange?: (open: boolean) => void;
   isDailyTimeline?: boolean;
   className?: string;
 }
@@ -120,6 +123,9 @@ export function ChatBar({
   isSaving = false,
   isStoryBusy = false,
   isViewingHistory = false,
+  showLauncher = true,
+  command = null,
+  onSurfaceOpenChange,
   isDailyTimeline = false,
   className,
 }: ChatBarProps) {

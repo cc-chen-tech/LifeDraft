@@ -434,7 +434,7 @@ export const api = {
         timeout: LIFE_SUMMARY_REQUEST_TIMEOUT_MS,
       }),
     // Synchronous choice methods (non-streaming)
-    makeChoiceSync: (gameId: number, data: { option_index: number; event_id?: string; revision?: number }) =>
+    makeChoiceSync: (gameId: number, data: { option_index: number; event_id?: string; revision?: number }, signal?: AbortSignal) =>
       fetchJson<{
         story_continuation: string;
         summary: string;

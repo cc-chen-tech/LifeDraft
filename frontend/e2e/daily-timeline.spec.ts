@@ -162,14 +162,17 @@ test('daily choice settles once and automatically opens the next calendar day', 
   await expect(page.getByRole('button', { name: '拆开信封' })).toBeVisible();
   await expect(page.getByPlaceholder('输入你想做的事...')).toHaveCount(0);
 
+  await page.getByRole('button', { name: '打开工具' }).click();
   await page.getByRole('button', { name: '重新生成今天' }).click();
   await expect(page.getByText('第一天重新生成后，林舟在信封夹层里发现一枚旧钥匙。')).toBeVisible();
   await expect(page.getByRole('button', { name: '收好钥匙' })).toBeVisible();
 
+  await page.getByRole('button', { name: '打开工具' }).click();
   await page.getByRole('button', { name: '改写今天' }).click();
   await page.getByPlaceholder(/描述你想要的修改/).fill('让线索指向仓库');
   await page.getByRole('button', { name: '改写故事' }).click();
   await expect(page.getByText('改写后的第一天，旧钥匙上刻着河边仓库的编号。')).toBeVisible();
+  await page.getByRole('button', { name: '关闭故事调整' }).click();
   await expect(page.getByRole('button', { name: '记下仓库编号' })).toBeVisible();
 
   await page.getByRole('button', { name: '记下仓库编号' }).click();

@@ -220,18 +220,11 @@ export default function CreatePage() {
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-8">
-        {/* Player name input (shown at step 0) */}
-        {isFirstStep && (
-          <StepPlayerInfo
-            playerName={playerName}
-            lifeVision={lifeVision}
-            onPlayerNameChange={setPlayerName}
-            onLifeVisionChange={setLifeVision}
-            startDate={typeof characterSettings.start_date === "string" ? characterSettings.start_date : ""}
-            onStartDateChange={(date) => updateCharacterSetting("start_date", date || undefined)}
-          />
-        )}
+      <div className="mx-auto grid w-full max-w-5xl gap-5 px-4 py-6 md:grid-cols-[9rem_minmax(0,1fr)] md:gap-8 md:py-10">
+        <PageEdgeBookmark
+          label={STEP_LABELS[currentStepKey]}
+          detail={`第 ${creationStep + 1} 步，共 ${CREATION_STEPS.length} 步`}
+        />
 
         <Surface variant="reading" className="min-w-0 p-5 sm:p-8">
           <nav
@@ -272,6 +265,8 @@ export default function CreatePage() {
               lifeVision={lifeVision}
               onPlayerNameChange={setPlayerName}
               onLifeVisionChange={setLifeVision}
+              startDate={typeof characterSettings.start_date === "string" ? characterSettings.start_date : ""}
+              onStartDateChange={(date) => updateCharacterSetting("start_date", date || undefined)}
             />
           )}
 

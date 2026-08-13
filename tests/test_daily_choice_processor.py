@@ -14,7 +14,6 @@ def _state(day_index: int = 0) -> PlayerState:
         energy=50,
         mood=50,
         knowledge=50,
-        wealth=100,
         age=20,
         timeline=build_daily_timeline(start_date="2026-08-13", day_index=day_index),
         timeline_version=2,
@@ -29,7 +28,7 @@ def _event(revision: int = 1) -> GameEvent:
         story_date="2026-08-13",
         event_description="这是当天完整故事，结尾留下了唯一的抉择。",
         options=[
-            EventOption(text="接受邀请", effects={"energy": -5, "mood": 4, "wealth": -30}),
+            EventOption(text="接受邀请", effects={"energy": -5, "mood": 4}),
             EventOption(text="礼貌拒绝", effects={"knowledge": 2}),
         ],
     )
@@ -55,11 +54,10 @@ def test_daily_choice_settles_without_story_model_and_advances_one_day() -> None
 
     assert result["story_continuation"] == ""
     assert result["need_weekly_summary"] is False
-    assert result["effects_applied"] == {"energy": -5, "mood": 4, "wealth": -30}
+    assert result["effects_applied"] == {"energy": -5, "mood": 4}
     assert result["next_timeline"]["current_date"] == "2026-08-14"
     assert state.energy == 45
     assert state.mood == 54
-    assert state.wealth == 70
     assert len(state.day_history) == 1
     assert state.day_history[0]["options"][0]["text"] == "接受邀请"
     assert state.day_history[0]["postprocessing_status"] == "pending"
@@ -108,7 +106,6 @@ def test_duplicate_daily_choice_is_idempotent() -> None:
     assert second == first
     assert state.timeline["day_index"] == 1
     assert state.energy == 45
-    assert state.wealth == 70
     assert len(state.day_history) == 1
 
 
@@ -123,7 +120,6 @@ def test_choice_failure_does_not_partially_commit() -> None:
 
     assert state.timeline["day_index"] == 0
     assert state.energy == 50
-    assert state.wealth == 100
     assert state.day_history == []
     assert holder["event"] is bad_event
 
@@ -146,7 +142,6 @@ def test_daily_choice_persistence_failure_does_not_commit_live_state() -> None:
     assert persisted_candidates[0].timeline["day_index"] == 1
     assert state.timeline["day_index"] == 0
     assert state.energy == 50
-    assert state.wealth == 100
     assert state.day_history == []
     assert holder["event"] is event
 

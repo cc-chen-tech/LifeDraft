@@ -66,6 +66,7 @@ export interface PlayToolsProps {
   onRequestNarrativeStyles?: () => void;
   onOpenTools?: () => void;
   onToolsOpenChange?: (open: boolean) => void;
+  isDailyTimeline?: boolean;
   className?: string;
 }
 
@@ -110,6 +111,7 @@ export function PlayTools({
   onRequestNarrativeStyles,
   onOpenTools,
   onToolsOpenChange,
+  isDailyTimeline = false,
   className,
 }: PlayToolsProps) {
   const [toolsOpen, setToolsOpen] = React.useState(false);
@@ -376,7 +378,7 @@ export function PlayTools({
                   onClick={() => closeBefore(onOpenRewrite)}
                 >
                   <Pencil className="h-4 w-4" />
-                  改写当前故事
+                  {isDailyTimeline ? "改写今天" : "改写当前故事"}
                 </Button>
                 <Button
                   type="button"
@@ -400,7 +402,7 @@ export function PlayTools({
                   onClick={() => closeBefore(onRegenerate)}
                 >
                   <RotateCcw className="h-4 w-4" />
-                  重新生成当前故事
+                  {isDailyTimeline ? "重新生成今天" : "重新生成当前故事"}
                 </Button>
               </div>
             </section>

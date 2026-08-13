@@ -18,14 +18,14 @@ async function ensureVoiceAudioPlaying(page: Page): Promise<void> {
       timeout: 15_000,
     })
     .toMatch(/^(ready|playing)$/);
-  try {
-    await expect(page.getByTestId('voice-reading-state')).toHaveText('playing', { timeout: 2_000 });
-  } catch {
-    if ((await page.getByTestId('voice-reading-state').textContent()) === 'ready') {
-      await page.getByRole('button', { name: '播放语音' }).click();
-    }
+  const state = page.getByTestId('voice-reading-state');
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if ((await state.textContent()) === 'playing') return;
+    const playButton = page.getByRole('button', { name: /播放语音|继续播放/ });
+    if (await playButton.isVisible().catch(() => false)) await playButton.click();
+    await page.waitForTimeout(250);
   }
-  await expect(page.getByTestId('voice-reading-state')).toHaveText('playing', { timeout: 15_000 });
+  await expect(state).toHaveText('playing', { timeout: 15_000 });
 }
 
 test.describe('MiniMax story audio generation', () => {

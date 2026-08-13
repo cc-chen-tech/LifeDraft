@@ -35,13 +35,14 @@ import { usePlayGame } from "@/hooks/usePlayGame";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
+import { useEventStore } from "@/stores/useEventStore";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useSceneImageStore } from "@/stores/useSceneImageStore";
+import { useUIStore } from "@/stores/useUIStore";
 import { api } from "@/lib/api";
 import type { EventOption } from "@/lib/types";
-import { cn } from "@/lib/utils";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { isWithinInputLimit } from "@/lib/inputLimits";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import {
   Loader2,
   Home,
@@ -80,22 +81,15 @@ export default function PlayPage() {
   const [narrativeStyleId, setNarrativeStyleId] = useState<string>("");
   const [narrativeStyleOptions, setNarrativeStyleOptions] = useState<Array<{ style_id: string; style_name: string; description: string }>>([]);
   const [styleLoading, setStyleLoading] = useState(false);
+  const [assistantCommand, setAssistantCommand] = useState<ChatBarCommand | null>(null);
+  const [assistantSurfaceOpen, setAssistantSurfaceOpen] = useState(false);
+  const [toolsSurfaceOpen, setToolsSurfaceOpen] = useState(false);
+  const [soundSurfaceOpen, setSoundSurfaceOpen] = useState(false);
   const [dailySettlement, setDailySettlement] = useState<Record<string, number> | null>(null);
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const showSettlement = (event: Event) => {
-      const effects = (event as CustomEvent<Record<string, number>>).detail;
-      setDailySettlement(effects);
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => setDailySettlement(null), 1800);
-    };
-    window.addEventListener("story2:daily-settlement", showSettlement);
-    return () => {
-      window.removeEventListener("story2:daily-settlement", showSettlement);
-      if (timer) clearTimeout(timer);
-    };
-  }, []);
+  const [queuedPageFeedback, setQueuedPageFeedback] = useState<PageFeedbackState | null>(null);
+  const lastObservedFeedbackKeyRef = useRef<string | null>(null);
+  const collectionReturnFocusRef = useRef<HTMLElement | null>(null);
+  const historyReturnFocusRef = useRef<HTMLElement | null>(null);
 
   const {
     // State
@@ -122,6 +116,7 @@ export default function PlayPage() {
     storyContainerRef,
 
     // Actions
+    setOptions,
     setStoryText,
 
     // Handlers
@@ -171,6 +166,20 @@ export default function PlayPage() {
     currentRound,
   } = usePlayGame();
 
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const showSettlement = (event: Event) => {
+      setDailySettlement((event as CustomEvent<Record<string, number>>).detail);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setDailySettlement(null), 1800);
+    };
+    window.addEventListener("story2:daily-settlement", showSettlement);
+    return () => {
+      window.removeEventListener("story2:daily-settlement", showSettlement);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   const processingMessage = useUIStore((state) => state.processingMessage);
   const hasMusicSoundContext = useMusicStore((state) =>
     Boolean(
@@ -192,8 +201,9 @@ export default function PlayPage() {
 
   const resultSceneRound = Math.max(0, currentRound - 1);
   const isDailyTimeline = playerState?.timeline?.version === 2;
-  const dailyDateTitle = isDailyTimeline && playerState?.timeline?.current_date
-    ? `公元 ${playerState.timeline.current_date.slice(0, 4)} 年 ${Number(playerState.timeline.current_date.slice(5, 7))} 月 ${Number(playerState.timeline.current_date.slice(8, 10))} 日`
+  const dailyDate = isDailyTimeline ? playerState?.timeline?.current_date : null;
+  const dailyDateTitle = typeof dailyDate === "string"
+    ? `公元 ${dailyDate.slice(0, 4)} 年 ${Number(dailyDate.slice(5, 7))} 月 ${Number(dailyDate.slice(8, 10))} 日`
     : null;
   const storyReadyForCompletedMedia =
     phase === "options" || phase === "result" || phase === "summary";
@@ -488,21 +498,36 @@ export default function PlayPage() {
     story_date?: string;
     options?: EventOption[];
   }) => {
-    const currentEvent = useGameStore.getState().currentEvent;
     useSceneImageStore.getState().clearCurrentRoundImages();
     setStoryText(newStory);
+    const currentEvent = useGameStore.getState().currentEvent;
     if (currentEvent) {
-      useGameStore.getState().setCurrentEvent({
+      // EventStore preserves its existing storyText when setting an event, so
+      // update both stores before synchronizing the compatibility facade.
+      useEventStore.setState({ storyText: newStory });
+      const replacementEvent = {
         ...currentEvent,
         ...replacement,
         story: newStory,
         options: replacement?.options || currentEvent.options,
-      });
-      if (replacement?.options?.length) {
-        setOptions(replacement.options);
-      }
+      };
+      useEventStore.setState({ currentEvent: replacementEvent });
+      useGameStore.setState((state) => ({
+        ...state,
+        currentEvent: replacementEvent,
+        storyText: newStory,
+      }));
+      if (replacement?.options?.length) setOptions(replacement.options);
+    } else {
+      const fallbackEvent = {
+        story: newStory,
+        options: replacement?.options || options,
+        ...replacement,
+      };
+      useEventStore.setState({ currentEvent: fallbackEvent, storyText: newStory });
+      useGameStore.setState({ currentEvent: fallbackEvent, storyText: newStory });
     }
-  }, [setOptions, setStoryText]);
+  }, [options, setOptions, setStoryText]);
 
   const handleOpenAssistantSurface = useCallback((action: ChatBarAction) => {
     closeSoundPanel();
@@ -802,387 +827,92 @@ export default function PlayPage() {
           onRequestNarrativeStyles: loadNarrativeStyles,
           onOpenTools: handleOpenTools,
           onToolsOpenChange: setToolsSurfaceOpen,
+          isDailyTimeline,
         }}
       >
         {!isViewingHistory && dailyDateTitle && (
-          <div className="mb-5 text-center">
-            <h1 className="font-serif text-xl font-semibold tracking-wide text-foreground">
+          <div className="mb-6 text-center">
+            <h1 className="font-serif text-xl font-semibold tracking-wide text-[var(--text-primary)]">
               {dailyDateTitle}
             </h1>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
               第 {playerState?.timeline?.day_number} 天 · 共 {playerState?.timeline?.total_days} 天
             </p>
           </div>
         )}
-        {/* ★ 历史模式提示 */}
-        {isViewingHistory && (
-          <div className="mb-4 p-3 rounded-lg bg-muted/50 border border-muted">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                📖 正在查看历史轮次（只读模式）
-              </p>
-            </div>
-          </div>
-        )}
-        
-        {/* Loading skeleton - 历史模式下不显示 */}
-        {!isViewingHistory && (phase === "loading" || phase === "generating" || phase === "choosing") && !storyText && (
-          <SkeletonStory
-            message={phase === "loading" ? "故事生成中..." : getLoadingMessage()}
-            elapsedSeconds={elapsedSeconds}
-            phase={phase === "generating" || phase === "choosing" ? getLoadingMessage() : undefined}
-            qualityLevel={constraintLevel}
-            onRecover={() => window.location.reload()}
-          />
-        )}
+        <PlayPhaseContent
+          phase={phase}
+          isViewingHistory={isViewingHistory}
+          displayText={displayText}
+          historyPosition={
+            currentHistoryRound
+              ? {
+                  week: currentHistoryRound.week,
+                  round: currentHistoryRound.round,
+                }
+              : null
+          }
+          onBackToCurrent={handleBackToCurrent}
+          loading={{
+            visible: shouldRenderGameplayLoading,
+            phase: processingMessage,
+            operation: gameplayOperation,
+            delayed: isGameplayDelayed,
+            transport: gameplayTransport,
+            onAction: handleGameplayLoadingAction,
+          }}
+          media={sceneMedia}
+          roundSummary={roundSummary}
+          options={options}
+          onSelectChoice={handleChoice}
+          onCustomChoice={isDailyTimeline ? undefined : handleCustomChoice}
+          isDailyTimeline={isDailyTimeline}
+          result={{
+            currentRound: (roundInfo?.current_round as number) || 0,
+            roundsPerWeek: (roundInfo?.rounds_per_week as number) || 3,
+            isPrefetching,
+            onContinue: handleContinueToNextRound,
+          }}
+          weeklySummary={{
+            text: summaryText,
+            onContinue: handleContinueAfterSummary,
+          }}
+          inlineError={{
+            visible:
+              hasInlineStoryError &&
+              !pageFeedbackType &&
+              !hasCompetingSurfaceOpen,
+            onRetry: handleRetryGeneration,
+          }}
+        />
 
-        {showEmptyGenerationRecovery && (
-          <div className="mx-auto mb-6 max-w-md rounded-lg border border-border bg-card/70 px-4 py-3 text-center shadow-sm">
-            <p className="mb-3 text-sm text-muted-foreground">
-              如果生成时间较长，可以先恢复当前进度；恢复不会丢失已创建的角色和存档。
-            </p>
-            <Button
-              variant="outline"
-              className="touch-target"
-              aria-label="恢复当前进度"
-              onClick={handleRecoverGeneration}
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              恢复当前进度
-            </Button>
-          </div>
-        )}
-
-        {/* Story text */}
-        {displayText && (
-          isViewingHistory ? (
-            <Card
-              data-testid="history-reading-surface"
-              className="mb-6 border-primary/20 bg-card px-4 py-5 shadow-sm"
-            >
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">历史回顾</p>
-                  <h2 className="text-base font-medium text-foreground">
-                    {currentHistoryRound?.story_date
-                      ? `${currentHistoryRound.story_date} · 第 ${(currentHistoryRound.day_index ?? currentHistoryRound.round) + 1} 天`
-                      : `第 ${(currentHistoryRound?.week ?? 0) + 1} 周 · 第 ${(currentHistoryRound?.round ?? 0) + 1} 轮`}
-                  </h2>
-                </div>
-                <Button variant="outline" size="sm" onClick={handleBackToCurrent}>
-                  返回当前
-                </Button>
-              </div>
-              <StreamingText
-                text={displayText}
-                isStreaming={false}
-                narrative
-                className="mb-0"
-              />
-            </Card>
-          ) : (
-            <>
-              <StreamingText
-                text={displayText}
-                isStreaming={phase === "generating" || phase === "choosing"}
-                narrative
-                className="mb-6"
-              />
-              {/* ★ 在有故事内容且正在生成时，显示小的加载提示（历史模式下不显示） */}
-              {(phase === "generating" || phase === "choosing") && (
-                <div className="space-y-2 py-2">
-                  <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>{getLoadingMessage()}</span>
-                  </div>
-                  {elapsedSeconds >= 60 && (
-                    <div className="mx-auto max-w-md rounded-md border border-border bg-card/70 px-4 py-3 text-center text-xs text-muted-foreground leading-relaxed">
-                      <p>
-                        已等待 {formatElapsedTime(elapsedSeconds)}，正在校验故事逻辑和生成选项；这通常是长剧情的一致性检查，不代表内容丢失。
-                      </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mt-3"
-                        aria-label="恢复当前进度"
-                        onClick={() => void recoverEventGeneration()}
-                      >
-                        <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                        恢复当前进度
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )
-        )}
-
-        {/* ★ 场景插画展示 */}
-        {isViewingHistory ? (
-          // ★ 历史模式下显示历史轮次的场景插画
-          currentHistoryRound && (
-            <HistorySceneImage
-              sceneImage={historySceneImage}
-              isLoading={isLoadingHistoryImage}
-              isGenerating={isGeneratingHistoryImage}
-              isRegenerating={isRegeneratingHistoryImage}
-              week={currentHistoryRound.week}
-              round={currentHistoryRound.round}
-              storyText={historyDisplayText || ''}
-              onGenerate={handleGenerateHistoryImage}
-              onRegenerate={handleRegenerateHistoryImage}
-            />
-          )
-        ) : (
-          // ★ 当前模式下显示当前轮次的场景插画
-          storyText && (
-            <>
-              {/* ★ 事件插画：只在 options 阶段显示 */}
-              {sceneImageDisplayMode === "event" && eventSceneImage && (
-                <RoundSceneImageDisplay
-                  sceneImage={eventSceneImage}
-                  isLoading={isLoadingRoundSceneImage && phase === "options"}
-                  error={roundSceneError}
-                  isRegenerating={isRegeneratingRoundScene}
-                  currentRound={currentRound}
-                  label="事件场景"
-                  onRefresh={() => fetchRoundSceneImage(currentRound, "event")}
-                  onRetryGeneration={() => fetchRoundSceneImage(currentRound, "event", { retry: true })}
-                  onRegenerate={regenerateRoundSceneImage}
-                />
-              )}
-
-              {/* ★ 结果插画：在 result/summary 阶段显示 */}
-              {sceneImageDisplayMode === "result" && resultSceneImage && (
-                <RoundSceneImageDisplay
-                  sceneImage={resultSceneImage}
-                  isLoading={isLoadingRoundSceneImage}
-                  error={roundSceneError}
-                  isRegenerating={isRegeneratingRoundScene}
-                  currentRound={resultSceneRound}
-                  label="结果场景"
-                  onRefresh={() => fetchRoundSceneImage(resultSceneRound, "result")}
-                  onRetryGeneration={() => fetchRoundSceneImage(resultSceneRound, "result", { retry: true })}
-                  onRegenerate={regenerateRoundSceneImage}
-                />
-              )}
-
-              {/* ★ 结果插画加载中：不要回退显示上一阶段事件插画，避免视觉内容滞后 */}
-              {sceneImageDisplayMode === "result-loading" && (
-                <RoundSceneImageDisplay
-                  sceneImage={null}
-                  isLoading={isLoadingRoundSceneImage}
-                  error={roundSceneError}
-                  isRegenerating={isRegeneratingRoundScene}
-                  currentRound={resultSceneRound}
-                  label="结果场景"
-                  onRefresh={() => fetchRoundSceneImage(resultSceneRound, "result")}
-                  onRetryGeneration={() => fetchRoundSceneImage(resultSceneRound, "result", { retry: true })}
-                  onRegenerate={regenerateRoundSceneImage}
-                />
-              )}
-
-              {/* ★ result/summary 阶段兜底：没有 result 插画时回退显示事件插画 */}
-              {sceneImageDisplayMode === "event-fallback" && eventSceneImage && (
-                <RoundSceneImageDisplay
-                  sceneImage={eventSceneImage}
-                  isLoading={isLoadingRoundSceneImage}
-                  error={roundSceneError}
-                  isRegenerating={isRegeneratingRoundScene}
-                  currentRound={resultSceneRound}
-                  label="事件场景"
-                  onRefresh={() => fetchRoundSceneImage(resultSceneRound, "event")}
-                  onRetryGeneration={() => fetchRoundSceneImage(resultSceneRound, "event", { retry: true })}
-                  onRegenerate={regenerateRoundSceneImage}
-                />
-              )}
-
-              {/* ★ 兜底：其他阶段显示当前轮次插画 */}
-              {sceneImageDisplayMode === "current" && currentRoundSceneImage && (
-                <RoundSceneImageDisplay
-                  sceneImage={currentRoundSceneImage}
-                  isLoading={isLoadingRoundSceneImage}
-                  error={roundSceneError}
-                  isRegenerating={isRegeneratingRoundScene}
-                  currentRound={currentRound}
-                  onRefresh={() => fetchRoundSceneImage(currentRound, phase === 'options' ? 'event' : (phase === 'result' || phase === 'summary') ? 'result' : undefined)}
-                  onRetryGeneration={() => fetchRoundSceneImage(currentRound, phase === 'options' ? 'event' : (phase === 'result' || phase === 'summary') ? 'result' : undefined, { retry: true })}
-                  onRegenerate={regenerateRoundSceneImage}
-                />
-              )}
-
-              {sceneImageDisplayMode === "none" &&
-                (roundSceneError || isLoadingRoundSceneImage) && (
-                <RoundSceneImageDisplay
-                  sceneImage={null}
-                  isLoading={isLoadingRoundSceneImage}
-                  error={roundSceneError}
-                  isRegenerating={isRegeneratingRoundScene}
-                  currentRound={phase === "options" ? currentRound : resultSceneRound}
-                  label={phase === "options" ? "事件场景" : "结果场景"}
-                  onRefresh={() => fetchRoundSceneImage(
-                    phase === "options" ? currentRound : resultSceneRound,
-                    phase === "options" ? "event" : "result"
-                  )}
-                  onRetryGeneration={() => fetchRoundSceneImage(
-                    phase === "options" ? currentRound : resultSceneRound,
-                    phase === "options" ? "event" : "result",
-                    { retry: true }
-                  )}
-                  onRegenerate={regenerateRoundSceneImage}
-                />
-              )}
-            </>
-          )
-        )}
-
-        {/* Round summary - only in result phase */}
-        {!isViewingHistory && roundSummary && phase === "result" && (
-          <div
-            className="mb-4 rounded-lg px-4 py-3 animate-fade-in-word"
-            style={{ background: 'rgba(99, 102, 241, 0.2)' }}
-          >
-            <span className="text-[#818cf8] text-sm font-medium">📝 轮次小结：</span>
-            <span className="text-[#e2e8f0] text-sm ml-2 prose-story-inline">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{roundSummary}</ReactMarkdown>
-            </span>
-          </div>
-        )}
-
-        {/* Choice impact display removed — effect tracking no longer stored */}
-
-        {/* Options */}
-        {!isViewingHistory && phase === "options" && options.length > 0 && (
-          <div className="animate-fade-in-word">
-            <OptionCards
-              options={options}
-              onSelect={handleChoice}
-              onCustomChoice={isDailyTimeline ? undefined : handleCustomChoice}
-              allowCustomChoice={!isDailyTimeline}
-              disabled={false}
-            />
-          </div>
-        )}
-
-        {/* Result phase - waiting for user confirmation */}
-        {!isDailyTimeline && !isViewingHistory && phase === "result" && (
-          <div className="animate-fade-in-word space-y-4">
-            {(() => {
-              const currentRound = (roundInfo?.current_round as number) || 0;
-              const roundsPerWeek = (roundInfo?.rounds_per_week as number) || 3;
-              const roundNames = ["周一", "周中", "周末"];
-              
-              const isLastRound = currentRound >= roundsPerWeek;
-              const nextName = roundNames[currentRound] || `第${currentRound + 1}轮`;
-
-              return (
-                <>
-                  <Button
-                    className="w-full touch-target"
-                    onClick={handleContinueToNextRound}
-                  >
-                    {isLastRound ? (
-                      <>
-                        <CheckCircle2 className="w-4 h-4 mr-2" />
-                        确认并继续
-                      </>
-                    ) : (
-                      <>
-                        <ArrowRight className="w-4 h-4 mr-2" />
-                        进入{nextName}
-                      </>
-                    )}
-                  </Button>
-                  {/* ★ 预生成状态指示器 */}
-                  {isPrefetching && (
-                    <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      正在预加载下一段故事...
-                    </p>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* Weekly summary */}
-        {!isDailyTimeline && !isViewingHistory && phase === "summary" && (
-          <div className="animate-page-enter space-y-6">
-            <Card className="p-6 bg-card border-primary/20">
-              <h3 className="text-lg font-bold text-primary mb-4">
-                周总结
-              </h3>
-              <div className="prose-story text-sm">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{summaryText}</ReactMarkdown>
-              </div>
-            </Card>
-            <Button
-              className="w-full touch-target"
-              onClick={handleContinueAfterSummary}
-            >
-              继续人生旅途
-            </Button>
-          </div>
-        )}
-
-        {/* Ending */}
-        {!isViewingHistory && phase === "ending" && (
-          <div className="animate-page-enter space-y-6 text-center py-12">
-            <h2 className="text-2xl font-serif font-bold text-foreground">
-              人生落幕
-            </h2>
-            {endingData ? (
-              <Card className="p-6 bg-card border-border text-left">
-                <pre className="text-sm text-foreground whitespace-pre-wrap font-sans">
-                  {JSON.stringify(endingData, null, 2)}
-                </pre>
-              </Card>
-            ) : (
-              <SkeletonStory message="正在评估你的人生..." />
-            )}
-            <Button
-              className="touch-target"
-              onClick={() => router.push("/")}
-            >
-              返回首页
-            </Button>
-          </div>
-        )}
-
-        {/* Error state */}
-        {!isViewingHistory && phase === "error" && (
-          <div className="text-center py-12 space-y-4">
-            <p className="text-destructive">出现错误，请重试</p>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setPhase("loading");
-                setTimeout(() => generateEvent(), 0);
-              }}
-              className="touch-target"
-            >
-              重试
-            </Button>
-          </div>
-        )}
-      </main>
+      </PlayReadingFrame>
 
       {/* Chat bar */}
-      {!isViewingHistory && (
-        <ChatBar
-          gameId={gameId}
-          onSave={handleSave}
-          onRegenerate={handleRegenerate}
-          storyText={storyText}
-          onRewriteComplete={handleRewriteComplete}
-          isSaving={isSaving}
-          isStoryBusy={isCurrentStoryBusy}
-          isViewingHistory={isViewingHistory}
-          isDailyTimeline={isDailyTimeline}
-        />
+      <ChatBar
+        gameId={gameId}
+        onSave={handleCoordinatedSave}
+        onRegenerate={handleCoordinatedRegenerate}
+        storyText={storyText}
+        onRewriteComplete={handleRewriteComplete}
+        isSaving={isSaving}
+        isStoryBusy={
+          shouldRenderGameplayLoading || collectionPanelOpen || historyPanelOpen
+        }
+        isViewingHistory={isViewingHistory}
+        showLauncher={false}
+        command={assistantCommand}
+        onSurfaceOpenChange={setAssistantSurfaceOpen}
+        isDailyTimeline={isDailyTimeline}
+        className="play-chat-surface"
+      />
+      {dailySettlement && (
+        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full border border-[var(--border-default)] bg-[var(--surface-reading)]/95 px-4 py-2 text-sm shadow-lg backdrop-blur">
+          {Object.entries(dailySettlement)
+            .filter(([, value]) => typeof value === "number" && value !== 0)
+            .map(([key, value]) => `${key} ${value > 0 ? "+" : ""}${value}`)
+            .join(" · ") || "今日选择已结算"}
+        </div>
       )}
 
       {/* ★ 历史回顾抽屉 */}
@@ -1255,36 +985,6 @@ export default function PlayPage() {
           </FeedbackNotice>
         </div>
       )}
-
-      {/* Regenerate toast */}
-      {regenerateToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-fade-in-word">
-          <div className={cn(
-            "flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium shadow-lg backdrop-blur-sm",
-            regenerateToast.type === "success"
-              ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/50"
-              : regenerateToast.type === "loading"
-              ? "bg-blue-950/80 text-blue-300 border border-blue-800/50"
-              : "bg-red-950/80 text-red-300 border border-red-800/50"
-          )}>
-            {regenerateToast.type === "success" ? (
-              <><CheckCircle2 className="w-4 h-4" /> {regenerateToast.message}</>
-            ) : regenerateToast.type === "loading" ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> {regenerateToast.message}</>
-            ) : (
-              <><XCircle className="w-4 h-4" /> {regenerateToast.message}</>
-            )}
-          </div>
-        </div>
-      )}
-      {dailySettlement && (
-        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full border border-primary/20 bg-background/95 px-4 py-2 text-sm shadow-lg backdrop-blur">
-          {Object.entries(dailySettlement)
-            .filter(([, value]) => typeof value === "number" && value !== 0)
-            .map(([key, value]) => `${key} ${value > 0 ? "+" : ""}${value}`)
-            .join(" · ") || "今日选择已结算"}
-        </div>
-      )}
-    </div>
+    </>
   );
 }

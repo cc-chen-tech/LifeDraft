@@ -125,7 +125,8 @@ function formatResourceWarnings(result: Record<string, unknown>): string {
 export function handleChoiceComplete(
   result: Record<string, unknown>,
   handlers: ChoiceHandlers
-): void {
+): boolean {
+  if (!isCurrentChoiceRun(handlers)) return false;
   const { setRoundSummary, setSummaryText, setCurrentEvent, setGameOver, setOptions, setStoryText, setPhase, setProcessing, setConnectionStatus } = handlers;
 
   setProcessing(false);
@@ -212,9 +213,8 @@ export function handleChoiceComplete(
         window.dispatchEvent(new CustomEvent("story2:generate-next-day"));
       }, 350);
     });
-    return;
+    return true;
   }
-
   if (result.need_weekly_summary && result.weekly_summary) {
     setSummaryText(result.weekly_summary as string);
     setPhase("summary");
@@ -446,12 +446,15 @@ export async function handleFallbackChoice(
         context.signal,
       );
     } else if (context.optionIndex !== undefined) {
-      const currentEvent = useGameStore.getState().currentEvent;
-      result = await gameplay.makeChoiceSync(gameId, {
-        option_index: context.optionIndex,
-        event_id: currentEvent?.event_id,
-        revision: currentEvent?.revision,
-      });
+      result = await gameplay.makeChoiceSync(
+        gameId,
+        {
+          option_index: context.optionIndex,
+          event_id: useGameStore.getState().currentEvent?.event_id,
+          revision: useGameStore.getState().currentEvent?.revision,
+        },
+        context.signal,
+      );
     } else {
       return false;
     }

@@ -10,7 +10,6 @@ from config.settings import settings
 from src.ai.models import GameEvent
 from src.game.continuity_ledger import ContinuityLedger
 from src.game.daily_timeline import advance_daily_timeline, normalize_daily_timeline
-from src.game.wealth_ledger import WealthLedger
 
 
 class DailyChoiceProcessor:
@@ -89,26 +88,16 @@ class DailyChoiceProcessor:
         applied, warnings = self._normalize_effects(state, requested)
         staged = state.model_copy(deep=True)
 
-        wealth_delta = applied.pop("wealth", None)
-        if wealth_delta is not None:
-            ledger = WealthLedger.from_player_state(staged)
-            ledger.apply_transaction(
-                staged,
-                transaction_id=f"daily:{event_id}:r{revision}:o{option_index}",
-                requested_delta=int(requested.get("wealth", wealth_delta)),
-                reason=option.text,
-                source_event_id=event_id,
-                week=timeline["week_number"] - 1,
-                round_number=0,
-            )
+        # Wealth was removed from the canonical state on main. Ignore legacy
+        # option payloads instead of reviving the retired financial ledger.
+        applied.pop("wealth", None)
+        requested.pop("wealth", None)
         staged.update(
             energy=applied.get("energy"),
             mood=applied.get("mood"),
             knowledge=applied.get("knowledge"),
             relationships=applied.get("relationships"),
         )
-        if wealth_delta is not None:
-            applied["wealth"] = staged.wealth - state.wealth
 
         completed_day_number = timeline["day_number"]
         weekly_decay = completed_day_number % 7 == 0
@@ -227,7 +216,6 @@ class DailyChoiceProcessor:
             ("energy", state.energy, settings.MIN_RESOURCE, settings.MAX_RESOURCE),
             ("mood", state.mood, settings.MIN_RESOURCE, settings.MAX_RESOURCE),
             ("knowledge", state.knowledge, settings.MIN_RESOURCE, settings.MAX_RESOURCE),
-            ("wealth", state.wealth, 0, None),
         ):
             if key not in requested:
                 continue

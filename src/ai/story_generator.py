@@ -34,6 +34,12 @@ from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
 from src.ai.harness.validation_pipeline import ValidationPipeline
 from src.ai.harness.retry_controller import RetryController
 from src.ai.harness.quality_level import PROFILES, QualityLevel
+from src.ai.long_story_context import (
+    DynamicContextParts,
+    LongStoryContextBuilder,
+    is_deepseek_v4_model,
+    prepend_history_prefix,
+)
 from src.ai.generation_budget import get_daily_generation_budget, get_generation_budget
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
@@ -699,6 +705,31 @@ class StoryGenerator:
             get_daily_generation_budget(self.quality_level.value)
             if daily_mode
             else get_generation_budget(self.quality_level.value)
+        )
+        target_min = (
+            narrative_budget.length.target_min
+            if narrative_budget is not None
+            else generation_budget.min_length
+        )
+        target_max = (
+            narrative_budget.length.target_max
+            if narrative_budget is not None
+            else generation_budget.max_length
+        )
+        active_max_tokens = (
+            narrative_budget.max_output_tokens
+            if narrative_budget is not None
+            else generation_budget.max_tokens
+        )
+        allow_quick_regeneration = (
+            narrative_budget.prose_call_limit > 1
+            if narrative_budget is not None
+            else generation_budget.allow_quick_regeneration
+        )
+        allow_ai_consistency = (
+            narrative_budget.validation_call_limit > 0
+            if narrative_budget is not None
+            else generation_budget.allow_ai_consistency
         )
         if daily_mode:
             prior = (player_state.get("day_history") or [])[-1:]
