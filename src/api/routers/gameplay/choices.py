@@ -316,19 +316,18 @@ async def make_choice_sync(
         game_loop._daily_postprocess_persist_callback = lambda: _persist_choice_state(
             game_loop, game_id
         )
-        persist_callback = None
         if daily_mode:
             db = get_db()
 
             def persist_callback(candidate):
                 return db.save_game_progress(game_id, candidate)
-
-        return game_loop.make_round_choice(
-            option_index=req.option_index,
-            event_id=req.event_id,
-            revision=req.revision,
-            persist_callback=persist_callback,
-        )
+            return game_loop.make_round_choice(
+                option_index=req.option_index,
+                event_id=req.event_id,
+                revision=req.revision,
+                persist_callback=persist_callback,
+            )
+        return game_loop.make_round_choice(option_index=req.option_index)
 
     try:
         result = await loop.run_in_executor(None, run)

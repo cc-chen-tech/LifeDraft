@@ -715,7 +715,7 @@ async def stream_choice(
     q: asyncio.Queue = asyncio.Queue()
     from src.game.daily_timeline import is_daily_timeline
 
-    daily_mode = is_daily_timeline(game_loop.player_state)
+    daily_mode = is_daily_timeline(getattr(game_loop, "player_state", None))
 
     # ★ 标记连接是否已关闭，避免向已关闭的事件循环发送回调
     closed = [False]
@@ -748,20 +748,26 @@ async def stream_choice(
                     status_callback=status_cb,
                 )
             else:
-                persist_callback = None
                 if daily_mode:
                     db = get_db()
-                    persist_callback = lambda candidate: db.save_game_progress(
-                        game_id, candidate
+
+                    def persist_callback(candidate):
+                        return db.save_game_progress(game_id, candidate)
+
+                    result_holder[0] = game_loop.make_round_choice(
+                        option_index=option_index,
+                        stream_callback=stream_cb,
+                        status_callback=status_cb,
+                        event_id=event_id,
+                        revision=revision,
+                        persist_callback=persist_callback,
                     )
-                result_holder[0] = game_loop.make_round_choice(
-                    option_index=option_index,
-                    stream_callback=stream_cb,
-                    status_callback=status_cb,
-                    event_id=event_id,
-                    revision=revision,
-                    persist_callback=persist_callback,
-                )
+                else:
+                    result_holder[0] = game_loop.make_round_choice(
+                        option_index=option_index,
+                        stream_callback=stream_cb,
+                        status_callback=status_cb,
+                    )
             if result_holder[0] is not None and not daily_mode:
                 _persist_choice_state(game_loop, game_id)
         except (ValueError, TypeError, KeyError) as e:

@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.story_exceptions import StoryRewriteFailure
-from src.api.deps import get_current_user_optional
+from src.api.deps import get_current_user_optional, get_db
 from src.api.routers.gameplay.sse_helpers import (
     invalidate_daily_media_after_event_replacement,
     persist_rewritten_current_event,
