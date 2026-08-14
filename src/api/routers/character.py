@@ -14,7 +14,8 @@ from fastapi.responses import StreamingResponse
 from src.ai.truncation_recovery import TruncationRecovery
 from src.api.schemas import (GenerateAttributesRequest,
                              GenerateRelationshipRequest,
-                             GenerateSettingRequest, OpeningStoryRequest,
+                             GenerateSettingRequest,
+                             GenerateStoryOriginRequest, OpeningStoryRequest,
                              RelationshipsSummaryRequest)
 from src.game.character_creation import CharacterCreator
 
@@ -100,6 +101,27 @@ async def generate_setting(req: GenerateSettingRequest):
     except Exception as e:
         logger.error(f"Failed to generate setting '{req.setting_type}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/story-origin")
+async def generate_story_origin(req: GenerateStoryOriginRequest):
+    """Generate one validated date, starting age, and temporal context."""
+    creator = CharacterCreator(language=req.language)
+    try:
+        return creator.generate_story_origin(
+            player_name=req.player_name,
+            life_vision=req.life_vision,
+            previous_settings=req.previous_settings,
+            feedback=req.feedback,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_story_origin_candidate", "message": str(exc)},
+        ) from exc
+    except Exception as exc:
+        logger.exception("Failed to generate story origin")
+        raise HTTPException(status_code=500, detail="story_origin_generation_failed") from exc
 
 
 @router.post("/relationship")

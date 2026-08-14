@@ -7,7 +7,8 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from src.database.models import PortraitImageGenerationJob, SessionLocal
+from src.database.models import (Game, GameState, Image,
+                                 PortraitImageGenerationJob, SessionLocal)
 from src.services.image import ImageContentError, ImageProviderServiceError, ImageServiceError
 from src.services.image_service import ImageService, get_image_thread_pool
 
@@ -16,6 +17,44 @@ logger = logging.getLogger(__name__)
 ACTIVE_JOB_STATUSES = ("queued", "running")
 _job_lock = threading.Lock()
 _scheduled_job_ids: set[int] = set()
+
+
+def _current_origin_revision(db: Session, game_id: int) -> Optional[int]:
+    latest = (
+        db.query(GameState)
+        .filter(GameState.game_id == game_id)
+        .order_by(GameState.state_id.desc())
+        .first()
+    )
+    if latest is not None:
+        state = latest.state_json or {}
+    else:
+        game = db.query(Game).filter(Game.game_id == game_id).first()
+        state = game.initial_state if game is not None else {}
+    settings = state.get("character_settings") if isinstance(state, dict) else None
+    origin = settings.get("story_origin") if isinstance(settings, dict) else None
+    revision = origin.get("revision") if isinstance(origin, dict) else None
+    return int(revision) if isinstance(revision, int) and not isinstance(revision, bool) else None
+
+
+def _job_origin_revision(request: dict[str, Any]) -> Optional[int]:
+    value = request.get("origin_revision")
+    if value is None:
+        context = request.get("extra_context")
+        value = context.get("origin_revision") if isinstance(context, dict) else None
+    return int(value) if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _origin_is_current(db: Session, job: PortraitImageGenerationJob) -> bool:
+    requested = _job_origin_revision(job.request_json or {})
+    return requested is None or requested == _current_origin_revision(db, int(job.game_id))
+
+
+def _mark_superseded(db: Session, job: PortraitImageGenerationJob) -> None:
+    job.status = "failed"
+    job.error_code = "story_origin_superseded"
+    job.error_message = "故事起点已更新，旧人物形象任务已作废"
+    db.commit()
 
 
 class PortraitImageJobService:
@@ -27,7 +66,11 @@ class PortraitImageJobService:
     def enqueue(
         self, user_id: int, request_json: dict[str, Any]
     ) -> tuple[PortraitImageGenerationJob, bool]:
+        request_json = dict(request_json)
         game_id = int(request_json["game_id"])
+        current_revision = _current_origin_revision(self.db, game_id)
+        if current_revision is not None:
+            request_json["origin_revision"] = current_revision
         entity_key = str(request_json.get("entity_key") or "player_main")
 
         with _job_lock:
@@ -43,7 +86,9 @@ class PortraitImageJobService:
                 .first()
             )
             if existing:
-                return existing, True
+                if _origin_is_current(self.db, existing):
+                    return existing, True
+                _mark_superseded(self.db, existing)
 
             job = PortraitImageGenerationJob(
                 game_id=game_id,
@@ -108,6 +153,10 @@ def run_portrait_image_job(
         if job is None or job.status not in ACTIVE_JOB_STATUSES:
             return
 
+        if not _origin_is_current(db, job):
+            _mark_superseded(db, job)
+            return
+
         job.status = "running"
         job.attempt_count += 1
         job.error_code = None
@@ -127,6 +176,13 @@ def run_portrait_image_job(
         )
         if not images or images[0].image_id is None:
             raise ImageServiceError("no image was persisted")
+
+        if not _origin_is_current(db, job):
+            db.query(Image).filter(Image.image_id == int(images[0].image_id)).update(
+                {"is_active": False}
+            )
+            _mark_superseded(db, job)
+            return
 
         job.image_id = int(images[0].image_id)
         job.status = "succeeded"

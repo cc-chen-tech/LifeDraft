@@ -5,14 +5,13 @@ import { useRouter } from "next/navigation";
 import { useGameStore, CREATION_STEPS, MANUAL_STEPS, AUTO_ADVANCE_STEPS } from "@/stores/useGameStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { useImageStore } from "@/stores/useImageStore";
-import type { CharacterSettings } from "@/lib/types";
+import type { CharacterSettings, StoryOrigin } from "@/lib/types";
 import api from "@/lib/api";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import { isWithinInputLimit, unicodeCharacterLength } from "@/lib/inputLimits";
 
 const STEP_LABELS: Record<string, string> = {
-  era: "时代背景",
-  age: "年龄阶段",
+  story_origin: "故事起点",
   gender: "性别",
   world: "世界观",
   portrait: "人物形象",
@@ -22,8 +21,7 @@ const STEP_LABELS: Record<string, string> = {
 };
 
 const STEP_DESCRIPTIONS: Record<string, string> = {
-  era: "选择你的人生将发生在哪个时代",
-  age: "确定你人生故事开始的年龄",
+  story_origin: "日期、年龄与时代语境会作为一个完整起点生成",
   gender: "选择你的角色性别",
   world: "AI将为你构建独特的世界观",
   portrait: "AI将为你生成人物形象",
@@ -114,6 +112,7 @@ export interface UseCharacterCreationReturn {
   nextCreationStep: () => void;
   prevCreationStep: () => void;
   updateCharacterSetting: (key: string, value: unknown) => void;
+  replaceCharacterSettings: (settings: CharacterSettings) => void;
   setPlayerName: (name: string) => void;
   setLifeVision: (vision: string) => void;
   resetCreation: () => void;
@@ -181,7 +180,7 @@ export interface UseCharacterCreationReturn {
   handleAcceptAndNext: () => Promise<void>;
   handleSavePreset: () => Promise<void>;
   handleStartGame: () => Promise<void>;
-  runAutoGeneration: () => Promise<void>;
+  runAutoGeneration: (completePhase?: boolean) => Promise<void>;
   
   // Constants
   STEP_LABELS: Record<string, string>;
@@ -203,6 +202,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     nextCreationStep,
     prevCreationStep,
     updateCharacterSetting,
+    replaceCharacterSettings,
     setPlayerName: storeSetPlayerName,
     setLifeVision: storeSetLifeVision,
     resetCreation,
@@ -222,6 +222,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     regeneratePlayerImage,
     regenerateFreshPlayerImage,
     setImageFeedback,
+    clearCache: clearImageCache,
   } = useImageStore();
 
   const playerImage = playerImages[selectedImageIndex] || playerImages[0] || null;
@@ -268,27 +269,27 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     isWithinInputLimit(playerName, INPUT_LIMITS.name) &&
     isWithinInputLimit(lifeVision, INPUT_LIMITS.lifeVision);
 
-  const invalidateEraGeneration = useCallback(() => {
+  const invalidateOriginGeneration = useCallback(() => {
     basicInfoVersionRef.current += 1;
-    if (currentStepKey !== "era") return;
+    if (currentStepKey !== "story_origin") return;
     autoGenTriggeredRef.current[currentStepKey] = false;
     setGeneratedContent(null);
   }, [currentStepKey]);
 
   const setPlayerName = useCallback(
     (name: string) => {
-      invalidateEraGeneration();
+      invalidateOriginGeneration();
       storeSetPlayerName(name);
     },
-    [invalidateEraGeneration, storeSetPlayerName]
+    [invalidateOriginGeneration, storeSetPlayerName]
   );
 
   const setLifeVision = useCallback(
     (vision: string) => {
-      invalidateEraGeneration();
+      invalidateOriginGeneration();
       storeSetLifeVision(vision);
     },
-    [invalidateEraGeneration, storeSetLifeVision]
+    [invalidateOriginGeneration, storeSetLifeVision]
   );
 
   const handleSetPresetName = useCallback((name: string) => {
@@ -343,8 +344,16 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       setGeneratedContent(null);
 
       try {
-        const result = await withRetry(() =>
-          api.character.generateSetting({
+        const result = await withRetry<Record<string, unknown>>(() =>
+          currentStepKey === "story_origin"
+            ? api.character.generateStoryOrigin({
+                player_name: playerName,
+                life_vision: lifeVision,
+                previous_settings: characterSettings,
+                feedback: fb || null,
+                language,
+              }).then((origin) => origin as unknown as Record<string, unknown>)
+            : api.character.generateSetting({
             setting_type: currentStepKey,
             player_name: playerName,
             life_vision: lifeVision,
@@ -390,7 +399,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   }, [creationStep]);
 
   useEffect(() => {
-    if (currentStepKey !== "era") return;
+    if (currentStepKey !== "story_origin") return;
     autoGenTriggeredRef.current[currentStepKey] = false;
     setGeneratedContent(null);
   }, [currentStepKey, playerName, lifeVision]);
@@ -450,7 +459,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   ]);
 
   // Background generation for auto-advance steps
-  const runAutoGeneration = useCallback(async () => {
+  const runAutoGeneration = useCallback(async (completePhase = true) => {
     if (!hasBasicInfo) {
       showToast("error", "角色姓名或人生愿景超过允许长度，请修改后重试");
       return;
@@ -458,17 +467,22 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     console.log("[runAutoGeneration] Starting background generation...");
     
     const settings = { ...useGameStore.getState().characterSettings };
+    const sourceOriginRevision = (settings.story_origin as StoryOrigin | undefined)?.revision;
     const stepsToGenerate = AUTO_ADVANCE_STEPS.filter((step) => settings[step] == null);
 
     if (stepsToGenerate.length === 0) {
       console.log("[runAutoGeneration] All steps already done");
-      setAutoGenPhase("done");
+      if (completePhase) setAutoGenPhase("done");
       return;
     }
 
     const failedSteps: string[] = [];
 
     for (let i = 0; i < stepsToGenerate.length; i++) {
+      const liveOriginRevision = (
+        useGameStore.getState().characterSettings.story_origin as StoryOrigin | undefined
+      )?.revision;
+      if (liveOriginRevision !== sourceOriginRevision) return;
       const step = stepsToGenerate[i];
       console.log(`[runAutoGeneration] Generating ${step} (${i + 1}/${stepsToGenerate.length})...`);
       setAutoGenLabel(STEP_LABELS[step] ?? "剩余角色背景");
@@ -521,6 +535,10 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
           );
         }
 
+        const commitOriginRevision = (
+          useGameStore.getState().characterSettings.story_origin as StoryOrigin | undefined
+        )?.revision;
+        if (commitOriginRevision !== sourceOriginRevision) return;
         settings[step] = result;
         updateCharacterSetting(step, result);
       } catch (err) {
@@ -533,7 +551,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       showToast("error", `部分设定生成失败(${failedSteps.map(s => STEP_LABELS[s]).join("、")})，请点击"返回修改"重试`);
     }
 
-    setAutoGenPhase("done");
+    if (completePhase) setAutoGenPhase("done");
   }, [playerName, lifeVision, language, updateCharacterSetting, showToast, hasBasicInfo]);
 
   // Start background generation on portrait step
@@ -543,7 +561,6 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
 
       if (allDone) {
         console.log("[portrait] All auto steps already done");
-        setAutoGenPhase("done");
         backgroundGenStartedRef.current = true;
         return;
       }
@@ -552,10 +569,6 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       // 让用户在 portrait 步骤查看图片，点击"下一步"时再处理状态切换
       if (backgroundGenStartedRef.current) {
         console.log("[portrait] Background generation already started from world step");
-        // 只在后台已完成时自动切换到 done
-        if (!isBackgroundGenerating) {
-          setAutoGenPhase("done");
-        }
         return;
       }
 
@@ -564,7 +577,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         console.log("[portrait] Starting background generation...");
         backgroundGenStartedRef.current = true;
         setIsBackgroundGenerating(true);
-        runAutoGeneration().then(() => {
+        runAutoGeneration(false).then(() => {
           console.log("[portrait] Background generation completed");
           setIsBackgroundGenerating(false);
         }).catch((err) => {
@@ -582,15 +595,63 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     }
     let acceptedCharacterSettings = characterSettings;
     if (!isPortraitStep && generatedContent) {
-      acceptedCharacterSettings = {
-        ...characterSettings,
-        [currentStepKey]: generatedContent,
-      };
-      updateCharacterSetting(currentStepKey, generatedContent);
+      if (currentStepKey === "story_origin") {
+        const origin = generatedContent as unknown as StoryOrigin;
+        const startYear = Number(origin.start_date.slice(0, 4));
+        acceptedCharacterSettings = {
+          ...characterSettings,
+          story_origin: origin,
+          start_date: origin.start_date,
+          era: {
+            year: startYear,
+            era_description: origin.era_description,
+            world_context: origin.world_context,
+          },
+          age: {
+            age: origin.starting_age,
+            birth_year: startYear - origin.starting_age,
+            age_description: origin.life_stage_description,
+          },
+        };
+      } else {
+        acceptedCharacterSettings = {
+          ...characterSettings,
+          [currentStepKey]: generatedContent,
+        };
+      }
     }
     setGeneratedContent(null);
     setFeedback("");
     
+    if (currentStepKey === "story_origin" && gameId && generatedContent) {
+      try {
+        setIsGenerating(true);
+        const currentOrigin = characterSettings.story_origin as StoryOrigin | undefined;
+        if (!currentOrigin) throw new Error("缺少当前故事起点版本");
+        const replacement = await api.games.replaceStoryOrigin(gameId, {
+          expected_revision: currentOrigin.revision,
+          story_origin: generatedContent as unknown as StoryOrigin,
+        });
+        replaceCharacterSettings(replacement.character_settings);
+        clearImageCache();
+        hasGeneratedImage.current = false;
+        backgroundGenStartedRef.current = false;
+        setIsBackgroundGenerating(false);
+        setAutoGenPhase("idle");
+        setCreationStep(CREATION_STEPS.indexOf("world"));
+      } catch (err) {
+        console.error("[origin] Failed to replace story origin:", err);
+        showToast("error", "故事起点更新失败，旧设定已保留");
+      } finally {
+        setIsGenerating(false);
+      }
+      return;
+    }
+
+    if (!isPortraitStep && generatedContent) {
+      replaceCharacterSettings(acceptedCharacterSettings);
+    }
+
     if (currentStepKey === "world" && !gameId) {
       try {
         setIsGenerating(true);
@@ -609,7 +670,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
           console.log("[world] Starting background generation early...");
           backgroundGenStartedRef.current = true;
           setIsBackgroundGenerating(true);
-          runAutoGeneration().then(() => {
+          runAutoGeneration(false).then(() => {
             console.log("[world] Background generation completed");
             setIsBackgroundGenerating(false);
           }).catch((err) => {
@@ -677,7 +738,8 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   }, [
     isPortraitStep, generatedContent, currentStepKey, gameId, characterSettings,
     playerName, lifeVision, language, isLastStep, isBackgroundGenerating,
-    updateCharacterSetting, setGameSession, nextCreationStep, showToast, runAutoGeneration,
+    replaceCharacterSettings, clearImageCache, setCreationStep,
+    setGameSession, nextCreationStep, showToast, runAutoGeneration,
     hasBasicInfo
   ]);
 
@@ -840,6 +902,15 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       showToast("error", "角色姓名或人生愿景超过允许长度，请修改后重试");
       return;
     }
+    if (
+      !characterSettings.story_origin ||
+      characterSettings.story_origin_needs_review === true
+    ) {
+      showToast("error", "请先确认完整的故事起点");
+      setAutoGenPhase("idle");
+      setCreationStep(0);
+      return;
+    }
     
     setIsGenerating(true);
     
@@ -875,9 +946,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         } catch (patchErr) {
           console.warn("[create] Failed to patch character settings (non-blocking):", patchErr);
         }
-        const loaded = await api.games.load(gameId);
+        await api.games.load(gameId);
         console.log("[create] Navigating to first story day...");
-        router.push(loaded.player_state?.timeline?.version === 2 ? "/play" : "/story/opening");
+        router.push("/play");
         return;
       }
 
@@ -894,14 +965,14 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       await new Promise(resolve => setTimeout(resolve, 100));
       
       console.log("[create] Navigating to first story day...");
-      router.push(result.player_state?.timeline?.version === 2 ? "/play" : "/story/opening");
+      router.push("/play");
     } catch (err) {
       console.error("[create] Start game failed:", err);
       showToast("error", "创建游戏失败，请重试");
     } finally {
       setIsGenerating(false);
     }
-  }, [isGenerating, playerName, lifeVision, characterSettings, gameId, language, router, showToast, hasBasicInfo]);
+  }, [isGenerating, playerName, lifeVision, characterSettings, gameId, language, router, showToast, hasBasicInfo, setCreationStep]);
 
   return {
     // Router
@@ -920,6 +991,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     nextCreationStep,
     prevCreationStep: handlePrevStep,
     updateCharacterSetting,
+    replaceCharacterSettings,
     setPlayerName,
     setLifeVision,
     resetCreation,

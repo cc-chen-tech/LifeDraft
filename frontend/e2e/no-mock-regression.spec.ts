@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import {
   FRONTEND_ORIGIN,
-  installEraGenerationFixture,
+  installStoryOriginGenerationFixture,
 } from './helpers/character-setting-fixture';
 
 test.describe('no-mock regression coverage', () => {
@@ -17,12 +17,12 @@ test.describe('no-mock regression coverage', () => {
     await page.goto('/create');
 
     const stepNavigation = page.getByRole('navigation', { name: '角色创建步骤' });
-    const currentStep = stepNavigation.getByRole('button', { name: '前往时代背景' });
+    const currentStep = stepNavigation.getByRole('button', { name: '前往故事起点' });
     await expect(currentStep).toBeVisible();
     await expect(currentStep).toHaveAttribute('aria-current', 'step');
     await expect(currentStep).toBeDisabled();
 
-    for (const name of ['年龄阶段', '性别', '世界观', '人物形象']) {
+    for (const name of ['性别', '世界观', '人物形象']) {
       const futureStep = stepNavigation.getByRole('button', { name: `前往${name}` });
       await expect(futureStep).toBeVisible();
       await expect(futureStep).toBeDisabled();
@@ -31,7 +31,7 @@ test.describe('no-mock regression coverage', () => {
   });
 
   test('creation generation uses calm loading and exits after backend success', async ({ page }) => {
-    const requests = await installEraGenerationFixture(page, 500);
+    const requests = await installStoryOriginGenerationFixture(page, 500);
     await page.goto('/create');
 
     const nameInput = page.getByPlaceholder('输入你的角色名');
@@ -47,7 +47,7 @@ test.describe('no-mock regression coverage', () => {
     await expect(
       loading.getByRole('heading', { name: '角色设定，正在成形' }),
     ).toBeVisible();
-    await expect(loading).toContainText('时代背景');
+    await expect(loading).toContainText('正在写作');
 
     await expect(page.getByText('刚刚生成')).toBeVisible();
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
@@ -55,9 +55,8 @@ test.describe('no-mock regression coverage', () => {
       {
         method: 'POST',
         origin: FRONTEND_ORIGIN,
-        path: '/api/character/setting',
+        path: '/api/character/story-origin',
         search: '',
-        settingType: 'era',
       },
     ]);
   });

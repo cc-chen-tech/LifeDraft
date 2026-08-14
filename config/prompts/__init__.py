@@ -43,6 +43,7 @@ from config.prompts.character_prompts import (
     get_opening_story_prompt,
     get_relationship_person_prompt,
     get_relationships_summary_prompt,
+    get_story_origin_prompt,
 )
 
 # Story generation prompts
@@ -98,6 +99,7 @@ __all__ = [
     # Character prompts
     "get_character_profile_synthesis_prompt",
     "get_character_setting_prompt",
+    "get_story_origin_prompt",
     "get_relationship_person_prompt",
     "get_relationships_summary_prompt",
     "get_initial_attributes_prompt",

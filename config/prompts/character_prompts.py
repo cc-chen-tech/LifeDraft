@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from config.prompts._helpers import build_realistic_modern_world_boundary
 from src.ai.budgets import NarrativeKind, resolve_prompt_length_requirement
 from src.ai.prompt_sanitizer import sanitize_life_vision, sanitize_player_name
+from src.game.story_origin import canonical_story_settings
 
 
 def _coerce_month(value: Any) -> int:
@@ -182,6 +183,68 @@ Combine initial settings and actual behavioral evidence to generate this charact
 # ==================== Character Setting Prompts ====================
 
 
+def get_story_origin_prompt(
+    player_name: str,
+    life_vision: str,
+    previous_settings: Dict[str, Any],
+    language: str = "zh",
+    feedback: Optional[str] = None,
+) -> str:
+    """Build one atomic prompt for the playable date, age, and time context."""
+    import json as _json
+
+    safe_name = sanitize_player_name(player_name)
+    safe_vision = sanitize_life_vision(life_vision)
+    previous_origin = previous_settings.get("story_origin", {})
+    feedback_text = feedback.strip() if feedback else ""
+    if language == "zh":
+        return f"""请为角色生成一张完整的“故事起点”设定。
+
+玩家姓名：{safe_name}
+人生愿景：{safe_vision}
+上一版故事起点：
+{_json.dumps(previous_origin, ensure_ascii=False, indent=2)}
+修改反馈：{feedback_text or "无（首次生成）"}
+
+硬性规则：
+1. start_date 必须是合法的公历 ISO 日期 YYYY-MM-DD，年份范围 1-9999。
+2. starting_age 必须是 0-120 的整数。
+3. 人生愿景或修改反馈中出现的明确日期、年份、年龄、国家、地区、行业和职业都是硬约束。
+4. 五个字段必须互相一致；不得让描述停留在上一版年代。
+5. 这是一个不可拆分的候选，不要输出 birth_year，也不要输出解释或 Markdown。
+6. world_context 只描述故事起点所处的时代环境，详细世界制度稍后另行生成。
+
+返回 JSON：
+{{
+  "start_date": "2026-08-13",
+  "starting_age": 28,
+  "era_description": "时代背景的简短描述",
+  "life_stage_description": "开局年龄阶段的简短描述",
+  "world_context": "与日期和人生愿景一致的时代环境"
+}}
+"""
+
+    return f"""Generate one complete story-origin setting for the character.
+
+Player name: {safe_name}
+Life vision: {safe_vision}
+Previous story origin:
+{_json.dumps(previous_origin, ensure_ascii=False, indent=2)}
+Revision feedback: {feedback_text or "None (initial generation)"}
+
+Mandatory rules:
+1. start_date is a valid proleptic Gregorian ISO date YYYY-MM-DD, year 1-9999.
+2. starting_age is an integer from 0 through 120.
+3. Explicit dates, years, ages, locations, industries, and professions in the
+   life vision or feedback are hard constraints.
+4. Every field describes the same point in time; do not retain the prior era.
+5. Return one indivisible JSON candidate with no birth_year, explanation, or Markdown.
+
+Return JSON with start_date, starting_age, era_description,
+life_stage_description, and world_context.
+"""
+
+
 def get_character_setting_prompt(
     setting_type: str,
     player_name: str,
@@ -205,6 +268,8 @@ def get_character_setting_prompt(
         The assembled prompt string.
     """
     import json as _json
+
+    previous_settings = canonical_story_settings(previous_settings)
 
     # 清洗用户输入，防止 prompt 注入
     sanitized_player_name = sanitize_player_name(player_name)

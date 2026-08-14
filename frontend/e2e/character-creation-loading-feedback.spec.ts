@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 import {
   FRONTEND_ORIGIN,
-  installEraGenerationFixture,
+  installCharacterSettingGenerationFixture,
+  installStoryOriginGenerationFixture,
 } from "./helpers/character-setting-fixture";
 
 /**
@@ -14,7 +15,7 @@ import {
 test.describe("Character Creation - Completion Screen Buttons", () => {
   test("create page loads with expected structure", async ({ page }) => {
     await page.goto("/create");
-    await expect(page.getByRole("heading", { name: "时代背景", level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "故事起点", level: 2 })).toBeVisible();
 
     // 验证角色名输入框存在
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
@@ -30,9 +31,10 @@ test.describe("Character Creation - Completion Screen Buttons", () => {
   });
 
   test("上一步按钮在交互步骤中可用", async ({ page }) => {
-    const requests = await installEraGenerationFixture(page);
+    const requests = await installStoryOriginGenerationFixture(page);
+    await installCharacterSettingGenerationFixture(page);
     await page.goto("/create");
-    await expect(page.getByRole("heading", { name: "时代背景", level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "故事起点", level: 2 })).toBeVisible();
 
     const visionInput = page.getByPlaceholder(/人生愿景|人生方向/i);
     await visionInput.fill("测试愿景");
@@ -44,9 +46,8 @@ test.describe("Character Creation - Completion Screen Buttons", () => {
       {
         method: "POST",
         origin: FRONTEND_ORIGIN,
-        path: "/api/character/setting",
+        path: "/api/character/story-origin",
         search: "",
-        settingType: "era",
       },
     ]);
 
@@ -57,7 +58,8 @@ test.describe("Character Creation - Completion Screen Buttons", () => {
     await nextButton.click();
 
     // 验证上一步按钮存在且可点击
-    await expect(page.getByRole("heading", { name: "年龄阶段", level: 2 })).toBeVisible();
+    await expect(page.getByText("刚刚生成")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "性别", level: 2 })).toBeVisible();
     const prevButton = page.getByRole("button", { name: "上一步" });
     await expect(prevButton).toBeVisible();
     await expect(prevButton).toBeEnabled();

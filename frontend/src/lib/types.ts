@@ -110,11 +110,20 @@ export interface StoryVoiceErrorResponse {
  * Era setting for character creation
  */
 export interface EraSetting {
-  era: string;
+  era?: string;
   year?: number;
   era_name?: string;
   era_description?: string;
   world_context?: string;
+}
+
+export interface StoryOrigin {
+  revision: number;
+  start_date: string;
+  starting_age: number;
+  era_description: string;
+  life_stage_description: string;
+  world_context: string;
 }
 
 /**
@@ -131,6 +140,9 @@ export interface KeyPerson {
  * Contains era, key people, and other story settings
  */
 export interface CharacterSettings {
+  story_origin?: StoryOrigin;
+  story_origin_needs_review?: boolean;
+  start_date?: string;
   era?: EraSetting;
   key_people?: KeyPerson[];
   relationships_description?: string;

@@ -49,6 +49,8 @@ function renderContent(
   data: Record<string, unknown>,
 ) {
   switch (stepKey) {
+    case "story_origin":
+      return <StoryOriginDisplay data={data} />;
     case "era":
       return <EraDisplay data={data} />;
     case "age":
@@ -71,6 +73,27 @@ function renderContent(
         </pre>
       );
   }
+}
+
+function StoryOriginDisplay({ data }: { data: Record<string, unknown> }) {
+  const rawDate = str(data.start_date);
+  const dateParts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawDate);
+  const displayDate = dateParts
+    ? `${Number(dateParts[1])}年${Number(dateParts[2])}月${Number(dateParts[3])}日`
+    : rawDate;
+  return (
+    <div className="space-y-4" data-testid="story-origin-summary">
+      <div className="flex flex-wrap gap-x-6 gap-y-2 font-sans text-sm">
+        <p><span className="text-[var(--text-secondary)]">故事开始：</span>{displayDate}</p>
+        <p><span className="text-[var(--text-secondary)]">开局年龄：</span>{str(data.starting_age)}岁</p>
+      </div>
+      <div className="space-y-3 text-sm leading-relaxed">
+        <p>{str(data.era_description)}</p>
+        <p>{str(data.life_stage_description)}</p>
+        <p className="text-[var(--text-secondary)]">{str(data.world_context)}</p>
+      </div>
+    </div>
+  );
 }
 
 function str(val: unknown): string {

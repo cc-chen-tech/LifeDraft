@@ -170,6 +170,7 @@ export const useImageStore = create<ImageState>()(
 
         const extraContext = {
           characterSettings: { era: characterSettings.era, age: characterSettings.age, gender: characterSettings.gender, world: characterSettings.world },
+          origin_revision: characterSettings.story_origin?.revision,
           playerName,
           feedback,
         };

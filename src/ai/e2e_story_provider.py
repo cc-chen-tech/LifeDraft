@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from src.ai.system_prompts import OPTION_GENERATOR_EN, OPTION_GENERATOR_ZH
 from src.ai.system_prompts import STORY_NOVELIST_EN, STORY_NOVELIST_ZH
@@ -82,6 +82,27 @@ _E2E_OPTIONS_EN = {
         },
     ]
 }
+
+
+def deterministic_e2e_story_origin(
+    *, life_vision: str, feedback: Optional[str]
+) -> Optional[Dict[str, Any]]:
+    """Return a coherent origin only for the empty-input deterministic E2E flow.
+
+    Feedback and life vision remain model-owned so this fixture can never bypass
+    their semantic or explicit date/age constraints.
+    """
+    if os.getenv("E2E_DETERMINISTIC_STORY") != "1":
+        return None
+    if life_vision.strip() or (feedback or "").strip():
+        return None
+    return {
+        "start_date": "2026-01-01",
+        "starting_age": 25,
+        "era_description": "2020年代中期的现代都市",
+        "life_stage_description": "正在探索职业方向与稳定生活的青年阶段",
+        "world_context": "数字工具、城市工作与日常关系持续变化",
+    }
 
 
 def deterministic_e2e_response(system_prompt: str) -> Optional[str]:

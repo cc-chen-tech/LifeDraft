@@ -123,8 +123,12 @@ describe('Store Migration Compatibility', () => {
     it('should export CREATION_STEPS correctly', () => {
       expect(CREATION_STEPS).toBeDefined();
       expect(Array.isArray(CREATION_STEPS)).toBe(true);
-      expect(CREATION_STEPS).toContain('era');
-      expect(CREATION_STEPS).toContain('portrait');
+      expect(CREATION_STEPS).toEqual([
+        'story_origin',
+        'gender',
+        'world',
+        'portrait',
+      ]);
     });
 
     it('should export MANUAL_STEPS correctly', () => {

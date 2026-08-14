@@ -736,6 +736,64 @@
         }
       }
     },
+    "/api/games/{game_id}/story-origin": {
+      "patch": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Replace Story Origin",
+        "description": "Atomically replace the complete origin of an unplayed owned draft.",
+        "operationId": "replace_story_origin_api_games__game_id__story_origin_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceStoryOriginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplaceStoryOriginResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/games/{game_id}/settings": {
       "patch": {
         "tags": [
@@ -1005,6 +1063,46 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/GenerateSettingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/character/story-origin": {
+      "post": {
+        "tags": [
+          "Character"
+        ],
+        "summary": "Generate Story Origin",
+        "description": "Generate one validated date, starting age, and temporal context.",
+        "operationId": "generate_story_origin_api_character_story_origin_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateStoryOriginRequest"
               }
             }
           },
@@ -5807,6 +5905,49 @@
         ],
         "title": "GenerateSettingRequest"
       },
+      "GenerateStoryOriginRequest": {
+        "properties": {
+          "player_name": {
+            "type": "string",
+            "maxLength": 50,
+            "title": "Player Name"
+          },
+          "life_vision": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Life Vision"
+          },
+          "previous_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Previous Settings",
+            "x-maxBytes": 262144
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "player_name",
+          "life_vision"
+        ],
+        "title": "GenerateStoryOriginRequest"
+      },
       "GenerateSummaryRequest": {
         "properties": {
           "weeks": {
@@ -7121,6 +7262,55 @@
         ],
         "title": "RelationshipsSummaryRequest"
       },
+      "ReplaceStoryOriginRequest": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          },
+          "story_origin": {
+            "$ref": "#/components/schemas/StoryOriginPayload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "story_origin"
+        ],
+        "title": "ReplaceStoryOriginRequest"
+      },
+      "ReplaceStoryOriginResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "default": true
+          },
+          "story_origin": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Story Origin"
+          },
+          "timeline": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Timeline"
+          },
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "story_origin",
+          "timeline",
+          "character_settings"
+        ],
+        "title": "ReplaceStoryOriginResponse"
+      },
       "RewriteStoryRequest": {
         "properties": {
           "full_story": {
@@ -7531,6 +7721,50 @@
           "reply"
         ],
         "title": "StoryChatResponse"
+      },
+      "StoryOriginPayload": {
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision"
+          },
+          "start_date": {
+            "type": "string",
+            "title": "Start Date"
+          },
+          "starting_age": {
+            "type": "integer",
+            "maximum": 120.0,
+            "minimum": 0.0,
+            "title": "Starting Age"
+          },
+          "era_description": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Era Description"
+          },
+          "life_stage_description": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Life Stage Description"
+          },
+          "world_context": {
+            "type": "string",
+            "minLength": 1,
+            "title": "World Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "revision",
+          "start_date",
+          "starting_age",
+          "era_description",
+          "life_stage_description",
+          "world_context"
+        ],
+        "title": "StoryOriginPayload"
       },
       "StoryVoiceReadingRequest": {
         "properties": {

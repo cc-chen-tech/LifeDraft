@@ -21,6 +21,7 @@ from src.services.image import ImageServiceError as ImageServiceError
 from src.services.image.character_service import CharacterImageService
 from src.services.image.scene_service import SceneImageService
 from src.services.image_storage import ImageStorageService
+from src.game.story_origin import canonical_story_settings
 
 logger = logging.getLogger(__name__)
 
@@ -586,6 +587,7 @@ class ImageService:
 
     def _build_description_from_settings(self, char_settings: Dict[str, Any]) -> str:
         """从角色设定构建人物描述"""
+        char_settings = canonical_story_settings(char_settings)
         parts = []
 
         age = char_settings.get("age")
@@ -616,6 +618,7 @@ class ImageService:
 
     def _extract_era_from_settings(self, char_settings: Dict[str, Any]) -> Optional[str]:
         """从角色设定中提取时代名称"""
+        char_settings = canonical_story_settings(char_settings)
         era = char_settings.get("era")
         if era:
             if isinstance(era, dict):
@@ -674,6 +677,7 @@ class ImageService:
         self, character_settings: Dict[str, Any], player_name: str
     ) -> Dict[str, Any]:
         """构建角色信息字典"""
+        character_settings = canonical_story_settings(character_settings)
         char_info = {
             "name": player_name,
             "era": self._extract_era_from_settings(character_settings) or "现代",

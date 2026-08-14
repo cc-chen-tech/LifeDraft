@@ -200,11 +200,11 @@ describe('useGameStore', () => {
   describe('Character creation', () => {
     it('has correct creation steps', () => {
       // CREATION_STEPS only contains user-interactive steps
-      expect(CREATION_STEPS).toEqual(['era', 'age', 'gender', 'world', 'portrait']);
+      expect(CREATION_STEPS).toEqual(['story_origin', 'gender', 'world', 'portrait']);
     });
 
     it('has correct manual steps', () => {
-      expect(MANUAL_STEPS).toEqual(['era', 'age', 'gender', 'world', 'portrait']);
+      expect(MANUAL_STEPS).toEqual(['story_origin', 'gender', 'world', 'portrait']);
     });
 
     it('has correct auto advance steps', () => {

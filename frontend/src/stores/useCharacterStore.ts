@@ -12,23 +12,21 @@ import type { PresetInfo } from "@/lib/types";
 
 // Character creation step tracking
 export type CreationStep =
-  | "era"
-  | "age"
+  | "story_origin"
   | "gender"
   | "world"
   | "portrait";
 
-// 前端步骤只包含用户需要交互的 5 个步骤
+// 前端步骤只包含用户需要交互的 4 个步骤
 export const CREATION_STEPS: CreationStep[] = [
-  "era",
-  "age",
+  "story_origin",
   "gender",
   "world",
   "portrait",
 ];
 
 // 所有步骤都是手动步骤（用户需要交互）
-export const MANUAL_STEPS: CreationStep[] = ["era", "age", "gender", "world", "portrait"];
+export const MANUAL_STEPS: CreationStep[] = ["story_origin", "gender", "world", "portrait"];
 
 // 后台自动生成的步骤
 export const AUTO_ADVANCE_STEPS: string[] = ["family", "relationships", "traits"];
@@ -47,6 +45,7 @@ interface CharacterState {
   nextCreationStep: () => void;
   prevCreationStep: () => void;
   updateCharacterSetting: (key: string, value: unknown) => void;
+  replaceCharacterSettings: (settings: Record<string, unknown>) => void;
   setPlayerName: (name: string) => void;
   setLifeVision: (vision: string) => void;
   setOpeningStory: (story: string) => void;
@@ -79,6 +78,7 @@ export const useCharacterStore = create<CharacterState>()(
       set((state) => ({
         characterSettings: { ...state.characterSettings, [key]: value },
       })),
+    replaceCharacterSettings: (settings) => set({ characterSettings: settings }),
 
     setPlayerName: (name) => set({ playerName: name }),
     setLifeVision: (vision) => set({ lifeVision: vision }),
@@ -99,7 +99,9 @@ export const useCharacterStore = create<CharacterState>()(
         playerName: preset.player_name,
         lifeVision: preset.life_vision || "",
         characterSettings: preset.character_settings,
-        creationStep: MANUAL_STEPS.length,
+        creationStep: preset.character_settings.story_origin_needs_review
+          ? 0
+          : CREATION_STEPS.length - 1,
         isPresetLoaded: true,
         openingStory: "",
       }),

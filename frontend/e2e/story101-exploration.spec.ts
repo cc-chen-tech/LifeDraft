@@ -5,7 +5,7 @@ import * as path from 'path';
 // ============================================================
 // Story101.live Deep Exploration Script v2
 // ============================================================
-// Properly handles: registration, 5-step character creation,
+// Properly handles: registration, 4-step character creation,
 // opening story, gameplay through 4+ weeks, all side features.
 // ============================================================
 
@@ -269,7 +269,7 @@ test.describe('Story101.live Deep Exploration', () => {
     console.log(`  Current URL: ${page.url()}`);
 
     // ============================================================
-    // PHASE 3: CHARACTER CREATION (5 STEPS)
+    // PHASE 3: CHARACTER CREATION (4 STEPS)
     // ============================================================
     console.log('\n========== PHASE 3: CHARACTER CREATION ==========');
 
@@ -287,13 +287,13 @@ test.describe('Story101.live Deep Exploration', () => {
     await shot(page, '03_char_create_start');
     await scanAllButtons(page, 'character creation start');
 
-    // Step 0 (1/5): Fill character name
+    // Step 0 (1/4): Fill character name; this generates the atomic story origin.
     // The page shows "角色姓名" heading and "输入你的角色名" textbox
     await fillInput(page, '输入你的角色名', '云逸');
     await page.waitForTimeout(1000);
     await shot(page, '03_step0_name_filled');
 
-    // Wait for "下一步" to become enabled (AI needs to auto-generate era content)
+    // Wait for "下一步" to become enabled (AI needs to auto-generate story origin)
     const nextBtn = page.getByRole('button', { name: /下一步/ });
     let nextEnabled = await waitForEnabled(page, nextBtn, 120_000, '下一步 (step 0)');
     if (!nextEnabled) {
@@ -307,37 +307,28 @@ test.describe('Story101.live Deep Exploration', () => {
       await clickEnabled(page, nextBtn, '下一步 (step 0→1)');
       await page.waitForTimeout(3000);
     }
-    await shot(page, '03_step1_age');
-    await scanAllButtons(page, 'step 1 (age)');
+    await shot(page, '03_step1_gender');
+    await scanAllButtons(page, 'step 1 (gender)');
 
-    // Step 1 (2/5): Age - wait for auto-generation, then click next
+    // Step 1 (2/4): Gender - wait for auto-generation, then click next
     nextEnabled = await waitForEnabled(page, nextBtn, 120_000, '下一步 (step 1)');
     if (nextEnabled) {
       await clickEnabled(page, nextBtn, '下一步 (step 1→2)');
       await page.waitForTimeout(3000);
     }
-    await shot(page, '03_step2_gender');
-    await scanAllButtons(page, 'step 2 (gender)');
+    await shot(page, '03_step2_world');
+    await scanAllButtons(page, 'step 2 (world)');
 
-    // Step 2 (3/5): Gender - wait, then next
+    // Step 2 (3/4): World - wait, then next
     nextEnabled = await waitForEnabled(page, nextBtn, 120_000, '下一步 (step 2)');
     if (nextEnabled) {
       await clickEnabled(page, nextBtn, '下一步 (step 2→3)');
       await page.waitForTimeout(3000);
     }
-    await shot(page, '03_step3_world');
-    await scanAllButtons(page, 'step 3 (world)');
+    await shot(page, '03_step3_portrait');
+    await scanAllButtons(page, 'step 3 (portrait)');
 
-    // Step 3 (4/5): World - wait, then next
-    nextEnabled = await waitForEnabled(page, nextBtn, 120_000, '下一步 (step 3)');
-    if (nextEnabled) {
-      await clickEnabled(page, nextBtn, '下一步 (step 3→4)');
-      await page.waitForTimeout(5000); // Extra wait - world step creates game too
-    }
-    await shot(page, '03_step4_portrait');
-    await scanAllButtons(page, 'step 4 (portrait)');
-
-    // Step 4 (5/5): Portrait can continue while portrait generation finishes in the background.
+    // Step 3 (4/4): Portrait can continue while portrait generation finishes in the background.
     const portraitContinueBtn = page.getByRole('button', { name: /下一步|继续生成角色/ });
     nextEnabled = await waitForEnabled(page, portraitContinueBtn, 180_000, '继续生成角色/下一步 (step 4 portrait)');
     if (nextEnabled) {
