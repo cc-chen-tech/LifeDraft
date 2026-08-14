@@ -5,7 +5,6 @@ Handles weekly summaries, bonus effects, and periodic summaries.
 
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, Optional
 
 from src.game.world_model_updater import WorldModelUpdater
@@ -46,6 +45,10 @@ class RoundFinalizer:
         self._get_language = language_getter
         self.story_service = story_service
         self.character_creator = character_creator
+        # P0-并发修复：富化任务全部写入同一个 player_state
+        # （items/landmarks/world_model_data/four_week_summaries），
+        # 此锁串行化所有富化任务的写阶段，并防止相邻两周的富化线程重叠。
+        self._enrichment_lock = threading.Lock()
 
     @property
     def player_state(self):
@@ -112,41 +115,46 @@ class RoundFinalizer:
         thread.start()
 
     def _run_post_week_enrichment_tasks(self, new_week: int) -> None:
-        """Synthesize profiles and collection metadata after the week has advanced."""
+        """Synthesize profiles and collection metadata after the week has advanced.
+
+        P0-并发修复：这些任务并行执行时全部无锁写入同一个 player_state
+        （items/landmarks/world_model_data/four_week_summaries），存在数据竞态，
+        且相邻两周的富化线程也可能重叠。这是非关键路径（daemon 线程、失败只记日志），
+        因此改为持锁串行执行：以少量后台延迟换取正确性。
+        """
         player_state = self.player_state
         if not player_state:
             return
 
-        parallel_tasks = []
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with self._enrichment_lock:
             # Always run character profile synthesis
-            parallel_tasks.append(
-                executor.submit(
-                    WorldModelUpdater.synthesize_character_profiles,
+            try:
+                WorldModelUpdater.synthesize_character_profiles(
                     player_state,
                     self.ai_generator.ai_client,
                     self.language,
                 )
-            )
+            except Exception as e:
+                logger.error(f"Character profile synthesis failed: {e}")
+
             # Extract items from this week's stories
-            parallel_tasks.append(
-                executor.submit(self._extract_items_from_week, new_week)
-            )
+            try:
+                self._extract_items_from_week(new_week)
+            except Exception as e:
+                logger.error(f"Item extraction failed: {e}")
+
             # Extract landmarks from this week's stories
-            parallel_tasks.append(
-                executor.submit(self._extract_landmarks_from_week, new_week)
-            )
+            try:
+                self._extract_landmarks_from_week(new_week)
+            except Exception as e:
+                logger.error(f"Landmark extraction failed: {e}")
+
             # 4-week summary (every 4 weeks)
             if new_week > 0 and new_week % 4 == 0:
-                parallel_tasks.append(
-                    executor.submit(self._generate_four_week_summary, new_week)
-                )
-            # Wait for all parallel tasks
-            for future in as_completed(parallel_tasks):
                 try:
-                    future.result()
+                    self._generate_four_week_summary(new_week)
                 except Exception as e:
-                    logger.error(f"Parallel finalize task failed: {e}")
+                    logger.error(f"4-week summary failed: {e}")
 
         # Yearly summary must run after 4-week summary (depends on it)
         if new_week > 0 and new_week % 48 == 0:
