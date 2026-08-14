@@ -2154,6 +2154,10 @@ export interface components {
             current_event?: {
                 [key: string]: unknown;
             } | null;
+            /** Timeline */
+            timeline?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Constraint Level
              * @default expert
@@ -2329,6 +2333,10 @@ export interface components {
              * @default result
              */
             stage: string;
+            /** Story Date */
+            story_date?: string | null;
+            /** Day Index */
+            day_index?: number | null;
         };
         /** GenerateSettingRequest */
         GenerateSettingRequest: {
@@ -2526,6 +2534,10 @@ export interface components {
         MakeChoiceRequest: {
             /** Option Index */
             option_index: number;
+            /** Event Id */
+            event_id?: string | null;
+            /** Revision */
+            revision?: number | null;
         };
         /** MessageResponse */
         MessageResponse: {
@@ -2955,6 +2967,10 @@ export interface components {
              * @description 可选：已有的人物图片ID
              */
             player_image_id?: number | null;
+            /** Story Date */
+            story_date?: string | null;
+            /** Day Index */
+            day_index?: number | null;
         };
         /** RegenerateStoryRequest */
         RegenerateStoryRequest: {
@@ -3019,6 +3035,10 @@ export interface components {
             week: number;
             /** Round Number */
             round_number: number;
+            /** Story Date */
+            story_date?: string | null;
+            /** Day Index */
+            day_index?: number | null;
             /**
              * Stage
              * @default result

@@ -93,8 +93,30 @@ function _writePersistedState(gameId: number | null, playerState: PlayerState | 
 
 const _persisted = _readPersistedState();
 
+type RecoveredCurrentEvent = {
+  story: string;
+  options: EventOption[];
+  event_id?: string;
+  revision?: number;
+  story_date?: string;
+};
+
+function recoverCurrentEvent(rawEvent: CurrentEventData | null): RecoveredCurrentEvent | null {
+  if (!rawEvent) return null;
+  return {
+    story: rawEvent.event_description || rawEvent.story_text || "",
+    options: rawEvent.options || [],
+    ...(rawEvent.event_id ? { event_id: rawEvent.event_id } : {}),
+    ...(typeof rawEvent.revision === "number" ? { revision: rawEvent.revision } : {}),
+    ...(rawEvent.story_date ? { story_date: rawEvent.story_date } : {}),
+  };
+}
+
 // 浅比较辅助函数
-const KEY_FIELDS = ["energy", "mood", "knowledge", "age", "week", "current_round"];
+const KEY_FIELDS = [
+  "energy", "mood", "knowledge", "wealth", "age", "week", "current_round",
+  "timeline_version", "timeline", "day_history",
+];
 
 function resumeViewChanged(
   newVal: PlayerState | GameProgress | RoundInfo,
@@ -135,14 +157,14 @@ export interface SessionState {
   setGameId: (gameId: number) => void;
   setGameSession: (gameId: number, sessionId: string) => void;
   loadGameState: (gameId: number) => Promise<{
-    event: { story: string; options: EventOption[] } | null;
+    event: RecoveredCurrentEvent | null;
     storyText: string;
     characterSettings?: CharacterSettings;
     playerName?: string;
     constraintLevel?: "fast" | "expert" | "master";
   }>;
   syncState: (options?: { gameId?: number; signal?: AbortSignal }) => Promise<{
-    event: { story: string; options: EventOption[] } | null;
+    event: RecoveredCurrentEvent | null;
     hasNewOptions: boolean;
     eventStory?: string;
   } | void>;
@@ -174,12 +196,7 @@ export const useSessionStore = create<SessionState>()(
       console.log(`[loadGameState] Loading game ${gameId}...`);
       const state: GameStateResponse = await api.games.load(gameId);
       const rawEvent = state.current_event as CurrentEventData | null;
-      const event = rawEvent
-        ? {
-            story: rawEvent.event_description || rawEvent.story_text || "",
-            options: (rawEvent.options || []),
-          }
-        : null;
+      const event = recoverCurrentEvent(rawEvent);
 
       const playerState = stripRetiredWealthKeys(state.player_state) as PlayerState;
 
@@ -268,12 +285,7 @@ export const useSessionStore = create<SessionState>()(
       }
 
       const rawEvent = state.current_event as CurrentEventData | null;
-      const event = rawEvent
-        ? {
-            story: rawEvent.event_description || rawEvent.story_text || "",
-            options: (rawEvent.options || []),
-          }
-        : null;
+      const event = recoverCurrentEvent(rawEvent);
 
       const currentState = get();
       const updates: Partial<SessionState> = {};

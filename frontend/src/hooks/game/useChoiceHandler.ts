@@ -42,7 +42,7 @@ interface UseChoiceHandlerParams {
   setLoadingIdentity: React.Dispatch<React.SetStateAction<number>>;
   setProcessing: (processing: boolean, message?: string) => void;
   appendStoryText: (text: string) => void;
-  setCurrentEvent: (event: { story: string; options: EventOption[] } | null) => void;
+  setCurrentEvent: (event: { story: string; options: EventOption[]; event_id?: string; revision?: number; story_date?: string } | null) => void;
   setGameOver: (gameOver: boolean) => void;
   setSummaryText: (text: string) => void;
   setRoundSummary: (summary: string | null) => void;
@@ -484,7 +484,12 @@ export function useChoiceHandler({
     armWatchdog();
     try {
       if (operation.kind === "normal") {
-        await streamChoice(gameId, operation.optionIndex, callbacks, { signal: controller.signal });
+        const currentEvent = useGameStore.getState().currentEvent;
+        await streamChoice(gameId, operation.optionIndex, callbacks, {
+          signal: controller.signal,
+          eventId: currentEvent?.event_id,
+          revision: currentEvent?.revision,
+        });
       } else {
         await streamCustomChoice(gameId, operation.customText, callbacks, { signal: controller.signal });
       }

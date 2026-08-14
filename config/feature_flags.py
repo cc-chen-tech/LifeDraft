@@ -30,6 +30,7 @@ class FeatureFlags(TypedDict, total=False):
     soft_narrative_lengths: bool
     unified_narrative_budgets: bool
     structured_story_memory: bool
+    daily_timeline_v2: bool
 
 
 # Mapping from feature flag name -> environment variable name
@@ -47,6 +48,7 @@ _ENV_VAR_MAP: Dict[str, str] = {
     "soft_narrative_lengths": "ENABLE_SOFT_NARRATIVE_LENGTHS",
     "unified_narrative_budgets": "ENABLE_UNIFIED_NARRATIVE_BUDGETS",
     "structured_story_memory": "ENABLE_STRUCTURED_STORY_MEMORY",
+    "daily_timeline_v2": "ENABLE_DAILY_TIMELINE_V2",
 }
 
 FEATURE_DEFAULTS: FeatureFlags = {
@@ -63,6 +65,7 @@ FEATURE_DEFAULTS: FeatureFlags = {
     "soft_narrative_lengths": False,
     "unified_narrative_budgets": False,
     "structured_story_memory": False,
+    "daily_timeline_v2": False,
 }
 
 

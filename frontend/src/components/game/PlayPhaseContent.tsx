@@ -47,7 +47,8 @@ export interface PlayPhaseContentProps {
   roundSummary?: string | null;
   options: EventOption[];
   onSelectChoice: (index: number) => void | Promise<void>;
-  onCustomChoice: (text: string) => void | Promise<void>;
+  onCustomChoice?: (text: string) => void | Promise<void>;
+  isDailyTimeline?: boolean;
   result: {
     currentRound: number;
     roundsPerWeek: number;
@@ -106,6 +107,7 @@ export function PlayPhaseContent({
   options,
   onSelectChoice,
   onCustomChoice,
+  isDailyTimeline = false,
   result,
   weeklySummary,
   inlineError,
@@ -203,12 +205,13 @@ export function PlayPhaseContent({
             options={options}
             onSelect={onSelectChoice}
             onCustomChoice={onCustomChoice}
+            allowCustomChoice={!isDailyTimeline}
             disabled={false}
           />
         </section>
       )}
 
-      {!isViewingHistory && phase === "result" && (
+      {!isDailyTimeline && !isViewingHistory && phase === "result" && (
         <section
           data-testid="play-result-actions"
           className="mt-8 space-y-4 border-t border-[var(--border-default)] pt-7"
@@ -241,7 +244,7 @@ export function PlayPhaseContent({
         </section>
       )}
 
-      {!isViewingHistory && phase === "summary" && (
+      {!isDailyTimeline && !isViewingHistory && phase === "summary" && (
         <section
           data-testid="play-week-summary"
           className="mt-8 space-y-7 border-t border-[var(--border-default)] pt-7"

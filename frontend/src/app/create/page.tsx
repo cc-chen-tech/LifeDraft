@@ -50,6 +50,7 @@ export default function CreatePage() {
     prevCreationStep,
     setPlayerName,
     setLifeVision,
+    updateCharacterSetting,
     resetCreation,
     
     // Image store values
@@ -264,6 +265,8 @@ export default function CreatePage() {
               lifeVision={lifeVision}
               onPlayerNameChange={setPlayerName}
               onLifeVisionChange={setLifeVision}
+              startDate={typeof characterSettings.start_date === "string" ? characterSettings.start_date : ""}
+              onStartDateChange={(date) => updateCharacterSetting("start_date", date || undefined)}
             />
           )}
 

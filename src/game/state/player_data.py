@@ -46,6 +46,13 @@ class PlayerDataMixin:
     age: int = Field(default=settings.STARTING_AGE, ge=0)  # No upper age limit
     week: int = Field(default=0, ge=0)
 
+    # v2 authoritative daily timeline. ``start_date`` and ``day_index`` are
+    # the only authorities; all other public fields are derived on load.
+    timeline: Optional[Dict[str, Any]] = Field(default=None)
+    timeline_version: Optional[int] = Field(default=None)
+    day_history: list = Field(default_factory=list)
+    next_age_day: int = Field(default=365, ge=1)
+
     # Decision history
     decision_history: list = Field(default_factory=list)
 

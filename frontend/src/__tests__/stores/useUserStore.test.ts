@@ -138,6 +138,35 @@ describe('useUserStore', () => {
       expect(state.user).toBeNull();
       expect(state.isAuthenticated).toBe(false);
     });
+
+    it('does not let a stale 401 clear a newer registration', async () => {
+      let resolveFetchMe!: (response: Response) => void;
+      const pendingFetchMe = new Promise<Response>((resolve) => {
+        resolveFetchMe = resolve;
+      });
+      const registeredUser = {
+        user_id: 7,
+        public_id: 'pub-new',
+        display_name: 'New User',
+        private_id: 'priv-new',
+      };
+
+      (global.fetch as jest.Mock)
+        .mockReturnValueOnce(pendingFetchMe)
+        .mockResolvedValueOnce(jsonResponse({ token: 'new-token', user: registeredUser }));
+
+      const staleFetch = useUserStore.getState().fetchMe();
+      await act(async () => {
+        await useUserStore.getState().register('New User');
+      });
+      resolveFetchMe(errorResponse(401));
+      await act(async () => {
+        await staleFetch;
+      });
+
+      expect(useUserStore.getState().user).toEqual(registeredUser);
+      expect(useUserStore.getState().isAuthenticated).toBe(true);
+    });
   });
 
   describe('setUser', () => {

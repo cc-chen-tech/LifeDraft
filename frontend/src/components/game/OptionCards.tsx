@@ -13,7 +13,8 @@ import { isWithinInputLimit } from "@/lib/inputLimits";
 interface OptionCardsProps {
   options: { text: string; potential_effects?: Record<string, unknown> }[];
   onSelect: (index: number) => void | Promise<void>;
-  onCustomChoice: (text: string) => void | Promise<void>;
+  onCustomChoice?: (text: string) => void | Promise<void>;
+  allowCustomChoice?: boolean;
   disabled?: boolean;
   className?: string;
 }
@@ -28,6 +29,7 @@ export function OptionCards({
   options,
   onSelect,
   onCustomChoice,
+  allowCustomChoice = true,
   disabled = false,
   className,
 }: OptionCardsProps) {
@@ -63,7 +65,7 @@ export function OptionCards({
     setSelectedIndex(-1); // -1 = custom
     setCustomText("");
     try {
-      const pendingSelection = onCustomChoice(submittedText);
+      const pendingSelection = onCustomChoice?.(submittedText);
       if (pendingSelection) await pendingSelection;
     } finally {
       setSelectedIndex(null);
@@ -139,8 +141,8 @@ export function OptionCards({
         </button>
       ))}
 
-      {/* Custom input */}
-      <FormField
+      {/* Custom input is legacy-only. Daily timeline accepts generated options. */}
+      {allowCustomChoice && onCustomChoice && <FormField
         id={customChoiceId}
         label="写下自己的选择"
         description="回车提交，Shift + Enter 换行"
@@ -204,7 +206,7 @@ export function OptionCards({
             />
           </>
         )}
-      </FormField>
+      </FormField>}
     </div>
   );
 }

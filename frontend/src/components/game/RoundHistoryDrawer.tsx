@@ -39,6 +39,8 @@ export interface RoundHistoryItem {
   };
   /** 场景插画信息 */
   scene_image?: SceneImageInfo | null;
+  day_index?: number;
+  story_date?: string;
 }
 
 interface RoundHistoryDrawerProps {
@@ -143,7 +145,7 @@ export function RoundHistoryDrawer({
                     {/* 周标题 */}
                     <div className="flex items-center gap-2 border-b border-[var(--border-default)] py-3 text-sm font-medium text-muted-foreground">
                       <Calendar className="w-4 h-4" />
-                      第 {week + 1} 周
+                      {rounds[0]?.story_date ? `第 ${week + 1} 周` : `第 ${week + 1} 周`}
                       {rounds[0]?.date_info?.date_string && (
                         <span className="text-xs">
                           ({rounds[0].date_info.date_string})
@@ -153,8 +155,9 @@ export function RoundHistoryDrawer({
 
                     {/* 轮次列表 */}
                     {rounds.map((item) => {
-                      const roundName =
-                        ROUND_NAMES[item.round] || `第${item.round + 1}轮`;
+                      const roundName = item.story_date
+                        ? `${item.story_date} · 第 ${(item.day_index ?? item.round) + 1} 天`
+                        : ROUND_NAMES[item.round] || `第${item.round + 1}轮`;
                       const isSelected = selectedIndex === item.originalIndex;
                       const hasStory =
                         item.event_description || item.story_continuation;
@@ -166,7 +169,9 @@ export function RoundHistoryDrawer({
                         >
                           <button
                             data-slot="history-round-row"
-                            aria-label={`第 ${item.week + 1} 周 ${roundName}：${hasStory ? "阅读正文" : "查看摘要"}`}
+                            aria-label={item.story_date
+                              ? `${roundName}：${hasStory ? "阅读正文" : "查看摘要"}`
+                              : `第 ${item.week + 1} 周 ${roundName}：${hasStory ? "阅读正文" : "查看摘要"}`}
                             onClick={() => {
                               onSelect(item.originalIndex);
                               onOpenChange(false);
@@ -249,7 +254,7 @@ export function RoundHistoryDrawer({
         {/* 底部提示 */}
         <div className="border-t border-[var(--border-default)] p-4">
           <p className="text-xs text-muted-foreground text-center">
-            共 {roundHistory.length} 轮历史记录
+            共 {roundHistory.length} {roundHistory.some((item) => item.story_date) ? "个故事日" : "轮历史记录"}
           </p>
         </div>
       </SheetContent>

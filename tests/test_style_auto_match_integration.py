@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from src.api.deps import get_current_user
 from src.api.main import app
 
 client = TestClient(app)
@@ -24,20 +25,26 @@ class TestCharacterSettingsPatchStyleBoundary:
         }
         db.save_game_progress.return_value = True
 
-        with patch("src.api.deps.decode_token", return_value=1), patch(
-            "src.api.routers.games.get_db", return_value=db
-        ):
-            resp = client.patch(
-                "/api/games/1/character-settings",
-                json={
-                    "character_settings": {
-                        "family": {
-                            "family_members": [{"name": "father", "role": "father"}],
+        previous_auth_override = app.dependency_overrides.get(get_current_user)
+        app.dependency_overrides[get_current_user] = lambda: 1
+        try:
+            with patch("src.api.routers.games.get_db", return_value=db):
+                resp = client.patch(
+                    "/api/games/1/character-settings",
+                    json={
+                        "character_settings": {
+                            "family": {
+                                "family_members": [{"name": "father", "role": "father"}],
+                            }
                         }
-                    }
-                },
-                headers={"Authorization": "Bearer test_token"},
-            )
+                    },
+                    headers={"Authorization": "Bearer test_token"},
+                )
+        finally:
+            if previous_auth_override is None:
+                app.dependency_overrides.pop(get_current_user, None)
+            else:
+                app.dependency_overrides[get_current_user] = previous_auth_override
 
         assert resp.status_code == 200
         saved_state = db.save_game_progress.call_args.args[1].to_dict()

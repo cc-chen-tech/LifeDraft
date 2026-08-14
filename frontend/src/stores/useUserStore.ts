@@ -11,6 +11,7 @@ import type { UserInfo } from "@/lib/types";
 import api from "@/lib/api";
 
 const AUTH_SESSION_HINT = "story2-auth-session";
+let authRevision = 0;
 
 export function hasAuthSessionHint(): boolean {
   return typeof window !== "undefined" && window.sessionStorage.getItem(AUTH_SESSION_HINT) === "1";
@@ -45,6 +46,7 @@ export const useUserStore = create<UserState>((set) => ({
 
   register: async (displayName) => {
     const res = await api.auth.register({ display_name: displayName });
+    authRevision += 1;
     setAuthSessionHint(true);
     set({
       user: res.user,
@@ -55,6 +57,7 @@ export const useUserStore = create<UserState>((set) => ({
 
   login: async (privateId) => {
     const res = await api.auth.login({ private_id: privateId });
+    authRevision += 1;
     setAuthSessionHint(true);
     set({
       user: res.user,
@@ -64,6 +67,7 @@ export const useUserStore = create<UserState>((set) => ({
   },
 
   logout: () => {
+    authRevision += 1;
     api.auth.logout().catch(() => {});
     setAuthSessionHint(false);
     set({
@@ -73,11 +77,14 @@ export const useUserStore = create<UserState>((set) => ({
   },
 
   fetchMe: async () => {
+    const requestRevision = authRevision;
     try {
       const user = await api.auth.me();
+      if (requestRevision !== authRevision) return;
       setAuthSessionHint(true);
       set({ user, isAuthenticated: true });
     } catch (err: unknown) {
+      if (requestRevision !== authRevision) return;
       // 仅在 401（token 无效/过期）时清除认证状态
       // 网络错误等其他异常不应清除已有的登录状态
       const status = (err as { status?: number })?.status;
@@ -90,10 +97,13 @@ export const useUserStore = create<UserState>((set) => ({
   },
 
   setUser: (user) => {
+    authRevision += 1;
+    setAuthSessionHint(true);
     set({ user, isAuthenticated: true });
   },
 
   clearAuth: () => {
+    authRevision += 1;
     setAuthSessionHint(false);
     set({
       user: null,

@@ -37,7 +37,7 @@ interface UseEventGeneratorParams {
   setOptions: (options: EventOption[]) => void;
   setStoryText: (text: string) => void;
   appendStoryText: (text: string) => void;
-  setCurrentEvent: (event: { story: string; options: EventOption[] } | null) => void;
+  setCurrentEvent: (event: { story: string; options: EventOption[]; event_id?: string; revision?: number; story_date?: string } | null) => void;
   setGameOver: (gameOver: boolean) => void;
   setRoundSummary: (summary: string | null) => void;
   setIsPrefetching: (prefetching: boolean) => void;

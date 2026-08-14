@@ -43,6 +43,7 @@ class ScheduledEvent:
     parties: List[str] = field(default_factory=list)
     scheduled_week: int = -1
     scheduled_round: int = -1
+    scheduled_date: str = ""
     event_hint: str = ""
 
     created_week: int = 0
@@ -65,6 +66,7 @@ class ScheduledEvent:
             "parties": self.parties,
             "scheduled_week": self.scheduled_week,
             "scheduled_round": self.scheduled_round,
+            "scheduled_date": self.scheduled_date,
             "event_hint": self.event_hint,
             "created_week": self.created_week,
             "created_round": self.created_round,
@@ -83,6 +85,7 @@ class ScheduledEvent:
             parties=d.get("parties", []),
             scheduled_week=d.get("scheduled_week", -1),
             scheduled_round=d.get("scheduled_round", -1),
+            scheduled_date=d.get("scheduled_date", ""),
             event_hint=d.get("event_hint", ""),
             created_week=d.get("created_week", 0),
             created_round=d.get("created_round", 0),

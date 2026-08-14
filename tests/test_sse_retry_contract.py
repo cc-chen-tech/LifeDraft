@@ -47,7 +47,8 @@ class TestSSERetryMechanismContract:
         # the function body brace is followed by a newline in this file.
         body_match = re.search(r"\)\s*(?::[\s\S]*?)?\s*\{\n", source[paren_end:])
         assert body_match, f"必须能找到 {func_name} 的函数体起始位置"
-        brace_start = paren_end + body_match.end() - 1
+        matched_signature = body_match.group(0)
+        brace_start = paren_end + body_match.start() + matched_signature.rfind("{")
         assert brace_start != -1, f"必须能找到 {func_name} 的函数体起始位置"
 
         # Count braces to find matching close

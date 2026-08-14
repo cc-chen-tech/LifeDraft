@@ -113,6 +113,7 @@ async def get_game_state(
         progress=progress,
         round_info=round_info,
         current_event=current_event,
+        timeline=player_state.get("timeline"),
         constraint_level=constraint_level,
         narrative_style_id=narrative_style_id,
         narrative_style_name=narrative_style_name,

@@ -92,7 +92,7 @@ class TestSSEStreamTimeout:
         assert len(story_events) >= 3, "应收到至少 3 个 story chunk"
 
         # 验证收到了 complete 事件
-        complete_events = [e for e in events if "complete" in e]
+        complete_events = [e for e in events if e.startswith("event: complete\n")]
         assert len(complete_events) >= 1, "应收到 complete 事件"
 
     @pytest.mark.asyncio
@@ -120,7 +120,7 @@ class TestSSEStreamTimeout:
             events.append(event)
 
         # 验证收到了 complete 事件且包含选项
-        complete_events = [e for e in events if "complete" in e]
+        complete_events = [e for e in events if e.startswith("event: complete\n")]
         assert len(complete_events) >= 1
         assert "completed story" in complete_events[0]
 

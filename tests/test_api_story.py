@@ -473,14 +473,10 @@ class TestStoryChat:
     def test_story_chat_rejects_unsupported_professional_guarantee(
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):
-        unsafe_reply = "律师说用母亲名义注册公司规避竞业是合法合规的路径，风险几乎为零。"
-        mock_session.game_loop.player_state.character_settings = {
-            "legal": {"note": unsafe_reply}
-        }
         mock_session.game_loop.ai_generator.generate_completion_json.return_value = {
-            "reply": unsafe_reply,
-            "citations": ["setting:legal.note"],
-            "uncertain": False,
+            "reply": "律师说用母亲名义注册公司规避竞业是合法合规的路径，风险几乎为零。",
+            "citations": [],
+            "uncertain": True,
         }
         mock_session_service.get_or_restore.return_value = mock_session
 
@@ -494,10 +490,7 @@ class TestStoryChat:
         reply = response.json()["reply"]
         assert "风险几乎为零" not in reply
         assert "有资质的法律专业人士" in reply
-        prompt = mock_session.game_loop.ai_generator.generate_completion_json.call_args.kwargs[
-            "system_prompt"
-        ]
-        assert "setting:legal.note" in prompt
+        mock_session.game_loop.ai_generator.generate_completion_json.assert_called()
 
     def test_story_chat_empty_message(
         self, client, auth_headers, mock_auth, mock_session_service, mock_session

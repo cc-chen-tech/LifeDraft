@@ -55,6 +55,29 @@ class TestEventGenerationCoordinator:
         assert should_start is False
 
 
+def test_daily_event_generation_key_changes_after_timeline_advance() -> None:
+    from types import SimpleNamespace
+
+    from src.api.routers.gameplay.sse_helpers import build_event_generation_key
+    from src.game.daily_timeline import build_daily_timeline
+
+    state = SimpleNamespace(
+        week=0,
+        current_round=0,
+        timeline_version=2,
+        timeline=build_daily_timeline(start_date="2026-08-13", day_index=0),
+    )
+    loop = SimpleNamespace(player_state=state)
+    day_zero = build_event_generation_key(7, loop)
+
+    state.timeline = build_daily_timeline(start_date="2026-08-13", day_index=1)
+    day_one = build_event_generation_key(7, loop)
+
+    assert day_zero != day_one
+    assert day_zero.round_number == 0
+    assert day_one.round_number == 1
+
+
 class TestEventGenerationOperation:
     """Subscribers can replay exactly the chunks they have not seen."""
 

@@ -50,8 +50,9 @@ class TestEventGenerator:
         mock_response.choices[0].message.content = """{
             "event_description": "A test event",
             "options": [
-                {"text": "Option A", "effects": {"energy": -10, "action_points": -1}},
-                {"text": "Option B", "effects": {"energy": 10, "action_points": -1}}
+                {"text": "Take a measured step", "effects": {"energy": -10, "action_points": -1}},
+                {"text": "Pause and reassess", "effects": {"energy": 10, "action_points": -1}},
+                {"text": "Ask for another perspective", "effects": {"knowledge": 5, "action_points": -1}}
             ]
         }"""
 
@@ -74,4 +75,4 @@ class TestEventGenerator:
 
         event = generator.generate_event(player_state, language="en")
         assert isinstance(event, GameEvent)
-        assert len(event.options) == 2
+        assert len(event.options) == 3

@@ -6,7 +6,10 @@ test('loading a result save preserves the result until explicit continuation', a
   page,
   context,
 }) => {
-  test.setTimeout(300_000);
+  // This legacy-v1 compatibility path intentionally exercises the real story
+  // and continuation providers. Provider retries can exceed the normal five
+  // minute E2E budget without indicating a product deadlock.
+  test.setTimeout(600_000);
   await ensureAuthenticated(page, context);
 
   const playerName = `精确恢复_${Date.now()}`;

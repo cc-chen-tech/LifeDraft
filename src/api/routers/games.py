@@ -63,6 +63,18 @@ def _is_before_first_played_round(state_data: Dict[str, Any]) -> bool:
     return int(week or 0) <= 0 and int(current_round or 0) <= 0 and not round_history
 
 
+def _timeline_from_state(state: Any) -> Optional[Dict[str, Any]]:
+    """Read timeline from serialized state without leaking mock/model sentinels."""
+    if state is None:
+        return None
+    try:
+        payload = state.to_dict()
+    except (AttributeError, TypeError):
+        return None
+    timeline = payload.get("timeline") if isinstance(payload, dict) else None
+    return timeline if isinstance(timeline, dict) else None
+
+
 @router.post("", response_model=GameStateResponse, status_code=201)
 async def create_game(
     req: CreateGameRequest,
@@ -99,6 +111,7 @@ async def create_game(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        timeline=_timeline_from_state(state),
         constraint_level=req.constraint_level,
     )
 
@@ -112,6 +125,7 @@ def _response_from_live_session(game_id: int, game_loop) -> GameStateResponse:
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        timeline=_timeline_from_state(state),
         constraint_level=quality_level if isinstance(quality_level, str) else "expert",
     )
 
@@ -196,6 +210,9 @@ async def get_active_game(
     try:
         constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
         game_loop = GameLoop(language=language, quality_level=constraint_level)
+        game_loop._daily_postprocess_persist_callback = lambda: db.save_game_progress(
+            active_game_id, game_loop.get_state()
+        )
         game_loop.load_game(state_data)
         _mark_orphaned_generation_interrupted(game_loop)
         if game_loop.player_state and game_loop.player_state.resume_view:
@@ -222,6 +239,7 @@ async def get_active_game(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        timeline=_timeline_from_state(game_loop.player_state),
         constraint_level=constraint_level,
     )
 
@@ -249,6 +267,9 @@ async def load_game(
     # Create GameLoop and load state
     constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
     game_loop = GameLoop(language=language, quality_level=constraint_level)
+    game_loop._daily_postprocess_persist_callback = lambda: db.save_game_progress(
+        game_id, game_loop.get_state()
+    )
     game_loop.load_game(state_data)
     _mark_orphaned_generation_interrupted(game_loop)
 
@@ -268,6 +289,7 @@ async def load_game(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        timeline=_timeline_from_state(state),
         constraint_level=constraint_level,
     )
 
@@ -482,6 +504,7 @@ async def load_save_point(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        timeline=_timeline_from_state(state),
         constraint_level=constraint_level,
     )
 

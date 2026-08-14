@@ -59,6 +59,39 @@ describe('useHistoryViewer', () => {
 
       expect(result.current.roundHistory).toEqual([]);
     });
+
+    it('uses legacy coordinates when migrated daily history loads an old scene image', async () => {
+      const fetchHistorySceneImage = jest.fn().mockResolvedValue(undefined);
+      const playerState = {
+        day_history: [
+          {
+            day_index: 9,
+            story_date: '2026-01-14',
+            legacy_week: 1,
+            legacy_round: 1,
+            event_description: '迁移后的周中故事',
+          },
+        ],
+      };
+      const { result } = renderHook(() =>
+        useHistoryViewer({
+          ...defaultParams,
+          playerState,
+          fetchHistorySceneImage,
+        })
+      );
+
+      await act(async () => {
+        await result.current.handleSelectHistoryRound(0);
+      });
+
+      expect(fetchHistorySceneImage).toHaveBeenCalledWith(1, 1);
+      expect(result.current.roundHistory[0]).toMatchObject({
+        day_index: 9,
+        legacy_week: 1,
+        legacy_round: 1,
+      });
+    });
   });
 
   describe('handleOpenHistory', () => {

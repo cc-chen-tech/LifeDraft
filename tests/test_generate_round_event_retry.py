@@ -17,15 +17,13 @@ pytestmark = pytest.mark.usefixtures("constraint_harness_disabled")
 def _make_generator(level: QualityLevel):
     """辅助函数：创建带 mock client 的 StoryGenerator."""
     mock_client = MagicMock()
-    repeats = {
-        QualityLevel.FAST: 15,
-        QualityLevel.EXPERT: 25,
-        QualityLevel.MASTER: 45,
-    }[level]
-    mock_client.call.return_value = (
-        "林岚在会议室与陈越核对方案、预算和时间表，并记录需要由团队确认的下一步。"
-        * repeats
-    )
+    target_lengths = {
+        QualityLevel.FAST: 400,
+        QualityLevel.EXPERT: 900,
+        QualityLevel.MASTER: 1600,
+    }
+    sentence = "林岚在工作室核对当天的安排，并把需要决定的事项逐一记下。"
+    mock_client.call.return_value = sentence * (target_lengths[level] // len(sentence) + 1)
     return StoryGenerator(mock_client, quality_level=level), mock_client
 
 
@@ -93,8 +91,8 @@ def test_master_without_harness_uses_one_attempt_for_valid_story():
     assert client.call.call_count == 1
 
 
-def test_round_event_rejects_story_when_quick_validation_retry_still_drifts():
-    """重试后仍然时代漂移时，不应把无效故事交给选项生成器。"""
+def test_round_event_fails_closed_when_quick_validation_retry_still_drifts():
+    """重试后仍然时代漂移时，不应伪造故事或把无效故事交给选项生成器。"""
     drifting_story = "林知远站在长安西市的木坊里，鲁师傅收下三百文铜钱，称他为林郎君。"
     mock_client = MagicMock()
     mock_client.call.side_effect = [drifting_story, drifting_story]
@@ -120,8 +118,8 @@ def test_round_event_rejects_story_when_quick_validation_retry_still_drifts():
     mock_option_gen.generate_options_only.assert_not_called()
 
 
-def test_round_event_rejects_repeated_cast_and_era_validation_failures():
-    """AI 连续违反人物和时代约束时，不得保存或展示该正文。"""
+def test_round_event_fails_closed_after_cast_and_world_validation_failures():
+    """AI 连续违反人物与世界约束后必须明确失败。"""
     drifting_story = (
         "夜之城的雨落在荒坂集团楼下，Viktor把神经接口推到林见微面前。"
         "马老板和方蕾催她立刻处理陌生债务。"

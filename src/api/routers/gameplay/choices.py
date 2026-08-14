@@ -48,6 +48,12 @@ def _latest_processed_choice_result(
     state_data: Optional[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
     """Build an idempotent sync response from the latest saved round result."""
+    day_history = state_data.get("day_history", []) if state_data else []
+    if isinstance(day_history, list) and day_history:
+        latest_day = day_history[-1]
+        saved_result = latest_day.get("choice_result") if isinstance(latest_day, dict) else None
+        if isinstance(saved_result, dict):
+            return saved_result
     round_history = state_data.get("round_history", []) if state_data else []
     if not isinstance(round_history, list) or not round_history:
         return None
@@ -127,6 +133,20 @@ def _restore_current_event_if_needed(game_loop, game_id: int, user_id: Optional[
 
         # If no current_event_data, check if there are recent choice records
         # This means the choice was already processed
+        day_history = state_data.get("day_history", []) if state_data else []
+        if day_history:
+            logger.info(
+                "No current_event but found %s daily records for game_id=%s",
+                len(day_history),
+                game_id,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "choice_already_processed",
+                    "message": "Choice was already processed. The next day can be generated safely.",
+                },
+            )
         round_history = state_data.get("round_history", []) if state_data else []
         if round_history:
             logger.info(
@@ -160,6 +180,9 @@ async def make_choice(
     """
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
+    from src.game.daily_timeline import is_daily_timeline
+
+    daily_mode = is_daily_timeline(game_loop.player_state)
 
     # Parse Last-Event-ID for reconnection support
     last_event_id_str = request.headers.get("Last-Event-ID")
@@ -171,9 +194,10 @@ async def make_choice(
         )
 
     # Restore current_event from database if needed
-    _restore_current_event_if_needed(game_loop, game_id, user_id)
+    if not daily_mode or game_loop.current_event is not None:
+        _restore_current_event_if_needed(game_loop, game_id, user_id)
 
-    if req.option_index >= len(game_loop.current_event.options):
+    if game_loop.current_event is not None and req.option_index >= len(game_loop.current_event.options):
         raise HTTPException(status_code=400, detail="Invalid option index")
 
     # Clear cache before starting new choice processing (unless reconnecting)
@@ -182,7 +206,15 @@ async def make_choice(
         session.clear_options_cache()  # ★ Clear options cache when choice is made
 
     return StreamingResponse(
-        stream_choice(game_loop, req.option_index, game_id, session, last_event_id),
+        stream_choice(
+            game_loop,
+            req.option_index,
+            game_id,
+            session,
+            last_event_id,
+            event_id=req.event_id,
+            revision=req.revision,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -205,6 +237,10 @@ async def make_custom_choice(
     """
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
+    from src.game.daily_timeline import is_daily_timeline
+
+    if is_daily_timeline(game_loop.player_state):
+        raise HTTPException(status_code=409, detail="custom_choice_disabled")
 
     # Parse Last-Event-ID for reconnection support
     last_event_id_str = request.headers.get("Last-Event-ID")
@@ -251,10 +287,14 @@ async def make_choice_sync(
     """Process a player choice (non-streaming fallback for mobile)."""
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
+    from src.game.daily_timeline import is_daily_timeline
+
+    daily_mode = is_daily_timeline(game_loop.player_state)
 
     # Restore current_event from database if needed
     try:
-        _restore_current_event_if_needed(game_loop, game_id, user_id)
+        if not daily_mode or game_loop.current_event is not None:
+            _restore_current_event_if_needed(game_loop, game_id, user_id)
     except HTTPException as exc:
         if user_id is not None and _is_choice_already_processed(exc):
             result = _restore_latest_processed_choice_result(game_id, user_id)
@@ -264,13 +304,29 @@ async def make_choice_sync(
             raise HTTPException(status_code=422, detail=exc.detail)
         raise
 
-    if req.option_index >= len(game_loop.current_event.options):
+    if game_loop.current_event is not None and req.option_index >= len(game_loop.current_event.options):
         raise HTTPException(status_code=400, detail="Invalid option index")
 
     # Run in thread pool to avoid blocking
     loop = asyncio.get_running_loop()
 
     def run():
+        from src.api.routers.gameplay.sse_helpers import _persist_choice_state
+
+        game_loop._daily_postprocess_persist_callback = lambda: _persist_choice_state(
+            game_loop, game_id
+        )
+        if daily_mode:
+            db = get_db()
+
+            def persist_callback(candidate):
+                return db.save_game_progress(game_id, candidate)
+            return game_loop.make_round_choice(
+                option_index=req.option_index,
+                event_id=req.event_id,
+                revision=req.revision,
+                persist_callback=persist_callback,
+            )
         return game_loop.make_round_choice(option_index=req.option_index)
 
     try:
@@ -280,15 +336,17 @@ async def make_choice_sync(
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
-    # Auto-save after choice to persist current_event_data=None
-    try:
-        db = get_db()
-        state = game_loop.get_state()
-        if state:
-            db.save_game_progress(game_id, state)
-            logger.info(f"Auto-saved game state after sync choice: game_id={game_id}")
-    except Exception as e:
-        logger.warning(f"Auto-save failed after sync choice: {e}")
+    # Legacy choices retain their existing best-effort save behavior. Daily
+    # choices were already durably written inside their atomic commit.
+    if not daily_mode:
+        try:
+            db = get_db()
+            state = game_loop.get_state()
+            if state:
+                db.save_game_progress(game_id, state)
+                logger.info(f"Auto-saved game state after sync choice: game_id={game_id}")
+        except Exception as e:
+            logger.warning(f"Auto-save failed after sync choice: {e}")
 
     return result
 
@@ -302,6 +360,11 @@ async def make_custom_choice_sync(
     """Process a custom player choice (non-streaming fallback for mobile)."""
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
+
+    from src.game.daily_timeline import is_daily_timeline
+
+    if is_daily_timeline(game_loop.player_state):
+        raise HTTPException(status_code=409, detail="custom_choice_disabled")
 
     # Restore current_event from database if needed
     try:

@@ -55,7 +55,15 @@ test.describe("叙事质量持久化", () => {
     );
     await masterItem.check();
     await settingsUpdate;
-    await expect(masterItem).toBeChecked();
+
+    // Selecting a radio item closes the Radix menu. Verify the durable API
+    // value now; the rendered checked state is asserted after a full reload.
+    const updatedStateResponse = await context.request.get(
+      `${API_URL}/api/games/${gameId}`
+    );
+    expect(updatedStateResponse.ok()).toBeTruthy();
+    const updatedState = await updatedStateResponse.json();
+    expect(updatedState.constraint_level).toBe("master");
 
     // 刷新页面
     await page.reload();

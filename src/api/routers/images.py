@@ -1069,6 +1069,8 @@ async def get_round_scene_image(
             "game_id": scene_image.game_id,
             "week": scene_image.week,  # ★ 返回 week
             "round_number": scene_image.round_number,
+            "story_date": scene_image.story_date,
+            "day_index": scene_image.day_index,
             "stage": scene_image.stage,  # ★ 返回 stage
             "image_url": image_url,
             "scene_description": scene_image.scene_description,
@@ -1123,6 +1125,10 @@ async def get_round_scene_image(
         or game_state.get("last_round_full_story")
         or ""
     )
+    timeline = game_state.get("timeline") or {}
+    is_daily = isinstance(timeline, dict) and timeline.get("version") == 2
+    story_date = timeline.get("current_date") if is_daily else None
+    day_index = timeline.get("day_index") if is_daily else None
     character_settings = game_state.get("character_settings") or {}
     if not isinstance(character_settings, dict):
         character_settings = {}
@@ -1146,7 +1152,7 @@ async def get_round_scene_image(
 
     # ★ 后台触发生成
     try:
-        _trigger_scene_generation_in_background(
+        generation_kwargs = dict(
             game_id=game_id,
             week=week,
             round_number=round_number,
@@ -1155,6 +1161,9 @@ async def get_round_scene_image(
             character_settings=character_settings,
             player_name=player_name,
         )
+        if is_daily:
+            generation_kwargs.update(story_date=story_date, day_index=day_index)
+        _trigger_scene_generation_in_background(**generation_kwargs)
         logger.info(
             f"[get_round_scene_image] Background generation triggered for "
             f"game={game_id}, week={week}, round={round_number}, stage={event_stage}"
@@ -1227,6 +1236,8 @@ async def get_all_round_scene_images(
                 "scene_id": scene.scene_id,
                 "week": scene.week,  # ★ 返回 week
                 "round_number": scene.round_number,
+                "story_date": scene.story_date,
+                "day_index": scene.day_index,
                 "stage": scene.stage,  # ★ 返回 stage
                 "image_url": storage_service.get_image_url(
                     str(scene.storage_path), str(scene.storage_type)  # type: ignore[arg-type]
@@ -1278,6 +1289,8 @@ async def generate_round_scene_image(
             player_image_id=req.player_image_id,
             stage=req.stage,  # ★ 传递 stage 参数
             week=req.week,  # ★ 传递 week 参数
+            story_date=req.story_date,
+            day_index=req.day_index,
         )
 
         # 构建图片URL
@@ -1290,6 +1303,8 @@ async def generate_round_scene_image(
             game_id=int(scene_model.game_id),  # type: ignore[arg-type]
             week=scene_model.week,  # ★ 返回 week
             round_number=scene_model.round_number,
+            story_date=scene_model.story_date,
+            day_index=scene_model.day_index,
             stage=scene_model.stage,  # ★ 返回 stage
             image_url=image_url,
             scene_description=scene_model.scene_description or "",
@@ -1453,6 +1468,8 @@ def _trigger_scene_generation_in_background(
     story_text: str,
     character_settings: dict,
     player_name: str,
+    story_date: Optional[str] = None,
+    day_index: Optional[int] = None,
 ) -> None:
     """
     在后台线程中触发场景插画生成
@@ -1490,7 +1507,7 @@ def _trigger_scene_generation_in_background(
                 )
 
                 service = ImageService(db)
-                scene_image = service.generate_round_scene_image(
+                generation_kwargs = dict(
                     game_id=game_id,
                     round_number=round_number,
                     story_text=story_text,
@@ -1499,6 +1516,9 @@ def _trigger_scene_generation_in_background(
                     stage=stage,
                     week=week,
                 )
+                if story_date is not None or day_index is not None:
+                    generation_kwargs.update(story_date=story_date, day_index=day_index)
+                scene_image = service.generate_round_scene_image(**generation_kwargs)
 
                 if scene_image:
                     image_url = ImageStorageService().get_image_url(

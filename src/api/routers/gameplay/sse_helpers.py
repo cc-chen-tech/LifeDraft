@@ -36,6 +36,26 @@ _thread_pool_lock = RLock()
 _background_jobs_enabled = True
 
 
+def invalidate_daily_media_after_event_replacement(game_loop, game_id: int) -> None:
+    """Invalidate today's persisted scene after a daily event replacement."""
+    from src.game.daily_timeline import is_daily_timeline
+
+    player_state = getattr(game_loop, "player_state", None)
+    if not is_daily_timeline(player_state):
+        return
+    from src.database.models import SceneImage, SessionLocal
+
+    db = SessionLocal()
+    try:
+        db.query(SceneImage).filter(
+            SceneImage.game_id == game_id,
+            SceneImage.day_index == int(player_state.timeline["day_index"]),
+        ).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
 @dataclass(frozen=True)
 class RoundIllustrationJob:
     """Immutable event context used by a delayed scene-generation task."""
@@ -553,6 +573,16 @@ def _persist_choice_state(game_loop, game_id: int) -> None:
 def build_event_generation_key(game_id: int, game_loop) -> EventGenerationKey:
     """Build the stable identity for the current round event."""
     player_state = game_loop.player_state
+    from src.game.daily_timeline import is_daily_timeline, normalize_daily_timeline
+
+    if is_daily_timeline(player_state):
+        timeline = normalize_daily_timeline(player_state.timeline)
+        return EventGenerationKey(
+            game_id=game_id,
+            week=int(timeline["week_number"] - 1),
+            round_number=int(timeline["day_index"]),
+            stage="event",
+        )
     return EventGenerationKey(
         game_id=game_id,
         week=int(player_state.week),
@@ -668,6 +698,8 @@ async def stream_choice(
     last_event_id: Optional[int] = None,
     is_custom: bool = False,
     custom_text: str = "",
+    event_id: Optional[str] = None,
+    revision: Optional[int] = None,
 ):
     """
     Async generator that streams choice processing (story continuation) via SSE.
@@ -681,6 +713,9 @@ async def stream_choice(
     """
     loop = asyncio.get_running_loop()
     q: asyncio.Queue = asyncio.Queue()
+    from src.game.daily_timeline import is_daily_timeline
+
+    daily_mode = is_daily_timeline(getattr(game_loop, "player_state", None))
 
     # ★ 标记连接是否已关闭，避免向已关闭的事件循环发送回调
     closed = [False]
@@ -713,12 +748,32 @@ async def stream_choice(
                     status_callback=status_cb,
                 )
             else:
-                result_holder[0] = game_loop.make_round_choice(
-                    option_index=option_index,
-                    stream_callback=stream_cb,
-                    status_callback=status_cb,
-                )
-            if result_holder[0] is not None:
+                if daily_mode:
+                    db = get_db()
+
+                    def persist_postprocess():
+                        _persist_choice_state(game_loop, game_id)
+
+                    game_loop._daily_postprocess_persist_callback = persist_postprocess
+
+                    def persist_callback(candidate):
+                        return db.save_game_progress(game_id, candidate)
+
+                    result_holder[0] = game_loop.make_round_choice(
+                        option_index=option_index,
+                        stream_callback=stream_cb,
+                        status_callback=status_cb,
+                        event_id=event_id,
+                        revision=revision,
+                        persist_callback=persist_callback,
+                    )
+                else:
+                    result_holder[0] = game_loop.make_round_choice(
+                        option_index=option_index,
+                        stream_callback=stream_cb,
+                        status_callback=status_cb,
+                    )
+            if result_holder[0] is not None and not daily_mode:
                 _persist_choice_state(game_loop, game_id)
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"[stream_choice] Data error in run(): {e}")
@@ -829,6 +884,26 @@ async def stream_regenerate(
 
     Yields SSE events: status, story (chunks), complete (final event).
     """
+    from src.game.daily_timeline import is_daily_timeline
+
+    if is_daily_timeline(game_loop.player_state):
+        from src.game.daily_event_revision import regenerate_daily_event_atomically
+
+        try:
+            yield make_sse_event("status", {"phase": "regenerating"})
+            db = get_db()
+            event = await asyncio.to_thread(
+                regenerate_daily_event_atomically,
+                game_loop,
+                persist_callback=lambda candidate: db.save_game_progress(
+                    game_id, candidate
+                ),
+            )
+            invalidate_daily_media_after_event_replacement(game_loop, game_id)
+            yield make_sse_event("complete", event.model_dump())
+        except Exception as exc:
+            yield make_sse_event("error", {"error": str(exc)})
+        return
     loop = asyncio.get_running_loop()
     q: asyncio.Queue = asyncio.Queue()
 
@@ -1064,6 +1139,33 @@ async def stream_rewrite(
 
     Yields SSE events: status, story (chunks), complete (final result).
     """
+    from src.game.daily_timeline import is_daily_timeline
+
+    if is_daily_timeline(game_loop.player_state):
+        from src.game.daily_event_revision import rewrite_daily_event_atomically
+
+        try:
+            yield make_sse_event("status", {"phase": "rewriting"})
+            db = get_db()
+            event = await asyncio.to_thread(
+                rewrite_daily_event_atomically,
+                game_loop,
+                full_story=full_story,
+                segment_to_replace=segment_to_replace,
+                user_instruction=user_instruction,
+                language=language,
+                persist_callback=lambda candidate: db.save_game_progress(
+                    game_id, candidate
+                ),
+            )
+            invalidate_daily_media_after_event_replacement(game_loop, game_id)
+            yield make_sse_event(
+                "complete",
+                {"new_story": event.event_description, "event": event.model_dump()},
+            )
+        except Exception as exc:
+            yield make_sse_event("error", {"error": str(exc)})
+        return
     loop = asyncio.get_running_loop()
     q: asyncio.Queue = asyncio.Queue()
 

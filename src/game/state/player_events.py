@@ -69,10 +69,20 @@ class PlayerEventsMixin:
         """
         target_week = week if week is not None else self.week
         target_round = round_num if round_num is not None else self.current_round
+        timeline = getattr(self, "timeline", None)
+        current_date = (
+            timeline.get("current_date")
+            if isinstance(timeline, dict) and timeline.get("version") == 2
+            else None
+        )
 
         pending = []
         for e in self.scheduled_events:
             if e.get("status") != "pending":
+                continue
+            if current_date and e.get("scheduled_date"):
+                if e.get("scheduled_date") == current_date:
+                    pending.append(e)
                 continue
             if e.get("scheduled_week") == target_week and e.get("scheduled_round") == target_round:
                 pending.append(e)
@@ -107,8 +117,18 @@ class PlayerEventsMixin:
             过期的预定事件列表
         """
         overdue = []
+        timeline = getattr(self, "timeline", None)
+        current_date = (
+            timeline.get("current_date")
+            if isinstance(timeline, dict) and timeline.get("version") == 2
+            else None
+        )
         for e in self.scheduled_events:
             if e.get("status") != "pending":
+                continue
+            if current_date and e.get("scheduled_date"):
+                if e["scheduled_date"] < current_date:
+                    overdue.append(e)
                 continue
             scheduled_week = e.get("scheduled_week", -1)
             scheduled_round = e.get("scheduled_round", -1)

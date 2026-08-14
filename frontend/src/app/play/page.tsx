@@ -35,9 +35,12 @@ import { usePlayGame } from "@/hooks/usePlayGame";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
+import { useEventStore } from "@/stores/useEventStore";
 import { useMusicStore } from "@/stores/useMusicStore";
+import { useSceneImageStore } from "@/stores/useSceneImageStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { api } from "@/lib/api";
+import type { EventOption } from "@/lib/types";
 import { isWithinInputLimit } from "@/lib/inputLimits";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import {
@@ -82,6 +85,7 @@ export default function PlayPage() {
   const [assistantSurfaceOpen, setAssistantSurfaceOpen] = useState(false);
   const [toolsSurfaceOpen, setToolsSurfaceOpen] = useState(false);
   const [soundSurfaceOpen, setSoundSurfaceOpen] = useState(false);
+  const [dailySettlement, setDailySettlement] = useState<Record<string, number> | null>(null);
   const [queuedPageFeedback, setQueuedPageFeedback] = useState<PageFeedbackState | null>(null);
   const lastObservedFeedbackKeyRef = useRef<string | null>(null);
   const collectionReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -112,6 +116,7 @@ export default function PlayPage() {
     storyContainerRef,
 
     // Actions
+    setOptions,
     setStoryText,
 
     // Handlers
@@ -161,6 +166,20 @@ export default function PlayPage() {
     currentRound,
   } = usePlayGame();
 
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const showSettlement = (event: Event) => {
+      setDailySettlement((event as CustomEvent<Record<string, number>>).detail);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setDailySettlement(null), 1800);
+    };
+    window.addEventListener("story2:daily-settlement", showSettlement);
+    return () => {
+      window.removeEventListener("story2:daily-settlement", showSettlement);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   const processingMessage = useUIStore((state) => state.processingMessage);
   const hasMusicSoundContext = useMusicStore((state) =>
     Boolean(
@@ -181,6 +200,11 @@ export default function PlayPage() {
   const soundAvailable = hasMusicSoundContext || hasCompletedReadingContext;
 
   const resultSceneRound = Math.max(0, currentRound - 1);
+  const isDailyTimeline = playerState?.timeline?.version === 2;
+  const dailyDate = isDailyTimeline ? playerState?.timeline?.current_date : null;
+  const dailyDateTitle = typeof dailyDate === "string"
+    ? `公元 ${dailyDate.slice(0, 4)} 年 ${Number(dailyDate.slice(5, 7))} 月 ${Number(dailyDate.slice(8, 10))} 日`
+    : null;
   const storyReadyForCompletedMedia =
     phase === "options" || phase === "result" || phase === "summary";
   const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
@@ -468,16 +492,42 @@ export default function PlayPage() {
   const historyPanelOpen =
     showHistory && (!showCollection || activeSidePanel === "history");
 
-  const handleRewriteComplete = useCallback((newStory: string) => {
+  const handleRewriteComplete = useCallback((newStory: string, replacement?: {
+    event_id?: string;
+    revision?: number;
+    story_date?: string;
+    options?: EventOption[];
+  }) => {
+    useSceneImageStore.getState().clearCurrentRoundImages();
     setStoryText(newStory);
     const currentEvent = useGameStore.getState().currentEvent;
     if (currentEvent) {
-      useGameStore.getState().setCurrentEvent({
+      // EventStore preserves its existing storyText when setting an event, so
+      // update both stores before synchronizing the compatibility facade.
+      useEventStore.setState({ storyText: newStory });
+      const replacementEvent = {
         ...currentEvent,
+        ...replacement,
         story: newStory,
-      });
+        options: replacement?.options || currentEvent.options,
+      };
+      useEventStore.setState({ currentEvent: replacementEvent });
+      useGameStore.setState((state) => ({
+        ...state,
+        currentEvent: replacementEvent,
+        storyText: newStory,
+      }));
+      if (replacement?.options?.length) setOptions(replacement.options);
+    } else {
+      const fallbackEvent = {
+        story: newStory,
+        options: replacement?.options || options,
+        ...replacement,
+      };
+      useEventStore.setState({ currentEvent: fallbackEvent, storyText: newStory });
+      useGameStore.setState({ currentEvent: fallbackEvent, storyText: newStory });
     }
-  }, [setStoryText]);
+  }, [options, setOptions, setStoryText]);
 
   const handleOpenAssistantSurface = useCallback((action: ChatBarAction) => {
     closeSoundPanel();
@@ -777,8 +827,19 @@ export default function PlayPage() {
           onRequestNarrativeStyles: loadNarrativeStyles,
           onOpenTools: handleOpenTools,
           onToolsOpenChange: setToolsSurfaceOpen,
+          isDailyTimeline,
         }}
       >
+        {!isViewingHistory && dailyDateTitle && (
+          <div className="mb-6 text-center">
+            <h1 className="font-serif text-xl font-semibold tracking-wide text-[var(--text-primary)]">
+              {dailyDateTitle}
+            </h1>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+              第 {playerState?.timeline?.day_number} 天 · 共 {playerState?.timeline?.total_days} 天
+            </p>
+          </div>
+        )}
         <PlayPhaseContent
           phase={phase}
           isViewingHistory={isViewingHistory}
@@ -804,7 +865,8 @@ export default function PlayPage() {
           roundSummary={roundSummary}
           options={options}
           onSelectChoice={handleChoice}
-          onCustomChoice={handleCustomChoice}
+          onCustomChoice={isDailyTimeline ? undefined : handleCustomChoice}
+          isDailyTimeline={isDailyTimeline}
           result={{
             currentRound: (roundInfo?.current_round as number) || 0,
             roundsPerWeek: (roundInfo?.rounds_per_week as number) || 3,
@@ -841,8 +903,17 @@ export default function PlayPage() {
         showLauncher={false}
         command={assistantCommand}
         onSurfaceOpenChange={setAssistantSurfaceOpen}
+        isDailyTimeline={isDailyTimeline}
         className="play-chat-surface"
       />
+      {dailySettlement && (
+        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full border border-[var(--border-default)] bg-[var(--surface-reading)]/95 px-4 py-2 text-sm shadow-lg backdrop-blur">
+          {Object.entries(dailySettlement)
+            .filter(([, value]) => typeof value === "number" && value !== 0)
+            .map(([key, value]) => `${key} ${value > 0 ? "+" : ""}${value}`)
+            .join(" · ") || "今日选择已结算"}
+        </div>
+      )}
 
       {/* ★ 历史回顾抽屉 */}
       <RoundHistoryDrawer

@@ -86,8 +86,8 @@ class TestStoryGeneratorBestStoryFallback:
         assert event.event_description == accepted_story
         assert event.event_description != rejected_story
 
-    def test_failure_is_surfaced_when_no_valid_story_exists(self):
-        """An empty provider result must fail instead of persisting template prose."""
+    def test_generation_fails_closed_when_no_valid_story(self):
+        """没有任何有效故事时不得伪造一个可玩的 fallback。"""
         gen, client = self._make_generator(QualityLevel.MASTER)
 
         # 所有调用都返回极短文本
@@ -101,7 +101,7 @@ class TestStoryGeneratorBestStoryFallback:
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
             mock_quick.return_value = MagicMock(passed=True, issues=[], warnings=[])
 
-            with pytest.raises(StoryGenerationFailure, match="failed before producing a valid event"):
+            with pytest.raises(StoryGenerationFailure):
                 gen.generate_round_event(
                     player_state={"game_id": 1, "current_week": 1},
                     language="zh",

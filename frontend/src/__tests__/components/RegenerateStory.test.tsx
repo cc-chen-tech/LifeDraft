@@ -68,6 +68,43 @@ describe('ChatBar 内联改写测试', () => {
       );
     }, { timeout: 3000 });
   });
+
+  it('每日改写完成后返回新选项和递增 revision', async () => {
+    const user = userEvent.setup();
+    const mockOnRewriteComplete = jest.fn();
+    (global.fetch as jest.Mock).mockResolvedValue(createSSEMockResponse([
+      'event: complete\n',
+      'data: {"new_story":"新正文","event":{"event_id":"daily-1","revision":2,"story_date":"2026-08-13","options":[{"text":"新选项A"},{"text":"新选项B"}]}}\n\n',
+      'data: [DONE]\n\n',
+    ]));
+
+    render(
+      <ChatBar
+        gameId={1}
+        storyText="旧正文"
+        isDailyTimeline
+        onRewriteComplete={mockOnRewriteComplete}
+      />
+    );
+
+    await user.click(screen.getByLabelText('打开聊天'));
+    await user.click(await screen.findByTestId('rewrite-button'));
+    fireEvent.change(screen.getByPlaceholderText(/描述你想要的修改/), {
+      target: { value: '重写今天' },
+    });
+    fireEvent.click(screen.getByText('改写故事'));
+
+    await waitFor(() => {
+      expect(mockOnRewriteComplete).toHaveBeenCalledWith(
+        '新正文',
+        expect.objectContaining({
+          event_id: 'daily-1',
+          revision: 2,
+          options: [{ text: '新选项A' }, { text: '新选项B' }],
+        }),
+      );
+    });
+  });
 });
 
 describe('ChatBar 重新生成测试', () => {

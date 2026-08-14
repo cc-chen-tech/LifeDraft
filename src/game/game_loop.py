@@ -1,7 +1,9 @@
 """Core game loop implementation."""
 
 import logging
+from threading import RLock
 import random
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, Optional
 
 from config.feature_flags import get_feature
@@ -93,6 +95,13 @@ class GameLoop(RoundSystemMixin):
         self.last_event_week = -1  # Track when last event was generated
         # Parallel post-processor (lazy init, managed by feature flag)
         self._parallel_postprocessor: Optional[ParallelPostProcessor] = None
+        self._daily_postprocessor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="daily-postproc"
+        )
+        self._daily_postprocess_persist_callback: Optional[Callable[[], bool]] = None
+        # Choice settlement and current-day replacement share one commit lock so
+        # a slow rewrite/regeneration cannot resurrect an already-settled day.
+        self._daily_mutation_lock = RLock()
 
     def start_new_game(self, initial_state: Optional[Dict[str, Any]] = None) -> PlayerState:
         """
@@ -210,6 +219,12 @@ class GameLoop(RoundSystemMixin):
             logger.info("[LoadGame] No current_event_data, setting current_event to None")
             self.current_event = None
 
+        # Daily settlement is never held hostage by enrichment. Preserve all
+        # pending records and surface them to the normal background worker on
+        # every restore.
+        if self.player_state.timeline_version == 2:
+            self._retry_pending_daily_postprocessing()
+
         # Initialize year tracking based on loaded state
         if self.player_state.yearly_summaries:
             last_year = self.player_state.yearly_summaries[-1]
@@ -246,6 +261,211 @@ class GameLoop(RoundSystemMixin):
 
         logger.info(f"Loaded game at age {self.player_state.age}, 第{self.player_state.week + 1}周")
         return self.player_state
+
+    def _retry_pending_daily_postprocessing(self) -> None:
+        """Queue recoverable daily enrichment without blocking save restore."""
+        pending = [
+            record
+            for record in self.player_state.day_history
+            if isinstance(record, dict)
+            and record.get("postprocessing_status") in {"pending", "failed"}
+        ]
+        if not pending:
+            return
+        logger.info("Daily post-processing retry pending for %d day(s)", len(pending))
+        for record in pending:
+            event_id = str(record.get("event_id") or "")
+            if event_id:
+                self._queue_daily_postprocessing(event_id)
+
+    def _queue_daily_postprocessing(self, event_id: str) -> None:
+        """Submit non-blocking summary/world extraction for one committed day."""
+        self._daily_postprocessor.submit(self._process_daily_record, event_id)
+
+    def _process_daily_record(self, event_id: str) -> None:
+        state = self.player_state
+        if state is None:
+            return
+        record = next(
+            (
+                item
+                for item in state.day_history
+                if isinstance(item, dict) and item.get("event_id") == event_id
+            ),
+            None,
+        )
+        if record is None or record.get("postprocessing_status") == "complete":
+            return
+        try:
+            story = str(record.get("event_description") or "")
+            choice = str(record.get("choice") or "")
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                narrative_future = executor.submit(
+                    self.story_service.compress_narrative,
+                    story,
+                    choice,
+                    state.pending_storylines,
+                )
+                world_future = executor.submit(
+                    self.story_service.extract_world_updates,
+                    story,
+                    choice,
+                    state.established_facts,
+                    state.character_habits,
+                )
+                entities_future = executor.submit(
+                    self._recognize_daily_entities,
+                    record,
+                )
+                narrative = narrative_future.result()
+                world = world_future.result()
+                entities = entities_future.result()
+            NarrativeManager.process_storyline_updates(
+                state, narrative.get("storyline_updates", [])
+            )
+            NarrativeManager.process_fact_updates(state, world.get("fact_updates", []))
+            NarrativeManager.process_foreshadowing_seeds(
+                state, world.get("foreshadowing_seeds", [])
+            )
+            NarrativeManager.process_habit_updates(state, world.get("habit_updates", []))
+            WorldModelUpdater.process_location_updates(
+                state, world.get("location_updates", [])
+            )
+            WorldModelUpdater.process_career_updates(
+                state, world.get("career_updates", [])
+            )
+            WorldModelUpdater.process_commitment_updates(
+                state, world.get("commitment_updates", [])
+            )
+            WorldModelUpdater.process_causal_updates(
+                state, world.get("causal_updates", [])
+            )
+            record["summary"] = narrative.get("summary", "")
+            record["postprocessing"] = {
+                "narrative": narrative,
+                "world": world,
+                "entities": entities,
+            }
+            self._generate_daily_milestone_summaries(record)
+            record["postprocessing_status"] = "complete"
+            record.pop("postprocessing_error", None)
+        except Exception as exc:
+            record["postprocessing_status"] = "failed"
+            record["postprocessing_error"] = str(exc)
+            logger.warning("Daily post-processing failed for %s: %s", event_id, exc)
+        finally:
+            persist = getattr(self, "_daily_postprocess_persist_callback", None)
+            if callable(persist):
+                try:
+                    persist()
+                except Exception as exc:
+                    logger.warning(
+                        "Daily post-processing persistence failed for %s: %s",
+                        event_id,
+                        exc,
+                    )
+
+    def _recognize_daily_entities(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Recognize recurring entities off the choice path for later collection use."""
+        state = self.player_state
+        if state is None:
+            return {"items": [], "characters": [], "landmarks": []}
+        ai_client = getattr(self.ai_generator, "ai_client", None)
+        if ai_client is None:
+            return {"items": [], "characters": [], "landmarks": []}
+
+        from src.services.entity_recognition_service import EntityRecognitionService
+
+        settings = state.character_settings or {}
+        protagonist = state.player_name or settings.get("player_name", "")
+        existing_characters = list(state.characters.keys())
+        if protagonist:
+            existing_characters.append(protagonist)
+        service = EntityRecognitionService(ai_client)
+        return service.recognize_from_history(
+            round_history=state.day_history,
+            existing_items=list(state.items.keys()),
+            existing_characters=existing_characters,
+            existing_landmarks=list(state.landmarks.keys()),
+            min_appearances=max(1, len(state.day_history) // 15),
+            language=self.language,
+        )
+
+    def _generate_daily_milestone_summaries(self, record: Dict[str, Any]) -> None:
+        """Generate 28-day and 365-day context summaries off the choice path."""
+        milestones = record.get("summary_milestones") or []
+        if not milestones or self.player_state is None:
+            return
+
+        state = self.player_state
+        completed_days = int(record.get("day_index", -1)) + 1
+        date_info = {
+            "start_date": state.timeline.get("start_date"),
+            "current_date": record.get("story_date"),
+            "completed_days": completed_days,
+        }
+        if "long_term" in milestones:
+            records = state.day_history[-28:]
+            summary_text = self.ai_generator.generate_four_week_summary(
+                [str(item.get("event_description") or "") for item in records],
+                [
+                    {
+                        "choice": item.get("choice", ""),
+                        "effects": item.get("effects_applied", {}),
+                        "story_date": item.get("story_date"),
+                    }
+                    for item in records
+                ],
+                state.character_settings,
+                self.language,
+                game_date_info=date_info,
+            )
+            state.four_week_summaries.append(
+                {
+                    "start_day": completed_days - len(records),
+                    "end_day": completed_days - 1,
+                    "summary": summary_text,
+                    "date_info": date_info,
+                    "timeline_version": 2,
+                }
+            )
+
+        if "yearly" in milestones:
+            year_start = max(0, completed_days - 365)
+            summaries = [
+                item
+                for item in state.four_week_summaries
+                if int(item.get("end_day", -1)) >= year_start
+            ]
+            if not summaries:
+                records = state.day_history[-365:]
+                summaries = [
+                    {
+                        "start_day": year_start,
+                        "end_day": completed_days - 1,
+                        "summary": "\n".join(
+                            str(item.get("summary") or item.get("event_description") or "")
+                            for item in records
+                        ),
+                    }
+                ]
+            summary_text = self.ai_generator.generate_yearly_summary(
+                summaries,
+                state.character_settings,
+                start_week=year_start // 7,
+                end_week=(completed_days - 1) // 7,
+                language=self.language,
+                game_date_info=date_info,
+            )
+            state.yearly_summaries.append(
+                {
+                    "start_day": year_start,
+                    "end_day": completed_days - 1,
+                    "summary": summary_text,
+                    "date_info": date_info,
+                    "timeline_version": 2,
+                }
+            )
 
     def generate_weekly_event(
         self,
@@ -732,6 +952,7 @@ class GameLoop(RoundSystemMixin):
         if self._parallel_postprocessor is not None:
             self._parallel_postprocessor.shutdown()
             self._parallel_postprocessor = None
+        self._daily_postprocessor.shutdown(wait=False, cancel_futures=True)
 
     def get_state(self) -> Optional[PlayerState]:
         """Get current player state."""
@@ -748,6 +969,19 @@ class GameLoop(RoundSystemMixin):
         if not self.player_state:
             return {}
 
+        from src.game.daily_timeline import is_daily_timeline, normalize_daily_timeline
+
+        if is_daily_timeline(self.player_state):
+            timeline = normalize_daily_timeline(self.player_state.timeline)
+            return {
+                **timeline,
+                "week": timeline["day_index"] // 7,
+                "age": self.player_state.age,
+                "progress_percent": (
+                    timeline["completed_days"] / timeline["total_days"]
+                )
+                * 100,
+            }
         return {
             "week": self.player_state.week,
             "total_weeks": settings.TOTAL_WEEKS,

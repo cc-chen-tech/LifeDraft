@@ -227,6 +227,13 @@ class PlayerLogicMixin:
 
     def is_game_over(self) -> bool:
         """Check if game has ended."""
+        from src.game.daily_timeline import is_daily_timeline, normalize_daily_timeline
+
+        if is_daily_timeline(self):
+            timeline = normalize_daily_timeline(self.timeline)
+            return bool(timeline.get("game_over")) or int(
+                timeline.get("completed_days", 0)
+            ) >= int(timeline.get("total_days", 672))
         # Game ends after TOTAL_WEEKS weeks
         return self.week >= settings.TOTAL_WEEKS
 

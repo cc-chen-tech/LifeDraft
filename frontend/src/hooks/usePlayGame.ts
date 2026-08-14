@@ -181,6 +181,16 @@ export function usePlayGame() {
     generateEventRef.current = generateEvent;
   }, [generateEvent]);
 
+  useEffect(() => {
+    const generateNextDay = () => {
+      generatingRef.current = false;
+      phaseRef.current = "loading";
+      void generateEvent();
+    };
+    window.addEventListener("story2:generate-next-day", generateNextDay);
+    return () => window.removeEventListener("story2:generate-next-day", generateNextDay);
+  }, [generateEvent, phaseRef]);
+
   // ===== Choice Handler =====
   const {
     handleChoice,
@@ -277,6 +287,9 @@ export function usePlayGame() {
                     (rawEvent.story as string) ||
                     "",
                   options: ((rawEvent.options as EventOption[]) || []),
+                  ...(typeof rawEvent.event_id === "string" ? { event_id: rawEvent.event_id } : {}),
+                  ...(typeof rawEvent.revision === "number" ? { revision: rawEvent.revision } : {}),
+                  ...(typeof rawEvent.story_date === "string" ? { story_date: rawEvent.story_date } : {}),
                 }
               : null;
 

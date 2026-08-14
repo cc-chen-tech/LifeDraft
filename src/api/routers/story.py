@@ -9,8 +9,9 @@ from fastapi.responses import StreamingResponse
 
 from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.story_exceptions import StoryRewriteFailure
-from src.api.deps import get_current_user_optional
+from src.api.deps import get_current_user_optional, get_db
 from src.api.routers.gameplay.sse_helpers import (
+    invalidate_daily_media_after_event_replacement,
     persist_rewritten_current_event,
     stream_regenerate,
     stream_rewrite,
@@ -54,6 +55,27 @@ async def rewrite_story(
     game_loop = session.game_loop
 
     try:
+        from src.game.daily_event_revision import rewrite_daily_event_atomically
+        from src.game.daily_timeline import is_daily_timeline
+
+        if is_daily_timeline(game_loop.player_state):
+            db = get_db()
+            event = rewrite_daily_event_atomically(
+                game_loop,
+                full_story=req.full_story,
+                segment_to_replace=req.segment_to_replace or req.full_story,
+                user_instruction=req.user_instruction,
+                language=req.language,
+                persist_callback=lambda candidate: db.save_game_progress(
+                    game_id, candidate
+                ),
+            )
+            invalidate_daily_media_after_event_replacement(game_loop, game_id)
+            return {
+                "new_story": event.event_description,
+                "rewritten_story": event.event_description,
+                "event": event.model_dump(),
+            }
         # Get story context from recent rounds
         story_context = ""
         if game_loop.player_state and game_loop.player_state.round_history:
@@ -121,6 +143,22 @@ async def regenerate_story(
     # 即使没有 current_event，也可以生成新事件
 
     try:
+        from src.game.daily_event_revision import regenerate_daily_event_atomically
+        from src.game.daily_timeline import is_daily_timeline
+
+        if is_daily_timeline(game_loop.player_state):
+            db = get_db()
+            new_event = regenerate_daily_event_atomically(
+                game_loop,
+                persist_callback=lambda candidate: db.save_game_progress(
+                    game_id, candidate
+                ),
+            )
+            invalidate_daily_media_after_event_replacement(game_loop, game_id)
+            return {
+                "new_story": new_event.event_description,
+                "event": new_event.model_dump(),
+            }
         # ★ 重置生成标志位，防止并发检查失败
         # （用户可能在之前生成未完成时点击重新生成）
         if hasattr(game_loop, "_event_generator_service"):

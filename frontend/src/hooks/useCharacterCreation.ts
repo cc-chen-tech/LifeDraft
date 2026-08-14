@@ -875,8 +875,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         } catch (patchErr) {
           console.warn("[create] Failed to patch character settings (non-blocking):", patchErr);
         }
-        console.log("[create] Navigating to opening story...");
-        router.push("/story/opening");
+        const loaded = await api.games.load(gameId);
+        console.log("[create] Navigating to first story day...");
+        router.push(loaded.player_state?.timeline?.version === 2 ? "/play" : "/story/opening");
         return;
       }
 
@@ -892,8 +893,8 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      console.log("[create] Navigating to opening story...");
-      router.push("/story/opening");
+      console.log("[create] Navigating to first story day...");
+      router.push(result.player_state?.timeline?.version === 2 ? "/play" : "/story/opening");
     } catch (err) {
       console.error("[create] Start game failed:", err);
       showToast("error", "创建游戏失败，请重试");

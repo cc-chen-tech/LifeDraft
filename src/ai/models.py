@@ -1,6 +1,7 @@
 """AI event models."""
 
 import json
+import uuid
 from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -25,6 +26,9 @@ class EventOption(BaseModel):
 class GameEvent(BaseModel):
     """Represents a complete game event."""
 
+    event_id: str = Field(default_factory=lambda: f"evt_{uuid.uuid4().hex}")
+    revision: int = Field(default=1, ge=1)
+    story_date: str = Field(default="")
     event_description: str = Field(...)  # Removed max_length limit to support long stories
     options: List[EventOption] = Field(..., min_length=2, max_length=4)
 

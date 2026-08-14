@@ -63,7 +63,8 @@ class TestHistoricalSummarySelectorFieldContracts:
             last_round_full_story="",
         )
 
-        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(state)
+        with patch("src.game.historical_summary_selector.random.random", return_value=1.0):
+            weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(state)
         assert weekly is None
         assert yearly is None
 
