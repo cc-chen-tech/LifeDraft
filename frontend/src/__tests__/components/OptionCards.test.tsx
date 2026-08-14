@@ -277,7 +277,6 @@ describe('OptionCards', () => {
 
   describe('Custom choice input', () => {
     it('keeps an injected overlimit value visible and blocks submission', async () => {
-      const user = userEvent.setup();
       render(
         <OptionCards
           options={mockOptions}
@@ -286,7 +285,9 @@ describe('OptionCards', () => {
         />
       );
       const textarea = screen.getByPlaceholderText(/或者，描述你想做的事情/i);
-      await user.type(textarea, '😀'.repeat(INPUT_LIMITS.customAction + 1));
+      fireEvent.change(textarea, {
+        target: { value: '😀'.repeat(INPUT_LIMITS.customAction + 1) },
+      });
       expect(screen.getByRole('alert')).toHaveTextContent('已超出 1 字');
       expect(screen.getByRole('button', { name: '提交自定义选择' })).toBeDisabled();
       expect(mockOnCustomChoice).not.toHaveBeenCalled();

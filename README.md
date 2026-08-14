@@ -9,7 +9,7 @@ AI 叙事人生模拟游戏：通过多轮事件生成、选择推进、关系�
 - 游戏核心：`src/game`
 - AI 生成与叙事系统：`src/ai`
 - 数据层：SQLAlchemy + Repository/Facade（`src/database`）
-- 图片与音乐：`src/services/image*`、`src/services/music_service.py`
+- 图片与高质量故事朗读：`src/services/image*`、`src/services/story_voice_reading.py`
 
 > 当前仓库是 **FastAPI + Next.js** 主体；不包含 `src/ui/streamlit_app.py`。
 
@@ -21,7 +21,7 @@ AI 叙事人生模拟游戏：通过多轮事件生成、选择推进、关系�
 - 叙事质量档位（`fast / expert / master`）
 - 叙事风格系统（古风/现代/科幻等风格自动匹配）
 - 场景插画与角色/物品/地标收集系统（批量生成、时代一致性约束、人物面部一致性）
-- 音乐推荐与流式代理播放（混合缓存池）
+- MiniMax 分段 TTS、段落起读与按日续播进度
 - 好友系统、角色预设与开场生成功能
 - 成就系统（AchievementEngine）与人生回顾（LifeReview）
 - 4D 资源状态（energy / mood / knowledge / wealth）
@@ -100,9 +100,8 @@ docker compose -f docker-compose.ecs.yml up -d --build
 - `DATABASE_URL`（可选，不填则使用本地 SQLite）
 - `DEFAULT_LANGUAGE`（`zh` / `en`）
 - `MINIMAX_API_KEY`（生产音频必填；不要提交真实 key）
-- `STORY_TTS_PROVIDER`（本地默认 `browser`，生产后端朗读使用 `minimax`）
-- `MINIMAX_TIMEOUT_SECONDS`（建议 `180`；真实音乐生成可能超过 120 秒）
-- `STORY_MUSIC_AI_GENERATION_ENABLED`（是否启用 MiniMax 故事音乐生成）
+- `MINIMAX_TIMEOUT_SECONDS`（建议 `180`；真实 TTS 生成可能需要较长时间）
+- `STORY_TTS_AUTO_READ_DEFAULT_ENABLED`（默认 `true`，用户可在播放器中关闭）
 - `ENABLE_*` 叙事与实验开关（feature flags：constraint_harness, narrative_style_engine, creative_enhancement, epic_narrative, model_fallback, truncation_recovery, reactive_compression, parallel_postprocessing, generation_state_tracking）
 
 ## 开发与测试

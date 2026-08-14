@@ -12,6 +12,7 @@ import type {
   EffectValues,
   StoryVoiceReadingRequest,
   StoryVoiceReadingResponse,
+  VoiceReadingProgress,
   VoiceReadingJobResponse,
   VoiceReadingSettingsResponse,
   VoiceReadingSettingsUpdateRequest,
@@ -580,6 +581,21 @@ export const api = {
       }),
     getJob: (jobId: number) =>
       fetchJson<VoiceReadingJobResponse>(`/voice-reading/jobs/${jobId}`),
+    getProgress: (identity: Pick<VoiceReadingProgress, 'game_id' | 'day_index' | 'text_hash' | 'voice_id' | 'speed'>) => {
+      const query = new URLSearchParams({
+        game_id: String(identity.game_id),
+        day_index: String(identity.day_index),
+        text_hash: identity.text_hash,
+        voice_id: identity.voice_id,
+        speed: String(identity.speed),
+      });
+      return fetchJson<VoiceReadingProgress>(`/voice-reading/progress?${query.toString()}`);
+    },
+    updateProgress: (data: VoiceReadingProgress) =>
+      fetchJson<VoiceReadingProgress>('/voice-reading/progress', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
     uploadConsent: (data: VoiceUploadConsentRequest) =>
       fetchJson<{ success: boolean; message: string }>('/voice-reading/upload-consent', {
         method: 'POST',

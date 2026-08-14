@@ -316,13 +316,6 @@ test.describe('真实游戏页收集自动识别', () => {
         }),
       });
     });
-    await page.route('**/api/music/recommend', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ songs: [] }),
-      });
-    });
     await page.route(`**/api/collection/${gameId}/details`, async (route) => {
       collectionDetailsCalls += 1;
       await route.fulfill({

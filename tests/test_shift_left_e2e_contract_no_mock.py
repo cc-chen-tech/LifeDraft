@@ -109,10 +109,13 @@ REQUIRED_BROWSER_API_ROUTES = {
     ("POST", "/api/presets"),
     ("GET", "/api/presets/{preset_id}"),
     ("DELETE", "/api/presets/{preset_id}"),
-    ("POST", "/api/music/recommend"),
-    ("GET", "/api/music/song-url"),
-    ("GET", "/api/music/search"),
-    ("GET", "/api/music/stream/{song_id}"),
+    ("GET", "/api/voice-reading/settings"),
+    ("PATCH", "/api/voice-reading/settings"),
+    ("POST", "/api/voice-reading/read"),
+    ("GET", "/api/voice-reading/jobs/{job_id}"),
+    ("GET", "/api/voice-reading/progress"),
+    ("PATCH", "/api/voice-reading/progress"),
+    ("GET", "/api/voice-reading/audio/{file_name}"),
 }
 
 

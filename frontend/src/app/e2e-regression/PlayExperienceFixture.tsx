@@ -155,7 +155,6 @@ export function PlayExperienceFixture({
           : isLoading
             ? "故事完成后再改写"
             : undefined,
-        soundAvailable: false,
         enableSceneImage,
         onSave: () => recordAction("dock:save"),
         onOpenHistory: () => recordAction("dock:history"),
@@ -164,7 +163,6 @@ export function PlayExperienceFixture({
         onOpenRewrite: () => recordAction("tools:rewrite"),
         onOpenSummary: () => recordAction("tools:summary"),
         onRegenerate: () => recordAction("tools:regenerate"),
-        onOpenSound: () => recordAction("tools:sound"),
         onHome: () => recordAction("tools:home"),
         onConstraintLevelChange: setConstraintLevel,
         onNarrativeStyleChange: setNarrativeStyleId,

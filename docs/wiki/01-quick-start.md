@@ -65,17 +65,15 @@ cp .env.example .env
 - `OPENAI_MODEL`（默认 `gpt-4`）
 - `DEFAULT_LANGUAGE`（默认 `zh`）
 
-## MiniMax 音频功能
+## MiniMax 故事朗读
 
-如需启用故事朗读后端音频和 AI 音乐生成，至少配置：
+生产故事朗读仅使用 MiniMax 高质量 TTS，至少配置：
 
 - `MINIMAX_API_KEY`
-- `STORY_TTS_PROVIDER=minimax`
-- `STORY_MUSIC_AI_GENERATION_ENABLED=true`
 
-如果只配置 `MINIMAX_API_KEY` 但没有设置 `STORY_TTS_PROVIDER=minimax`，故事朗读仍会按默认配置走浏览器语音。测试环境可使用 `STORY_TTS_PROVIDER=local` 和 `MINIMAX_E2E_LOCAL_AUDIO=1`，避免调用付费接口。
+服务不可用时会保留正文和剧情选择，并显示重试状态；不会降级到浏览器语音。E2E 可设置 `MINIMAX_E2E_LOCAL_AUDIO=1` 生成确定性测试音频，运行时 provider 仍保持 MiniMax。
 
-自动朗读默认关闭。需要让新用户默认在故事完成后自动朗读时，可显式设置 `STORY_TTS_AUTO_READ_DEFAULT_ENABLED=true`；用户在界面里切换后，以用户自己的设置为准。
+自动朗读默认开启。用户在界面里关闭后，以用户自己的持久化设置为准。
 
 ## 当前代码现状提示
 

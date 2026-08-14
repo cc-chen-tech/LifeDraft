@@ -16,9 +16,9 @@ import httpx
 
 from src.services.minimax_config import MiniMaxConfig, build_minimax_config
 from src.services.story_tts_provider import (
-    BrowserSpeechTTSProvider,
     GeneratedSpeech,
     StoryTTSProviderMetadata,
+    TTSProviderUnavailableError,
     build_deterministic_wav,
 )
 
@@ -185,7 +185,7 @@ class MiniMaxAsyncTTSClient:
 
 
 class MiniMaxTTSProvider:
-    """MiniMax-backed story TTS provider with browser speech fallback."""
+    """MiniMax-backed story TTS provider without synthetic browser fallback."""
 
     provider = "minimax"
 
@@ -204,7 +204,7 @@ class MiniMaxTTSProvider:
         return StoryTTSProviderMetadata(
             provider=self.provider,
             model=self.model,
-            playback_mode="audio" if available else "browser_speech",
+            playback_mode="audio" if available else "unavailable",
             media_type=media_type if available else None,
             available=available,
             backend_audio_enabled=available,
@@ -247,11 +247,11 @@ class MiniMaxTTSProvider:
 
     def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
         if not self.config.api_key and not self.config.local_audio_enabled:
-            return BrowserSpeechTTSProvider().synthesize(context, voice_id, speed)
+            raise TTSProviderUnavailableError("MiniMax TTS is not configured")
 
         text = str(context["text"])
         if len(text) > self.config.tts_max_chars:
-            return BrowserSpeechTTSProvider().synthesize(context, voice_id, speed)
+            raise TTSProviderUnavailableError("Story paragraph exceeds MiniMax TTS limit")
         text_hash = str(context["text_hash"])
         extension = "wav" if self.config.local_audio_enabled else "mp3"
         media_type = "audio/wav" if extension == "wav" else "audio/mpeg"
@@ -265,8 +265,8 @@ class MiniMaxTTSProvider:
             payload = self.build_async_create_payload(text, voice_id, speed)
             try:
                 self.client.synthesize_to_file(payload, output_path)
-            except Exception:
-                return BrowserSpeechTTSProvider().synthesize(context, voice_id, speed)
+            except Exception as error:
+                raise TTSProviderUnavailableError("MiniMax TTS generation failed") from error
 
         return GeneratedSpeech(
             storage_path=f"/api/voice-reading/audio/{file_name}",

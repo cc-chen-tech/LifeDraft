@@ -1634,222 +1634,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/music/recommend": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Recommend Music
-         * @description 根据故事内容推荐音乐
-         *
-         *     分析故事的情绪和场景，搜索匹配的音乐
-         *     并批量获取所有歌曲的播放 URL
-         */
-        post: operations["recommend_music_api_music_recommend_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/music/generate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Generate Music
-         * @description Generate story-conditioned AI music without blocking recommendation search.
-         */
-        post: operations["generate_music_api_music_generate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/music/generate-async": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Enqueue Music Generation
-         * @description Start AI music generation in the background and return immediately.
-         */
-        post: operations["enqueue_music_generation_api_music_generate_async_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/music/song-url": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Song Url
-         * @description 获取歌曲播放 URL
-         *
-         *     注意：URL 有过期时间，需要时重新获取
-         */
-        get: operations["get_song_url_api_music_song_url_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/music/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Search Music
-         * @description 直接搜索音乐
-         */
-        get: operations["search_music_api_music_search_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/music/generated/{file_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Generated Music
-         * @description Serve provider-generated music assets from the configured asset directory.
-         */
-        get: operations["get_generated_music_api_music_generated__file_name__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/music/stream/{song_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Stream Song
-         * @description 代理音乐流，绕过 CDN 的 Referer 限制。
-         *
-         *     完整下载 CDN 音频后一次性返回（带 content-length），
-         *     避免流式代理链延迟导致浏览器 waiting/stalled。
-         *     支持 Range 请求（用于拖拽跳转），以及 403/401 时自动刷新 URL 重试。
-         *     内存 LRU 缓存最多 10 首歌，避免重复下载。
-         */
-        get: operations["stream_song_api_music_stream__song_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/music/playlist/{game_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Playlist
-         * @description Get the current playlist state for a game.
-         */
-        get: operations["get_playlist_api_music_playlist__game_id__get"];
-        /**
-         * Update Playlist
-         * @description Merge new recommendation songs into the playlist.
-         *
-         *     Preserves the currently playing song; only the upcoming queue is replaced.
-         */
-        put: operations["update_playlist_api_music_playlist__game_id__put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/music/playlist/{game_id}/sync": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sync Playlist State
-         * @description Sync current playback position and state.
-         */
-        post: operations["sync_playlist_state_api_music_playlist__game_id__sync_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/music/playlist/{game_id}/advance": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Advance Playlist
-         * @description Advance to the next song in the queue.
-         */
-        post: operations["advance_playlist_api_music_playlist__game_id__advance_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/voice-reading/settings": {
         parameters: {
             query?: never;
@@ -1900,6 +1684,24 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/voice-reading/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Voice Reading Progress */
+        get: operations["get_voice_reading_progress_api_voice_reading_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Voice Reading Progress */
+        patch: operations["update_voice_reading_progress_api_voice_reading_progress_patch"];
         trace?: never;
     };
     "/api/voice-reading/audio/{file_name}": {
@@ -2611,95 +2413,6 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
-        /**
-         * MusicGenerationEnqueueResponse
-         * @description Accepted background music generation job.
-         */
-        MusicGenerationEnqueueResponse: {
-            /** Status */
-            status: string;
-            /** Game Id */
-            game_id: number;
-            /** Insert Policy */
-            insert_policy: string;
-        };
-        /**
-         * MusicGenerationRequest
-         * @description Request body for story-conditioned generated music.
-         */
-        MusicGenerationRequest: {
-            /** Game Id */
-            game_id: number;
-            /** Story Text */
-            story_text: string;
-            /** Analysis */
-            analysis?: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * MusicGenerationResponse
-         * @description Generated music result for frontend queue insertion.
-         */
-        MusicGenerationResponse: {
-            /** Track */
-            track: {
-                [key: string]: unknown;
-            };
-            /** Insert Policy */
-            insert_policy: string;
-        };
-        /**
-         * MusicRecommendationRequest
-         * @description 音乐推荐请求
-         */
-        MusicRecommendationRequest: {
-            /** Story Text */
-            story_text: string;
-            /** Game Id */
-            game_id?: number | null;
-            /**
-             * Refresh
-             * @default false
-             */
-            refresh: boolean;
-            /** Character Settings */
-            character_settings?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * MusicRecommendationResponse
-         * @description 音乐推荐响应
-         */
-        MusicRecommendationResponse: {
-            /** Keywords */
-            keywords: string[];
-            /** Mood */
-            mood: string;
-            /** Scene Type */
-            scene_type: string;
-            /** Environment */
-            environment?: string | null;
-            /** Story Style */
-            story_style?: string | null;
-            /** Music Style */
-            music_style?: string | null;
-            /** Instruments */
-            instruments?: string[] | null;
-            /** Pacing */
-            pacing?: string | null;
-            /** Time Weather */
-            time_weather?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Music Brief */
-            music_brief?: {
-                [key: string]: unknown;
-            } | null;
-            /** Songs */
-            songs: components["schemas"]["SongResponse"][];
-        };
         /** NarrativeStyleResponse */
         NarrativeStyleResponse: {
             /** Style Id */
@@ -2748,39 +2461,6 @@ export interface components {
             language: string;
         };
         /**
-         * PlaylistSyncRequest
-         * @description Request body for syncing playback state.
-         */
-        PlaylistSyncRequest: {
-            /**
-             * Current Position Ms
-             * @default 0
-             */
-            current_position_ms: number;
-            /**
-             * Is Playing
-             * @default false
-             */
-            is_playing: boolean;
-            /**
-             * Volume
-             * @default 0.5
-             */
-            volume: number;
-        };
-        /**
-         * PlaylistUpdateRequest
-         * @description Request body for updating a game playlist with new recommendation songs.
-         */
-        PlaylistUpdateRequest: {
-            /** Songs */
-            songs: components["schemas"]["SongResponse"][];
-            /** Mood */
-            mood?: string | null;
-            /** Keywords */
-            keywords?: string[] | null;
-        };
-        /**
          * PortraitImageGenerationJobResponse
          * @description Safe public state for a durable main-character portrait job.
          */
@@ -2825,7 +2505,7 @@ export interface components {
         ReadingContext: {
             /**
              * Source Type
-             * @description current_story|history_round|summary|ending
+             * @description current_story
              */
             source_type: string;
             /** Game Id */
@@ -2838,6 +2518,10 @@ export interface components {
             stage?: string | null;
             /** Attempt Id */
             attempt_id?: string | null;
+            /** Day Index */
+            day_index?: number | null;
+            /** Story Date */
+            story_date?: string | null;
             /** Text Hash */
             text_hash: string;
             /** Text */
@@ -3188,29 +2872,6 @@ export interface components {
             total: number;
         };
         /**
-         * SongResponse
-         * @description 歌曲响应
-         */
-        SongResponse: {
-            /** Id */
-            id: number | string;
-            /** Name */
-            name: string;
-            /** Artists */
-            artists: string[];
-            /** Album */
-            album: string;
-            /** Duration */
-            duration: number;
-            /** Url */
-            url?: string | null;
-            /**
-             * Source
-             * @default netease
-             */
-            source: string;
-        };
-        /**
          * StateSnapshotItem
          * @description 状态快照信息（包括自动快照和手动存档）
          */
@@ -3297,8 +2958,6 @@ export interface components {
              * @default false
              */
             auto_play: boolean;
-            /** Preferred Provider */
-            preferred_provider?: string | null;
         };
         /** StoryVoiceReadingResponse */
         StoryVoiceReadingResponse: {
@@ -3314,17 +2973,17 @@ export interface components {
             duration_ms?: number | null;
             /**
              * Playback Mode
-             * @default browser_speech
+             * @default unavailable
              */
             playback_mode: string;
             /**
              * Provider
-             * @default browser
+             * @default minimax
              */
             provider: string;
             /**
              * Model
-             * @default browser-speech
+             * @default
              */
             model: string;
             /** Media Type */
@@ -3336,6 +2995,8 @@ export interface components {
              * @default
              */
             message: string;
+            /** Segments */
+            segments?: components["schemas"]["VoiceReadingSegmentResponse"][];
         };
         /** UpdateCharacterSettingsRequest */
         UpdateCharacterSettingsRequest: {
@@ -3396,17 +3057,17 @@ export interface components {
             duration_ms?: number | null;
             /**
              * Playback Mode
-             * @default browser_speech
+             * @default unavailable
              */
             playback_mode: string;
             /**
              * Provider
-             * @default browser
+             * @default minimax
              */
             provider: string;
             /**
              * Model
-             * @default browser-speech
+             * @default
              */
             model: string;
             /** Media Type */
@@ -3418,6 +3079,93 @@ export interface components {
              * @default
              */
             message: string;
+            /** Segments */
+            segments?: components["schemas"]["VoiceReadingSegmentResponse"][];
+        };
+        /** VoiceReadingProgressRequest */
+        VoiceReadingProgressRequest: {
+            /** Game Id */
+            game_id: number;
+            /** Day Index */
+            day_index: number;
+            /** Story Date */
+            story_date?: string | null;
+            /** Text Hash */
+            text_hash: string;
+            /** Voice Id */
+            voice_id: string;
+            /**
+             * Speed
+             * @default 1
+             */
+            speed: number;
+            /**
+             * Paragraph Index
+             * @default 0
+             */
+            paragraph_index: number;
+            /**
+             * Position Ms
+             * @default 0
+             */
+            position_ms: number;
+            /**
+             * Completed
+             * @default false
+             */
+            completed: boolean;
+        };
+        /** VoiceReadingProgressResponse */
+        VoiceReadingProgressResponse: {
+            /** Game Id */
+            game_id: number;
+            /** Day Index */
+            day_index: number;
+            /** Story Date */
+            story_date?: string | null;
+            /** Text Hash */
+            text_hash: string;
+            /** Voice Id */
+            voice_id: string;
+            /**
+             * Speed
+             * @default 1
+             */
+            speed: number;
+            /**
+             * Paragraph Index
+             * @default 0
+             */
+            paragraph_index: number;
+            /**
+             * Position Ms
+             * @default 0
+             */
+            position_ms: number;
+            /**
+             * Completed
+             * @default false
+             */
+            completed: boolean;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** VoiceReadingSegmentResponse */
+        VoiceReadingSegmentResponse: {
+            /** Paragraph Index */
+            paragraph_index: number;
+            /** Status */
+            status: string;
+            /** Audio Url */
+            audio_url?: string | null;
+            /** Asset Id */
+            asset_id?: number | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Media Type */
+            media_type?: string | null;
+            /** Error Code */
+            error_code?: string | null;
         };
         /** VoiceReadingSettingsResponse */
         VoiceReadingSettingsResponse: {
@@ -3442,22 +3190,27 @@ export interface components {
             uploaded_voice_available: boolean;
             /**
              * Auto Read Enabled
-             * @default false
+             * @default true
              */
             auto_read_enabled: boolean;
             /**
+             * Selected Speed
+             * @default 1
+             */
+            selected_speed: number;
+            /**
              * Tts Provider
-             * @default browser
+             * @default minimax
              */
             tts_provider: string;
             /**
              * Tts Model
-             * @default browser-speech
+             * @default speech-02-turbo
              */
             tts_model: string;
             /**
              * Tts Provider Available
-             * @default true
+             * @default false
              */
             tts_provider_available: boolean;
             /**
@@ -3467,7 +3220,7 @@ export interface components {
             backend_audio_enabled: boolean;
             /**
              * Playback Mode
-             * @default browser_speech
+             * @default unavailable
              */
             playback_mode: string;
         };
@@ -3477,6 +3230,8 @@ export interface components {
             selected_voice_color?: string | null;
             /** Auto Read Enabled */
             auto_read_enabled?: boolean | null;
+            /** Selected Speed */
+            selected_speed?: number | null;
         };
         /** VoiceUploadConsentRequest */
         VoiceUploadConsentRequest: {
@@ -6149,377 +5904,6 @@ export interface operations {
             };
         };
     };
-    recommend_music_api_music_recommend_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MusicRecommendationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MusicRecommendationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    generate_music_api_music_generate_post: {
-        parameters: {
-            query?: {
-                /** @description Debug/local verification only: wait for provider generation and return the ready track. */
-                sync?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MusicGenerationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MusicGenerationResponse"] | components["schemas"]["MusicGenerationEnqueueResponse"];
-                };
-            };
-            /** @description Accepted */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MusicGenerationEnqueueResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    enqueue_music_generation_api_music_generate_async_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MusicGenerationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MusicGenerationEnqueueResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_song_url_api_music_song_url_get: {
-        parameters: {
-            query: {
-                /** @description 歌曲ID */
-                song_id: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    search_music_api_music_search_get: {
-        parameters: {
-            query: {
-                /** @description 搜索关键词 */
-                keyword: string;
-                /** @description 返回数量 */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_generated_music_api_music_generated__file_name__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                file_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    stream_song_api_music_stream__song_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                song_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_playlist_api_music_playlist__game_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                game_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_playlist_api_music_playlist__game_id__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                game_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PlaylistUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    sync_playlist_state_api_music_playlist__game_id__sync_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                game_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PlaylistSyncRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    advance_playlist_api_music_playlist__game_id__advance_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                game_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_voice_reading_settings_api_voice_reading_settings_get: {
         parameters: {
             query?: never;
@@ -6624,6 +6008,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VoiceReadingJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_voice_reading_progress_api_voice_reading_progress_get: {
+        parameters: {
+            query: {
+                game_id: number;
+                day_index: number;
+                text_hash: string;
+                voice_id: string;
+                speed?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceReadingProgressResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_voice_reading_progress_api_voice_reading_progress_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceReadingProgressRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceReadingProgressResponse"];
                 };
             };
             /** @description Validation Error */

@@ -21,7 +21,7 @@ from starlette.requests import Request as StarletteRequest
 from config.settings import (SENTRY_DSN, SENTRY_ENVIRONMENT,
                              SENTRY_TRACES_SAMPLE_RATE)
 from src.api.routers import (auth, character, collection, gameplay, games,
-                             images, music, presets, story,
+                             images, presets, story,
                              voice_reading)
 from src.database.models import init_db
 from src.api.input_limits import PUBLIC_INPUT_LIMITS
@@ -253,18 +253,27 @@ app.include_router(gameplay.router, prefix="/api/games", tags=["Gameplay"])
 app.include_router(story.router, prefix="/api/games", tags=["Story"])
 app.include_router(images.router, prefix="/api/images", tags=["Images"])
 app.include_router(collection.router, prefix="/api/collection", tags=["Collection"])
-app.include_router(music.router, prefix="/api", tags=["Music"])
 app.include_router(voice_reading.router, prefix="/api/voice-reading", tags=["VoiceReading"])
 
 
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
+    from config.feature_flags import get_feature
     from src.api.session_store import session_store
+    from src.services.story_tts_provider import build_story_tts_provider
+
+    tts_metadata = build_story_tts_provider().metadata()
 
     return {
         "status": "ok",
         "active_sessions": session_store.active_count,
+        "capabilities": {
+            "daily_timeline_v2": get_feature("daily_timeline_v2"),
+            "tts_provider": tts_metadata.provider,
+            "tts_provider_available": tts_metadata.backend_audio_enabled,
+            "music_runtime_enabled": False,
+        },
     }
 
 

@@ -1,4 +1,47 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function stubHighQualityNarration(page: Page): Promise<void> {
+  await page.route('**/api/voice-reading/settings', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        auto_read_enabled: false,
+        selected_voice_color: 'warm_female',
+        selected_speed: 1,
+        tts_provider: 'minimax',
+        tts_provider_available: true,
+        backend_audio_enabled: true,
+        playback_mode: 'audio',
+      }),
+    }),
+  );
+  await page.route('**/api/voice-reading/progress**', (route) =>
+    route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }),
+  );
+  await page.route('**/api/voice-reading/read', async (route) => {
+    const request = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        job_id: 901,
+        status: 'ready',
+        playback_mode: 'audio',
+        provider: 'minimax',
+        model: 'speech-02-turbo',
+        message: '',
+        segments: [{
+          paragraph_index: 0,
+          status: 'ready',
+          audio_url: '/api/voice-reading/audio/e2e.mp3',
+          duration_ms: Math.max(1_000, String(request.context.text).length * 100),
+          media_type: 'audio/mpeg',
+        }],
+      }),
+    });
+  });
+}
 
 test('daily choice settles once and automatically opens the next calendar day', async ({ page }) => {
   const gameId = 880001;
@@ -7,15 +50,15 @@ test('daily choice settles once and automatically opens the next calendar day', 
     event_id: 'daily-0',
     revision: 1,
     story_date: '2026-08-13',
-    event_description: '第一天，林舟在雨后的书铺里发现了一封没有署名的信。',
+    event_description: '第一天，林舟在雨后的书铺里发现了一封没有署名的信。\n\n窗外的雨声渐渐停了。',
     options: [
       { text: '拆开信封', effects: { knowledge: 2 } },
       { text: '先询问掌柜', effects: { mood: 1 } },
     ],
   };
   let choiceCalls = 0;
-  let regenerateCalls = 0;
-  let rewriteCalls = 0;
+  let narrationCalls = 0;
+  let musicCalls = 0;
 
   const timeline = () => ({
     version: 2,
@@ -65,7 +108,7 @@ test('daily choice settles once and automatically opens the next calendar day', 
     expect(route.request().postDataJSON()).toEqual({
       option_index: 0,
       event_id: 'daily-0',
-      revision: 3,
+      revision: 1,
     });
     dayIndex = 1;
     currentEvent = null;
@@ -82,47 +125,12 @@ test('daily choice settles once and automatically opens the next calendar day', 
         })}\n\ndata: [DONE]\n\n`,
     });
   });
-  await page.route(`**/api/games/${gameId}/regenerate-stream`, async (route) => {
-    regenerateCalls += 1;
-    currentEvent = {
-      event_id: 'daily-0',
-      revision: 2,
-      story_date: '2026-08-13',
-      event_description: '第一天重新生成后，林舟在信封夹层里发现一枚旧钥匙。',
-      options: [{ text: '收好钥匙' }, { text: '交给掌柜' }],
-    };
-    await route.fulfill({
-      status: 200,
-      headers: { 'Content-Type': 'text/event-stream' },
-      body: `event: complete\ndata: ${JSON.stringify(currentEvent)}\n\ndata: [DONE]\n\n`,
-    });
-  });
-  await page.route(`**/api/games/${gameId}/rewrite-stream`, async (route) => {
-    rewriteCalls += 1;
-    currentEvent = {
-      event_id: 'daily-0',
-      revision: 3,
-      story_date: '2026-08-13',
-      event_description: '改写后的第一天，旧钥匙上刻着河边仓库的编号。',
-      options: [{ text: '记下仓库编号' }, { text: '询问钥匙来历' }],
-    };
-    await route.fulfill({
-      status: 200,
-      headers: { 'Content-Type': 'text/event-stream' },
-      body:
-        `event: complete\ndata: ${JSON.stringify({
-          new_story: currentEvent.event_description,
-          rewritten_story: currentEvent.event_description,
-          event: currentEvent,
-        })}\n\ndata: [DONE]\n\n`,
-    });
-  });
   await page.route(`**/api/games/${gameId}/event`, async (route) => {
     currentEvent = {
       event_id: 'daily-1',
       revision: 1,
       story_date: '2026-08-14',
-      event_description: '第二天，林舟循着信上的线索来到河边仓库。',
+      event_description: '第二天，林舟循着信上的线索来到河边仓库。\n\n晨雾里的仓门半掩着。',
       options: [
         { text: '进入仓库', effects: { energy: -2 } },
         { text: '绕到后门观察', effects: { knowledge: 1 } },
@@ -148,42 +156,93 @@ test('daily choice settles once and automatically opens the next calendar day', 
     route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ detail: 'fixture' }) }),
   );
   await page.route('**/api/voice-reading/settings', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tts_provider: 'browser' }) }),
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        auto_read_enabled: true,
+        selected_voice_color: 'warm_female',
+        selected_speed: 1,
+        tts_provider: 'minimax',
+        tts_model: 'speech-02-turbo',
+        tts_provider_available: true,
+        backend_audio_enabled: true,
+        playback_mode: 'audio',
+      }),
+    }),
   );
-  await page.route('**/api/music/recommend', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ songs: [] }) }),
-  );
-  await page.route(`**/api/music/playlist/${gameId}`, (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ songs: [], queue: [] }) }),
-  );
+  await page.route('**/api/voice-reading/progress**', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: route.request().postData() || '{}',
+    });
+  });
+  await page.route('**/api/voice-reading/read', async (route) => {
+    narrationCalls += 1;
+    const request = route.request().postDataJSON();
+    const paragraphs = String(request.context.text).split(/\n\s*\n/);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        job_id: narrationCalls,
+        status: 'ready',
+        playback_mode: 'audio',
+        provider: 'minimax',
+        model: 'speech-02-turbo',
+        message: '',
+        segments: paragraphs.map((_: string, paragraphIndex: number) => ({
+          paragraph_index: paragraphIndex,
+          status: 'ready',
+          audio_url: `/api/voice-reading/audio/day-${dayIndex}-${paragraphIndex}.mp3`,
+          duration_ms: 4_000,
+          media_type: 'audio/mpeg',
+        })),
+      }),
+    });
+  });
+  await page.route('**/api/music/**', async (route) => {
+    musicCalls += 1;
+    await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+  });
+  await page.addInitScript(() => {
+    const playback = { play: 0, pause: 0 };
+    Object.defineProperty(window, '__storyAudioEvents', { value: playback });
+    HTMLMediaElement.prototype.play = function play() {
+      playback.play += 1;
+      return Promise.resolve();
+    };
+    HTMLMediaElement.prototype.pause = function pause() {
+      playback.pause += 1;
+    };
+  });
 
   await page.goto(`/play?gameId=${gameId}`);
-  await expect(page.getByRole('heading', { name: '公元 2026 年 8 月 13 日' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '听故事' })).toBeVisible();
+  await expect(page.getByText('公元 2026 年 8 月 13 日')).toBeVisible();
   await expect(page.getByRole('button', { name: '拆开信封' })).toBeVisible();
   await expect(page.getByPlaceholder('输入你想做的事...')).toHaveCount(0);
+  await expect.poll(() => narrationCalls).toBe(1);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __storyAudioEvents: { play: number } }).__storyAudioEvents.play)).toBeGreaterThan(0);
 
-  await page.getByRole('button', { name: '打开工具' }).click();
-  await page.getByRole('button', { name: '重新生成今天' }).click();
-  await expect(page.getByText('第一天重新生成后，林舟在信封夹层里发现一枚旧钥匙。')).toBeVisible();
-  await expect(page.getByRole('button', { name: '收好钥匙' })).toBeVisible();
+  await page.getByRole('button', { name: '查看正文' }).first().click();
+  await page.getByRole('button', { name: '从第 2 段开始朗读' }).click();
+  const pausesBeforeChoice = await page.evaluate(() => (window as unknown as { __storyAudioEvents: { pause: number } }).__storyAudioEvents.pause);
+  await page.getByRole('button', { name: '拆开信封' }).click();
 
-  await page.getByRole('button', { name: '打开工具' }).click();
-  await page.getByRole('button', { name: '改写今天' }).click();
-  await page.getByPlaceholder(/描述你想要的修改/).fill('让线索指向仓库');
-  await page.getByRole('button', { name: '改写故事' }).click();
-  await expect(page.getByText('改写后的第一天，旧钥匙上刻着河边仓库的编号。')).toBeVisible();
-  await page.getByRole('button', { name: '关闭故事调整' }).click();
-  await expect(page.getByRole('button', { name: '记下仓库编号' })).toBeVisible();
-
-  await page.getByRole('button', { name: '记下仓库编号' }).click();
-
-  await expect(page.getByRole('heading', { name: '公元 2026 年 8 月 14 日' })).toBeVisible();
-  await expect(page.getByText('第二天，林舟循着信上的线索来到河边仓库。')).toBeVisible();
+  await expect(page.getByText('公元 2026 年 8 月 14 日')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '听故事' })).toBeVisible();
   await expect(page.getByRole('button', { name: '进入仓库' })).toBeVisible();
   await expect(page.getByRole('button', { name: /进入周中|进入周末|确认并继续/ })).toHaveCount(0);
+  await expect.poll(() => narrationCalls).toBe(2);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __storyAudioEvents: { pause: number } }).__storyAudioEvents.pause)).toBeGreaterThan(pausesBeforeChoice);
   expect(choiceCalls).toBe(1);
-  expect(regenerateCalls).toBe(1);
-  expect(rewriteCalls).toBe(1);
+  expect(musicCalls).toBe(0);
 });
 
 test('migrated save resumes on its mapped calendar date without legacy controls', async ({ page }) => {
@@ -230,18 +289,14 @@ test('migrated save resumes on its mapped calendar date without legacy controls'
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
   );
-  await page.route('**/api/voice-reading/settings', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
-  );
-  await page.route('**/api/music/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ songs: [], queue: [] }) }),
-  );
+  await stubHighQualityNarration(page);
   await page.route(`**/api/images/**/${gameId}**`, (route) =>
     route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }),
   );
 
   await page.goto(`/play?gameId=${gameId}`);
-  await expect(page.getByRole('heading', { name: '公元 2026 年 1 月 14 日' })).toBeVisible();
+  await expect(page.getByText('公元 2026 年 1 月 14 日')).toBeVisible();
+  await page.getByRole('button', { name: '查看正文' }).first().click();
   await expect(page.getByText('迁移后的未选择事件仍停留在原周中映射日期。')).toBeVisible();
   await expect(page.getByRole('button', { name: '查看旧信' })).toBeVisible();
   await expect(page.getByRole('button', { name: /进入周中|进入周末|确认并继续/ })).toHaveCount(0);
@@ -307,18 +362,14 @@ test('refresh after a saved choice safely retries generation on the advanced day
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
   );
-  await page.route('**/api/voice-reading/settings', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
-  );
-  await page.route('**/api/music/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ songs: [], queue: [] }) }),
-  );
+  await stubHighQualityNarration(page);
   await page.route(`**/api/images/**/${gameId}**`, (route) =>
     route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }),
   );
 
   await page.goto(`/play?gameId=${gameId}`);
-  await expect(page.getByRole('heading', { name: '公元 2026 年 8 月 14 日' })).toBeVisible();
+  await expect(page.getByText('公元 2026 年 8 月 14 日')).toBeVisible();
+  await page.getByRole('button', { name: '查看正文' }).first().click();
   await expect(page.getByText('刷新后，第二天故事在正确日期重新生成。')).toBeVisible();
   await expect(page.getByRole('button', { name: '继续调查' })).toBeVisible();
   expect(generationCalls).toBe(1);

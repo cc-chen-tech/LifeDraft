@@ -178,8 +178,8 @@ jobs:
           MINIMAX_API_KEY="$(printf '%s' "${MINIMAX_API_KEY_B64}" | base64 -d)"
           export MINIMAX_API_KEY
           export STORY_TTS_PROVIDER=minimax
-          export STORY_TTS_ALLOW_REQUEST_PROVIDER=1
-          export STORY_MUSIC_AI_GENERATION_ENABLED=true
+          export STORY_TTS_AUTO_READ_DEFAULT_ENABLED=true
+          export ENABLE_DAILY_TIMELINE_V2=true
           export MINIMAX_TIMEOUT_SECONDS=180
           export IMAGE_API_KEY="${MINIMAX_API_KEY}"
           export IMAGE_API_BASE_URL=https://api.minimaxi.com/v1
@@ -194,8 +194,8 @@ jobs:
           updates = {
               "MINIMAX_API_KEY": os.environ["MINIMAX_API_KEY"],
               "STORY_TTS_PROVIDER": os.environ["STORY_TTS_PROVIDER"],
-              "STORY_TTS_ALLOW_REQUEST_PROVIDER": os.environ["STORY_TTS_ALLOW_REQUEST_PROVIDER"],
-              "STORY_MUSIC_AI_GENERATION_ENABLED": os.environ["STORY_MUSIC_AI_GENERATION_ENABLED"],
+              "STORY_TTS_AUTO_READ_DEFAULT_ENABLED": os.environ["STORY_TTS_AUTO_READ_DEFAULT_ENABLED"],
+              "ENABLE_DAILY_TIMELINE_V2": os.environ["ENABLE_DAILY_TIMELINE_V2"],
               "MINIMAX_TIMEOUT_SECONDS": os.environ["MINIMAX_TIMEOUT_SECONDS"],
               "IMAGE_API_KEY": os.environ["IMAGE_API_KEY"],
               "IMAGE_API_BASE_URL": os.environ["IMAGE_API_BASE_URL"],
@@ -227,6 +227,7 @@ jobs:
           env_path.chmod(0o600)
           PY
           docker compose -f docker-compose.ecs.yml up -d --build
+          docker rm -f story2-music 2>/dev/null || true
           docker compose -f docker-compose.ecs.yml ps
 
           for attempt in $(seq 1 36); do
@@ -267,3 +268,14 @@ jobs:
               sleep 5
             done
           done
+          health_json="$(curl -fsS "${base}/api/health")"
+          HEALTH_JSON="${health_json}" python3 - <<'PY'
+          import json
+          import os
+
+          capabilities = json.loads(os.environ["HEALTH_JSON"])["capabilities"]
+          assert capabilities["daily_timeline_v2"] is True
+          assert capabilities["tts_provider"] == "minimax"
+          assert capabilities["tts_provider_available"] is True
+          assert capabilities["music_runtime_enabled"] is False
+          PY

@@ -19,7 +19,8 @@ def test_maintained_backend_manifest_is_shared_by_both_ci_workflows() -> None:
 
     assert "maintained_tests=(" in runner
     assert "test_gate_preflight_no_mock.py" in runner
-    assert "test_music_degradation_no_mock.py" in runner
+    assert "test_story_voice_chapter_contract.py" in runner
+    assert "test_music_runtime_removed.py" in runner
     assert '"${maintained_tests[@]}" -v --tb=short' in runner
     assert 'coverage_xml_path="${COVERAGE_XML_PATH:-coverage.xml}"' in runner
     assert '--cov=src --cov-report="xml:${coverage_xml_path}" --cov-report=term' in runner
@@ -47,9 +48,9 @@ def test_browser_gate_runs_core_once_and_only_selects_ai_heavy_followups() -> No
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     e2e_body = script.split("run_e2e_browser_impl()", 1)[1].split("run_coverage()", 1)[0]
 
-    assert e2e_body.count('run_playwright_command "') == 3
+    assert e2e_body.count('run_playwright_command "') == 2
     assert 'run_playwright_command "core" npx playwright test --project=core' in e2e_body
-    assert 'run_playwright_command "music-player"' in e2e_body
+    assert 'run_playwright_command "music-player"' not in e2e_body
     assert 'run_playwright_command "character-settings"' in e2e_body
     for duplicated_core_label in (
         "realistic-style-alignment",

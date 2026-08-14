@@ -16,7 +16,6 @@ import {
   RotateCcw,
   Save,
   Settings,
-  Volume2,
   X,
 } from "lucide-react";
 
@@ -49,7 +48,6 @@ export interface PlayToolsProps {
   narrativeStylesLoading?: boolean;
   rewriteDisabled?: boolean;
   rewriteDisabledReason?: string;
-  soundAvailable?: boolean;
   enableSceneImage: boolean;
   onSave: () => void;
   onOpenHistory: () => void;
@@ -58,7 +56,6 @@ export interface PlayToolsProps {
   onOpenRewrite: () => void;
   onOpenSummary: () => void;
   onRegenerate: () => void;
-  onOpenSound: () => void;
   onHome: () => void;
   onConstraintLevelChange: (level: PlayConstraintLevel) => void;
   onNarrativeStyleChange: (styleId: string) => void;
@@ -94,7 +91,6 @@ export function PlayTools({
   narrativeStylesLoading = false,
   rewriteDisabled = false,
   rewriteDisabledReason,
-  soundAvailable = true,
   enableSceneImage,
   onSave,
   onOpenHistory,
@@ -103,7 +99,6 @@ export function PlayTools({
   onOpenRewrite,
   onOpenSummary,
   onRegenerate,
-  onOpenSound,
   onHome,
   onConstraintLevelChange,
   onNarrativeStyleChange,
@@ -528,28 +523,6 @@ export function PlayTools({
                 其他
               </h3>
               <div className="border-t border-[var(--border-default)]">
-                <Button
-                  type="button"
-                  variant="quiet"
-                  size="touch"
-                  className={toolRowClassName}
-                  disabled={!soundAvailable}
-                  aria-describedby={
-                    soundAvailable ? undefined : "play-sound-unavailable"
-                  }
-                  onClick={() => closeBefore(onOpenSound)}
-                >
-                  <Volume2 className="h-4 w-4" />
-                  打开声音
-                </Button>
-                {!soundAvailable && (
-                  <p
-                    id="play-sound-unavailable"
-                    className="border-b border-[var(--border-default)] py-2 text-xs text-[var(--text-secondary)]"
-                  >
-                    故事声音准备好后可在这里打开
-                  </p>
-                )}
                 <Button
                   type="button"
                   variant="quiet"

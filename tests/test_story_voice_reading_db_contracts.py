@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from src.api.schemas import StoryVoiceReadingRequest
 from src.database.models import GeneratedVoiceAsset, SessionLocal, User, VoiceReadingJob, init_db
-from src.services.story_tts_provider import BrowserSpeechTTSProvider, DeterministicTTSProvider
+from src.services.story_tts_provider import DeterministicTTSProvider, UnavailableTTSProvider
 from src.services.story_voice_reading import (
     StoryVoiceReadingService,
     media_type_for_voice_asset,
@@ -16,9 +18,10 @@ from src.services.story_voice_repository import StoryVoiceReadingRepository
 
 
 def _add_user(session: Session) -> int:
+    suffix = uuid4().hex[:12]
     user = User(
-        private_id="maintained-voice-contract-private",
-        public_id="VRC0001",
+        private_id=f"maintained-voice-{suffix}",
+        public_id=f"V{suffix[:7]}",
         display_name="Maintained Voice Contract",
     )
     session.add(user)
@@ -56,7 +59,7 @@ def test_voice_settings_persist_through_service_with_real_database() -> None:
         recovered = service.get_settings(user_id)
 
         assert initial.selected_voice_color == "warm_female"
-        assert initial.auto_read_enabled is False
+        assert initial.auto_read_enabled is True
         assert initial.playback_mode == "audio"
         assert updated.selected_voice_color == "calm_male"
         assert updated.auto_read_enabled is True
@@ -67,27 +70,27 @@ def test_voice_settings_persist_through_service_with_real_database() -> None:
         session.close()
 
 
-def test_browser_fallback_persists_job_without_audio_asset_and_recovers_it() -> None:
+def test_unavailable_provider_persists_failed_job_without_audio_asset() -> None:
     init_db()
     session = SessionLocal()
     try:
         user_id = _add_user(session)
         service = StoryVoiceReadingService(
             StoryVoiceReadingRepository(session),
-            provider=BrowserSpeechTTSProvider(),
+            provider=UnavailableTTSProvider(),
         )
 
         response = service.request_reading(user_id, _reading_request("浏览器朗读也必须保留可恢复的任务状态。"))
         recovered = service.get_job(user_id, response.job_id)
 
-        assert response.status == "ready"
+        assert response.status == "failed"
         assert response.audio_url is None
         assert response.asset_id is None
-        assert response.playback_mode == "browser_speech"
-        assert response.provider == "browser"
-        assert response.model == "browser-speech"
+        assert response.playback_mode == "unavailable"
+        assert response.provider == "unavailable"
+        assert response.model == "unavailable"
         assert recovered.job_id == response.job_id
-        assert recovered.playback_mode == "browser_speech"
+        assert recovered.playback_mode == "unavailable"
         assert recovered.media_type is None
         assert session.query(GeneratedVoiceAsset).filter_by(user_id=user_id).count() == 0
         assert session.query(VoiceReadingJob).filter_by(user_id=user_id).count() == 1
@@ -109,23 +112,18 @@ def test_deterministic_reading_creates_then_reuses_owned_audio_asset() -> None:
 
         generated = service.request_reading(user_id, request)
         reused = service.request_reading(user_id, request)
-        recovered = service.get_job(user_id, generated.job_id)
+        recovered = service.process_job(user_id, generated.job_id)
 
-        assert generated.status == "ready"
-        assert generated.playback_mode == "audio"
-        assert generated.provider == "local"
-        assert generated.model == "deterministic-v1"
-        assert generated.audio_url == "/api/voice-reading/audio/" + normalize_text_hash(request.context.text) + "-warm_female.wav"
-        assert generated.duration_ms == 8_000
-        assert generated.media_type == "audio/wav"
-        assert reused.asset_id == generated.asset_id
-        assert reused.audio_url == generated.audio_url
-        assert reused.message == "Reused cached reading audio"
-        assert recovered.asset_id == generated.asset_id
-        assert recovered.playback_mode == "audio"
+        assert generated.status == "queued"
+        assert reused.job_id == generated.job_id
+        assert recovered.provider == "local"
+        assert recovered.model == "deterministic-v1"
+        assert recovered.audio_url == "/api/voice-reading/audio/" + normalize_text_hash(request.context.text) + "-warm_female.wav"
+        assert recovered.duration_ms == 8_000
         assert recovered.media_type == "audio/wav"
+        assert recovered.playback_mode == "audio"
         assert session.query(GeneratedVoiceAsset).filter_by(user_id=user_id).count() == 1
-        assert session.query(VoiceReadingJob).filter_by(user_id=user_id).count() == 2
+        assert session.query(VoiceReadingJob).filter_by(user_id=user_id).count() == 1
     finally:
         session.rollback()
         session.close()
@@ -138,7 +136,7 @@ def test_reading_context_rejects_missing_identity_and_text_hash_mismatch() -> No
         user_id = _add_user(session)
         service = StoryVoiceReadingService(
             StoryVoiceReadingRepository(session),
-            provider=BrowserSpeechTTSProvider(),
+            provider=UnavailableTTSProvider(),
         )
         text = "阅读上下文的身份和文本哈希必须匹配。"
 

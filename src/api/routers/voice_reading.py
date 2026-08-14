@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Generator
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user
@@ -14,11 +14,14 @@ from src.api.schemas import (
     StoryVoiceReadingRequest,
     StoryVoiceReadingResponse,
     VoiceReadingJobResponse,
+    VoiceReadingProgressRequest,
+    VoiceReadingProgressResponse,
     VoiceReadingSettingsResponse,
     VoiceReadingSettingsUpdateRequest,
     VoiceUploadConsentRequest,
 )
 from src.database.models import SessionLocal
+from src.services.minimax_config import build_minimax_config
 from src.services.story_tts_provider import read_generated_voice_file
 from src.services.story_voice_reading import StoryVoiceReadingService, build_deterministic_wav
 from src.services.story_voice_repository import StoryVoiceReadingRepository
@@ -57,6 +60,7 @@ async def update_voice_reading_settings(
         user_id=user_id,
         selected_voice_color=request.selected_voice_color,
         auto_read_enabled=request.auto_read_enabled,
+        selected_speed=request.selected_speed,
     )
     db.commit()
     return response
@@ -65,17 +69,27 @@ async def update_voice_reading_settings(
 @router.post("/read", response_model=StoryVoiceReadingResponse)
 async def request_story_reading(
     request: StoryVoiceReadingRequest,
+    background_tasks: BackgroundTasks,
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> StoryVoiceReadingResponse:
-    # P2-性能修复：request_reading 会同步调用 TTS 合成（MiniMax，可达 180s+），
-    # 连同 db 查询/提交一起移出事件循环（同一线程内完成，避免跨线程使用 session）。
-    def _run() -> StoryVoiceReadingResponse:
-        response = get_service(db).request_reading(user_id, request)
-        db.commit()
-        return response
+    response = get_service(db).request_reading(user_id, request)
+    db.commit()
+    if response.status == "queued":
+        background_tasks.add_task(process_story_voice_job, user_id, response.job_id)
+    return response
 
-    return await asyncio.to_thread(_run)
+
+def process_story_voice_job(user_id: int, job_id: int) -> None:
+    db = SessionLocal()
+    try:
+        StoryVoiceReadingService(StoryVoiceReadingRepository(db)).process_job(user_id, job_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 @router.get("/jobs/{job_id}", response_model=VoiceReadingJobResponse)
@@ -85,6 +99,69 @@ async def get_voice_reading_job(
     db: Session = Depends(get_session),
 ) -> VoiceReadingJobResponse:
     return get_service(db).get_job(user_id, job_id)
+
+
+def _progress_response(progress: object) -> VoiceReadingProgressResponse:
+    return VoiceReadingProgressResponse(
+        game_id=int(getattr(progress, "game_id")),
+        day_index=int(getattr(progress, "day_index")),
+        story_date=(
+            str(getattr(progress, "story_date"))
+            if getattr(progress, "story_date") is not None
+            else None
+        ),
+        text_hash=str(getattr(progress, "text_hash")),
+        voice_id=str(getattr(progress, "voice_id")),
+        speed=float(getattr(progress, "speed")),
+        paragraph_index=int(getattr(progress, "paragraph_index")),
+        position_ms=int(getattr(progress, "position_ms")),
+        completed=bool(getattr(progress, "completed")),
+        updated_at=(
+            getattr(progress, "updated_at").isoformat()
+            if getattr(progress, "updated_at") is not None
+            else None
+        ),
+    )
+
+
+@router.get("/progress", response_model=VoiceReadingProgressResponse)
+async def get_voice_reading_progress(
+    game_id: int,
+    day_index: int,
+    text_hash: str,
+    voice_id: str,
+    speed: float = 1.0,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> VoiceReadingProgressResponse:
+    progress = StoryVoiceReadingRepository(db).get_progress(
+        user_id, game_id, day_index, text_hash, voice_id, speed
+    )
+    if progress is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Progress not found")
+    return _progress_response(progress)
+
+
+@router.patch("/progress", response_model=VoiceReadingProgressResponse)
+async def update_voice_reading_progress(
+    request: VoiceReadingProgressRequest,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> VoiceReadingProgressResponse:
+    progress = StoryVoiceReadingRepository(db).upsert_progress(
+        user_id=user_id,
+        game_id=request.game_id,
+        day_index=request.day_index,
+        story_date=request.story_date,
+        text_hash=request.text_hash,
+        voice_id=request.voice_id,
+        speed=request.speed,
+        paragraph_index=request.paragraph_index,
+        position_ms=request.position_ms,
+        completed=request.completed,
+    )
+    db.commit()
+    return _progress_response(progress)
 
 
 @router.get("/audio/{file_name}")
@@ -99,6 +176,8 @@ async def get_voice_reading_audio(file_name: str) -> Response:
             media_type=media_type,
             headers={"Cache-Control": "public, max-age=31536000, immutable"},
         )
+    if not build_minimax_config().local_audio_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")
     if not file_name.endswith(".wav"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")
     stem = file_name[:-4]

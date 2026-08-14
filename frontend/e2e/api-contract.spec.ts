@@ -510,33 +510,13 @@ test.describe('API Contract - Preset Endpoints', () => {
   });
 });
 
-test.describe('API Contract - Music Endpoints', () => {
-  // 音乐 API 依赖外部网易云服务，响应可能较慢，给更长的超时
-  const MUSIC_API_TIMEOUT = 30000;
-
-  test('POST /api/music/recommend should exist', async ({ request }) => {
-    // Contract existence should stay fast and should not depend on live AI/music providers.
-    const result = await testEndpoint(request, 'POST', '/api/music/recommend', [422, 429], {});
-    expect(result.exists).toBe(true);
-    expect(result.error).toBeNull();
-  });
-
-  test('GET /api/music/song-url should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'GET', '/api/music/song-url?song_id=1', undefined, undefined, MUSIC_API_TIMEOUT);
-    expect(result.exists).toBe(true);
-    expect(result.error).toBeNull();
-  });
-
-  test('GET /api/music/search should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'GET', '/api/music/search?keyword=test', undefined, undefined, MUSIC_API_TIMEOUT);
-    expect(result.exists).toBe(true);
-    expect(result.error).toBeNull();
-  });
-
-  test('GET /api/music/stream/:songId should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'GET', '/api/music/stream/1', [200, 206, 404, 500, 502], undefined, MUSIC_API_TIMEOUT);
-    expect(result.exists).toBe(true);
-    expect(result.error).toBeNull();
+test.describe('API Contract - Retired Music Endpoints', () => {
+  test('all /api/music endpoints remain unregistered', async ({ request }) => {
+    for (const path of ['/api/music/recommend', '/api/music/song-url?song_id=1', '/api/music/search?keyword=test', '/api/music/stream/1']) {
+      const response = await request.get(`${API_URL}${path}`);
+      expect(response.status(), path).toBe(404);
+      await expect(response.json()).resolves.toEqual({ detail: 'Not Found' });
+    }
   });
 });
 
@@ -656,42 +636,4 @@ test.describe('API Contract - Schema Validation', () => {
     }
   });
 
-  test('GET /api/music/song-url should return url field or error', async ({ request }) => {
-    const url = `${API_URL}/api/music/song-url?song_id=1`;
-    const response = await request.get(url);
-    const status = response.status();
-
-    if (status === 200) {
-      const body = await response.json();
-      expect(body).toHaveProperty('url');
-      expect(typeof body.url).toBe('string');
-    } else {
-      // 404 (song not found) or 500 (service unavailable) are acceptable
-      expect([404, 500]).toContain(status);
-    }
-  });
-
-  test('GET /api/music/search should return songs array or error', async ({ request }) => {
-    const url = `${API_URL}/api/music/search?keyword=test`;
-    const response = await request.get(url);
-    const status = response.status();
-
-    if (status === 200) {
-      const body = await response.json();
-      expect(body).toHaveProperty('songs');
-      expect(Array.isArray(body.songs)).toBe(true);
-      if (body.songs.length > 0) {
-        const song = body.songs[0];
-        expect(song).toHaveProperty('id');
-        expect(typeof song.id).toBe('number');
-        expect(song).toHaveProperty('name');
-        expect(typeof song.name).toBe('string');
-        expect(song).toHaveProperty('artists');
-        expect(Array.isArray(song.artists)).toBe(true);
-      }
-    } else {
-      // 500 if music service is unavailable
-      expect([500]).toContain(status);
-    }
-  });
 });

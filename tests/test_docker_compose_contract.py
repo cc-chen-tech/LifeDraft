@@ -15,16 +15,11 @@ class TestDockerComposeContract:
         with open("docker-compose.ecs.yml") as f:
             return yaml.safe_load(f)
 
-    def test_music_api_has_healthcheck(self, compose):
-        """music-api 服务必须有 healthcheck"""
+    def test_music_api_runtime_is_removed(self, compose):
+        """退役的网易云运行组件不得继续部署。"""
         services = compose.get("services", {})
-        music_api = services.get("music-api", {})
-        assert "healthcheck" in music_api, "music-api 必须配置 healthcheck"
-        hc = music_api["healthcheck"]
-        assert "test" in hc
-        assert "interval" in hc
-        assert "timeout" in hc
-        assert "retries" in hc
+        assert "music-api" not in services
+        assert "story2-music" not in str(compose)
 
     def test_backend_has_healthcheck(self, compose):
         """backend 服务必须有 healthcheck"""

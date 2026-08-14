@@ -10,15 +10,8 @@ jest.mock("@/components/ErrorReporter", () => ({
     return <div data-testid="error-reporter" />;
   },
 }));
-jest.mock("@/components/game/GlobalMusicPlayerWrapper", () => ({
-  __esModule: true,
-  default: function GlobalMusicPlayerWrapperTestDouble() {
-    return <div data-testid="global-music-player-wrapper" />;
-  },
-}));
-
 describe("RootLayout AppShell boundary", () => {
-  it("keeps route content and the global player inside one persistent AppShell", () => {
+  it("keeps route content inside one persistent AppShell without a music runtime", () => {
     const markup = renderToStaticMarkup(
       <RootLayout>
         <main data-testid="route-page">route page</main>
@@ -36,9 +29,8 @@ describe("RootLayout AppShell boundary", () => {
     expect(shell?.previousElementSibling).toBe(errorReporter);
     expect(shell).not.toContainElement(errorReporter);
     expect(content).toContainElement(host.querySelector('[data-testid="route-page"]'));
-    expect(fixedRegions).toContainElement(
-      host.querySelector('[data-testid="global-music-player-wrapper"]'),
-    );
+    expect(fixedRegions).toBeNull();
+    expect(host.querySelector('[data-testid="global-music-player-wrapper"]')).toBeNull();
   });
 
   it("publishes the lowercase brand and enables safe-area viewport insets", () => {

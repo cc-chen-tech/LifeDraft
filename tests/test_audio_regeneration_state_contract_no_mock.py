@@ -28,9 +28,10 @@ def test_voice_setting_contract_preserves_selected_voice_color() -> None:
     assert response.selected_voice_color == "clear_neutral"
 
 
-def test_play_page_uses_one_completed_story_media_gate() -> None:
+def test_play_page_uses_one_daily_story_listening_experience() -> None:
     play_page = (ROOT / "frontend/src/app/play/page.tsx").read_text(encoding="utf-8")
 
-    assert "CompletedStoryMediaGate" in play_page
+    assert "StoryListeningExperience" in play_page
+    assert "CompletedStoryMediaGate" not in play_page
     assert "useStoryVoiceStore" not in play_page
     assert "setActiveStoryText(storyText)" not in play_page

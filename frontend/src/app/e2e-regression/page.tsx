@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+
 import {
   E2ERegressionPageContent,
   NarrativeLoadingFixture,
@@ -56,6 +58,13 @@ function resolvePlayExperienceFixtureState(
 export default async function E2ERegressionPage({
   searchParams,
 }: E2ERegressionPageProps) {
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.ENABLE_E2E_REGRESSION_FIXTURES !== "1"
+  ) {
+    notFound();
+  }
+
   const resolvedSearchParams = await searchParams;
   const narrativeLoadingFixtureState = resolveNarrativeLoadingFixtureState(
     resolvedSearchParams.narrativeLoading,

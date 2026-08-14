@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import ErrorReporter from "@/components/ErrorReporter";
-import GlobalMusicPlayerWrapper from "@/components/game/GlobalMusicPlayerWrapper";
 import { AppShell } from "@/components/story101";
 import "./globals.css";
 
@@ -26,9 +25,7 @@ export default function RootLayout({
     <html lang="zh" className="dark">
       <body className="font-sans antialiased">
         <ErrorReporter />
-        <AppShell fixedRegions={<GlobalMusicPlayerWrapper />}>
-          {children}
-        </AppShell>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

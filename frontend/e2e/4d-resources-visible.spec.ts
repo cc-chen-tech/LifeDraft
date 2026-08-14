@@ -84,24 +84,6 @@ async function routeActionableGameState(
     },
   );
 
-  await page.route(
-    (url) =>
-      url.origin === browserOrigin &&
-      url.pathname === "/api/music/recommend" &&
-      url.search === "",
-    async (route) => {
-      if (route.request().method() !== "POST") {
-        await route.continue();
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ songs: [] }),
-      });
-    },
-  );
-
   return usage;
 }
 

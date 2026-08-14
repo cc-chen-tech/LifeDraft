@@ -20,12 +20,7 @@ import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
-import {
-  CLOSE_SOUND_PANEL_EVENT,
-  OPEN_SOUND_PANEL_EVENT,
-  SOUND_PANEL_STATE_EVENT,
-} from "@/components/game/GlobalMusicPlayer";
-import { CompletedStoryMediaGate } from "@/components/game/CompletedStoryMediaGate";
+import { StoryListeningExperience } from "@/components/game/StoryListeningExperience";
 import { getSceneImageDisplayMode } from "@/components/game/sceneImageStagePolicy";
 import {
   FeedbackNotice,
@@ -36,7 +31,6 @@ import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
 import { useEventStore } from "@/stores/useEventStore";
-import { useMusicStore } from "@/stores/useMusicStore";
 import { useSceneImageStore } from "@/stores/useSceneImageStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { api } from "@/lib/api";
@@ -84,7 +78,6 @@ export default function PlayPage() {
   const [assistantCommand, setAssistantCommand] = useState<ChatBarCommand | null>(null);
   const [assistantSurfaceOpen, setAssistantSurfaceOpen] = useState(false);
   const [toolsSurfaceOpen, setToolsSurfaceOpen] = useState(false);
-  const [soundSurfaceOpen, setSoundSurfaceOpen] = useState(false);
   const [dailySettlement, setDailySettlement] = useState<Record<string, number> | null>(null);
   const [queuedPageFeedback, setQueuedPageFeedback] = useState<PageFeedbackState | null>(null);
   const lastObservedFeedbackKeyRef = useRef<string | null>(null);
@@ -181,32 +174,12 @@ export default function PlayPage() {
   }, []);
 
   const processingMessage = useUIStore((state) => state.processingMessage);
-  const hasMusicSoundContext = useMusicStore((state) =>
-    Boolean(
-      state.activeStoryText ||
-        state.recommendation ||
-        state.currentSong ||
-        state.queue.length > 0,
-    ),
-  );
-  const hasCompletedReadingContext = Boolean(
-    displayText.trim() &&
-      Number.isFinite(Number(gameId)) &&
-      (isViewingHistory ||
-        phase === "options" ||
-        phase === "result" ||
-        phase === "summary"),
-  );
-  const soundAvailable = hasMusicSoundContext || hasCompletedReadingContext;
-
   const resultSceneRound = Math.max(0, currentRound - 1);
   const isDailyTimeline = playerState?.timeline?.version === 2;
   const dailyDate = isDailyTimeline ? playerState?.timeline?.current_date : null;
   const dailyDateTitle = typeof dailyDate === "string"
     ? `公元 ${dailyDate.slice(0, 4)} 年 ${Number(dailyDate.slice(5, 7))} 月 ${Number(dailyDate.slice(8, 10))} 日`
     : null;
-  const storyReadyForCompletedMedia =
-    phase === "options" || phase === "result" || phase === "summary";
   const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
   const isUnifiedGameplayFailure =
     phase === "error" && gameplayTransport === "failed";
@@ -217,7 +190,6 @@ export default function PlayPage() {
   const hasCompetingSurfaceOpen =
     assistantSurfaceOpen ||
     toolsSurfaceOpen ||
-    soundSurfaceOpen ||
     showCollection ||
     showHistory;
   const sceneImageDisplayMode = getSceneImageDisplayMode({
@@ -311,19 +283,6 @@ export default function PlayPage() {
     return () => window.clearTimeout(timeout);
   }, [pageFeedback]);
 
-  // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
-  const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
-  const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
-  useEffect(() => {
-    if (gameId) {
-      setActiveGameId(Number(gameId));
-    }
-    return () => {
-      setActiveStoryText(null);
-      setActiveGameId(null);
-    };
-  }, [gameId, setActiveStoryText, setActiveGameId]);
-
   // ★ 游戏设置
   const constraintLevel = useGameStore((state) => state.constraintLevel);
   const setConstraintLevel = useGameStore((state) => state.setConstraintLevel);
@@ -401,25 +360,9 @@ export default function PlayPage() {
     }));
   }, []);
 
-  const closeSoundPanel = useCallback(() => {
-    window.dispatchEvent(new Event(CLOSE_SOUND_PANEL_EVENT));
-  }, []);
-
-  useEffect(() => {
-    const handleSoundPanelState = (event: Event) => {
-      const open = (event as CustomEvent<{ open?: unknown }>).detail?.open;
-      if (typeof open === "boolean") setSoundSurfaceOpen(open);
-    };
-    window.addEventListener(SOUND_PANEL_STATE_EVENT, handleSoundPanelState);
-    return () => {
-      window.removeEventListener(SOUND_PANEL_STATE_EVENT, handleSoundPanelState);
-    };
-  }, []);
-
   const closeAssistantAndSound = useCallback(() => {
     requestAssistantAction("close");
-    closeSoundPanel();
-  }, [closeSoundPanel, requestAssistantAction]);
+  }, [requestAssistantAction]);
 
   const rememberPanelOpener = useCallback(
     (targetRef: { current: HTMLElement | null }) => {
@@ -530,12 +473,11 @@ export default function PlayPage() {
   }, [options, setOptions, setStoryText]);
 
   const handleOpenAssistantSurface = useCallback((action: ChatBarAction) => {
-    closeSoundPanel();
     setShowCollection(false);
     setActiveSidePanel(null);
     if (showHistory) setShowHistory(false);
     requestAssistantAction(action);
-  }, [closeSoundPanel, requestAssistantAction, setShowHistory, showHistory]);
+  }, [requestAssistantAction, setShowHistory, showHistory]);
 
   const handleOpenTools = useCallback(() => {
     closeAssistantAndSound();
@@ -553,11 +495,6 @@ export default function PlayPage() {
     closeAssistantAndSound();
     handleRegenerate();
   }, [closeAssistantAndSound, handleRegenerate]);
-
-  const handleOpenSound = useCallback(() => {
-    requestAssistantAction("close");
-    window.dispatchEvent(new Event(OPEN_SOUND_PANEL_EVENT));
-  }, [requestAssistantAction]);
 
   const handleHome = useCallback(() => {
     closeAssistantAndSound();
@@ -770,31 +707,6 @@ export default function PlayPage() {
       <Suspense fallback={null}>
         <GameIdSync />
       </Suspense>
-      {/* CompletedStoryMediaGate owns setActiveReadingTarget and media cancellation. */}
-      <CompletedStoryMediaGate
-        text={displayText}
-        context={
-          Number.isFinite(Number(gameId))
-            ? {
-                source_type: isViewingHistory ? "history_round" : "current_story",
-                game_id: Number(gameId),
-                week: isViewingHistory ? currentHistoryRound?.week ?? null : progress?.week ?? null,
-                round_number: isViewingHistory
-                  ? currentHistoryRound?.round ?? null
-                  : currentRound ?? null,
-                stage: "event",
-                attempt_id: isViewingHistory
-                  ? "history"
-                  : `${progress?.week ?? 0}-${currentRound ?? 0}`,
-                text_hash: "pending-client-hash",
-                text: displayText,
-              }
-            : null
-        }
-        storyReady={storyReadyForCompletedMedia}
-        storyBusy={isCurrentStoryBusy}
-        isViewingHistory={isViewingHistory}
-      />
       <PlayReadingFrame
         contentRef={storyContainerRef}
         playerState={playerState}
@@ -810,7 +722,6 @@ export default function PlayPage() {
           narrativeStylesLoading: styleLoading,
           rewriteDisabled: storyRewriteDisabled,
           rewriteDisabledReason: storyRewriteDisabledReason,
-          soundAvailable,
           enableSceneImage,
           onSave: handleCoordinatedSave,
           onOpenHistory: handleOpenHistoryPanel,
@@ -819,7 +730,6 @@ export default function PlayPage() {
           onOpenRewrite: () => handleOpenAssistantSurface("rewrite"),
           onOpenSummary: () => handleOpenAssistantSurface("summary"),
           onRegenerate: handleCoordinatedRegenerate,
-          onOpenSound: handleOpenSound,
           onHome: handleHome,
           onConstraintLevelChange: setConstraintLevel,
           onNarrativeStyleChange: handleStyleChange,
@@ -830,7 +740,7 @@ export default function PlayPage() {
           isDailyTimeline,
         }}
       >
-        {!isViewingHistory && dailyDateTitle && (
+        {!isViewingHistory && dailyDateTitle && !(isDailyTimeline && phase === "options") && (
           <div className="mb-6 text-center">
             <h1 className="font-serif text-xl font-semibold tracking-wide text-[var(--text-primary)]">
               {dailyDateTitle}
@@ -840,6 +750,30 @@ export default function PlayPage() {
             </p>
           </div>
         )}
+        {isDailyTimeline && !isViewingHistory && phase === "options" && displayText.trim() && Number.isFinite(Number(gameId)) ? (
+          <StoryListeningExperience
+            key={`${playerState?.timeline?.current_date}-${playerState?.timeline?.day_index}`}
+            context={{
+              source_type: "current_story",
+              game_id: Number(gameId),
+              week: progress?.week ?? null,
+              round_number: currentRound ?? null,
+              stage: "event",
+              attempt_id: `${playerState?.timeline?.current_date}-${playerState?.timeline?.day_index}`,
+              day_index: playerState?.timeline?.day_index ?? 0,
+              story_date: playerState?.timeline?.current_date ?? null,
+              text_hash: "pending-client-hash",
+              text: displayText,
+            }}
+            storyText={displayText}
+            dateTitle={dailyDateTitle}
+            dayNumber={playerState?.timeline?.day_number}
+            totalDays={playerState?.timeline?.total_days}
+            options={options}
+            onSelectChoice={handleChoice}
+            media={sceneMedia}
+          />
+        ) : (
         <PlayPhaseContent
           phase={phase}
           isViewingHistory={isViewingHistory}
@@ -885,6 +819,7 @@ export default function PlayPage() {
             onRetry: handleRetryGeneration,
           }}
         />
+        )}
 
       </PlayReadingFrame>
 

@@ -15,7 +15,6 @@ services:
     depends_on:
       - backend
       - frontend
-      - music-api
     restart: unless-stopped
     networks:
       - story2-network
@@ -55,23 +54,6 @@ services:
     restart: unless-stopped
     networks:
       - story2-network
-
-  music-api:
-    build:
-      context: ./netease-music-api
-      dockerfile: Dockerfile
-    container_name: story2-music
-    environment:
-      - PORT=3001
-    restart: unless-stopped
-    networks:
-      - story2-network
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3001/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
 networks:
   story2-network:

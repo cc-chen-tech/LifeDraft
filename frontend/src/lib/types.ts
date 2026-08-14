@@ -22,16 +22,18 @@ export interface VoiceReadingSettingsResponse {
   selected_voice_color: string | null;
   uploaded_voice_available: boolean;
   auto_read_enabled: boolean;
+  selected_speed: number;
   tts_provider: string;
   tts_model: string;
   tts_provider_available: boolean;
   backend_audio_enabled: boolean;
-  playback_mode: "audio" | "browser_speech";
+  playback_mode: "audio" | "unavailable";
 }
 
 export interface VoiceReadingSettingsUpdateRequest {
   selected_voice_color?: string | null;
   auto_read_enabled?: boolean | null;
+  selected_speed?: number | null;
 }
 
 export interface VoiceUploadConsentRequest {
@@ -46,6 +48,8 @@ export interface ReadingContext {
   round_number?: number | null;
   stage?: string | null;
   attempt_id?: string | null;
+  day_index?: number | null;
+  story_date?: string | null;
   text_hash: string;
   text: string;
 }
@@ -64,12 +68,13 @@ export interface StoryVoiceReadingResponse {
   audio_url?: string | null;
   asset_id?: number | null;
   duration_ms?: number | null;
-  playback_mode: "audio" | "browser_speech";
+  playback_mode: "audio" | "unavailable";
   provider: string;
   model: string;
   media_type?: string | null;
   error_code?: string | null;
   message: string;
+  segments: VoiceReadingSegment[];
 }
 
 export interface VoiceReadingJobResponse {
@@ -78,12 +83,36 @@ export interface VoiceReadingJobResponse {
   audio_url?: string | null;
   asset_id?: number | null;
   duration_ms?: number | null;
-  playback_mode: "audio" | "browser_speech";
+  playback_mode: "audio" | "unavailable";
   provider: string;
   model: string;
   media_type?: string | null;
   error_code?: string | null;
   message: string;
+  segments: VoiceReadingSegment[];
+}
+
+export interface VoiceReadingSegment {
+  paragraph_index: number;
+  status: string;
+  audio_url?: string | null;
+  asset_id?: number | null;
+  duration_ms?: number | null;
+  media_type?: string | null;
+  error_code?: string | null;
+}
+
+export interface VoiceReadingProgress {
+  game_id: number;
+  day_index: number;
+  story_date?: string | null;
+  text_hash: string;
+  voice_id: string;
+  speed: number;
+  paragraph_index: number;
+  position_ms: number;
+  completed: boolean;
+  updated_at?: string | null;
 }
 
 export interface VoiceAssetResponse {

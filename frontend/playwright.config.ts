@@ -55,8 +55,6 @@ const desktopChromeUse = {
 const AI_HEAVY_TESTS = [
   '**/narrative-systems.spec.ts',           // 三大叙事系统集成, 多个 120s timeout
   '**/character-settings-persistence.spec.ts', // 角色设置持久化, 300s timeout
-  '**/music-player.spec.ts',                // 音乐播放器, 180s (需 AI 生成故事 + 音乐推荐)
-  '**/music-playlist-persistence.spec.ts',  // 播放列表持久化, 180s
   '**/sse-timeout-sync.spec.ts',            // SSE 超时同步, 创建游戏触发 AI 生成
   '**/claude-code-improvements.spec.ts',    // 进度显示验证, 120s (需 AI 生成过程)
   '**/full-game-flow.spec.ts',              // 完整游戏流程, 120s

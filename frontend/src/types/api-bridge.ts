@@ -54,11 +54,6 @@ export type ApiCharacterCollectionItem = Schemas['CharacterCollectionItem'];
 export type ApiItemCollectionItem = Schemas['ItemCollectionItem'];
 export type ApiLandmarkCollectionItem = Schemas['LandmarkCollectionItem'];
 
-// ─── Music ───────────────────────────────────────────────────────────
-export type ApiMusicRecommendationRequest = Schemas['MusicRecommendationRequest'];
-export type ApiMusicRecommendationResponse = Schemas['MusicRecommendationResponse'];
-export type ApiSongResponse = Schemas['SongResponse'];
-
 // ─── Save Points ─────────────────────────────────────────────────────
 export type ApiSavePointItem = Schemas['SavePointItem'];
 export type ApiSavePointListResponse = Schemas['SavePointListResponse'];

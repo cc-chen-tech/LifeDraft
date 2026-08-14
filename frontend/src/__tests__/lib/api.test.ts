@@ -2,7 +2,6 @@
  * API client tests
  */
 import api from '@/lib/api';
-import { fetchMusicRecommendation, fetchSongUrl } from '@/stores/useMusicStore';
 
 // Helper: create a mock Response-like object that fetch resolves to
 function mockFetchResponse(body: unknown = {}, status = 200) {
@@ -220,38 +219,6 @@ describe('character', () => {
   });
 });
 
-// ─── music API path verification ───────────────────────────────
-describe('music', () => {
-  it('fetchMusicRecommendation calls POST /api/music/recommend', async () => {
-    global.fetch = jest.fn(() =>
-      mockFetchResponse({ keywords: [], mood: 'calm', scene_type: 'forest', songs: [] })
-    );
-
-    await fetchMusicRecommendation('A gentle breeze...', 10);
-
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-    const [url, options] = (global.fetch as jest.Mock).mock.calls[0];
-    // Music API uses full URL (API_BASE_URL + /api/music/recommend)
-    expect(url).toContain('/api/music/recommend');
-    expect(options.method).toBe('POST');
-    expect(JSON.parse(options.body)).toEqual({ story_text: 'A gentle breeze...', game_id: 10, refresh: false });
-  });
-
-  it('fetchSongUrl calls GET /api/music/song-url with song_id param', async () => {
-    global.fetch = jest.fn(() =>
-      mockFetchResponse({ url: 'https://example.com/song.mp3' })
-    );
-
-    await fetchSongUrl(12345);
-
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-    const [url, options] = (global.fetch as jest.Mock).mock.calls[0];
-    expect(url).toContain('/api/music/song-url?song_id=12345');
-    // Should be GET (no method specified or 'GET')
-    expect(options?.method).toBeUndefined();
-  });
-});
-
 // ─── credentials: 'include' verification ───────────────────────
 describe('credentials', () => {
   it('gameplay API requests include credentials', async () => {
@@ -281,27 +248,6 @@ describe('credentials', () => {
     expect(options.credentials).toBe('include');
   });
 
-  it('music recommend request includes credentials', async () => {
-    global.fetch = jest.fn(() =>
-      mockFetchResponse({ keywords: [], mood: '', scene_type: '', songs: [] })
-    );
-
-    await fetchMusicRecommendation('text');
-
-    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
-    expect(options.credentials).toBe('include');
-  });
-
-  it('music song-url request includes credentials', async () => {
-    global.fetch = jest.fn(() =>
-      mockFetchResponse({ url: 'https://example.com/song.mp3' })
-    );
-
-    await fetchSongUrl(1);
-
-    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
-    expect(options.credentials).toBe('include');
-  });
 });
 
 describe('production API base safety', () => {
@@ -330,19 +276,6 @@ describe('production API base safety', () => {
     );
   });
 
-  it('keeps music recommendations on the same-origin proxy when a loopback URL leaks into the public build', async () => {
-    process.env.NEXT_PUBLIC_API_URL = 'http://127.0.0.1:3010/api';
-    jest.resetModules();
-    const { fetchMusicRecommendation: isolatedFetchMusicRecommendation } = await import('@/stores/useMusicStore');
-    global.fetch = jest.fn(() => mockFetchResponse({ keywords: [], mood: 'calm', scene_type: 'study', songs: [] }));
-
-    await isolatedFetchMusicRecommendation('雨夜的图书馆里，你决定继续整理证据。', 7);
-
-    expect(global.fetch).toHaveBeenCalledWith(
-      '/api/music/recommend',
-      expect.objectContaining({ credentials: 'include' }),
-    );
-  });
 });
 
 // ─── 204 No Content handling ───────────────────────────────────

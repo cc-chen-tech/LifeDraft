@@ -296,18 +296,12 @@ run_preflight() {
     echo -e "${YELLOW}运行 OpenSpec strict 校验...${NC}"
     openspec validate --all --strict
     local openspec_code=$?
-    openspec validate improve-story-music-recommendation-and-premium-ai-queue --strict
-    local music_openspec_code=$?
-    openspec validate redesign-bottom-bar-and-improve-music-matching --strict
-    local redesign_openspec_code=$?
     openspec validate shift-left-e2e-contract-gates --strict
     local shift_left_openspec_code=$?
     openspec validate add-story-voice-reading --strict
     local story_voice_openspec_code=$?
     openspec validate provider-backed-story-tts --strict
     local story_tts_openspec_code=$?
-    openspec validate add-minimax-story-audio-generation --strict
-    local minimax_audio_openspec_code=$?
 
     echo -e "${YELLOW}运行后端 preflight quality 检查...${NC}"
     python -m flake8 src/services/story_voice_reading.py --max-line-length=100 --ignore=E501,W503,E203
@@ -326,8 +320,8 @@ run_preflight() {
         tests/test_wealth_removal_contract.py \
         tests/test_opening_story_contract.py \
         tests/test_character_creation_deep.py::TestCharacterCreatorGenerateSetting::test_generate_era_feedback_still_aligns_with_modern_life_vision \
-        tests/test_music_degradation_no_mock.py \
-        tests/test_minimax_audio_generation_contract.py \
+        tests/test_story_voice_chapter_contract.py \
+        tests/test_music_runtime_removed.py \
         tests/test_sse_timeout_contract.py \
         -v
     local gate_code=$?
@@ -378,29 +372,23 @@ run_preflight() {
         src/__tests__/stores/useGameStore.test.ts \
         src/__tests__/pages/CreatePage.test.tsx \
         src/__tests__/hooks/eventUtils.test.ts \
-        src/__tests__/components/StoryVoiceControls.test.tsx \
-        src/__tests__/components/CompletedStoryMediaGate.test.tsx \
+        src/__tests__/components/StoryListeningExperience.test.tsx \
         src/__tests__/components/StatusBar.test.tsx \
         src/__tests__/components/DialogA11y.test.tsx \
         src/__tests__/components/CompletionScreen.loading.test.tsx \
         src/__tests__/components/SheetA11y.test.tsx \
         src/__tests__/pages/PlayPage.test.tsx \
-        src/__tests__/components/game/MusicPlayer.test.tsx \
-        src/__tests__/components/MusicPlayer.test.tsx \
         src/__tests__/components/ChatBar.test.tsx \
-        src/__tests__/components/GlobalMusicPlayer.escape.test.tsx \
-        src/__tests__/stores/useStoryVoiceStore.test.ts \
         src/__tests__/lib/apiRetryPolicy.test.ts \
         src/__tests__/app/api/route.test.ts \
         src/__tests__/components/game/CollectionPanelAutoCollect.test.tsx \
         src/__tests__/stores/useCollectionStore.test.ts \
-        src/__tests__/stores/useMusicStore.musicQueuePolicy.test.ts \
         --runInBand
     local jest_code=$?
     cd "$PROJECT_DIR"
 
     local result=0
-    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $minimax_audio_openspec_code -ne 0 ] || [ $flake8_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $openapi_export_code -ne 0 ] || [ $openapi_ts_code -ne 0 ] || [ $openapi_diff_code -ne 0 ] || [ $jest_code -ne 0 ]; then
+    if [ $openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $flake8_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $openapi_export_code -ne 0 ] || [ $openapi_ts_code -ne 0 ] || [ $openapi_diff_code -ne 0 ] || [ $jest_code -ne 0 ]; then
         result=1
     fi
 
@@ -418,11 +406,8 @@ run_mypy() {
     echo -e "${YELLOW}运行 mypy 严格静态类型检查...${NC}"
     MYPY_STRICT_TARGETS=(
         src/ai/text_quality.py
-        src/services/music_service.py
-        src/services/music_playlist_service.py
         src/services/minimax_config.py
         src/services/minimax_story_tts_provider.py
-        src/services/minimax_music_generation.py
         src/game/relationship_authority.py
         src/game/assistant_grounding.py
         src/services/story_tts_provider.py
@@ -488,15 +473,14 @@ run_contract() {
         tests/test_input_limits_contract.py \
         tests/test_player_name_in_prompts_contract.py \
         tests/test_gate_contracts_no_mock.py \
-        tests/test_music_playlist_contract.py \
-        tests/test_music_recommend_api_degradation_contract.py \
-        tests/test_minimax_audio_generation_contract.py \
         tests/test_minimax_image_generation_contract.py \
         tests/test_character_settings_api_contract.py \
         tests/test_shift_left_e2e_contract_no_mock.py \
-        tests/test_story_music_recommendation_contract.py \
         tests/test_preset_cast_authority_contract.py \
         tests/test_story_voice_reading_contract.py \
+        tests/test_story_voice_chapter_contract.py \
+        tests/test_story_voice_routes_v2.py \
+        tests/test_music_runtime_removed.py \
         tests/test_collection_contract.py \
         tests/test_collection_cache_contract.py \
         tests/test_collection_recognition_current_event.py \
@@ -536,9 +520,8 @@ run_db() {
         tests/test_integration_real_db.py \
         tests/test_database.py \
         tests/test_gate_real_db_no_mock.py \
-        tests/test_minimax_audio_generation_db.py \
-        tests/test_story_music_recommendation_db.py \
         tests/test_story_voice_reading_db.py \
+        tests/test_story_voice_async_chapter.py \
         tests/test_collection_cache_db.py \
         tests/test_audio_regeneration_state_db_no_mock.py \
         tests/test_life_summary_grounding_db_no_mock.py \
@@ -637,8 +620,8 @@ run_e2e_browser_impl() {
     API_HOST=127.0.0.1 API_PORT="$E2E_BACKEND_PORT" \
     E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT="$E2E_BACKEND_PORT" \
     DATABASE_URL="$LOCAL_E2E_DB_URL" \
-    E2E_CONTRACT_PROBE_FAST=1 E2E_DETERMINISTIC_STORY=1 STORY_TTS_ALLOW_REQUEST_PROVIDER=1 \
-    MINIMAX_E2E_LOCAL_AUDIO=1 MINIMAX_E2E_LOCAL_IMAGE=1 NETEASE_E2E_LOCAL_MUSIC=1 API_RELOAD=false \
+    E2E_CONTRACT_PROBE_FAST=1 E2E_DETERMINISTIC_STORY=1 STORY_TTS_PROVIDER=minimax \
+    MINIMAX_E2E_LOCAL_AUDIO=1 MINIMAX_E2E_LOCAL_IMAGE=1 API_RELOAD=false \
     python run_api.py > "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!
     echo "$BACKEND_PID" > "$BACKEND_PID_FILE"
@@ -667,6 +650,7 @@ run_e2e_browser_impl() {
     local frontend_mode="${E2E_FRONTEND_MODE:-prod}"
     local FRONTEND_PID=""
     local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"
+    export ENABLE_E2E_REGRESSION_FIXTURES=1
 
     if [ "$frontend_mode" = "dev" ]; then
         echo -e "${YELLOW}使用 Playwright webServer（dev）模式运行 E2E（不推荐）...${NC}"
@@ -726,15 +710,6 @@ run_e2e_browser_impl() {
     run_playwright_command "core" npx playwright test --project=core --reporter=dot --workers=1
     local core_result=$?
 
-    echo -e "${YELLOW}运行会员 AI 音乐队列补充 E2E 测试...${NC}"
-    run_playwright_command "music-player" npx playwright test e2e/music-player.spec.ts \
-        --project=ai-heavy \
-        --grep "会员 AI 曲目生成后只进入后续队列且不切换当前歌曲" \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local music_ai_result=$?
-
     echo -e "${YELLOW}运行角色设定 PATCH 持久化 E2E 浏览器测试...${NC}"
     run_playwright_command "character-settings" npx playwright test e2e/character-settings-persistence.spec.ts \
         --project=ai-heavy \
@@ -744,7 +719,7 @@ run_e2e_browser_impl() {
     local character_settings_result=$?
 
     local result=0
-    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $character_settings_result -ne 0 ]; then
         result=1
     fi
 
