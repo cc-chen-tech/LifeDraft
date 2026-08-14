@@ -33,6 +33,23 @@ class CharacterImageService:
         self.image_client = image_client or ImageClient()
         self.storage_service = storage_service or ImageStorageService()
 
+    def _delete_image_files(self, images: List[ImageModel]) -> None:
+        """P3-存储修复：删除已停用图片的磁盘/OSS 文件。
+
+        单文件删除失败只记日志，绝不影响重生成主流程。
+        """
+        for img in images:
+            try:
+                self.storage_service.delete_image(
+                    str(img.storage_path),
+                    str(img.storage_type or "local"),
+                )
+                logger.info(f"Deleted deactivated image file: {img.storage_path}")
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to delete deactivated image file {img.storage_path}: {exc}"
+                )
+
     def generate_character_image(
         self,
         game_id: int,
@@ -267,20 +284,43 @@ class CharacterImageService:
             )
 
             # ★ 新图片生成成功后，停用旧图片
+            new_image_ids = [img.image_id for img in new_images]
             if original.entity_key:
+                old_images = (
+                    self.db.query(ImageModel)
+                    .filter(
+                        ImageModel.game_id == original.game_id,
+                        ImageModel.entity_key == original.entity_key,
+                        ImageModel.image_id.notin_(new_image_ids),
+                    )
+                    .all()
+                )
                 self.db.query(ImageModel).filter(
                     ImageModel.game_id == original.game_id,
                     ImageModel.entity_key == original.entity_key,
-                    ImageModel.image_id != new_images[0].image_id,  # 排除新生成的图片
+                    ImageModel.image_id.notin_(new_image_ids),
                 ).update({"is_active": False})
             else:
+                old_images = (
+                    self.db.query(ImageModel)
+                    .filter(
+                        ImageModel.game_id == original.game_id,
+                        ImageModel.image_type == original.image_type,
+                        ImageModel.entity_name == original.entity_name,
+                        ImageModel.image_id.notin_(new_image_ids),
+                    )
+                    .all()
+                )
                 self.db.query(ImageModel).filter(
                     ImageModel.game_id == original.game_id,
                     ImageModel.image_type == original.image_type,
                     ImageModel.entity_name == original.entity_name,
-                    ImageModel.image_id != new_images[0].image_id,  # 排除新生成的图片
+                    ImageModel.image_id.notin_(new_image_ids),
                 ).update({"is_active": False})
             self.db.commit()
+
+            # P3-存储修复：停用的旧图片不再被引用，删除其磁盘/OSS 文件。
+            self._delete_image_files(old_images)
 
             logger.info(f"Images regenerated: {len(new_images)} new images, old images deactivated")
             return new_images
@@ -325,18 +365,38 @@ class CharacterImageService:
         # 解决方案：同时使用 entity_name 作为过滤条件
         if original.entity_key:
             # entity_key 不为空，使用 entity_key 匹配
+            old_images = (
+                self.db.query(ImageModel)
+                .filter(
+                    ImageModel.game_id == original.game_id,
+                    ImageModel.entity_key == original.entity_key,
+                )
+                .all()
+            )
             self.db.query(ImageModel).filter(
                 ImageModel.game_id == original.game_id,
                 ImageModel.entity_key == original.entity_key,
             ).update({"is_active": False})
         else:
             # entity_key 为空，使用 entity_name + image_type 匹配，避免误伤其他人物
+            old_images = (
+                self.db.query(ImageModel)
+                .filter(
+                    ImageModel.game_id == original.game_id,
+                    ImageModel.image_type == original.image_type,
+                    ImageModel.entity_name == original.entity_name,
+                )
+                .all()
+            )
             self.db.query(ImageModel).filter(
                 ImageModel.game_id == original.game_id,
                 ImageModel.image_type == original.image_type,
                 ImageModel.entity_name == original.entity_name,
             ).update({"is_active": False})
         self.db.commit()
+
+        # P3-存储修复：停用的旧图片不再被引用，删除其磁盘/OSS 文件。
+        self._delete_image_files(old_images)
 
         metadata: Dict[str, Any] = original.metadata_json or {}  # type: ignore[assignment]
         char_settings = metadata.get("characterSettings", {})
