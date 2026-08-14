@@ -156,3 +156,56 @@ class TestStateRepositoryDB:
 
         loaded = repo.load_saved_game(sample_game.game_id, sample_user.user_id)
         assert "constraint_level" in loaded
+
+    def test_save_game_progress_prunes_old_auto_snapshots_but_keeps_save_points(
+        self, sample_game, sample_user, db
+    ):
+        """P3-存储优化：超出保留上限的旧自动快照被清理，手动存档点永不删除。"""
+        from src.database.models import GameState
+
+        repo = StateRepository()
+        repo.AUTO_SNAPSHOT_KEEP_COUNT = 3
+
+        # 先造一个手动存档点
+        save_point = GameState(
+            game_id=sample_game.game_id,
+            week=0,
+            age=22,
+            state_json={"player_name": "SavePoint"},
+            is_save_point=True,
+            save_name="我的存档",
+        )
+        db.add(save_point)
+        db.commit()
+
+        for i in range(8):
+            state = PlayerState(week=i, age=22, player_name=f"Player{i}")
+            assert repo.save_game_progress(sample_game.game_id, state) is True
+
+        db.expire_all()
+        auto_states = (
+            db.query(GameState)
+            .filter(
+                GameState.game_id == sample_game.game_id,
+                GameState.is_save_point.is_(False),
+            )
+            .all()
+        )
+        # 只保留最近 3 个自动快照
+        assert len(auto_states) == 3
+        assert sorted(s.week for s in auto_states) == [5, 6, 7]
+
+        save_points = (
+            db.query(GameState)
+            .filter(
+                GameState.game_id == sample_game.game_id,
+                GameState.is_save_point.is_(True),
+            )
+            .all()
+        )
+        assert len(save_points) == 1
+
+        # 最新快照仍可正常加载
+        loaded = repo.load_saved_game(sample_game.game_id, sample_user.user_id)
+        assert loaded is not None
+        assert loaded["player_name"] == "Player7"
