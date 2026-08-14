@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import threading
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, Generator, Optional
 
@@ -41,13 +42,35 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _scene_image_latest: Dict[str, Dict[str, Any]] = {}
+# P3-内存修复：为每个缓存事件记录发布时间，支持 TTL 淘汰与总量上限。
+_scene_image_published_at: Dict[str, float] = {}
 _scene_image_inflight: set[str] = set()
 _scene_image_state_lock = threading.Lock()
+SCENE_EVENT_CACHE_TTL = 3600.0  # 1 小时
+SCENE_EVENT_CACHE_MAX_ENTRIES = 1000
 
 
 def _get_event_key(game_id: int, week: int, round_number: int, stage: str) -> str:
     """Return the stable SSE cache key for a scene image event."""
     return f"{game_id}:{week}:{round_number}:{stage}"
+
+
+def _prune_scene_image_cache_locked() -> None:
+    """淘汰过期/超量的场景事件缓存条目（调用方必须持有 _scene_image_state_lock）。"""
+    now = time.time()
+    expired = [
+        key
+        for key, published_at in _scene_image_published_at.items()
+        if now - published_at > SCENE_EVENT_CACHE_TTL
+    ]
+    for key in expired:
+        _scene_image_latest.pop(key, None)
+        _scene_image_published_at.pop(key, None)
+    if len(_scene_image_latest) > SCENE_EVENT_CACHE_MAX_ENTRIES:
+        oldest = sorted(_scene_image_published_at.items(), key=lambda item: item[1])
+        for key, _ in oldest[: len(_scene_image_latest) - SCENE_EVENT_CACHE_MAX_ENTRIES]:
+            _scene_image_latest.pop(key, None)
+            _scene_image_published_at.pop(key, None)
 
 
 def _publish_scene_image_event(event: Dict[str, Any]) -> None:
@@ -60,6 +83,8 @@ def _publish_scene_image_event(event: Dict[str, Any]) -> None:
     )
     with _scene_image_state_lock:
         _scene_image_latest[key] = event
+        _scene_image_published_at[key] = time.time()
+        _prune_scene_image_cache_locked()
 
 
 def _scene_failure_detail(event: Dict[str, Any]) -> Dict[str, object]:
@@ -1090,6 +1115,7 @@ async def get_round_scene_image(
         if cached_event and cached_event.get("type") == "scene_image_failed":
             if retry:
                 _scene_image_latest.pop(event_key, None)
+                _scene_image_published_at.pop(event_key, None)
             else:
                 cached_failure = dict(cached_event)
 

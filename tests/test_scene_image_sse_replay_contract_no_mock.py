@@ -154,3 +154,57 @@ def test_scene_image_sse_replay_replaces_stale_key_and_isolates_games() -> None:
         db.query(User).filter(User.private_id == f"scene-sse-owner-{suffix}").delete()
         db.commit()
         db.close()
+
+
+def test_scene_image_cache_prunes_expired_and_overflow_entries() -> None:
+    """P3-内存修复：过期事件与超出总量上限的最旧事件被淘汰。"""
+    import time
+
+    from src.api.routers import images as images_module
+    from src.api.routers.images import (
+        SCENE_EVENT_CACHE_MAX_ENTRIES,
+        SCENE_EVENT_CACHE_TTL,
+        _scene_image_published_at,
+        _scene_image_state_lock,
+    )
+
+    with _scene_image_state_lock:
+        images_module._scene_image_latest.clear()
+        _scene_image_published_at.clear()
+        try:
+            expired_key = _get_event_key(99001, 0, 0, "event")
+            images_module._scene_image_latest[expired_key] = _event(
+                game_id=99001, week=0, round_number=0, stage="event",
+                event_type="scene_image_ready",
+            )
+            _scene_image_published_at[expired_key] = time.time() - SCENE_EVENT_CACHE_TTL - 1
+
+            fresh_key = _get_event_key(99002, 1, 0, "result")
+            images_module._scene_image_latest[fresh_key] = _event(
+                game_id=99002, week=1, round_number=0, stage="result",
+                event_type="scene_image_ready",
+            )
+            _scene_image_published_at[fresh_key] = time.time()
+
+            images_module._prune_scene_image_cache_locked()
+            assert expired_key not in images_module._scene_image_latest
+            assert fresh_key in images_module._scene_image_latest
+
+            # 总量上限：超过上限时按最旧淘汰
+            original_cap = SCENE_EVENT_CACHE_MAX_ENTRIES
+            images_module.SCENE_EVENT_CACHE_MAX_ENTRIES = 3
+            try:
+                for i in range(5):
+                    key = _get_event_key(99100 + i, i, 0, "event")
+                    images_module._scene_image_latest[key] = _event(
+                        game_id=99100 + i, week=i, round_number=0, stage="event",
+                        event_type="scene_image_ready",
+                    )
+                    _scene_image_published_at[key] = time.time() + i
+                images_module._prune_scene_image_cache_locked()
+                assert len(images_module._scene_image_latest) <= 3
+            finally:
+                images_module.SCENE_EVENT_CACHE_MAX_ENTRIES = original_cap
+        finally:
+            images_module._scene_image_latest.clear()
+            _scene_image_published_at.clear()
