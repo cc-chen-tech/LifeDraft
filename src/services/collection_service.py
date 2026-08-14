@@ -748,7 +748,16 @@ class CollectionService:
             entity_name=item_name,
         )
 
-        # 停用旧图片
+        # 停用旧图片（先取出旧行，提交后再删除文件）
+        old_images = (
+            self.db.query(ImageModel)
+            .filter(
+                ImageModel.game_id == game_id,
+                ImageModel.image_type == "item",
+                ImageModel.entity_name == item_name,
+            )
+            .all()
+        )
         self.db.query(ImageModel).filter(
             ImageModel.game_id == game_id,
             ImageModel.image_type == "item",
@@ -769,6 +778,19 @@ class CollectionService:
         self.db.add(new_image)
         self.db.commit()
         self.db.refresh(new_image)
+
+        # P3-存储修复：停用的旧物品图片不再被引用，删除其磁盘/OSS 文件；
+        # 单文件删除失败只记日志，不影响重生成结果。
+        for img in old_images:
+            try:
+                self.storage_service.delete_image(
+                    str(img.storage_path), str(img.storage_type or "local")
+                )
+                logger.info(f"Deleted deactivated item image: {img.storage_path}")
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to delete deactivated item image {img.storage_path}: {exc}"
+                )
 
         return int(new_image.image_id)
 
@@ -949,6 +971,40 @@ class CollectionService:
             "description_generated": bool(description),
         }
 
+    def _delete_entity_image_records(
+        self, game_id: int, image_type: str, entity_name: str
+    ) -> None:
+        """删除实体的图片记录与磁盘/OSS 文件。
+
+        P3-存储修复：此前只删 DB 记录，文件永久泄漏；
+        单文件删除失败只记日志，不影响删除主流程。
+        """
+        rows = (
+            self.db.query(ImageModel)
+            .filter(
+                ImageModel.game_id == game_id,
+                ImageModel.image_type == image_type,
+                ImageModel.entity_name == entity_name,
+            )
+            .all()
+        )
+        self.db.query(ImageModel).filter(
+            ImageModel.game_id == game_id,
+            ImageModel.image_type == image_type,
+            ImageModel.entity_name == entity_name,
+        ).delete()
+        self.db.commit()
+        for img in rows:
+            try:
+                self.storage_service.delete_image(
+                    str(img.storage_path), str(img.storage_type or "local")
+                )
+                logger.info(f"Deleted entity image file: {img.storage_path}")
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to delete entity image file {img.storage_path}: {exc}"
+                )
+
     def delete_item(
         self,
         game_id: int,
@@ -964,14 +1020,8 @@ class CollectionService:
         if not success:
             return False
 
-        # 删除关联的图片记录
-        self.db.query(ImageModel).filter(
-            ImageModel.game_id == game_id,
-            ImageModel.image_type == "item",
-            ImageModel.entity_name == item_name,
-        ).delete()
-        self.db.commit()
-
+        # 删除关联的图片记录与文件
+        self._delete_entity_image_records(game_id, "item", item_name)
         return True
 
     def delete_character(
@@ -996,14 +1046,8 @@ class CollectionService:
         if not success:
             return False
 
-        # 删除关联的图片记录
-        self.db.query(ImageModel).filter(
-            ImageModel.game_id == game_id,
-            ImageModel.image_type == "character",
-            ImageModel.entity_name == character_name,
-        ).delete()
-        self.db.commit()
-
+        # 删除关联的图片记录与文件
+        self._delete_entity_image_records(game_id, "character", character_name)
         return True
 
     def delete_landmark(
@@ -1021,12 +1065,6 @@ class CollectionService:
         if not success:
             return False
 
-        # 删除关联的图片记录
-        self.db.query(ImageModel).filter(
-            ImageModel.game_id == game_id,
-            ImageModel.image_type == "landmark",
-            ImageModel.entity_name == landmark_name,
-        ).delete()
-        self.db.commit()
-
+        # 删除关联的图片记录与文件
+        self._delete_entity_image_records(game_id, "landmark", landmark_name)
         return True
