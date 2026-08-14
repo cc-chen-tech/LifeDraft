@@ -3,6 +3,7 @@
 Includes narrative-style endpoints for style browsing and per-game style updates.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -88,7 +89,10 @@ async def create_game(
         character_settings["constraint_level"] = req.constraint_level
 
         initializer = GameInitializer(game_db=db, language=req.language)
-        game_loop, game_id = initializer.initialize_game_from_settings(
+        # P2-性能修复：初始化含 DB 写入与风格自动匹配（可能触发向量检索），
+        # 移出事件循环执行。facade 每次调用自开 session，无跨线程复用问题。
+        game_loop, game_id = await asyncio.to_thread(
+            initializer.initialize_game_from_settings,
             character_settings=character_settings,
             player_name=req.player_name,
             life_vision=req.life_vision,
