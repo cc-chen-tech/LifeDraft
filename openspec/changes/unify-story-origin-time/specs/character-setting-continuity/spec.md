@@ -38,4 +38,3 @@ route origin modification through whole-card feedback regeneration.
 - **WHEN** all background settings are ready
 - **THEN** the completion view shows the exact start date, starting age, and
   origin context without a birth year
-

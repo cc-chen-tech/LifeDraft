@@ -67,4 +67,3 @@ played game timelines and histories unchanged.
   its era narrative
 - **THEN** the preset is marked for origin review and cannot start until the
   origin is regenerated
-
