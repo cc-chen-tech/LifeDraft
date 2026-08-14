@@ -505,6 +505,53 @@ class TestEventCache:
         key2 = cache._generate_cache_key(state2, "zh")
         assert key1 != key2
 
+    def test_cache_key_stable_across_decision_history_growth(self, tmp_path):
+        """P1-缓存修复：key 不再包含逐回合变化的 decision_count，
+        同一（玩家, 周数, 资源档位）状态即使决策历史增长也可复用缓存。"""
+        from src.ai.cache import EventCache
+
+        cache = EventCache(cache_dir=tmp_path / "test_cache")
+
+        state = {
+            "player_name": "林舟",
+            "age": 22,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 10000,
+            "week": 0,
+        }
+        key_before = cache._generate_cache_key(state, "zh")
+        state["decision_history"] = [{"week": 0, "choice": "A"} for _ in range(5)]
+        key_after = cache._generate_cache_key(state, "zh")
+        assert key_before == key_after
+
+    def test_cache_hit_returns_event_without_random_gate(self, tmp_path):
+        """P1-缓存修复：命中后确定性返回缓存事件（不再有 30% 随机门槛）。"""
+        from src.ai.cache import EventCache
+
+        cache = EventCache(cache_dir=tmp_path / "test_cache")
+        event = GameEvent(
+            event_description="Test event",
+            options=[
+                EventOption(text="A", effects={}),
+                EventOption(text="B", effects={}),
+            ],
+        )
+        state = {
+            "player_name": "林舟",
+            "age": 22,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 10000,
+            "week": 0,
+        }
+        cache.set(state, "zh", event)
+        cached = cache.get(state, "zh")
+        assert cached is not None
+        assert cached.event_description == "Test event"
+
 
 # ==================== AIClient Tests ====================
 

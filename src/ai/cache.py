@@ -46,6 +46,12 @@ class EventCache:
         self._cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
         self._timestamps: Dict[str, float] = {}
 
+        # P1-性能修复：set() 不再每次全量重写磁盘文件，改为限频落盘。
+        # 缓存丢失在进程崩溃时是可接受的（本来就是缓存），
+        # clear()/delete() 等显式操作仍强制立即落盘。
+        self._SAVE_INTERVAL = 30.0
+        self._last_save_time: float = 0.0
+
         # 加载持久化缓存（不带时间戳，这些条目会在首次访问时获得时间戳）
         self._load_cache()
 
@@ -66,8 +72,15 @@ class EventCache:
                 self._cache = OrderedDict()
                 self._timestamps = {}
 
-    def _save_cache(self) -> None:
-        """Save cache to file."""
+    def _save_cache(self, force: bool = False) -> None:
+        """Save cache to file.
+
+        force=True 时立即写盘（clear/delete 等显式操作）；
+        否则限频写盘，避免每次 set() 全量重写大 JSON 文件的写放大。
+        """
+        if not force and time.time() - self._last_save_time < self._SAVE_INTERVAL:
+            return
+        self._last_save_time = time.time()
         try:
             with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump(self._cache, f, indent=2, ensure_ascii=False)
@@ -85,18 +98,17 @@ class EventCache:
         Returns:
             Cache key string
         """
-        # Create a signature from relevant state attributes
-        # Include decision history length to add variation
-        decision_count = len(player_state.get("decision_history", []))
-
-        # Round values to reduce cache misses from minor variations
+        # P1-缓存修复：
+        # - 移除逐回合变化的 decision_count（导致 key 每回合都变、跨回合永远无法命中）；
+        # - 加入 player_name 作为身份分量，降低不同玩家/游戏在相同
+        #   （年龄、资源、周数）状态下互相污染缓存的概率。
         signature = {
+            "player_name": player_state.get("player_name", ""),
             "age": player_state.get("age", 22),
             "energy": round(player_state.get("energy", 70) / 10) * 10,  # Round to nearest 10
             "mood": round(player_state.get("mood", 60) / 10) * 10,
             "knowledge": round(player_state.get("knowledge", 50) / 10) * 10,
             "week": player_state.get("week", 0),
-            "decision_count": decision_count,  # Add decision history length for variation
             "language": language,
         }
 
@@ -127,15 +139,14 @@ class EventCache:
             # H-07: LRU - 移到末尾
             self._cache.move_to_end(cache_key)
 
-            # Only use cache 30% of the time to ensure variety
-            import random
-
-            if random.random() < 0.3:
-                try:
-                    return GameEvent.from_json(json.dumps(self._cache[cache_key]))
-                except Exception as e:
-                    logger.warning(f"Failed to parse cached event: {e}")
-                    return None
+            # P1-缓存修复：移除 30% 随机使用门槛。
+            # 同一 (玩家, 周数, 资源档位) 状态返回同一缓存事件是合理语义，
+            # 随机门槛把缓存命中率砍掉 70% 且没有任何收益。
+            try:
+                return GameEvent.from_json(json.dumps(self._cache[cache_key]))
+            except Exception as e:
+                logger.warning(f"Failed to parse cached event: {e}")
+                return None
 
         return None
 
@@ -175,7 +186,7 @@ class EventCache:
         """Clear all cached events."""
         self._cache = OrderedDict()
         self._timestamps = {}
-        self._save_cache()
+        self._save_cache(force=True)
         logger.info("Cache cleared")
 
     def delete(self, key: str) -> None:
@@ -187,7 +198,7 @@ class EventCache:
         if key in self._cache:
             del self._cache[key]
             self._timestamps.pop(key, None)
-            self._save_cache()
+            self._save_cache(force=True)
 
     def size(self) -> int:
         """Get number of cached events."""
