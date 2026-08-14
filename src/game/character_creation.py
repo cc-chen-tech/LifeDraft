@@ -438,6 +438,16 @@ class CharacterCreator:
         explicit_constraints = "\n".join(
             part for part in (life_vision, feedback or "") if part
         )
+        from src.ai.e2e_story_provider import deterministic_e2e_story_origin
+
+        deterministic_candidate = deterministic_e2e_story_origin(
+            life_vision=life_vision,
+            feedback=feedback,
+        )
+        if deterministic_candidate is not None:
+            deterministic_candidate["revision"] = next_revision
+            return validate_story_origin(deterministic_candidate)
+
         last_error: Optional[Exception] = None
 
         for attempt in range(3):
@@ -462,16 +472,6 @@ class CharacterCreator:
                     attempt + 1,
                     exc,
                 )
-
-        from src.ai.e2e_story_provider import deterministic_e2e_story_origin
-
-        deterministic_candidate = deterministic_e2e_story_origin(
-            life_vision=life_vision,
-            feedback=feedback,
-        )
-        if deterministic_candidate is not None:
-            deterministic_candidate["revision"] = next_revision
-            return validate_story_origin(deterministic_candidate)
 
         raise ValueError("story_origin_generation_failed") from last_error
 

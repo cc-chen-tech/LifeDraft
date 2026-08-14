@@ -120,7 +120,10 @@ def test_story_origin_generator_uses_valid_candidate_in_deterministic_e2e_mode(
         "life_stage_description": "正在探索职业方向与稳定生活的青年阶段",
         "world_context": "数字工具、城市工作与日常关系持续变化",
     }
-    assert generator.calls == 3
+    # Explicit deterministic E2E mode must not contact the provider.  CI uses
+    # a dummy key, so falling through to the fixture only after provider calls
+    # would turn a local contract test into an external-network dependency.
+    assert generator.calls == 0
 
 
 def test_story_origin_generator_does_not_ignore_hard_constraints_in_e2e_mode(
