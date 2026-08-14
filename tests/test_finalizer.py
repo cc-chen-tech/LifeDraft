@@ -1,5 +1,6 @@
 """Tests for RoundFinalizer service."""
 
+import threading
 import time
 from unittest.mock import MagicMock, patch
 
@@ -590,3 +591,79 @@ class TestGenerateYearlySummary:
 
         finalizer._generate_yearly_summary(48)
         assert not hasattr(mock_state, "yearly_summaries") or len(mock_state.yearly_summaries) == 0
+
+
+class TestPostWeekEnrichmentSerialization:
+    """P0-并发修复：富化任务共享 player_state，必须串行执行避免竞态。"""
+
+    def _make_finalizer(self, mock_state):
+        return RoundFinalizer(
+            player_state_getter=MagicMock(return_value=mock_state),
+            ai_generator=MagicMock(),
+            language_getter=MagicMock(return_value="zh"),
+            story_service=MagicMock(),
+            character_creator=MagicMock(),
+        )
+
+    def test_enrichment_tasks_run_serially(self):
+        """同一周的富化任务按顺序执行，不允许并行写共享状态。"""
+        mock_state = MagicMock()
+        finalizer = self._make_finalizer(mock_state)
+
+        events: list[tuple[str, float]] = []
+        order_lock = threading.Lock()
+
+        def slow_task(name: str, delay: float):
+            start = time.perf_counter()
+            time.sleep(delay)
+            with order_lock:
+                events.append((name, start))
+
+        def synth(*_a, **_k):
+            slow_task("synthesize", 0.05)
+
+        def items(week):
+            slow_task("items", 0.05)
+
+        def landmarks(week):
+            slow_task("landmarks", 0.05)
+
+        with patch(
+            "src.game.round.finalizer.WorldModelUpdater.synthesize_character_profiles",
+            side_effect=synth,
+        ), patch.object(finalizer, "_extract_items_from_week", side_effect=items), patch.object(
+            finalizer, "_extract_landmarks_from_week", side_effect=landmarks
+        ):
+            finalizer._run_post_week_enrichment_tasks(1)
+
+        names = [name for name, _ in events]
+        assert names == ["synthesize", "items", "landmarks"]
+        # 严格串行：下一个任务开始时间不早于上一个任务开始+延迟
+        starts = [start for _, start in events]
+        assert starts[1] >= starts[0] + 0.04
+        assert starts[2] >= starts[1] + 0.04
+
+    def test_enrichment_failure_does_not_skip_other_tasks(self):
+        """任一富化任务失败不应跳过其余任务。"""
+        mock_state = MagicMock()
+        finalizer = self._make_finalizer(mock_state)
+        ran = {"items": False, "landmarks": False}
+
+        def failing_synth(*_a, **_k):
+            raise RuntimeError("synth boom")
+
+        def items(week):
+            ran["items"] = True
+
+        def landmarks(week):
+            ran["landmarks"] = True
+
+        with patch(
+            "src.game.round.finalizer.WorldModelUpdater.synthesize_character_profiles",
+            side_effect=failing_synth,
+        ), patch.object(finalizer, "_extract_items_from_week", side_effect=items), patch.object(
+            finalizer, "_extract_landmarks_from_week", side_effect=landmarks
+        ):
+            finalizer._run_post_week_enrichment_tasks(1)
+
+        assert ran["items"] and ran["landmarks"]
