@@ -101,6 +101,7 @@ class StubImageStorage:
         self.save_path = save_path
         self.save_type = save_type
         self.last_save_call = None
+        self.deleted_paths: list = []
         self.get_image_data_returns = b"\x89PNG\r\n\x1a\nstored_data"
 
     def save_image(self, image_data, game_id, image_type, entity_name):
@@ -111,6 +112,10 @@ class StubImageStorage:
             "entity_name": entity_name,
         }
         return (self.save_path, self.save_type)
+
+    def delete_image(self, storage_path, storage_type=None):
+        self.deleted_paths.append(storage_path)
+        return True
 
     def get_image_data(self, storage_path, storage_type=None):
         return self.get_image_data_returns
@@ -542,3 +547,43 @@ class TestCharacterServiceEdgeCases:
         # Each should have unique image IDs
         all_ids = [r1[0].image_id, r2[0].image_id, r3[0].image_id]
         assert len(set(all_ids)) == 3
+
+
+class TestRegenerateDeletesDeactivatedFiles:
+    """P3-存储修复：重生成后，停用的旧图片文件必须被删除。"""
+
+    def test_regenerate_image_deletes_old_files(self, db_session):
+        storage = StubImageStorage()
+        service = CharacterImageService(
+            db_session,
+            image_client=StubImageClient(),
+            storage_service=storage,
+        )
+        first = service.generate_character_image(
+            game_id=1,
+            name="del_test",
+            description="test",
+            entity_key="del_key",
+        )
+        service.regenerate_image(image_id=first[0].image_id)
+
+        assert storage.deleted_paths == [storage.save_path]
+
+    def test_regenerate_file_deletion_failure_does_not_fail_regeneration(self, db_session):
+        storage = StubImageStorage()
+        storage.delete_image = lambda *a, **k: (_ for _ in ()).throw(OSError("disk gone"))
+        service = CharacterImageService(
+            db_session,
+            image_client=StubImageClient(),
+            storage_service=storage,
+        )
+        first = service.generate_character_image(
+            game_id=1,
+            name="del_fail_test",
+            description="test",
+            entity_key="del_fail_key",
+        )
+        # 删除失败只记日志，重生成仍应成功返回新图片
+        result = service.regenerate_image(image_id=first[0].image_id)
+        assert len(result) == 1
+        assert result[0].is_active is True

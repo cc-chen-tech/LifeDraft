@@ -608,12 +608,33 @@ class SceneImageService:
         """
         logger.info(f"Regenerating opening illustration for game {game_id}")
 
-        # 停用旧开场插画
+        # 停用旧开场插画（先取出旧行，提交后再删除文件）
+        old_illustrations = (
+            self.db.query(ImageModel)
+            .filter(
+                ImageModel.game_id == game_id,
+                ImageModel.image_type == "opening_illustration",
+            )
+            .all()
+        )
         self.db.query(ImageModel).filter(
             ImageModel.game_id == game_id,
             ImageModel.image_type == "opening_illustration",
         ).update({"is_active": False})
         self.db.commit()
+
+        # P3-存储修复：停用的旧插画不再被引用，删除其磁盘/OSS 文件。
+        for img in old_illustrations:
+            try:
+                self.storage_service.delete_image(
+                    str(img.storage_path),
+                    str(img.storage_type or "local"),
+                )
+                logger.info(f"Deleted deactivated opening illustration: {img.storage_path}")
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to delete deactivated opening illustration {img.storage_path}: {exc}"
+                )
 
         char_info = self._build_char_info(character_settings, player_name)
 
