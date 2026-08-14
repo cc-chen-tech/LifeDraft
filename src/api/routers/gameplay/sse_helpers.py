@@ -751,6 +751,11 @@ async def stream_choice(
                 if daily_mode:
                     db = get_db()
 
+                    def persist_postprocess():
+                        _persist_choice_state(game_loop, game_id)
+
+                    game_loop._daily_postprocess_persist_callback = persist_postprocess
+
                     def persist_callback(candidate):
                         return db.save_game_progress(game_id, candidate)
 

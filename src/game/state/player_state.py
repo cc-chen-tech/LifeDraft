@@ -46,9 +46,21 @@ class PlayerState(
         """Create state from dictionary."""
         # ★ 处理可能为 None 的字符串字段，避免 Pydantic 验证错误
         # 这是为了兼容旧数据，这些字段在之前的 bug 中可能被设为 None
-        cleaned_data = data.copy()
         from config.feature_flags import get_feature
         from src.game.daily_timeline import migrate_legacy_state
+        from src.utils.financial_narrative import (
+            sanitize_authoritative_fact_records,
+            sanitize_world_model_financial_authority,
+        )
+        from src.utils.legacy_data import strip_retired_wealth_keys
+
+        cleaned_data = strip_retired_wealth_keys(data)
+        cleaned_data["established_facts"] = sanitize_authoritative_fact_records(
+            cleaned_data.get("established_facts")
+        )
+        cleaned_data["world_model_data"] = sanitize_world_model_financial_authority(
+            cleaned_data.get("world_model_data")
+        )
 
         if (
             isinstance(cleaned_data.get("timeline"), dict)

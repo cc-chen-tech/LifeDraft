@@ -27,6 +27,9 @@ class FeatureFlags(TypedDict, total=False):
     parallel_postprocessing: bool
     generation_state_tracking: bool
     story_voice_reading: bool
+    soft_narrative_lengths: bool
+    unified_narrative_budgets: bool
+    structured_story_memory: bool
     daily_timeline_v2: bool
 
 
@@ -42,6 +45,9 @@ _ENV_VAR_MAP: Dict[str, str] = {
     "parallel_postprocessing": "ENABLE_PARALLEL_POSTPROCESSING",
     "generation_state_tracking": "ENABLE_GENERATION_STATE_TRACKING",
     "story_voice_reading": "ENABLE_STORY_VOICE_READING",
+    "soft_narrative_lengths": "ENABLE_SOFT_NARRATIVE_LENGTHS",
+    "unified_narrative_budgets": "ENABLE_UNIFIED_NARRATIVE_BUDGETS",
+    "structured_story_memory": "ENABLE_STRUCTURED_STORY_MEMORY",
     "daily_timeline_v2": "ENABLE_DAILY_TIMELINE_V2",
 }
 
@@ -56,6 +62,9 @@ FEATURE_DEFAULTS: FeatureFlags = {
     "parallel_postprocessing": False,
     "generation_state_tracking": False,
     "story_voice_reading": True,
+    "soft_narrative_lengths": False,
+    "unified_narrative_budgets": False,
+    "structured_story_memory": False,
     "daily_timeline_v2": False,
 }
 

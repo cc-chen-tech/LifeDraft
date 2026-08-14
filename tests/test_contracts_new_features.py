@@ -288,6 +288,20 @@ class TestFeatureFlagContracts:
             f"多出 {flag_keys - env_keys}, 缺少 {env_keys - flag_keys}"
         )
 
+    def test_existing_environment_flag_mappings_are_preserved(self):
+        """Daily timeline additions must not disable existing experiments."""
+        from config.feature_flags import _ENV_VAR_MAP
+
+        assert _ENV_VAR_MAP["soft_narrative_lengths"] == "ENABLE_SOFT_NARRATIVE_LENGTHS"
+        assert (
+            _ENV_VAR_MAP["unified_narrative_budgets"]
+            == "ENABLE_UNIFIED_NARRATIVE_BUDGETS"
+        )
+        assert (
+            _ENV_VAR_MAP["structured_story_memory"]
+            == "ENABLE_STRUCTURED_STORY_MEMORY"
+        )
+
 
 # ============================================================
 # 并行后处理契约

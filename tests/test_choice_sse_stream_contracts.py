@@ -1,6 +1,7 @@
 """Provider-free contracts for choice SSE streaming state transitions."""
 
 import json
+from types import SimpleNamespace
 from typing import Optional, Tuple
 
 import pytest
@@ -26,6 +27,21 @@ class _ChoiceLoop:
     def make_custom_choice(self, custom_text, stream_callback, status_callback):
         del custom_text
         return self.make_round_choice(0, stream_callback, status_callback)
+
+
+class _DailyChoiceLoop:
+    def __init__(self) -> None:
+        self.player_state = SimpleNamespace(timeline={"version": 2})
+
+    def get_state(self):
+        return {"timeline": {"version": 2, "day_index": 1}}
+
+    def make_round_choice(self, **kwargs):
+        assert callable(kwargs["persist_callback"])
+        assert callable(self._daily_postprocess_persist_callback)
+        assert kwargs["persist_callback"]({"settled": True}) is True
+        self._daily_postprocess_persist_callback()
+        return {"summary": "daily choice committed"}
 
 
 def _event_type_and_payload(frame: str) -> Tuple[str, Optional[int], object]:
@@ -93,3 +109,40 @@ async def test_choice_stream_data_error_emits_error_and_clears_cache() -> None:
 
     assert events[-1] == ("error", None, {"error": "invalid option payload"})
     assert session.get_cached_chunks_after(-1) == []
+
+
+@pytest.mark.asyncio
+async def test_daily_choice_stream_installs_postprocess_persistence(monkeypatch) -> None:
+    saved = []
+
+    class _DB:
+        def save_game_progress(self, game_id, state):
+            saved.append((game_id, state))
+            return True
+
+    monkeypatch.setattr(
+        "src.api.routers.gameplay.sse_helpers.get_db",
+        lambda: _DB(),
+    )
+    game_id = 783_004
+    loop = _DailyChoiceLoop()
+    frames = [
+        frame
+        async for frame in stream_choice(
+            loop,
+            0,
+            game_id,
+            event_id="daily-event",
+            revision=1,
+        )
+    ]
+
+    assert _event_type_and_payload(frames[-1]) == (
+        "complete",
+        None,
+        {"summary": "daily choice committed"},
+    )
+    assert saved == [
+        (game_id, {"settled": True}),
+        (game_id, {"timeline": {"version": 2, "day_index": 1}}),
+    ]

@@ -18,14 +18,14 @@ async function ensureVoiceAudioPlaying(page: Page): Promise<void> {
       timeout: 15_000,
     })
     .toMatch(/^(ready|playing)$/);
-  const state = page.getByTestId('voice-reading-state');
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if ((await state.textContent()) === 'playing') return;
-    const playButton = page.getByRole('button', { name: /播放语音|继续播放/ });
-    if (await playButton.isVisible().catch(() => false)) await playButton.click();
-    await page.waitForTimeout(250);
+  try {
+    await expect(page.getByTestId('voice-reading-state')).toHaveText('playing', { timeout: 2_000 });
+  } catch {
+    if ((await page.getByTestId('voice-reading-state').textContent()) === 'ready') {
+      await page.getByRole('button', { name: '播放语音' }).click();
+    }
   }
-  await expect(state).toHaveText('playing', { timeout: 15_000 });
+  await expect(page.getByTestId('voice-reading-state')).toHaveText('playing', { timeout: 15_000 });
 }
 
 test.describe('MiniMax story audio generation', () => {
@@ -79,18 +79,11 @@ test.describe('MiniMax story audio generation', () => {
     await page.getByRole('button', { name: '触发 MiniMax 音乐生成', exact: true }).click();
 
     await expect(page.getByTestId('real-current-music-title')).toHaveText('全局音乐夹具');
-    // Generation runs in a backend background task. Under the full parallel E2E
-    // load it can legitimately take longer than the old 15 second assertion.
-    // Wait for the generated asset (the durable completion signal) before
-    // asserting its position in the future queue.
-    await expect(page.getByTestId('real-generated-music-url')).toContainText(
-      '/api/music/generated/',
-      { timeout: 45_000 }
-    );
     await expect(page.getByTestId('real-music-queue-order')).toContainText(
       'AI MiniMax 雨夜追逐 | 网易云 下一曲 | 网易云 后续曲',
-      { timeout: 5_000 }
+      { timeout: 15_000 }
     );
+    await expect(page.getByTestId('real-generated-music-url')).toContainText('/api/music/generated/');
   });
 
   test('auto-read stays off by default and starts only after final story when enabled', async ({ page }) => {
