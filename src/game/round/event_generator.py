@@ -4,6 +4,7 @@ Handles the generation of events for each round in the game.
 """
 
 import logging
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
@@ -94,6 +95,9 @@ class RoundEventGenerator:
         # Generation state
         self._generating: bool = False
         self._generating_start_time: Optional[float] = None
+        # P0-并发修复：check-then-set 生成标志改为原子操作，防止两个线程
+        # 同时通过检查并都开始生成（重复计费/状态竞态）。
+        self._generation_guard = threading.Lock()
         self._GENERATION_TIMEOUT: float = 120.0  # seconds
         self._OPTIONS_ONLY_TIMEOUT: float = 75.0  # seconds
         self._current_event: Optional[GameEvent] = None
@@ -122,6 +126,12 @@ class RoundEventGenerator:
     @current_event.setter
     def current_event(self, value):
         self._current_event = value
+
+    def _clear_generating_flag(self) -> None:
+        """原子化清除生成标志（P0-并发修复：避免与置位竞态）。"""
+        with self._generation_guard:
+            self._generating = False
+            self._generating_start_time = None
 
     def generate_round_event(
         self,
@@ -281,8 +291,9 @@ class RoundEventGenerator:
                     f"round {current_round} ({len(existing_story)} chars), generating options only"
                 )
 
-                self._generating = True
-                self._generating_start_time = time.time()
+                with self._generation_guard:
+                    self._generating = True
+                    self._generating_start_time = time.time()
 
                 try:
                     if status_callback:
@@ -313,8 +324,7 @@ class RoundEventGenerator:
                     logger.info(
                         f"★ Resume mode complete: Generated {len(generated_event.options)} options for existing story"
                     )
-                    self._generating = False
-                    self._generating_start_time = None
+                    self._clear_generating_flag()
                     return generated_event
 
                 except Exception as e:
@@ -323,18 +333,17 @@ class RoundEventGenerator:
                         exc_info=True,
                     )
                     # Fall through to normal generation
-                    self._generating = False
-                    self._generating_start_time = None
+                    self._clear_generating_flag()
 
         # The session-level durable operation owns normal request concurrency.
         # Keep this guard for direct callers, but never infer stale ownership
         # from elapsed wall time: a valid model call can exceed two minutes.
-        if self._generating:
-            raise ValueError("Event generation in progress, please wait")
-
-        # 设置生成标志 - 路由层应已确保并发安全
-        self._generating = True
-        self._generating_start_time = time.time()
+        with self._generation_guard:
+            if self._generating:
+                raise ValueError("Event generation in progress, please wait")
+            # 设置生成标志（原子化，路由层另有 per-game 锁兜底）
+            self._generating = True
+            self._generating_start_time = time.time()
 
         # current_week and current_round already defined above in resume mode check
         # Re-fetch here to ensure consistency
@@ -369,8 +378,7 @@ class RoundEventGenerator:
                     player_state.mark_scheduled_event_triggered(se.get("event_id"))
                 if self.event_callback:
                     self.event_callback(event, player_state)
-                self._generating = False
-                self._generating_start_time = None
+                self._clear_generating_flag()
                 return event
 
         # Get round context from player state
@@ -519,18 +527,15 @@ class RoundEventGenerator:
             logger.info(
                 f"Successfully generated round event for 第{current_week + 1}周, round {current_round}"
             )
-            self._generating = False  # Reset flag on success
-            self._generating_start_time = None
+            self._clear_generating_flag()
             return event
 
         except StoryGenerationFailure:
-            self._generating = False
-            self._generating_start_time = None
+            self._clear_generating_flag()
             raise
         except Exception as e:
             logger.error(f"Failed to generate round event: {str(e)}", exc_info=True)
-            self._generating = False
-            self._generating_start_time = None
+            self._clear_generating_flag()
             raise StoryGenerationFailure(f"Round event generation failed: {e}") from e
 
     def _generate_options_only_with_timeout(

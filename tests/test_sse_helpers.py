@@ -1102,3 +1102,35 @@ class TestStreamRegenerateRegression:
         assert (
             "last_round_full_story" in error_msg or "string" in error_msg.lower()
         ), f"Expected validation error for last_round_full_story, got: {error_msg}"
+
+
+def test_game_state_lock_shared_per_game_isolated_between_games() -> None:
+    """P0-并发修复：同一 game 共享一把状态锁，不同 game 互不阻塞。"""
+    from src.api.routers.gameplay.sse_helpers import _get_game_state_lock
+
+    lock_a1 = _get_game_state_lock(1)
+    lock_a2 = _get_game_state_lock(1)
+    lock_b = _get_game_state_lock(2)
+
+    assert lock_a1 is lock_a2
+    assert lock_a1 is not lock_b
+
+
+def test_round_event_generator_generation_guard_rejects_reentry() -> None:
+    """P0-并发修复：生成标志置位时，直接调用 generate_round_event 必须被拒绝。"""
+    from src.game.round.event_generator import RoundEventGenerator
+
+    mock_state = MagicMock()
+    generator = RoundEventGenerator(
+        player_state_getter=lambda: mock_state,
+        ai_generator=MagicMock(),
+        language_getter=lambda: "zh",
+        character_introduction_service=MagicMock(),
+        summary_selector=MagicMock(),
+        relationship_service=MagicMock(),
+    )
+    generator._generating = True
+    generator._generating_start_time = None
+
+    with pytest.raises(ValueError, match="in progress"):
+        generator.generate_round_event()
