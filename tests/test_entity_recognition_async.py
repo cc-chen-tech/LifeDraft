@@ -7,9 +7,20 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.services.entity_recognition_service import EntityRecognitionService
+from src.services.entity_recognition_service import (
+    EntityRecognitionService,
+    clear_entity_recognition_cache,
+)
 from src.services.entity_recognition_task import (TaskStatus, get_task_manager,
                                                   reset_task_manager)
+
+
+@pytest.fixture(autouse=True)
+def _clear_entity_recognition_cache():
+    """模块级识别缓存必须在每个测试前清空，避免跨测试串缓存。"""
+    clear_entity_recognition_cache()
+    yield
+    clear_entity_recognition_cache()
 
 
 class TestEntityRecognitionServiceAsync:
@@ -935,6 +946,83 @@ class TestMinAppearancesBoundary:
 
         assert {char["name"] for char in result["characters"]} == {"沈伯安"}
         assert {landmark["name"] for landmark in result["landmarks"]} == {"城南思源茶楼"}
+
+    def test_recognition_cache_skips_repeat_llm_call(self):
+        """P1-成本修复：相同输入的重复识别只调用一次 LLM。"""
+        service = EntityRecognitionService(Mock())
+        round_history = [
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": "你在旧书摊发现了一枚铜钥匙，摊主赵掌柜说它与城南的思源茶楼有关。",
+            }
+        ]
+        ai_response = '{"items": [], "characters": [], "landmarks": []}'
+        call_count = {"n": 0}
+
+        def counting_call_ai(**kwargs):
+            call_count["n"] += 1
+            return ai_response
+
+        with patch.object(service, "_call_ai", new=counting_call_ai):
+            first = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=["林见微"],
+                existing_landmarks=[],
+                min_appearances=1,
+            )
+            second = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=["林见微"],
+                existing_landmarks=[],
+                min_appearances=1,
+            )
+
+        assert call_count["n"] == 1
+        assert first == second
+
+    def test_recognition_cache_is_keyed_by_inputs(self):
+        """P1-成本修复：输入不同（故事不同）必须各自调用 LLM。"""
+        service = EntityRecognitionService(Mock())
+        history_a = [
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": "你在旧书摊发现了一枚铜钥匙。",
+            }
+        ]
+        history_b = [
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": "你在渡口遇到了多年未见的故人。",
+            }
+        ]
+        call_count = {"n": 0}
+
+        def counting_call_ai(**kwargs):
+            call_count["n"] += 1
+            return '{"items": [], "characters": [], "landmarks": []}'
+
+        with patch.object(service, "_call_ai", new=counting_call_ai):
+            service.recognize_from_history(
+                round_history=history_a,
+                existing_items=[],
+                existing_characters=[],
+                existing_landmarks=[],
+                min_appearances=1,
+            )
+            service.recognize_from_history(
+                round_history=history_b,
+                existing_items=[],
+                existing_characters=[],
+                existing_landmarks=[],
+                min_appearances=1,
+            )
+
+        assert call_count["n"] == 2
 
 
 if __name__ == "__main__":
