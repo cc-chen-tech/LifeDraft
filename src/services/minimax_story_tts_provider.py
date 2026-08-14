@@ -90,13 +90,34 @@ class MiniMaxAsyncTTSClient:
         file_id = create_response.get("file_id")
 
         query_response: Mapping[str, Any] = create_response
+        # P0-稳定性修复：
+        # 1) 轮询以墙钟 deadline 为准。旧实现是"次数上限"（max(12, timeout/0.5) 次），
+        #    而每次 HTTP 调用自身又带 request_timeout_seconds 超时，
+        #    最坏总时长可达 次数上限 × 单次超时（如 360×180s），远超配置意图。
+        # 2) 指数退避并封顶，避免高频轮询与重试雪崩。
+        # 3) 查询接口的瞬时错误（429/5xx）按可重试处理继续轮询，4xx 立即抛出。
+        deadline = time.monotonic() + self.config.request_timeout_seconds
         poll_interval_seconds = 0.5
-        poll_attempts = max(12, int(self.config.request_timeout_seconds / poll_interval_seconds))
-        for _ in range(poll_attempts):
-            query_response = self._get_json(
-                self.config.tts_async_query_url,
-                {"task_id": str(task_id)},
-            )
+        max_poll_interval_seconds = 5.0
+        while True:
+            try:
+                query_response = self._get_json(
+                    self.config.tts_async_query_url,
+                    {"task_id": str(task_id)},
+                )
+            except httpx.HTTPStatusError as exc:
+                if 400 <= exc.response.status_code < 500 and exc.response.status_code != 429:
+                    raise
+                # 429/5xx：瞬时错误，继续轮询直到 deadline
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(
+                        "MiniMax async TTS query kept failing until timeout"
+                    ) from exc
+                time.sleep(poll_interval_seconds)
+                poll_interval_seconds = min(
+                    max_poll_interval_seconds, poll_interval_seconds * 2
+                )
+                continue
             _raise_for_base_resp(query_response)
             status = str(query_response.get("status") or "").lower()
             if status == "success":
@@ -104,9 +125,10 @@ class MiniMaxAsyncTTSClient:
                 break
             if status in {"failed", "expired"}:
                 raise RuntimeError(f"MiniMax async TTS task ended with status {status}")
+            if time.monotonic() >= deadline:
+                raise RuntimeError("MiniMax async TTS task did not complete before timeout")
             time.sleep(poll_interval_seconds)
-        else:
-            raise RuntimeError("MiniMax async TTS task did not complete before timeout")
+            poll_interval_seconds = min(max_poll_interval_seconds, poll_interval_seconds * 2)
 
         if file_id is None:
             raise RuntimeError("MiniMax async TTS query response did not include file_id")
