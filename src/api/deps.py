@@ -14,6 +14,15 @@ from src.database.singletons import get_game_db, get_user_manager  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
+
+def require_session(game_id: int, user_id: Optional[int]):
+    """Get a session, restoring it from persistent state when needed.
+
+    P4-去重：此前 events/choices/summary/story 四个路由各自复制了一份
+    完全相同的实现，统一收敛到这里。
+    """
+    return session_service.get_or_restore(game_id, user_id)
+
 # JWT configuration — 必须从环境变量读取，禁止硬编码回退值
 JWT_ALGORITHM = "HS256"
 

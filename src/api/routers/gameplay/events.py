@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from src.api.deps import get_current_user_optional, get_db
+from src.api.deps import get_current_user_optional, get_db, require_session as _require_session  # noqa: N813
 from src.api.routers.gameplay.sse_helpers import (
     get_or_start_round_event_generation,
     replay_cached_then_complete,
@@ -92,11 +92,6 @@ class SSEConnectionManager:
 
 
 sse_manager = SSEConnectionManager()
-
-
-def _require_session(game_id: int, user_id: Optional[int]):
-    """Get a session, restoring it from persistent state when needed."""
-    return session_service.get_or_restore(game_id, user_id)
 
 
 def _is_api_contract_probe(request: Request) -> bool:

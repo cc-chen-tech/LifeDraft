@@ -29,7 +29,7 @@ def client(app):
 class TestRequireSession:
     """测试会话获取"""
 
-    @patch("src.api.routers.gameplay.choices.session_service")
+    @patch("src.api.deps.session_service")
     def test_require_session_returns_session(self, mock_service):
         """测试获取会话"""
         mock_session = MagicMock()
@@ -40,7 +40,7 @@ class TestRequireSession:
         assert result == mock_session
         mock_service.get_or_restore.assert_called_once_with(1, None)
 
-    @patch("src.api.routers.gameplay.choices.session_service")
+    @patch("src.api.deps.session_service")
     def test_require_session_with_user_id(self, mock_service):
         """测试带用户ID获取会话"""
         mock_session = MagicMock()

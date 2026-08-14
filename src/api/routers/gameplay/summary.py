@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from config.settings import settings
 from src.ai.narrative.style_manifest import get_style
-from src.api.deps import get_current_user_optional, get_db
+from src.api.deps import get_current_user_optional, get_db, require_session as _require_session  # noqa: N813
 from src.api.schemas import GameStateResponse, GenerateSummaryRequest
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
@@ -27,11 +27,6 @@ from src.services.life_summary_grounding import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-def _require_session(game_id: int, user_id: Optional[int]):
-    """Get a session, auto-restoring from database if not in memory."""
-    return session_service.get_or_restore(game_id, user_id)
 
 
 # Debug endpoint: for testing session expiry scenarios

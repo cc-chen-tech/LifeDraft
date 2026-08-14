@@ -56,7 +56,7 @@ def mock_session():
 @pytest.fixture
 def mock_session_service():
     """Mock session service."""
-    with patch("src.api.routers.story.session_service") as mock:
+    with patch("src.api.deps.session_service") as mock:
         yield mock
 
 

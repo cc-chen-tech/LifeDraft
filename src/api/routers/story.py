@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.story_exceptions import StoryRewriteFailure
-from src.api.deps import get_current_user_optional, get_db
+from src.api.deps import get_current_user_optional, get_db, require_session as _require_session  # noqa: N813
 from src.api.routers.gameplay.sse_helpers import (
     invalidate_daily_media_after_event_replacement,
     persist_rewritten_current_event,
@@ -34,11 +34,6 @@ def _is_api_contract_probe(request: Request) -> bool:
     if os.getenv("E2E_CONTRACT_PROBE_FAST") != "1":
         return False
     return request.headers.get("x-e2e-contract-probe") == "1"
-
-
-def _require_session(game_id: int, user_id: Optional[int]):
-    """Get a session, auto-restoring from database if not in memory."""
-    return session_service.get_or_restore(game_id, user_id)
 
 
 @router.post("/{game_id}/rewrite")

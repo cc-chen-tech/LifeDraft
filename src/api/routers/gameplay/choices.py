@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from src.ai.story_exceptions import StoryContinuationFailure
-from src.api.deps import get_current_user_optional, get_db
+from src.api.deps import get_current_user_optional, get_db, require_session as _require_session  # noqa: N813
 from src.api.routers.gameplay.sse_helpers import stream_choice
 from src.api.schemas import CustomChoiceRequest, MakeChoiceRequest
 from src.api.services.session_service import session_service
@@ -98,11 +98,6 @@ def _restore_latest_processed_choice_result(
             game_id,
         )
     return result
-
-
-def _require_session(game_id: int, user_id: Optional[int]):
-    """Get a session, auto-restoring from database if not in memory."""
-    return session_service.get_or_restore(game_id, user_id)
 
 
 def _restore_current_event_if_needed(game_loop, game_id: int, user_id: Optional[int]) -> bool:
