@@ -206,3 +206,41 @@ class TestNeteaseMusicClientGetSongUrl:
         assert url is not None
         assert url.startswith("data:audio/wav;base64,")
         self.client.client.get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_analyze_story_mood_offloads_llm_call_to_thread() -> None:
+    """P2-性能修复：音乐情绪分析的同步 LLM 调用必须经 asyncio.to_thread 移出事件循环。"""
+    import json as json_module
+
+    from src.services.music_service import MusicService
+
+    service = MusicService()
+    service.ai_client = MagicMock()
+    analysis_payload = {
+        "mood": "宁静",
+        "scene_type": "独处",
+        "environment": "古风",
+        "story_style": "治愈",
+        "music_style": "中国风",
+        "instruments": ["古琴"],
+        "pacing": "舒缓",
+        "time_weather": "夜晚",
+        "keywords": ["古琴", "夜晚"],
+        "generation_prompt": "纯音乐",
+    }
+
+    captured: dict = {}
+
+    async def fake_to_thread(func, **kwargs):
+        captured["func"] = func
+        captured["kwargs"] = kwargs
+        return json_module.dumps(analysis_payload, ensure_ascii=False)
+
+    with patch("src.services.music_service.asyncio.to_thread", side_effect=fake_to_thread):
+        result = await service._analyze_story_mood("雨夜独处。", None)
+
+    assert captured["func"] is service.ai_client.call
+    assert captured["kwargs"]["temperature"] == 0.7
+    assert result["mood"] == "宁静"
+    assert result["keywords"] == ["古琴", "夜晚"]

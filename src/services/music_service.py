@@ -1559,7 +1559,10 @@ class MusicService:
 只返回JSON，不要有其他内容。"""
 
         try:
-            response = self.ai_client.call(
+            # P2-性能修复：同步 LLM 调用移出事件循环（to_thread），
+            # 路由层的 asyncio.wait_for 超时从此真正生效，且不再冻结整个服务。
+            response = await asyncio.to_thread(
+                self.ai_client.call,
                 system_prompt="你是一位精通音乐与文学的专家，擅长根据故事的背景、时代、风格和情绪，推荐最契合的音乐。你熟悉各种音乐类型：中国传统民乐、古典音乐、现代流行、电子音乐、影视配乐等。",
                 user_prompt=prompt,
                 temperature=0.7,
