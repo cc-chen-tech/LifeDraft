@@ -38,6 +38,8 @@ async def test_round_scene_generation_runs_outside_the_event_loop(
         game_id=1,
         week=2,
         round_number=1,
+        story_date=None,
+        day_index=None,
         stage="event",
         storage_path="/tmp/scene.jpg",
         storage_type="local",
@@ -417,10 +419,18 @@ class TestGetImageFileEndpoint:
         mock_storage.local_path = Path("/data/images")
         mock_storage_class.return_value = mock_storage
 
+        # P0-IDOR 修复后，端点先做归属校验：mock 一个属于 user_id=1 的游戏
+        mock_db = MagicMock()
+        mock_game = MagicMock()
+        mock_game.user_id = 1
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_game
+
+        def override_get_session():
+            yield mock_db
+
+        app.dependency_overrides[get_session] = override_get_session
         try:
-            with patch("src.api.routers.images.get_session") as mock_session_gen:
-                mock_session_gen.return_value = iter([MagicMock()])
-                response = client.get("/images/file/1/character/test.png")
+            response = client.get("/images/file/1/character/test.png")
 
             assert response.status_code == 200
             assert response.content == b"fake_image_data"
@@ -441,12 +451,50 @@ class TestGetImageFileEndpoint:
         mock_storage.local_path = Path("/data/images")
         mock_storage_class.return_value = mock_storage
 
+        mock_db = MagicMock()
+        mock_game = MagicMock()
+        mock_game.user_id = 1
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_game
+
+        def override_get_session():
+            yield mock_db
+
+        app.dependency_overrides[get_session] = override_get_session
         try:
-            with patch("src.api.routers.images.get_session") as mock_session_gen:
-                mock_session_gen.return_value = iter([MagicMock()])
-                response = client.get("/images/file/1/character/test.png")
+            response = client.get("/images/file/1/character/test.png")
 
             assert response.status_code == 500
+        finally:
+            app.dependency_overrides.clear()
+
+    @patch("src.api.routers.images.ImageStorageService")
+    def test_get_image_file_rejects_unowned_game(self, mock_storage_class, app, client):
+        """P0-IDOR：图片文件属于他人游戏时返回 404，而不是返回图片内容。"""
+        from pathlib import Path
+
+        # Mock auth dependency
+        app.dependency_overrides[get_current_user] = lambda: 1
+
+        mock_storage = MagicMock()
+        mock_storage.image_exists.return_value = True
+        mock_storage.get_image_data.return_value = b"fake_image_data"
+        mock_storage.local_path = Path("/data/images")
+        mock_storage_class.return_value = mock_storage
+
+        # 游戏属于 user_id=999，当前用户是 1 → 归属校验必须拦截
+        mock_db = MagicMock()
+        mock_game = MagicMock()
+        mock_game.user_id = 999
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_game
+
+        def override_get_session():
+            yield mock_db
+
+        app.dependency_overrides[get_session] = override_get_session
+        try:
+            response = client.get("/images/file/1/character/test.png")
+
+            assert response.status_code == 404
         finally:
             app.dependency_overrides.clear()
 
@@ -804,10 +852,18 @@ class TestImageFileNotFound:
         mock_storage.local_path = Path("/data/images")
         mock_storage_class.return_value = mock_storage
 
+        # 归属校验通过的 mock 会话（避免依赖真实 DB 状态）
+        mock_db = MagicMock()
+        mock_game = MagicMock()
+        mock_game.user_id = 1
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_game
+
+        def override_get_session():
+            yield mock_db
+
+        app.dependency_overrides[get_session] = override_get_session
         try:
-            with patch("src.api.routers.images.get_session") as mock_session_gen:
-                mock_session_gen.return_value = iter([MagicMock()])
-                response = client.get("/images/file/1/character/nonexistent.png")
+            response = client.get("/images/file/1/character/nonexistent.png")
 
             # Not found should return 404 or 500 (depending on error handling)
             assert response.status_code in (404, 500)

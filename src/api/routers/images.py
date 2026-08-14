@@ -952,6 +952,10 @@ async def get_image_file(
 
     直接返回图片二进制数据，用于前端显示
     """
+    # P0-安全修复（IDOR）：校验游戏归属权，防止任意登录用户越权读取他人游戏图片。
+    # 必须放在 try 之前，否则 HTTPException 会被下方通用异常处理包成 500。
+    verify_game_ownership(db, game_id, user)
+
     try:
         storage_service = ImageStorageService()
 

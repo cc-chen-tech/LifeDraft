@@ -126,10 +126,12 @@ class SessionService:
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Failed to auto-restore session for game_id={game_id}: {e}")
+            # P0-可观测性修复：DB 故障 / 状态解析失败是服务端问题，不能伪装成"游戏不存在"。
+            # 只有上面的显式 HTTPException（state_data is None）才映射 404。
+            logger.error(f"Failed to auto-restore session for game_id={game_id}: {e}", exc_info=True)
             raise HTTPException(
-                status_code=404,
-                detail=f"No active game session for game_id={game_id}. Load the game first.",
+                status_code=500,
+                detail=f"Failed to restore game session for game_id={game_id}. Please try again later.",
             )
 
     def put(
