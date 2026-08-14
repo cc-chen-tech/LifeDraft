@@ -29,7 +29,10 @@ router = APIRouter()
 _audio_cache: OrderedDict[int, Tuple[bytes, str]] = OrderedDict()
 _AUDIO_CACHE_MAX = 10
 _audio_cache_lock = asyncio.Lock()
-MUSIC_RECOMMEND_ROUTE_TIMEOUT_SECONDS = 0.9
+# P2-性能修复：此前 0.9s 包裹的是从不让出事件循环的同步 LLM 调用，超时形同虚设。
+# 现在 _analyze_story_mood 通过 asyncio.to_thread 在线程中执行，
+# 该超时是真实的墙钟上限：冷缓存允许一次完整分析（约数秒），同时兜底失控场景。
+MUSIC_RECOMMEND_ROUTE_TIMEOUT_SECONDS = 20.0
 
 
 @dataclass(frozen=True)
