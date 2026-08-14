@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Generator
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -67,9 +68,14 @@ async def request_story_reading(
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> StoryVoiceReadingResponse:
-    response = get_service(db).request_reading(user_id, request)
-    db.commit()
-    return response
+    # P2-性能修复：request_reading 会同步调用 TTS 合成（MiniMax，可达 180s+），
+    # 连同 db 查询/提交一起移出事件循环（同一线程内完成，避免跨线程使用 session）。
+    def _run() -> StoryVoiceReadingResponse:
+        response = get_service(db).request_reading(user_id, request)
+        db.commit()
+        return response
+
+    return await asyncio.to_thread(_run)
 
 
 @router.get("/jobs/{job_id}", response_model=VoiceReadingJobResponse)
@@ -102,8 +108,11 @@ async def get_voice_reading_audio(file_name: str) -> Response:
     text_hash, voice_id = stem.rsplit(marker, 1)
     if not text_hash or not voice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")
+    # P2-性能修复：确定性 WAV 合成是 CPU 密集循环（约 12.8 万次采样），
+    # 移出事件循环执行。
+    wav_content = await asyncio.to_thread(build_deterministic_wav, text_hash, voice_id)
     return Response(
-        content=build_deterministic_wav(text_hash, voice_id),
+        content=wav_content,
         media_type="audio/wav",
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
