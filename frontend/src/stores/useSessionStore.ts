@@ -3,9 +3,12 @@
  *
  * 管理游戏会话的核心状态：gameId, sessionId, playerState, progress, roundInfo
  *
- * ★ 同步持久化 gameId / playerState 到 localStorage（key: "game-store"）
+ * ★ 同步持久化 gameId 到 localStorage（key: "game-store"）
+ * - P3-性能修复：只持久化 gameId。playerState 含随游戏时长无限增长的
+ *   round_history/decision_history，每次变化全量 JSON.stringify 写 localStorage
+ *   会阻塞主线程并消耗配额；恢复一律走服务端（getActive/loadGameState/syncState）。
  * - 初始化时同步读取，避免异步 hydration 竞态
- * - 状态变化时自动写回 localStorage
+ * - 旧版本遗留的 playerState 持久化数据在读取时自动瘦身重写
  */
 import { create } from "zustand";
 import type {
@@ -70,24 +73,39 @@ export function migratePersistedSessionState(value: unknown): PersistedSessionSt
   };
 }
 
-function _readPersistedState(): { gameId: number | null; playerState: PlayerState | null } {
-  if (typeof window === "undefined") return { gameId: null, playerState: null };
+function _readPersistedState(): { gameId: number | null } {
+  if (typeof window === "undefined") return { gameId: null };
   try {
     const raw = window.localStorage.getItem(PERSIST_KEY);
-    if (!raw) return { gameId: null, playerState: null };
+    if (!raw) return { gameId: null };
     const migrated = migratePersistedSessionState(JSON.parse(raw));
-    window.localStorage.setItem(PERSIST_KEY, JSON.stringify(migrated));
-    return migrated.state;
+    // P3-性能修复：旧版本可能持久化了完整的 playerState（可能数百 KB），
+    // 读取时立即重写为仅含 gameId 的瘦身格式。
+    if (isRecord(migrated.state.playerState) && migrated.state.playerState !== null) {
+      window.localStorage.setItem(
+        PERSIST_KEY,
+        JSON.stringify({
+          state: { gameId: migrated.state.gameId, playerState: null },
+          version: SESSION_PERSIST_VERSION,
+        }),
+      );
+    }
+    return { gameId: migrated.state.gameId };
   } catch {
-    return { gameId: null, playerState: null };
+    return { gameId: null };
   }
 }
 
-function _writePersistedState(gameId: number | null, playerState: PlayerState | null): void {
+function _writePersistedState(gameId: number | null): void {
   if (typeof window === "undefined") return;
   try {
-    const data = migratePersistedSessionState({ state: { gameId, playerState } });
-    window.localStorage.setItem(PERSIST_KEY, JSON.stringify(data));
+    window.localStorage.setItem(
+      PERSIST_KEY,
+      JSON.stringify({
+        state: { gameId, playerState: null },
+        version: SESSION_PERSIST_VERSION,
+      }),
+    );
   } catch { /* ignore quota errors */ }
 }
 
@@ -178,10 +196,10 @@ export interface SessionState {
 
 export const useSessionStore = create<SessionState>()(
   (set, get) => ({
-    // Initial State — 同步从 localStorage 恢复
+    // Initial State — 同步从 localStorage 恢复（仅 gameId；playerState 走服务端恢复）
     gameId: _persisted.gameId,
     sessionId: null,
-    playerState: _persisted.playerState,
+    playerState: null,
     progress: null,
     roundInfo: null,
     isGameOver: false,
@@ -409,9 +427,10 @@ export const useSessionStore = create<SessionState>()(
   })
 );
 
-// ★ 自动持久化：当 gameId 或 playerState 变化时写回 localStorage
+// ★ 自动持久化：仅 gameId 变化时写回 localStorage（P3-性能修复：
+// 不再随 playerState 每次变化全量序列化含无限增长历史的对象）。
 useSessionStore.subscribe((state, prevState) => {
-  if (state.gameId !== prevState.gameId || state.playerState !== prevState.playerState) {
-    _writePersistedState(state.gameId, state.playerState);
+  if (state.gameId !== prevState.gameId) {
+    _writePersistedState(state.gameId);
   }
 });
