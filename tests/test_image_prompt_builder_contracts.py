@@ -68,3 +68,23 @@ def test_prompt_fallbacks_keep_story_identity_and_extract_visual_anchor_fields()
     assert anchor["face_shape"] == "圆脸"
     assert anchor["hair_style"] == "长发"
     assert anchor["hair_color"] == "黑色"
+
+
+def test_enhancer_reuses_aiclient_for_same_config() -> None:
+    """P1-修复：相同（key/base/model）复用同一个 AIClient，不再每次新建 OpenAI 客户端。"""
+    from src.ai.image_prompt_builder import DeepSeekPromptEnhancer
+
+    first = DeepSeekPromptEnhancer._get_client("k1", "https://api.example.com/v1", "m1")
+    second = DeepSeekPromptEnhancer._get_client("k1", "https://api.example.com/v1", "m1")
+    different_model = DeepSeekPromptEnhancer._get_client(
+        "k1", "https://api.example.com/v1", "m2"
+    )
+    different_base = DeepSeekPromptEnhancer._get_client(
+        "k1", "https://other.example.com/v1", "m1"
+    )
+
+    assert first is second
+    assert first is not different_model
+    assert first is not different_base
+    # 客户端应携带独立的 base_url 配置
+    assert first.client.base_url is not None

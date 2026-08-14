@@ -89,6 +89,7 @@ class AIClient:
         self,
         api_key: Optional[str] = None,
         model: Optional[str] = None,
+        base_url: Optional[str] = None,
     ):
         """
         Initialize the AI client.
@@ -96,6 +97,7 @@ class AIClient:
         Args:
             api_key: OpenAI API key (defaults to settings)
             model: OpenAI model name (defaults to settings)
+            base_url: OpenAI-compatible API base URL (defaults to settings)
         """
         self.api_key = api_key or settings.OPENAI_API_KEY
         self.model = model or settings.OPENAI_MODEL
@@ -106,8 +108,9 @@ class AIClient:
             return
 
         client_kwargs: Dict[str, Any] = {"api_key": self.api_key}
-        if settings.OPENAI_BASE_URL:
-            client_kwargs["base_url"] = settings.OPENAI_BASE_URL
+        effective_base_url = base_url or settings.OPENAI_BASE_URL
+        if effective_base_url:
+            client_kwargs["base_url"] = effective_base_url
 
         # ★ 添加超时设置，避免长时间请求导致连接错误
         client_kwargs["timeout"] = 300.0  # 5分钟超时，实体识别需要较长时间
@@ -136,6 +139,7 @@ class AIClient:
         usage_callback: Optional[Callable[[AIUsage], None]] = None,
         thinking: Optional[bool] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
+        response_format: Optional[Dict[str, Any]] = None,
         _allow_truncation_recovery: bool = True,
     ) -> str:
         """
@@ -182,6 +186,7 @@ class AIClient:
                     usage_callback=usage_callback,
                     thinking=thinking,
                     generation_tracker=generation_tracker,
+                    response_format=response_format,
                     _allow_truncation_recovery=_allow_truncation_recovery,
                 )
             return self._call_impl(
@@ -197,6 +202,7 @@ class AIClient:
                 usage_callback=usage_callback,
                 thinking=thinking,
                 generation_tracker=generation_tracker,
+                response_format=response_format,
                 _allow_truncation_recovery=_allow_truncation_recovery,
             )
 
@@ -214,6 +220,7 @@ class AIClient:
         usage_callback: Optional[Callable[[AIUsage], None]] = None,
         thinking: Optional[bool] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
+        response_format: Optional[Dict[str, Any]] = None,
         _allow_truncation_recovery: bool = True,
     ) -> str:
         """Call AI with automatic model fallback using FallbackChain config.
@@ -251,6 +258,7 @@ class AIClient:
                     usage_callback=usage_callback,
                     thinking=thinking,
                     generation_tracker=generation_tracker,
+                    response_format=response_format,
                     _allow_truncation_recovery=_allow_truncation_recovery,
                 )
             except Exception as e:
@@ -290,6 +298,7 @@ class AIClient:
         usage_callback: Optional[Callable[[AIUsage], None]] = None,
         thinking: Optional[bool] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
+        response_format: Optional[Dict[str, Any]] = None,
         _allow_truncation_recovery: bool = True,
     ) -> str:
         """Internal implementation of AI call."""
@@ -398,6 +407,8 @@ class AIClient:
                         extra_params_sync["presence_penalty"] = presence_penalty
                     if effective_request_timeout is not None:
                         extra_params_sync["timeout"] = effective_request_timeout
+                    if response_format is not None:
+                        extra_params_sync["response_format"] = response_format
                     extra_params_sync.update(_thinking_request_params(use_model, thinking))
                     if generation_tracker is not None:
                         generation_tracker.assert_before_provider_call()
