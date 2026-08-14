@@ -3,13 +3,56 @@
 从历史故事中识别重复出现的物品、人物、地点。
 """
 
+import copy
+import hashlib
+import json
 import logging
 import re
+import threading
+import time
+from collections import OrderedDict
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from src.services.base_extraction import BaseExtractionService
 
 logger = logging.getLogger(__name__)
+
+# P1-成本修复：实体识别结果缓存。
+# 识别是"确定性输入 → 结果"的 LLM 调用，重复点击/刷新不应反复计费。
+# 服务每次请求都会新建实例（collection.py:617），因此缓存必须是模块级共享的。
+ENTITY_RECOGNITION_CACHE_TTL = 3600.0
+ENTITY_RECOGNITION_CACHE_MAX_ENTRIES = 200
+_ENTITY_RECOGNITION_CACHE: "OrderedDict[str, tuple[float, Dict[str, Any]]]" = OrderedDict()
+_ENTITY_RECOGNITION_CACHE_LOCK = threading.Lock()
+
+
+def _build_entity_recognition_cache_key(
+    story_text: str,
+    existing_items: List[str],
+    existing_characters: List[str],
+    existing_landmarks: List[str],
+    min_appearances: int,
+    language: str,
+    eligible_character_names: Optional[List[str]],
+) -> str:
+    """构建识别缓存 key：所有影响结果的输入都必须参与。"""
+    payload = {
+        "story_text": story_text,
+        "existing_items": sorted(existing_items),
+        "existing_characters": sorted(existing_characters),
+        "existing_landmarks": sorted(existing_landmarks),
+        "min_appearances": min_appearances,
+        "language": language,
+        "eligible_character_names": sorted(eligible_character_names or []),
+    }
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def clear_entity_recognition_cache() -> None:
+    """清空模块级识别缓存（测试隔离用）。"""
+    with _ENTITY_RECOGNITION_CACHE_LOCK:
+        _ENTITY_RECOGNITION_CACHE.clear()
 
 
 class EntityRecognitionService(BaseExtractionService):
@@ -63,6 +106,29 @@ class EntityRecognitionService(BaseExtractionService):
                 f"{valid_events} valid events, story text {len(story_text)} chars, "
                 f"min_appearances={min_appearances}"
             )
+
+            # P1-成本修复：命中缓存直接返回，跳过 LLM 调用与后续解析。
+            cache_key = _build_entity_recognition_cache_key(
+                story_text=story_text,
+                existing_items=existing_items,
+                existing_characters=existing_characters,
+                existing_landmarks=existing_landmarks,
+                min_appearances=min_appearances,
+                language=language,
+                eligible_character_names=eligible_character_names,
+            )
+            now = time.time()
+            with _ENTITY_RECOGNITION_CACHE_LOCK:
+                entry = _ENTITY_RECOGNITION_CACHE.get(cache_key)
+                if entry is not None:
+                    cached_at, cached_result = entry
+                    if now - cached_at < ENTITY_RECOGNITION_CACHE_TTL:
+                        _ENTITY_RECOGNITION_CACHE.move_to_end(cache_key)
+                        logger.info(
+                            f"Entity recognition cache hit ({len(story_text)} chars story)"
+                        )
+                        return copy.deepcopy(cached_result)
+                    del _ENTITY_RECOGNITION_CACHE[cache_key]
 
             from config.prompts.entity_recognition_prompt import \
                 get_entity_recognition_prompt
@@ -121,6 +187,14 @@ class EntityRecognitionService(BaseExtractionService):
                 f"{len(result.get('characters', []))} characters, "
                 f"{len(result.get('landmarks', []))} landmarks"
             )
+
+            # P1-成本修复：仅成功路径写缓存（异常/降级结果不缓存，避免掩盖后续恢复）。
+            with _ENTITY_RECOGNITION_CACHE_LOCK:
+                _ENTITY_RECOGNITION_CACHE[cache_key] = (time.time(), result)
+                _ENTITY_RECOGNITION_CACHE.move_to_end(cache_key)
+                while len(_ENTITY_RECOGNITION_CACHE) > ENTITY_RECOGNITION_CACHE_MAX_ENTRIES:
+                    _ENTITY_RECOGNITION_CACHE.popitem(last=False)
+
             return result
 
         except Exception as e:
