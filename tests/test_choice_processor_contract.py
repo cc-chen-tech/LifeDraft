@@ -55,8 +55,13 @@ class FakeStoryService:
         return "The story continues in an interesting way."
 
     # -- methods called by _post_choice_pipeline --
-    def compress_narrative(
-        self, story: str, choice: str, pending_storylines=None
+    def compress_and_extract(
+        self,
+        story: str,
+        choice: str,
+        pending_storylines=None,
+        established_facts=None,
+        character_habits=None,
     ) -> Dict[str, Any]:
         return {
             "summary": "A brief summary of events.",
@@ -69,20 +74,6 @@ class FakeStoryService:
             "career_updates": [],
             "commitment_updates": [],
             "causal_updates": [],
-        }
-
-    def extract_world_updates(
-        self, story, choice, established_facts=None, character_habits=None
-    ) -> Dict[str, Any]:
-        return {
-            "summary": "",  # merged with compress_narrative above
-            "fact_updates": self.fact_updates,
-            "location_updates": [],
-            "career_updates": [],
-            "commitment_updates": [],
-            "causal_updates": [],
-            "foreshadowing_seeds": [],
-            "habit_updates": [],
         }
 
     # -- methods called by _generate_custom_choice_effects / _result --
@@ -118,13 +109,9 @@ class FailingCustomContinuationStoryService(FailingContinuationStoryService):
 
 
 class FailingSummaryAndExtractionService(FakeStoryService):
-    def compress_narrative(self, *args, **kwargs) -> Dict[str, Any]:
+    def compress_and_extract(self, *args, **kwargs) -> Dict[str, Any]:
         del args, kwargs
-        raise RuntimeError("display summary unavailable")
-
-    def extract_world_updates(self, *args, **kwargs) -> Dict[str, Any]:
-        del args, kwargs
-        raise RuntimeError("optional extraction unavailable")
+        raise RuntimeError("combined postprocess unavailable")
 
 
 # ---------------------------------------------------------------------------

@@ -57,6 +57,7 @@ from config.prompts.story_prompts import (
 
 # Summary generation prompts
 from config.prompts.summary_prompts import (
+    get_combined_choice_postprocess_prompt,
     get_four_week_summary_prompt,
     get_narrative_compression_prompt,
     get_story_compression_prompt,
@@ -86,6 +87,7 @@ __all__ = [
     "get_yearly_summary_prompt",
     "get_story_compression_prompt",
     "get_narrative_compression_prompt",
+    "get_combined_choice_postprocess_prompt",
     "get_weekly_summary_prompt",
     # World prompts
     "get_ending_prompt",

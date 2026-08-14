@@ -440,6 +440,111 @@ class SummaryGenerator:
         )
         return dict(_empty_result)
 
+    def compress_and_extract(
+        self,
+        story: str,
+        choice: str,
+        language: str,
+        pending_storylines: Optional[list] = None,
+        established_facts: Optional[list] = None,
+        character_habits: Optional[list] = None,
+    ) -> Dict[str, Any]:
+        """P1-成本优化：叙事压缩 + 世界状态提取合并为一次 LLM 调用。
+
+        故事原文只发送一次；返回的 dict 同时包含 narrative 字段
+        （summary / event_concluded / storyline_updates）与 world 字段
+        （fact_updates / foreshadowing_seeds / habit_updates / location_updates /
+        career_updates / commitment_updates / causal_updates）。
+        """
+        from config.prompts import get_combined_choice_postprocess_prompt
+
+        logger.info(f"[CombinedPostprocess] Processing story of {len(story)} chars")
+
+        prompt = get_combined_choice_postprocess_prompt(
+            story,
+            choice,
+            language,
+            pending_storylines,
+            established_facts,
+            character_habits,
+        )
+        sys_prompt = get_system_prompt("story_compressor", language)
+
+        last_error: Optional[str] = None
+        for attempt in range(2):
+            try:
+                user_prompt = prompt
+                if attempt > 0 and last_error:
+                    feedback = (
+                        f"\n\n【上次生成失败，原因：{last_error}。请避免同样的问题，确保输出有效的JSON格式。】"
+                        if language == "zh"
+                        else f"\n\n[Previous attempt failed: {last_error}. Please ensure valid JSON output.]"
+                    )
+                    user_prompt = prompt + feedback
+
+                content = self.client.call(
+                    system_prompt=sys_prompt,
+                    user_prompt=user_prompt,
+                    temperature=0.5,
+                    max_tokens=8192,
+                )
+
+                data = extract_json(content)
+                if data and isinstance(data, dict) and "summary" in data:
+                    summary = self._clean_summary_text(data["summary"])
+                    summary = compact_display_summary(
+                        summary, resolve_information_budget("week", language)
+                    )
+                    result = {
+                        "summary": summary,
+                        "event_concluded": data.get("event_concluded", True),
+                        "storyline_updates": data.get("storyline_updates", []),
+                    }
+                    for key in (
+                        "fact_updates",
+                        "foreshadowing_seeds",
+                        "habit_updates",
+                        "location_updates",
+                        "career_updates",
+                        "commitment_updates",
+                        "causal_updates",
+                    ):
+                        result[key] = data.get(key, [])
+                    logger.info(
+                        f"[CombinedPostprocess] summary={len(summary)} chars, "
+                        f"storylines={len(result['storyline_updates'])}, "
+                        f"facts={len(result['fact_updates'])}"
+                    )
+                    return result
+
+                last_error = (
+                    f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
+                )
+                logger.warning(f"[CombinedPostprocess] Attempt {attempt + 1}/2: {last_error}")
+
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"[CombinedPostprocess] Attempt {attempt + 1}/2 failed: {e}")
+
+        logger.error(
+            "[CombinedPostprocess] failed after 2 attempts; returning deterministic fallback"
+        )
+        fallback = compact_display_summary(
+            story, resolve_information_budget("week", language)
+        )
+        return {
+            "summary": fallback,
+            "event_concluded": True,
+            "storyline_updates": [],
+            "fact_updates": [],
+            "foreshadowing_seeds": [],
+            "habit_updates": [],
+            "location_updates": [],
+            "career_updates": [],
+            "commitment_updates": [],
+            "causal_updates": [],
+        }
+
     # -------------------- Weekly Summary --------------------
 
     def generate_weekly_summary(
