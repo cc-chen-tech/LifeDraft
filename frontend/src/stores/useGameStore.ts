@@ -119,6 +119,7 @@ interface GameState {
   nextCreationStep: () => void;
   prevCreationStep: () => void;
   updateCharacterSetting: (key: string, value: unknown) => void;
+  replaceCharacterSettings: (settings: CharacterSettings) => void;
   setPlayerName: (name: string) => void;
   setLifeVision: (vision: string) => void;
   setOpeningStory: (story: string) => void;
@@ -464,6 +465,10 @@ export const useGameStore = create<GameState>()(
     updateCharacterSetting: (key, value) => {
       useCharacterStore.getState().updateCharacterSetting(key, value);
       set({ characterSettings: useCharacterStore.getState().characterSettings });
+    },
+    replaceCharacterSettings: (settings) => {
+      useCharacterStore.getState().replaceCharacterSettings(settings);
+      set({ characterSettings: settings });
     },
 
     setPlayerName: (name) => {

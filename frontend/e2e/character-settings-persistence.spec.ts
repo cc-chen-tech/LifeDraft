@@ -44,9 +44,9 @@ test.describe('Character Creation - Settings Persistence', () => {
     await nameInput.waitFor({ state: 'visible' });
     await nameInput.fill('持久化测试');
 
-    // 3. 依次通过 4 个手动步骤：era -> age -> gender -> world
+    // 3. 依次通过 3 个手动跳转：story_origin -> gender -> world -> portrait
     // 每个步骤：等待内容生成 -> 点击"下一步"
-    for (let step = 0; step < 4; step++) {
+    for (let step = 0; step < 3; step++) {
       // 等待当前步骤的 AI 生成完成
       await page.waitForTimeout(step === 0 ? 3000 : 10000);
 
@@ -64,16 +64,23 @@ test.describe('Character Creation - Settings Persistence', () => {
       await nextButton.click();
     }
 
-    // 4. 现在应该在 portrait 步骤，等待后台 auto-generation 完成
-    // auto-generation 完成后会显示 CompletionScreen，其中包含"开始游戏"按钮
+    // 4. 现在应该在 portrait 步骤。四步流程不会自动跳过该步骤，
+    // 即使后台 auto-generation 已经完成，也要由玩家明确继续。
+    const portraitHeading = page.getByRole('heading', { name: '人物形象' });
+    await portraitHeading.waitFor({ state: 'visible', timeout: 180_000 });
+    const portraitContinue = page.getByRole('button', { name: /继续生成角色/i });
+    await portraitContinue.waitFor({ state: 'visible' });
+    await portraitContinue.click();
+
+    // CompletionScreen 包含"开始游戏"按钮
     const startButton = page.getByRole('button', { name: /开始游戏/i });
     await startButton.waitFor({ state: 'visible', timeout: 180_000 });
 
     // 5. 点击"开始游戏"
     await startButton.click();
 
-    // 6. 等待导航到 opening story
-    await expect(page).toHaveURL(/\/story\/opening/, { timeout: 120_000 });
+    // 6. 每日模式直接进入第 1 天故事页
+    await expect(page).toHaveURL(/\/play/, { timeout: 120_000 });
 
     // 7. 等待 PATCH 请求完成
     await page.waitForTimeout(3000);
@@ -97,7 +104,13 @@ test.describe('Character Creation - Settings Persistence', () => {
     expect(cs).toHaveProperty('traits');
     expect(cs).not.toHaveProperty('wealth');
 
-    // 10. 验证手动步骤的字段也存在
+    // 10. story_origin 是规范字段；era/age 仅为只读兼容投影
+    expect(cs).toHaveProperty('story_origin');
+    expect(cs?.story_origin).toMatchObject({
+      revision: expect.any(Number),
+      start_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      starting_age: expect.any(Number),
+    });
     expect(cs).toHaveProperty('era');
     expect(cs).toHaveProperty('age');
     expect(cs).toHaveProperty('gender');

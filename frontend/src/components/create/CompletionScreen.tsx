@@ -8,6 +8,7 @@ import { FormField, PageTransition, Surface } from "@/components/story101";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import { isWithinInputLimit } from "@/lib/inputLimits";
 import { SettingFeedbackCard } from "./SettingFeedbackCard";
+import { SettingDisplay } from "@/components/game/SettingDisplay";
 import { PresetSaveSheet } from "./PresetSaveSheet";
 import { CreateFeedbackToast } from "./CreateFeedbackToast";
 import type {
@@ -28,8 +29,7 @@ import {
 } from "lucide-react";
 
 const STEP_LABELS: Record<string, string> = {
-  era: "时代背景",
-  age: "年龄阶段",
+  story_origin: "故事起点",
   gender: "性别",
   world: "世界观",
   portrait: "人物形象",
@@ -66,6 +66,7 @@ interface CompletionScreenProps {
   onSetShowPresetSheet: (show: boolean) => void;
   onSetPresetName: (name: string) => void;
   onBack: () => void;
+  onEditOrigin: () => void;
   onStartGame: () => Promise<void>;
   onSavePreset: () => Promise<void>;
   onRegenerateSetting: (stepKey: string, feedback: string) => Promise<void>;
@@ -96,6 +97,7 @@ export function CompletionScreen({
   onSetShowPresetSheet,
   onSetPresetName,
   onBack,
+  onEditOrigin,
   onStartGame,
   onSavePreset,
   onRegenerateSetting,
@@ -302,6 +304,26 @@ export function CompletionScreen({
           </section>
 
           <section className="mt-8 border-t border-[var(--border-default)] pt-6">
+            {characterSettings.story_origin != null && (
+              <div className="mb-8">
+                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="font-serif text-xl font-semibold text-[var(--text-primary)]">故事起点</h2>
+                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                      修改后，世界观、人物背景和人物形象都需要重新生成。
+                    </p>
+                  </div>
+                  <Button variant="narrative" size="touch" onClick={onEditOrigin}>
+                    <RefreshCw />
+                    修改故事起点
+                  </Button>
+                </div>
+                <SettingDisplay
+                  stepKey="story_origin"
+                  data={characterSettings.story_origin as Record<string, unknown>}
+                />
+              </div>
+            )}
             <Button
               variant="quiet"
               size="touch"

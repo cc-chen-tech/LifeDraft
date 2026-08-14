@@ -11,13 +11,15 @@ from config.prompts import (get_character_setting_prompt,
                             get_initial_attributes_prompt,
                             get_opening_story_prompt,
                             get_relationship_person_prompt,
-                            get_relationships_summary_prompt)
+                            get_relationships_summary_prompt,
+                            get_story_origin_prompt)
 from src.ai.budgets import (GenerationCallTracker, GenerationOperation,
                             NarrativeKind, format_length_requirement,
                             resolve_narrative_budget)
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
+from src.game.story_origin import validate_story_origin
 from src.game.world_fact_safety import qualify_generated_world_facts
 
 logger = logging.getLogger(__name__)
@@ -410,6 +412,68 @@ class CharacterCreator:
         """
         self.ai_generator = ai_generator or EventGenerator()
         self.language = language
+
+    def generate_story_origin(
+        self,
+        player_name: str,
+        life_vision: str,
+        previous_settings: Dict[str, Any],
+        feedback: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Generate and validate one complete story-origin candidate."""
+        prompt = get_story_origin_prompt(
+            player_name=player_name,
+            life_vision=life_vision,
+            previous_settings=previous_settings,
+            language=self.language,
+            feedback=feedback,
+        )
+        previous = previous_settings.get("story_origin")
+        previous_revision = (
+            previous.get("revision", 0) if isinstance(previous, dict) else 0
+        )
+        if isinstance(previous_revision, bool) or not isinstance(previous_revision, int):
+            previous_revision = 0
+        next_revision = max(0, previous_revision) + 1
+        explicit_constraints = "\n".join(
+            part for part in (life_vision, feedback or "") if part
+        )
+        last_error: Optional[Exception] = None
+
+        for attempt in range(3):
+            try:
+                candidate = self.ai_generator.generate_completion_json(
+                    prompt=prompt,
+                    system_prompt=get_system_prompt("world_building", "en"),
+                    temperature=0.9,
+                    max_tokens=2048,
+                )
+                if not isinstance(candidate, dict):
+                    raise ValueError("invalid_story_origin")
+                candidate = dict(candidate)
+                candidate["revision"] = next_revision
+                return validate_story_origin(
+                    candidate, explicit_constraints=explicit_constraints
+                )
+            except (TypeError, ValueError, KeyError) as exc:
+                last_error = exc
+                logger.warning(
+                    "Story origin candidate rejected on attempt %s/3: %s",
+                    attempt + 1,
+                    exc,
+                )
+
+        from src.ai.e2e_story_provider import deterministic_e2e_story_origin
+
+        deterministic_candidate = deterministic_e2e_story_origin(
+            life_vision=life_vision,
+            feedback=feedback,
+        )
+        if deterministic_candidate is not None:
+            deterministic_candidate["revision"] = next_revision
+            return validate_story_origin(deterministic_candidate)
+
+        raise ValueError("story_origin_generation_failed") from last_error
 
     def generate_setting(
         self,

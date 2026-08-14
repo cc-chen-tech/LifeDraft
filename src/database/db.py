@@ -105,6 +105,21 @@ class GameDatabase:
         """保存游戏进度（更新最新状态）。"""
         return self._state_repo.save_game_progress(game_id, player_state)  # type: ignore[no-any-return]
 
+    def save_story_origin_progress(
+        self,
+        game_id: int,
+        user_id: int,
+        player_state: "PlayerState",
+        expected_revision: Optional[int] = None,
+    ) -> bool:
+        """Persist an origin rebase and invalidate its old media atomically."""
+        return self._state_repo.save_story_origin_progress(
+            game_id,
+            user_id,
+            player_state,
+            expected_revision=expected_revision,
+        )
+
     def load_saved_game(self, game_id: int, user_id: int) -> Optional[Dict[str, Any]]:
         """加载已保存的游戏（验证用户权限）。"""
         return self._state_repo.load_saved_game(game_id, user_id)  # type: ignore[no-any-return]

@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.utils.financial_narrative import sanitize_authoritative_fact_records
+from src.game.story_origin import canonical_story_settings
 
 logger = logging.getLogger(__name__)
 
@@ -910,6 +911,7 @@ def _build_era_anachronism_constraints(
     if not character_settings:
         return ""
 
+    character_settings = canonical_story_settings(character_settings)
     era = character_settings.get("era", {})
     era_desc = (era.get("era_description", "") + " " + era.get("world_context", "")).lower()
     world = character_settings.get("world", {})
@@ -1448,6 +1450,7 @@ def _build_full_character_context(
     if not character_settings:
         return "", []
 
+    character_settings = canonical_story_settings(character_settings)
     zh = language == "zh"
     char_parts = []
     available_people = _collect_available_people(character_settings)

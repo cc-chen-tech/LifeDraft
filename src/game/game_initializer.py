@@ -168,22 +168,16 @@ class GameInitializer:
     def _normalize_daily_start_date(
         character_settings: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Validate the selected date and synchronize year-derived settings."""
-        from datetime import date
+        """Project the one canonical origin or require legacy conflict review."""
+        from src.game.story_origin import (
+            normalize_legacy_story_origin,
+            project_story_origin,
+        )
 
-        normalized = dict(character_settings)
-        era = dict(normalized.get("era") or {})
-        age = dict(normalized.get("age") or {})
-        era_year = int(era.get("year", 2024))
-        raw_start = normalized.get("start_date") or f"{era_year:04d}-01-01"
-        parsed = date.fromisoformat(str(raw_start))
-        era["year"] = parsed.year
-        if "age" in age:
-            age["birth_year"] = parsed.year - int(age["age"])
-        normalized["start_date"] = parsed.isoformat()
-        normalized["era"] = era
-        normalized["age"] = age
-        return normalized
+        origin, needs_review = normalize_legacy_story_origin(character_settings)
+        if character_settings.get("story_origin_needs_review") or needs_review:
+            raise ValueError("story_origin_needs_review")
+        return project_story_origin(character_settings, origin)
 
     def _initialize_relationships(
         self, initial_state: Dict[str, Any], character_settings: Dict[str, Any]

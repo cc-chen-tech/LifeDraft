@@ -359,17 +359,6 @@ async function screenshot(
 
 async function installCreateFixture(page: Page) {
   const settingResponses: Record<string, Record<string, unknown>> = {
-    era: {
-      year: 2026,
-      era_name: "现代",
-      era_description: "当代城市生活",
-      world_context: "一个允许重新选择人生方向的世界",
-    },
-    age: {
-      age: 26,
-      birth_year: 2000,
-      age_description: "刚刚进入职业与生活都需要重新判断的阶段",
-    },
     gender: {
       gender: "女性",
       gender_description: "她习惯先观察，再作出自己的判断",
@@ -397,6 +386,14 @@ async function installCreateFixture(page: Page) {
     },
   };
 
+  await fulfillExactJson(page, "/api/character/story-origin", "POST", () => ({
+    revision: 1,
+    start_date: "2026-08-13",
+    starting_age: 26,
+    era_description: "2020年代中期的现代都市",
+    life_stage_description: "刚刚进入职业与生活都需要重新判断的阶段",
+    world_context: "一个允许重新选择人生方向的世界",
+  }));
   await fulfillExactJson(page, "/api/character/setting", "POST", (body) => {
     const type = String(body.setting_type ?? "");
     return settingResponses[type] ?? {};
@@ -567,7 +564,7 @@ test("the create reading axis reserves the persistent sound dock", async ({
   });
 });
 
-test("create uses the real five-step reading flow through completion", async ({
+test("create uses the real four-step reading flow through completion", async ({
   page,
 }, testInfo) => {
   await page.setViewportSize(viewportFor(testInfo));
@@ -580,7 +577,7 @@ test("create uses the real five-step reading flow through completion", async ({
 
   await page.goto("/create");
 
-  await expect(page.getByRole("heading", { name: "时代背景" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "故事起点" })).toBeVisible();
   await expect(page.getByText("story101", { exact: true })).toBeVisible();
   await expectSingleReadingSurface(page);
   await expect(page.locator('[data-slot="page-transition"]')).toHaveCSS(
@@ -592,21 +589,23 @@ test("create uses the real five-step reading flow through completion", async ({
   await expectNarrativeVisualContract(page);
   await screenshot(page, testInfo, "create-initial");
 
-  // Fill optional vision first: entering the required name last starts one era request.
+  // Fill optional vision first: entering the required name last starts one origin request.
   await page.getByRole("textbox", { name: "人生愿景（可选）" }).fill(
     "在城市里保留创作、关系与重新选择的自由。",
   );
   await page.getByRole("textbox", { name: "角色姓名" }).fill("许知夏");
 
-  await waitForGeneratedStep(page, "时代背景");
+  await waitForGeneratedStep(page, "故事起点");
   await screenshot(page, testInfo, "create-generated");
   await page.getByRole("button", { name: "下一步" }).click();
 
-  for (const label of ["年龄阶段", "性别", "世界观"]) {
+  for (const label of ["性别", "世界观"]) {
     await waitForGeneratedStep(page, label);
     await page.getByRole("button", { name: "下一步" }).click();
   }
 
+  await expect(page.getByRole("heading", { name: "人物形象" })).toBeVisible();
+  await page.getByRole("button", { name: /继续生成角色/ }).click();
   await expect(
     page.getByRole("heading", { name: "角色设定完成" }),
   ).toBeVisible({ timeout: 15_000 });
@@ -706,7 +705,8 @@ test("create uses the real five-step reading flow through completion", async ({
   await expectResponsivePage(page);
 
   await expectOnlyApiRequests(page, scenario, {
-    "POST /api/character/setting": 6,
+    "POST /api/character/story-origin": 1,
+    "POST /api/character/setting": 4,
     "POST /api/character/relationship": 3,
     "POST /api/character/relationships-summary": 1,
     "POST /api/games": 1,

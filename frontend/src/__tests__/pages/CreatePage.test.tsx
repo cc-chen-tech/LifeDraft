@@ -12,6 +12,15 @@ import { useImageStore } from '@/stores/useImageStore';
 import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
+const testOrigin = {
+  revision: 1,
+  start_date: '2026-08-13',
+  starting_age: 28,
+  era_description: '2020年代中期的现代都市',
+  life_stage_description: '职业稳定探索期',
+  world_context: 'AI工具快速变化',
+};
+
 // Env mocks (required — network calls, routing)
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -91,33 +100,31 @@ describe('CreatePage', () => {
       expect(screen.getByText('story101')).toBeInTheDocument();
       const bookmarks = container.querySelectorAll('[data-slot="page-edge-bookmark"]');
       expect(bookmarks).toHaveLength(1);
-      expect(bookmarks[0]).toHaveTextContent('时代背景');
-      expect(bookmarks[0]).toHaveTextContent('第 1 步，共 5 步');
+      expect(bookmarks[0]).toHaveTextContent('故事起点');
+      expect(bookmarks[0]).toHaveTextContent('第 1 步，共 4 步');
     });
 
-    it('renders five named steps with only completed steps actionable', () => {
+    it('renders four named steps with only completed steps actionable', () => {
       useGameStore.setState({
-        creationStep: 2,
+        creationStep: 1,
         playerName: 'TestPlayer',
         characterSettings: {
-          era: { era_name: '现代' },
-          age: { starting_age: 22 },
+          story_origin: testOrigin,
         },
       });
 
       render(<CreatePage />);
 
-      const stepNames = ['时代背景', '年龄阶段', '性别', '世界观', '人物形象'];
+      const stepNames = ['故事起点', '性别', '世界观', '人物形象'];
       const stepButtons = stepNames.map((name) =>
         screen.getByRole('button', { name: `前往${name}` }),
       );
-      expect(stepButtons).toHaveLength(5);
+      expect(stepButtons).toHaveLength(4);
       expect(stepButtons[0]).toBeEnabled();
-      expect(stepButtons[1]).toBeEnabled();
+      expect(stepButtons[1]).toBeDisabled();
+      expect(stepButtons[1]).toHaveAttribute('aria-current', 'step');
       expect(stepButtons[2]).toBeDisabled();
-      expect(stepButtons[2]).toHaveAttribute('aria-current', 'step');
       expect(stepButtons[3]).toBeDisabled();
-      expect(stepButtons[4]).toBeDisabled();
       stepButtons.forEach((button) => {
         expect(button).toHaveAttribute('data-size', 'touch');
       });
@@ -152,37 +159,38 @@ describe('CreatePage', () => {
   });
 
   describe('Step rendering', () => {
-    it('renders step 1 (era) by default', () => {
+    it('renders story origin as step 1 by default', () => {
       render(<CreatePage />);
-      expect(screen.getByText('1/5')).toBeInTheDocument();
+      expect(screen.getByText('1/4')).toBeInTheDocument();
     });
 
-    it('shows era step description', () => {
+    it('shows story origin step description', () => {
       render(<CreatePage />);
-      expect(screen.getByText('选择你的人生将发生在哪个时代')).toBeInTheDocument();
+      expect(screen.getByText('日期、年龄与时代语境会作为一个完整起点生成')).toBeInTheDocument();
     });
 
-    it('shows era step title', () => {
+    it('shows story origin step title', () => {
       render(<CreatePage />);
-      expect(screen.getByRole('heading', { name: '时代背景', level: 2 })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '故事起点', level: 2 })).toBeInTheDocument();
     });
   });
 
   describe('Different steps', () => {
-    it('renders age step when creationStep is 1', () => {
+    it('has no independent age step when creationStep is 1', () => {
       useGameStore.setState({
         creationStep: 1,
-        characterSettings: { era: { era_name: '现代' } },
+        characterSettings: { story_origin: testOrigin },
         playerName: 'TestPlayer',
       });
 
       render(<CreatePage />);
-      expect(screen.getByRole('button', { name: '前往年龄阶段' })).toHaveAttribute('aria-current', 'step');
+      expect(screen.queryByRole('button', { name: '前往年龄阶段' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '前往性别' })).toHaveAttribute('aria-current', 'step');
     });
 
     it('renders gender step when creationStep is 2', () => {
       useGameStore.setState({
-        creationStep: 2,
+        creationStep: 1,
         characterSettings: { era: { era_name: '现代' }, age: { starting_age: 22 } },
         playerName: 'TestPlayer',
       });
@@ -193,7 +201,7 @@ describe('CreatePage', () => {
 
     it('renders world step when creationStep is 3', () => {
       useGameStore.setState({
-        creationStep: 3,
+        creationStep: 2,
         characterSettings: { era: { era_name: '现代' }, age: { starting_age: 22 }, gender: 'male' },
         playerName: 'TestPlayer',
       });
@@ -204,7 +212,7 @@ describe('CreatePage', () => {
 
     it('renders portrait step when creationStep is 4', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: { era: { era_name: '现代' }, age: { starting_age: 22 }, gender: 'male', world: {} },
         playerName: 'TestPlayer',
         gameId: 1,
@@ -229,7 +237,7 @@ describe('CreatePage', () => {
 
     it('allows continuing from portrait step before player images finish', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: { era: { era_name: '现代' }, age: { starting_age: 22 }, gender: 'male', world: {} },
         playerName: 'TestPlayer',
         gameId: 1,
@@ -262,7 +270,7 @@ describe('CreatePage', () => {
   describe('Step indicator', () => {
     it('shows correct step count', () => {
       render(<CreatePage />);
-      expect(screen.getByText('1/5')).toBeInTheDocument();
+      expect(screen.getByText('1/4')).toBeInTheDocument();
     });
 
     it('shows step 2 when creationStep is 1', () => {
@@ -273,19 +281,19 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('2/5')).toBeInTheDocument();
+      expect(screen.getByText('2/4')).toBeInTheDocument();
     });
 
     it('shows step 5 when creationStep is 4', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: { era: { era_name: '现代' }, age: { starting_age: 22 }, gender: 'male', world: {} },
         playerName: 'TestPlayer',
         gameId: 1,
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('5/5')).toBeInTheDocument();
+      expect(screen.getByText('4/4')).toBeInTheDocument();
     });
   });
 
@@ -299,8 +307,9 @@ describe('CreatePage', () => {
   describe('Completion phase', () => {
     it('shows completion state when autoGenPhase is done', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -381,8 +390,9 @@ describe('CreatePage', () => {
   describe('Portrait step', () => {
     it('shows portrait step content when on step 4', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -398,8 +408,9 @@ describe('CreatePage', () => {
 
     it('shows generating state when isGeneratingImage is true', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -416,8 +427,9 @@ describe('CreatePage', () => {
 
     it('shows player images when available', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -442,8 +454,9 @@ describe('CreatePage', () => {
   describe('Auto-generation phase', () => {
     it('shows done state when all auto steps are complete', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -477,14 +490,15 @@ describe('CreatePage', () => {
       });
 
       await waitFor(() => {
-        expect(fetchCalled('/api/character/setting')).toBe(true);
+        expect(fetchCalled('/api/character/story-origin')).toBe(true);
       }, { timeout: 5000 });
     });
 
     it('calls handleSavePreset with correct data', async () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -511,8 +525,9 @@ describe('CreatePage', () => {
 
     it('handles start game with existing gameId', async () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -532,7 +547,7 @@ describe('CreatePage', () => {
       fireEvent.click(startButton);
 
       await waitFor(() => {
-        expect(mockPush).toHaveBeenCalledWith('/story/opening');
+        expect(mockPush).toHaveBeenCalledWith('/play');
       });
     });
 
@@ -544,7 +559,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      const currentStep = screen.getByRole('button', { name: '前往时代背景' });
+      const currentStep = screen.getByRole('button', { name: '前往故事起点' });
       expect(currentStep).toHaveAttribute('aria-current', 'step');
       expect(currentStep).toHaveClass('text-sm');
       expect(currentStep).not.toHaveClass('text-xs');
@@ -562,7 +577,6 @@ describe('CreatePage', () => {
       render(<CreatePage />);
 
       expect(screen.getByRole('status')).toHaveTextContent('角色设定，正在成形');
-      expect(screen.getByRole('status')).toHaveTextContent('时代背景');
       expect(screen.queryByText('这一页仍在继续写作')).not.toBeInTheDocument();
 
       act(() => {
@@ -581,7 +595,7 @@ describe('CreatePage', () => {
         return Promise.resolve(jsonResponse({}));
       });
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         gameId: 123,
         playerName: '陆明',
         characterSettings: {
@@ -638,8 +652,9 @@ describe('CreatePage', () => {
 
     it('shows preset loaded message when isPresetLoaded is true', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -660,8 +675,9 @@ describe('CreatePage', () => {
 
     it('shows auto-generated message when isPresetLoaded is false', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -682,8 +698,9 @@ describe('CreatePage', () => {
 
     it('handles return to modify button in done phase', async () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -707,8 +724,9 @@ describe('CreatePage', () => {
 
     it('handles view details toggle', async () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -734,8 +752,9 @@ describe('CreatePage', () => {
 
     it('disables start game button when no player name', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -757,8 +776,9 @@ describe('CreatePage', () => {
   describe('Image generation', () => {
     it('shows image generation loading state', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -776,8 +796,9 @@ describe('CreatePage', () => {
 
     it('shows regenerate image button when images available', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -797,8 +818,9 @@ describe('CreatePage', () => {
 
     it('shows multiple image thumbnails', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -822,8 +844,9 @@ describe('CreatePage', () => {
 
     it('shows background generation indicator', () => {
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -845,7 +868,7 @@ describe('CreatePage', () => {
   describe('Step indicator navigation', () => {
     it('jumps directly to a previous named step without invoking destructive back cleanup', () => {
       useGameStore.setState({
-        creationStep: 2,
+        creationStep: 1,
         playerName: 'TestPlayer',
         characterSettings: {
           era: { era_name: '现代' },
@@ -854,7 +877,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      fireEvent.click(screen.getByRole('button', { name: '前往时代背景' }));
+      fireEvent.click(screen.getByRole('button', { name: '前往故事起点' }));
 
       expect(gameSpy.spies.setCreationStep).toHaveBeenCalledWith(0);
       expect(gameSpy.spies.prevCreationStep).not.toHaveBeenCalled();
@@ -894,7 +917,7 @@ describe('CreatePage', () => {
       });
 
       await waitFor(() => {
-        expect(fetchCalled('/api/character/setting')).toBe(true);
+        expect(fetchCalled('/api/character/story-origin')).toBe(true);
       }, { timeout: 5000 });
     });
 
@@ -902,8 +925,9 @@ describe('CreatePage', () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ preset_id: 1 }));
 
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -945,8 +969,9 @@ describe('CreatePage', () => {
         new Error('人物形象修改失败'),
       );
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -976,8 +1001,9 @@ describe('CreatePage', () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ message: 'Save failed' }, 400));
 
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -1025,8 +1051,9 @@ describe('CreatePage', () => {
       });
 
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -1067,8 +1094,9 @@ describe('CreatePage', () => {
       jest.spyOn(console, 'error').mockImplementation(() => {});
 
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -1102,8 +1130,9 @@ describe('CreatePage', () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ game_id: 123 }));
 
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -1141,8 +1170,9 @@ describe('CreatePage', () => {
       });
 
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -1180,8 +1210,9 @@ describe('CreatePage', () => {
       });
 
       useGameStore.setState({
-        creationStep: 4,
+        creationStep: 3,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -1215,8 +1246,9 @@ describe('CreatePage', () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ game_id: 123 }));
 
       useGameStore.setState({
-        creationStep: 3,
+        creationStep: 2,
         characterSettings: {
+          story_origin: testOrigin,
           era: { era_name: '现代' },
           age: { starting_age: 22 },
           gender: 'male',
@@ -1269,8 +1301,8 @@ describe('CreatePage', () => {
       useGameStore.setState({
         creationStep: 1,
         characterSettings: {
-          era: { era_name: '现代' },
-          age: { starting_age: 28 },
+          story_origin: testOrigin,
+          gender: { gender: 'female' },
         },
         playerName: 'TestPlayer',
         gameId: 1,
@@ -1278,7 +1310,7 @@ describe('CreatePage', () => {
 
       render(<CreatePage />);
 
-      expect(screen.getByRole('button', { name: '重新生成年龄阶段' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '重新生成性别' })).toBeInTheDocument();
     });
   });
 });

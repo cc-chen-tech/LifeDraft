@@ -32,11 +32,11 @@ describe('useCharacterStore', () => {
 
   describe('Constants', () => {
     it('has correct creation steps', () => {
-      expect(CREATION_STEPS).toEqual(['era', 'age', 'gender', 'world', 'portrait']);
+      expect(CREATION_STEPS).toEqual(['story_origin', 'gender', 'world', 'portrait']);
     });
 
     it('has correct manual steps', () => {
-      expect(MANUAL_STEPS).toEqual(['era', 'age', 'gender', 'world', 'portrait']);
+      expect(MANUAL_STEPS).toEqual(['story_origin', 'gender', 'world', 'portrait']);
     });
 
     it('has correct auto advance steps', () => {
@@ -171,7 +171,7 @@ describe('useCharacterStore', () => {
         age: { age: 20 },
       });
       expect(state.isPresetLoaded).toBe(true);
-      expect(state.creationStep).toBe(MANUAL_STEPS.length);
+      expect(state.creationStep).toBe(MANUAL_STEPS.length - 1);
     });
 
     it('loads preset without life_vision', () => {

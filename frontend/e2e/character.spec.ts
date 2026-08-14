@@ -5,18 +5,18 @@
 import { test, expect } from '@playwright/test';
 import {
   FRONTEND_ORIGIN,
-  installEraGenerationFixture,
-  type CharacterSettingRequest,
+  installCharacterSettingGenerationFixture,
+  installStoryOriginGenerationFixture,
+  type StoryOriginRequest,
 } from './helpers/character-setting-fixture';
 
-function expectSingleEraRequest(requests: CharacterSettingRequest[]) {
+function expectSingleStoryOriginRequest(requests: StoryOriginRequest[]) {
   expect(requests).toEqual([
     {
       method: 'POST',
       origin: FRONTEND_ORIGIN,
-      path: '/api/character/setting',
+      path: '/api/character/story-origin',
       search: '',
-      settingType: 'era',
     },
   ]);
 }
@@ -32,20 +32,20 @@ test.describe('Character Creation - Page Load', () => {
 
   test('should have step indicator showing progress', async ({ page }) => {
     const stepNavigation = page.getByRole('navigation', { name: '角色创建步骤' });
-    const stepNames = ['时代背景', '年龄阶段', '性别', '世界观', '人物形象'];
+    const stepNames = ['故事起点', '性别', '世界观', '人物形象'];
 
-    await expect(stepNavigation.getByRole('button')).toHaveCount(5);
+    await expect(stepNavigation.getByRole('button')).toHaveCount(4);
     for (const name of stepNames) {
       await expect(stepNavigation.getByRole('button', { name: `前往${name}` })).toBeVisible();
     }
-    await expect(stepNavigation.getByRole('button', { name: '前往时代背景' })).toHaveAttribute(
+    await expect(stepNavigation.getByRole('button', { name: '前往故事起点' })).toHaveAttribute(
       'aria-current',
       'step',
     );
   });
 
   test('should show step count in header', async ({ page }) => {
-    // Step count like "1/5" or similar
+    // Step count like "1/4" or similar
     const stepCount = page.locator('text=/\\d+\\/\\d+/');
     await expect(stepCount).toBeVisible();
   });
@@ -65,14 +65,14 @@ test.describe('Character Creation - Player Name Input', () => {
   });
 
   test('should allow entering player name', async ({ page }) => {
-    const requests = await installEraGenerationFixture(page);
+    const requests = await installStoryOriginGenerationFixture(page);
     await page.goto('/create');
 
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
     await expect(nameInput).toHaveValue('测试角色');
     await expect(page.getByText('刚刚生成')).toBeVisible();
-    expectSingleEraRequest(requests);
+    expectSingleStoryOriginRequest(requests);
   });
 
   test('should have optional life vision textarea', async ({ page }) => {
@@ -84,17 +84,17 @@ test.describe('Character Creation - Player Name Input', () => {
 });
 
 test.describe('Character Creation - Step Content', () => {
-  test('should display era step initially', async ({ page }) => {
+  test('should display story origin step initially', async ({ page }) => {
     await page.goto('/create');
 
-    await expect(page.getByRole('heading', { name: '时代背景', level: 2 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '故事起点', level: 2 })).toBeVisible();
   });
 
   test('should show step description', async ({ page }) => {
     await page.goto('/create');
     
     // Step description
-    const description = page.locator('text=/选择你的人生|确定你的人生故事/');
+    const description = page.getByText('日期、年龄与时代语境会作为一个完整起点生成');
     await expect(description.first()).toBeVisible();
   });
 
@@ -119,20 +119,20 @@ test.describe('Character Creation - Step Content', () => {
 
 test.describe('Character Creation - Navigation', () => {
   test('should navigate to next step after filling name', async ({ page }) => {
-    const requests = await installEraGenerationFixture(page);
+    const requests = await installStoryOriginGenerationFixture(page);
     await page.goto('/create');
 
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
 
     await expect(page.getByText('刚刚生成')).toBeVisible();
-    expectSingleEraRequest(requests);
+    expectSingleStoryOriginRequest(requests);
     const nextButton = page.getByRole('button', { name: '下一步' });
     await expect(nextButton).toBeEnabled();
     await nextButton.click();
 
     const stepNavigation = page.getByRole('navigation', { name: '角色创建步骤' });
-    await expect(stepNavigation.getByRole('button', { name: '前往年龄阶段' })).toHaveAttribute(
+    await expect(stepNavigation.getByRole('button', { name: '前往性别' })).toHaveAttribute(
       'aria-current',
       'step',
     );
@@ -149,31 +149,32 @@ test.describe('Character Creation - Navigation', () => {
   });
 
   test('should return through a previous named step', async ({ page }) => {
-    const requests = await installEraGenerationFixture(page);
+    const requests = await installStoryOriginGenerationFixture(page);
+    await installCharacterSettingGenerationFixture(page);
     await page.goto('/create');
 
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
     await expect(page.getByText('刚刚生成')).toBeVisible();
-    expectSingleEraRequest(requests);
+    expectSingleStoryOriginRequest(requests);
 
     await page.getByRole('button', { name: '下一步' }).click();
     const stepNavigation = page.getByRole('navigation', { name: '角色创建步骤' });
-    const ageStep = stepNavigation.getByRole('button', { name: '前往年龄阶段' });
-    const eraStep = stepNavigation.getByRole('button', { name: '前往时代背景' });
-    await expect(ageStep).toHaveAttribute('aria-current', 'step');
-    await expect(eraStep).toBeEnabled();
+    const genderStep = stepNavigation.getByRole('button', { name: '前往性别' });
+    const originStep = stepNavigation.getByRole('button', { name: '前往故事起点' });
+    await expect(genderStep).toHaveAttribute('aria-current', 'step');
+    await expect(originStep).toBeEnabled();
 
-    await eraStep.click();
-    await expect(eraStep).toHaveAttribute('aria-current', 'step');
-    await expect(page.getByRole('heading', { name: '时代背景', level: 2 })).toBeVisible();
+    await originStep.click();
+    await expect(originStep).toHaveAttribute('aria-current', 'step');
+    await expect(page.getByRole('heading', { name: '故事起点', level: 2 })).toBeVisible();
   });
 });
 
 test.describe('Character Creation - Auto Generation', () => {
-  test('era fixture fails closed for malformed setting requests', async ({ page }) => {
+  test('story-origin fixture fails closed for malformed requests', async ({ page }) => {
     let escapedRequests = 0;
-    await page.route(/\/api\/character\/setting(?:\?.*)?$/, async (route) => {
+    await page.route(/\/api\/character\/story-origin(?:\?.*)?$/, async (route) => {
       escapedRequests += 1;
       await route.fulfill({
         status: 599,
@@ -182,33 +183,33 @@ test.describe('Character Creation - Auto Generation', () => {
         body: JSON.stringify({ message: 'escaped fixture guard' }),
       });
     });
-    const requests = await installEraGenerationFixture(page, 0);
+    const requests = await installStoryOriginGenerationFixture(page, 0);
     await page.goto('/create');
 
     const alternateOrigin = FRONTEND_ORIGIN.replace('localhost', '127.0.0.1');
     const invalidRequests = [
       {
-        url: '/api/character/setting?unexpected=1',
+        url: '/api/character/story-origin?unexpected=1',
         method: 'POST',
-        body: { setting_type: 'era' },
+        body: { player_name: '测试角色' },
         simpleCrossOrigin: false,
       },
       {
-        url: '/api/character/setting',
+        url: '/api/character/story-origin',
         method: 'GET',
         body: null,
         simpleCrossOrigin: false,
       },
       {
-        url: '/api/character/setting',
+        url: '/api/character/story-origin',
         method: 'POST',
         body: { setting_type: 'age' },
         simpleCrossOrigin: false,
       },
       {
-        url: `${alternateOrigin}/api/character/setting`,
+        url: `${alternateOrigin}/api/character/story-origin`,
         method: 'POST',
-        body: { setting_type: 'era' },
+        body: { player_name: '测试角色' },
         simpleCrossOrigin: true,
       },
     ] as const;
@@ -243,36 +244,32 @@ test.describe('Character Creation - Auto Generation', () => {
       {
         method: 'POST',
         origin: FRONTEND_ORIGIN,
-        path: '/api/character/setting',
+        path: '/api/character/story-origin',
         search: '?unexpected=1',
-        settingType: 'era',
       },
       {
         method: 'GET',
         origin: FRONTEND_ORIGIN,
-        path: '/api/character/setting',
+        path: '/api/character/story-origin',
         search: '',
-        settingType: '',
       },
       {
         method: 'POST',
         origin: FRONTEND_ORIGIN,
-        path: '/api/character/setting',
+        path: '/api/character/story-origin',
         search: '',
-        settingType: 'age',
       },
       {
         method: 'POST',
         origin: alternateOrigin,
-        path: '/api/character/setting',
+        path: '/api/character/story-origin',
         search: '',
-        settingType: 'era',
       },
     ]);
   });
 
   test('should show loading state during generation', async ({ page }) => {
-    const requests = await installEraGenerationFixture(page, 500);
+    const requests = await installStoryOriginGenerationFixture(page, 500);
     await page.goto('/create');
 
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
@@ -282,48 +279,48 @@ test.describe('Character Creation - Auto Generation', () => {
     await expect(
       loading.getByRole('heading', { name: '角色设定，正在成形' }),
     ).toBeVisible();
-    await expect(loading).toContainText('时代背景');
+    await expect(loading).toContainText('正在写作');
     await expect(page.getByText('刚刚生成')).toBeVisible();
-    expectSingleEraRequest(requests);
+    expectSingleStoryOriginRequest(requests);
   });
 
   test('should display generated content after loading', async ({ page }) => {
-    const requests = await installEraGenerationFixture(page);
+    const requests = await installStoryOriginGenerationFixture(page);
     await page.goto('/create');
 
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
 
     await expect(page.getByText('刚刚生成')).toBeVisible();
-    await expect(page.getByText('2026年')).toBeVisible();
+    await expect(page.getByTestId('story-origin-summary')).toContainText('2026年8月13日');
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
-    expectSingleEraRequest(requests);
+    expectSingleStoryOriginRequest(requests);
   });
 
   test('should have regenerate button for generated content', async ({ page }) => {
-    const requests = await installEraGenerationFixture(page);
+    const requests = await installStoryOriginGenerationFixture(page);
     await page.goto('/create');
 
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
     await expect(page.getByText('刚刚生成')).toBeVisible();
-    expectSingleEraRequest(requests);
+    expectSingleStoryOriginRequest(requests);
 
-    const regenerateButton = page.getByRole('button', { name: '重新生成时代背景' });
+    const regenerateButton = page.getByRole('button', { name: '重新生成故事起点' });
     await expect(regenerateButton).toBeVisible();
     await expect(regenerateButton).toBeEnabled();
   });
 
   test('should have feedback input for regeneration', async ({ page }) => {
-    const requests = await installEraGenerationFixture(page);
+    const requests = await installStoryOriginGenerationFixture(page);
     await page.goto('/create');
 
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
     await expect(page.getByText('刚刚生成')).toBeVisible();
-    expectSingleEraRequest(requests);
+    expectSingleStoryOriginRequest(requests);
 
-    const feedbackInput = page.getByRole('textbox', { name: '时代背景修改意见' });
+    const feedbackInput = page.getByRole('textbox', { name: '故事起点修改意见' });
     await expect(feedbackInput).toBeEditable();
     await feedbackInput.fill('保留城市背景，增加更多生活细节');
     await expect(feedbackInput).toHaveValue('保留城市背景，增加更多生活细节');

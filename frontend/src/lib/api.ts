@@ -8,6 +8,7 @@ import type {
   RoundInfo,
   CurrentEventData,
   CharacterSettings,
+  StoryOrigin,
   EffectValues,
   StoryVoiceReadingRequest,
   StoryVoiceReadingResponse,
@@ -345,6 +346,19 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ character_settings: characterSettings, ...identity }),
       }),
+    replaceStoryOrigin: (
+      gameId: number,
+      data: { expected_revision: number; story_origin: StoryOrigin },
+    ) =>
+      fetchJson<{
+        success: boolean;
+        story_origin: StoryOrigin;
+        timeline: import('./types').DailyTimeline;
+        character_settings: CharacterSettings;
+      }>(`/games/${gameId}/story-origin`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
     // Narrative style
     listNarrativeStyles: (gameId: number) =>
       fetchJson<Array<{ style_id: string; style_name: string; description: string }>>(`/games/${gameId}/narrative-style-options`),
@@ -469,6 +483,17 @@ export const api = {
 
   // Character
   character: {
+    generateStoryOrigin: (data: {
+      player_name: string;
+      life_vision?: string;
+      previous_settings?: CharacterSettings;
+      feedback?: string | null;
+      language?: string;
+    }) =>
+      fetchJson<StoryOrigin>('/character/story-origin', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     generateSetting: (data: {
       setting_type: string;
       player_name?: string;

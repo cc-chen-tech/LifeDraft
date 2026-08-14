@@ -312,6 +312,26 @@ export interface paths {
         patch: operations["update_character_settings_api_games__game_id__character_settings_patch"];
         trace?: never;
     };
+    "/api/games/{game_id}/story-origin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Replace Story Origin
+         * @description Atomically replace the complete origin of an unplayed owned draft.
+         */
+        patch: operations["replace_story_origin_api_games__game_id__story_origin_patch"];
+        trace?: never;
+    };
     "/api/games/{game_id}/settings": {
         parameters: {
             query?: never;
@@ -410,6 +430,26 @@ export interface paths {
          * @description Generate a character setting (era, age, gender, world, family, relationships, traits).
          */
         post: operations["generate_setting_api_character_setting_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/character/story-origin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Story Origin
+         * @description Generate one validated date, starting age, and temporal context.
+         */
+        post: operations["generate_story_origin_api_character_story_origin_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2362,6 +2402,24 @@ export interface components {
              */
             language: string;
         };
+        /** GenerateStoryOriginRequest */
+        GenerateStoryOriginRequest: {
+            /** Player Name */
+            player_name: string;
+            /** Life Vision */
+            life_vision: string;
+            /** Previous Settings */
+            previous_settings?: {
+                [key: string]: unknown;
+            };
+            /** Feedback */
+            feedback?: string | null;
+            /**
+             * Language
+             * @default zh
+             */
+            language: string;
+        };
         /** GenerateSummaryRequest */
         GenerateSummaryRequest: {
             /**
@@ -3005,6 +3063,32 @@ export interface components {
              */
             language: string;
         };
+        /** ReplaceStoryOriginRequest */
+        ReplaceStoryOriginRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+            story_origin: components["schemas"]["StoryOriginPayload"];
+        };
+        /** ReplaceStoryOriginResponse */
+        ReplaceStoryOriginResponse: {
+            /**
+             * Success
+             * @default true
+             */
+            success: boolean;
+            /** Story Origin */
+            story_origin: {
+                [key: string]: unknown;
+            };
+            /** Timeline */
+            timeline: {
+                [key: string]: unknown;
+            };
+            /** Character Settings */
+            character_settings: {
+                [key: string]: unknown;
+            };
+        };
         /** RewriteStoryRequest */
         RewriteStoryRequest: {
             /** Full Story */
@@ -3179,6 +3263,21 @@ export interface components {
         StoryChatResponse: {
             /** Reply */
             reply: string;
+        };
+        /** StoryOriginPayload */
+        StoryOriginPayload: {
+            /** Revision */
+            revision: number;
+            /** Start Date */
+            start_date: string;
+            /** Starting Age */
+            starting_age: number;
+            /** Era Description */
+            era_description: string;
+            /** Life Stage Description */
+            life_stage_description: string;
+            /** World Context */
+            world_context: string;
         };
         /** StoryVoiceReadingRequest */
         StoryVoiceReadingRequest: {
@@ -3877,6 +3976,41 @@ export interface operations {
             };
         };
     };
+    replace_story_origin_api_games__game_id__story_origin_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplaceStoryOriginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplaceStoryOriginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_game_settings_api_games__game_id__settings_patch: {
         parameters: {
             query?: never;
@@ -4050,6 +4184,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["GenerateSettingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_story_origin_api_character_story_origin_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateStoryOriginRequest"];
             };
         };
         responses: {

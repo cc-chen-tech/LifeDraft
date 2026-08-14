@@ -4,6 +4,8 @@ Includes narrative-style endpoints for style browsing and per-game style updates
 """
 
 import logging
+import threading
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -18,18 +20,25 @@ from src.api.schemas import (CreateSavePointRequest, GameListItem,
                              SaveGameResponse, SavePointItem,
                              SavePointListResponse, StateSnapshotItem,
                              StateTimelineResponse, UpdateCharacterSettingsRequest,
-                             UpdateGameSettingsRequest)
+                             UpdateGameSettingsRequest,
+                             ReplaceStoryOriginRequest,
+                             ReplaceStoryOriginResponse)
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
 from src.database.models import Game, SessionLocal
 from src.game.game_initializer import GameInitializer
 from src.game.game_loop import GameLoop
 from src.game.state import PlayerState
+from src.game.story_origin import (StoryOriginLocked,
+                                   StoryOriginRevisionConflict,
+                                   canonical_story_settings,
+                                   rebase_draft_story_origin)
 from src.utils.legacy_data import strip_retired_wealth_keys
 from src.utils.language import detect_language_from_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+_story_origin_locks: defaultdict[int, threading.Lock] = defaultdict(threading.Lock)
 
 
 def _format_utc_timestamp(value: Optional[datetime]) -> Optional[str]:
@@ -531,9 +540,22 @@ async def update_character_settings(
     existing_settings = state_data.get("character_settings") or {}
     if not isinstance(existing_settings, dict):
         existing_settings = {}
-    merged_settings = strip_retired_wealth_keys(
-        _deep_merge_dicts(existing_settings, req.character_settings)
-    )
+    incoming_settings = dict(req.character_settings)
+    if isinstance(existing_settings.get("story_origin"), dict):
+        canonical_settings = canonical_story_settings(existing_settings)
+        for key in ("story_origin", "start_date", "era", "age"):
+            if key in incoming_settings and incoming_settings[key] != canonical_settings.get(key):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "story_origin_update_required"},
+                )
+            incoming_settings.pop(key, None)
+        merged_settings = canonical_story_settings(
+            _deep_merge_dicts(canonical_settings, incoming_settings)
+        )
+    else:
+        merged_settings = _deep_merge_dicts(existing_settings, incoming_settings)
+    merged_settings = strip_retired_wealth_keys(merged_settings)
 
     updated_state = dict(state_data)
     updated_state["character_settings"] = merged_settings
@@ -554,6 +576,82 @@ async def update_character_settings(
         if req.life_vision is not None:
             game_session.game_loop.player_state.life_vision = req.life_vision
     return MessageResponse(success=True, message="Character settings updated")
+
+
+@router.patch("/{game_id}/story-origin", response_model=ReplaceStoryOriginResponse)
+async def replace_story_origin(
+    game_id: int,
+    req: ReplaceStoryOriginRequest,
+    user_id: int = Depends(get_current_user),
+):
+    """Atomically replace the complete origin of an unplayed owned draft."""
+    with _story_origin_locks[game_id]:
+        db = get_db()
+        state_data = db.load_saved_game(game_id, user_id)
+        if state_data is None:
+            raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+
+        try:
+            updated_state = rebase_draft_story_origin(
+                state_data,
+                req.story_origin.model_dump(),
+                expected_revision=req.expected_revision,
+            )
+        except StoryOriginRevisionConflict:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "story_origin_revision_conflict"},
+            )
+        except StoryOriginLocked:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "story_origin_locked"},
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail={"code": str(exc)})
+
+        player_state = PlayerState.from_dict(updated_state)
+        save_origin = getattr(db, "save_story_origin_progress", None)
+        try:
+            saved = (
+                save_origin(
+                    game_id,
+                    user_id,
+                    player_state,
+                    expected_revision=req.expected_revision,
+                )
+                if callable(save_origin)
+                else db.save_game_progress(game_id, player_state)
+            )
+        except StoryOriginRevisionConflict:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "story_origin_revision_conflict"},
+            )
+        except StoryOriginLocked:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "story_origin_locked"},
+            )
+        if not saved:
+            raise HTTPException(status_code=500, detail="Failed to save story origin")
+
+        # Durability is the commit point. A live session sees the new revision
+        # only after the complete state snapshot has been saved successfully.
+        game_session = session_store.get(game_id, user_id)
+        if game_session and game_session.game_loop:
+            game_session.game_loop.load_game(player_state.to_dict())
+            game_session.clear_options_cache()
+            game_session.clear_sse_cache()
+
+        origin = player_state.character_settings["story_origin"]
+        timeline = player_state.timeline or {}
+        return ReplaceStoryOriginResponse(
+            success=True,
+            story_origin=origin,
+            timeline=timeline,
+            character_settings=player_state.character_settings,
+        )
 
 
 @router.patch("/{game_id}/settings", response_model=MessageResponse)

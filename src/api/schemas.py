@@ -166,6 +166,14 @@ class GenerateSettingRequest(BaseModel):
     language: str = "zh"
 
 
+class GenerateStoryOriginRequest(BaseModel):
+    player_name: str = Field(..., max_length=NAME_MAX_CHARS)
+    life_vision: str = Field(..., max_length=LIFE_VISION_MAX_CHARS)
+    previous_settings: CharacterSettingsPayload = Field(default_factory=dict)
+    feedback: Optional[str] = Field(None, max_length=FEEDBACK_MAX_CHARS)
+    language: str = "zh"
+
+
 class GenerateRelationshipRequest(BaseModel):
     player_name: str = Field(..., max_length=NAME_MAX_CHARS)
     life_vision: str = Field(..., max_length=LIFE_VISION_MAX_CHARS)
@@ -190,6 +198,27 @@ class UpdateCharacterSettingsRequest(BaseModel):
     character_settings: CharacterSettingsPayload = Field(..., min_length=1)
     player_name: Optional[str] = Field(None, max_length=NAME_MAX_CHARS)
     life_vision: Optional[str] = Field(None, max_length=LIFE_VISION_MAX_CHARS)
+
+
+class StoryOriginPayload(BaseModel):
+    revision: int = Field(..., ge=1)
+    start_date: str
+    starting_age: int = Field(..., ge=0, le=120)
+    era_description: str = Field(..., min_length=1)
+    life_stage_description: str = Field(..., min_length=1)
+    world_context: str = Field(..., min_length=1)
+
+
+class ReplaceStoryOriginRequest(BaseModel):
+    expected_revision: int = Field(..., ge=1)
+    story_origin: StoryOriginPayload
+
+
+class ReplaceStoryOriginResponse(BaseModel):
+    success: bool = True
+    story_origin: Dict[str, Any]
+    timeline: Dict[str, Any]
+    character_settings: Dict[str, Any]
 
 
 class UpdateNarrativeStyleRequest(BaseModel):

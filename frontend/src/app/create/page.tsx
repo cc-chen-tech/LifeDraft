@@ -50,7 +50,6 @@ export default function CreatePage() {
     prevCreationStep,
     setPlayerName,
     setLifeVision,
-    updateCharacterSetting,
     resetCreation,
     
     // Image store values
@@ -182,6 +181,11 @@ export default function CreatePage() {
           setAutoGenPhase("idle");
           setCreationStep(CREATION_STEPS.length - 1);
         }}
+        onEditOrigin={() => {
+          setAutoGenPhase("idle");
+          setCreationStep(0);
+          showToast("success", "修改故事起点后，后续设定将重新生成");
+        }}
         onStartGame={handleStartGame}
         onSavePreset={handleSavePreset}
         onRegenerateSetting={regenerateSetting}
@@ -231,7 +235,7 @@ export default function CreatePage() {
             aria-label="角色创建步骤"
             className="mb-8 border-b border-[var(--border-default)] pb-5"
           >
-            <ol className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {CREATION_STEPS.map((step, index) => {
                 const isCurrent = index === creationStep;
                 const isPrevious = index < creationStep;
@@ -265,8 +269,6 @@ export default function CreatePage() {
               lifeVision={lifeVision}
               onPlayerNameChange={setPlayerName}
               onLifeVisionChange={setLifeVision}
-              startDate={typeof characterSettings.start_date === "string" ? characterSettings.start_date : ""}
-              onStartDateChange={(date) => updateCharacterSetting("start_date", date || undefined)}
             />
           )}
 

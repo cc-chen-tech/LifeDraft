@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from sqlalchemy import or_
 
-from src.database.models import Game, GameState, SessionLocal, get_db
+from src.database.models import (Game, GameState, Image,
+                                 PortraitImageGenerationJob, SessionLocal,
+                                 get_db)
+from src.game.story_origin import (StoryOriginLocked,
+                                   StoryOriginRevisionConflict,
+                                   story_origin_is_locked)
 
 if TYPE_CHECKING:
     from src.game.state import PlayerState
@@ -172,6 +177,105 @@ class StateRepository:
         )
         db.commit()
         return int(deleted)
+
+    @staticmethod
+    def save_story_origin_progress_in_session(
+        db,
+        game_id: int,
+        user_id: int,
+        player_state: "PlayerState",
+        expected_revision: Optional[int] = None,
+    ) -> None:
+        """Commit an origin snapshot and invalidate all old-origin assets together."""
+        game = (
+            db.query(Game)
+            .filter(Game.game_id == game_id, Game.user_id == user_id)
+            .with_for_update()
+            .one_or_none()
+        )
+        if game is None:
+            raise ValueError("game_not_found")
+
+        latest = (
+            db.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+        )
+        current_state = latest.state_json if latest is not None else game.initial_state
+        if not isinstance(current_state, dict):
+            current_state = {}
+        if story_origin_is_locked(current_state):
+            raise StoryOriginLocked("story_origin_locked")
+
+        if expected_revision is not None:
+            from src.game.story_origin import normalize_legacy_story_origin
+
+            current_settings = (
+                current_state.get("character_settings", {})
+                if isinstance(current_state, dict)
+                else {}
+            )
+            current_origin, _ = normalize_legacy_story_origin(current_settings)
+            if current_origin["revision"] != expected_revision:
+                raise StoryOriginRevisionConflict("story_origin_revision_conflict")
+
+        db.add(
+            GameState(
+                game_id=game_id,
+                week=player_state.week,
+                age=player_state.age,
+                state_json=player_state.to_dict(),
+            )
+        )
+        game.updated_at = datetime.utcnow()
+        game.narrative_style_id = None
+        db.query(Image).filter(
+            Image.game_id == game_id,
+            Image.image_type == "character",
+            Image.entity_key == "player_main",
+            Image.is_active.is_(True),
+        ).update({"is_active": False}, synchronize_session=False)
+        db.query(PortraitImageGenerationJob).filter(
+            PortraitImageGenerationJob.game_id == game_id,
+            PortraitImageGenerationJob.user_id == user_id,
+            PortraitImageGenerationJob.status.in_(("queued", "running")),
+        ).update(
+            {
+                "status": "failed",
+                "error_code": "story_origin_superseded",
+                "error_message": "故事起点已更新，旧人物形象任务已作废",
+            },
+            synchronize_session=False,
+        )
+        db.commit()
+
+    def save_story_origin_progress(
+        self,
+        game_id: int,
+        user_id: int,
+        player_state: "PlayerState",
+        expected_revision: Optional[int] = None,
+    ) -> bool:
+        db = SessionLocal()
+        try:
+            self.save_story_origin_progress_in_session(
+                db,
+                game_id,
+                user_id,
+                player_state,
+                expected_revision=expected_revision,
+            )
+            return True
+        except (StoryOriginLocked, StoryOriginRevisionConflict):
+            db.rollback()
+            raise
+        except Exception as exc:
+            logger.error("Failed to save story origin for game_id=%s: %s", game_id, exc)
+            db.rollback()
+            return False
+        finally:
+            db.close()
 
     def load_saved_game(self, game_id: int, user_id: int) -> Optional[Dict[str, Any]]:
         """
