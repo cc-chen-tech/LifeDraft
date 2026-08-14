@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from src.api.deps import get_current_user, get_current_user_optional
+from src.api.deps import get_current_user, get_current_user_optional, get_session
 from src.api.routers.image_failures import (image_failure_http_exception,
                                             public_image_failure)
 from src.api.schemas import (BatchGenerateCharactersRequest,
@@ -78,15 +78,6 @@ async def _drain_pending_events() -> None:
     """Compatibility task hook for app lifespan; events are cached synchronously."""
     while True:
         await asyncio.sleep(60)
-
-
-def get_session() -> Generator[Session, None, None]:
-    """Get a SQLAlchemy session for image operations."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.get("/scene/events/{game_id}")

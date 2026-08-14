@@ -7,7 +7,7 @@ from urllib.parse import unquote
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from src.api.deps import get_current_user_optional
+from src.api.deps import get_current_user_optional, get_session
 from src.api.routers.image_failures import image_failure_http_exception
 from src.api.schemas import (AddEntitiesRequest, CollectionResponse, MessageResponse,
                              RegenerateCharacterImageRequest,
@@ -28,15 +28,6 @@ from src.services.landmark_extraction_service import LandmarkExtractionService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-def get_session() -> Generator[Session, None, None]:
-    """Get a SQLAlchemy session for collection operations."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def _require_user(user_id: Optional[int]) -> int:
