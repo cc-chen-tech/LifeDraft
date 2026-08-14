@@ -29,4 +29,4 @@
 
 - [x] 5.1 Regenerate OpenAPI/input-limit frontend types and validate the OpenSpec change
 - [x] 5.2 Run focused backend/frontend/browser suites and fix every regression
-- [ ] 5.3 Run `./test.sh all`, review the final diff against the plan, and publish a Ready PR only with zero failures and green CI
+- [x] 5.3 Run `./test.sh all`, review the final diff against the plan, and publish a Ready PR only with zero failures and green CI
