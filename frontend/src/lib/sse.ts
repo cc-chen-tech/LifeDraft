@@ -175,6 +175,9 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
                 callbacks.onActivity?.("status");
                 callbacks.onStatus?.(statusData);
                 currentEventType = null;
+                // P-修复：status 事件也会消费掉前面 id: 行的 event id，
+                // 必须在此重置，否则下一个 data 行会带出陈旧 id 污染重连游标。
+                pendingEventId = null;
                 continue;
               }
 

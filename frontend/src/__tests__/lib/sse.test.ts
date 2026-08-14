@@ -115,6 +115,24 @@ describe('SSE Streaming', () => {
       expect(onStory).toHaveBeenCalledWith('后续片段');
     });
 
+    it('does not leak a status frame id into the next event', async () => {
+      const onEventId = jest.fn();
+      const callbacks: StreamCallbacks = { onEventId };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'id: 7\nevent: status\ndata: {"phase":"validating"}\n\n',
+          'event: story\ndata: "正文"\n\n',
+          'data: [DONE]\n\n',
+        ]),
+      });
+
+      await streamGameEvent(3, callbacks);
+
+      expect(onEventId).not.toHaveBeenCalled();
+    });
+
     it.each([
       ['heartbeat status', 'event: status\ndata: {"phase":"generating_story","heartbeat":true}\n\n', 'status'],
       ['ordinary status', 'event: status\ndata: {"phase":"validating"}\n\n', 'status'],
