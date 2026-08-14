@@ -484,6 +484,28 @@ class StoryService:
             story, choice, self.language, established_facts, character_habits
         )
 
+    def compress_and_extract(
+        self,
+        story: str,
+        choice: str,
+        pending_storylines: Optional[List] = None,
+        established_facts: Optional[List] = None,
+        character_habits: Optional[List] = None,
+    ) -> Dict[str, Any]:
+        """P1-成本优化：叙事压缩 + 世界状态提取合并为一次 LLM 调用。
+
+        Returns dict containing both narrative fields (summary/event_concluded/
+        storyline_updates) and world fields (fact_updates/.../causal_updates).
+        """
+        return self.ai_generator.compress_and_extract(
+            story,
+            choice,
+            self.language,
+            pending_storylines,
+            established_facts,
+            character_habits,
+        )
+
     def generate_custom_choice_effects(
         self,
         event_description: str,

@@ -440,6 +440,25 @@ class EventGenerator:
             character_habits=character_habits,
         )
 
+    def compress_and_extract(
+        self,
+        story: str,
+        choice: str,
+        language: str,
+        pending_storylines: Optional[list] = None,
+        established_facts: Optional[list] = None,
+        character_habits: Optional[list] = None,
+    ) -> Dict[str, Any]:
+        """P1-成本优化：叙事压缩 + 世界状态提取合并为一次 LLM 调用。"""
+        return self.summary_gen.compress_and_extract(
+            story=story,
+            choice=choice,
+            language=language,
+            pending_storylines=pending_storylines,
+            established_facts=established_facts,
+            character_habits=character_habits,
+        )
+
     def generate_weekly_summary(
         self,
         rounds: List[Dict[str, Any]],

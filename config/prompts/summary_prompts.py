@@ -1045,3 +1045,179 @@ def _format_effects(effects: Dict[str, Any], language: str) -> str:
             parts.append(f"{label}{sign}{val}")
 
     return "、".join(parts) if parts else ("无" if language == "zh" else "None")
+
+
+def get_combined_choice_postprocess_prompt(
+    story: str,
+    choice: str,
+    language: str,
+    pending_storylines: Optional[list] = None,
+    established_facts: Optional[list] = None,
+    character_habits: Optional[list] = None,
+) -> str:
+    """P1-成本优化：把"叙事压缩 + 世界状态提取"合并为一次 LLM 调用。
+
+    故事原文只发送一次，返回单个 JSON，同时包含 narrative 与 world 两套字段。
+    字段语义与 get_narrative_compression_prompt / get_world_extraction_prompt 完全一致。
+    """
+    # --- 剧情线上下文 ---
+    pending_context = ""
+    if pending_storylines:
+        if language == "zh":
+            lines = ["\n【当前未完结的剧情线】"]
+            for sl in pending_storylines:
+                lines.append(f"- [{sl.get('importance', 'medium')}] {sl.get('description', '')}")
+            pending_context = "\n".join(lines)
+        else:
+            lines = ["\n[Current Pending Storylines]"]
+            for sl in pending_storylines:
+                lines.append(f"- [{sl.get('importance', 'medium')}] {sl.get('description', '')}")
+            pending_context = "\n".join(lines)
+
+    # --- 世界事实上下文 ---
+    facts_context = ""
+    safe_facts = sanitize_authoritative_fact_records(established_facts)
+    if safe_facts:
+        if language == "zh":
+            lines = ["\n【当前已建立的世界事实】"]
+            for f in safe_facts:
+                cat = {"location": "地点", "role": "角色", "situation": "事务"}.get(
+                    f.get("category", ""), "事实"
+                )
+                lines.append(f"- 【{cat}】{f.get('subject', '')}：{f.get('fact', '')}")
+            facts_context = "\n".join(lines)
+        else:
+            lines = ["\n[Current Established Facts]"]
+            for f in safe_facts:
+                cat = {
+                    "location": "Location",
+                    "role": "Role",
+                    "situation": "Situation",
+                }.get(f.get("category", ""), "Fact")
+                lines.append(f"- [{cat}] {f.get('subject', '')}: {f.get('fact', '')}")
+            facts_context = "\n".join(lines)
+
+    # --- 人物习惯上下文 ---
+    habits_context = ""
+    if character_habits:
+        if language == "zh":
+            lines = ["\n【当前已记录的人物习惯】"]
+            for h in character_habits:
+                lines.append(
+                    f"- {h.get('character', '')}：{h.get('habit', '')}（{h.get('category', '')}，{h.get('strength', 'moderate')}）"
+                )
+            habits_context = "\n".join(lines)
+        else:
+            lines = ["\n[Current Character Habits]"]
+            for h in character_habits:
+                lines.append(
+                    f"- {h.get('character', '')}: {h.get('habit', '')} ({h.get('category', '')}, {h.get('strength', 'moderate')})"
+                )
+            habits_context = "\n".join(lines)
+
+    if language == "zh":
+        return f"""请一次性完成两项任务，返回**一个**JSON对象（只返回JSON，不要其他文本）：
+
+【任务1：叙事压缩】压缩为500字以内的摘要（第三人称，保留核心人物、关键事件、决定与重要对话），判断事件是否完结，评估剧情线状态。
+【任务2：世界状态提取】提取事实更新、伏笔种子、人物习惯、位置/职业/承诺/因果链变化。
+
+故事原文：
+{story}
+
+玩家的选择："{choice}"{pending_context}{facts_context}{habits_context}
+
+【输出JSON结构 - 包含以下全部字段】
+{{
+  "summary": "任务1的500字摘要",
+  "event_concluded": true,
+  "storyline_updates": [
+    {{"action": "new|resolved|continues", "description": "剧情线描述", "importance": "high|medium", "related_characters": ["人物"]}}
+  ],
+  "fact_updates": [
+    {{"action": "new|update|remove", "subject": "主体名", "fact": "具体事实", "category": "role|location|situation"}}
+  ],
+  "foreshadowing_seeds": [
+    {{"description": "伏笔内容（一句话，含具体人/物/事）", "original_context": "发生场景（30字内）", "seed_type": "mystery|relationship|warning|opportunity|consequence|character_return", "related_characters": ["人物"], "obfuscation_level": 0.5, "narrative_weight": "minor|supporting|major", "recycle_method": "revelation|confirmation|ironic_twist|escalation|echo"}}
+  ],
+  "habit_updates": [
+    {{"action": "new|strengthen|weaken|remove|change", "character": "角色名", "habit": "习惯描述", "category": "behavioral|speech|emotional|social|lifestyle", "strength": "strong|moderate|emerging", "origin": "习惯来源简述"}}
+  ],
+  "location_updates": [
+    {{"character": "人物名", "action": "move|confirm", "from": "原位置", "to": "新位置", "reason": "移动原因", "mode": "resident|visiting|traveling"}}
+  ],
+  "career_updates": [
+    {{"character": "人物名", "action": "new|promote|transfer|quit|fired", "new_role": "新职位", "employer": "雇主", "level": "intern|junior|mid|senior|lead|executive"}}
+  ],
+  "commitment_updates": [
+    {{"action": "new|fulfilled|broken|expired", "description": "承诺内容", "parties": ["人物"], "deadline_week": -1, "importance": "critical|normal|minor"}}
+  ],
+  "causal_updates": [
+    {{"action": "new|resolved", "cause": "触发事件描述", "expected_consequence": "预期后果", "characters": ["人物"]}}
+  ]
+}}
+
+【事件完结判断规则】
+- true：本轮事件达到自然结局，主角选择产生了明确结果，无重大悬念
+- false：冲突未解决 / 决定后果未呈现 / 事件被中断 / 留下明显悬念 / 关系重大变化未达新平衡
+- 判断核心：读完故事后读者是否自然想问"然后呢？"
+
+【提取规则】
+- 剧情线：有重要未解决事件加 new；解决旧剧情线加 resolved；延续加 continues；普通日常可为空数组
+- 世界事实：只提取重要的、会影响后续故事的事实，不提取细枝末节
+- 伏笔种子：每次最多1-2个，只提取有回响潜力的元素，普通日常可为空
+- 人物习惯：只记录有叙事价值的习惯，主角和NPC均可
+- 位置/职业/承诺/因果：只记录明确提到的变化，不要推测
+- 各字段无变化时返回空数组"""
+    else:
+        return f"""Complete both tasks in a single JSON object (return JSON only, no other text):
+
+[Task 1: Narrative compression] Compress to a summary of 500 characters or less (third person, preserving core characters, key events, decisions and important dialogue), judge whether the event is concluded, and evaluate storyline status.
+[Task 2: World state extraction] Extract fact updates, foreshadowing seeds, character habits, and location/career/commitment/causal changes.
+
+Original story:
+{story}
+
+Player's choice: "{choice}"{pending_context}{facts_context}{habits_context}
+
+[Output JSON - include all of the following fields]
+{{
+  "summary": "Task 1 summary (500 chars)",
+  "event_concluded": true,
+  "storyline_updates": [
+    {{"action": "new|resolved|continues", "description": "storyline description", "importance": "high|medium", "related_characters": ["names"]}}
+  ],
+  "fact_updates": [
+    {{"action": "new|update|remove", "subject": "subject name", "fact": "specific fact", "category": "role|location|situation"}}
+  ],
+  "foreshadowing_seeds": [
+    {{"description": "one-sentence foreshadowing element", "original_context": "scene context (30 chars max)", "seed_type": "mystery|relationship|warning|opportunity|consequence|character_return", "related_characters": ["names"], "obfuscation_level": 0.5, "narrative_weight": "minor|supporting|major", "recycle_method": "revelation|confirmation|ironic_twist|escalation|echo"}}
+  ],
+  "habit_updates": [
+    {{"action": "new|strengthen|weaken|remove|change", "character": "name", "habit": "habit description", "category": "behavioral|speech|emotional|social|lifestyle", "strength": "strong|moderate|emerging", "origin": "origin context"}}
+  ],
+  "location_updates": [
+    {{"character": "name", "action": "move|confirm", "from": "previous location", "to": "new location", "reason": "reason", "mode": "resident|visiting|traveling"}}
+  ],
+  "career_updates": [
+    {{"character": "name", "action": "new|promote|transfer|quit|fired", "new_role": "new position", "employer": "employer", "level": "intern|junior|mid|senior|lead|executive"}}
+  ],
+  "commitment_updates": [
+    {{"action": "new|fulfilled|broken|expired", "description": "commitment content", "parties": ["names"], "deadline_week": -1, "importance": "critical|normal|minor"}}
+  ],
+  "causal_updates": [
+    {{"action": "new|resolved", "cause": "triggering event", "expected_consequence": "expected consequence", "characters": ["names"]}}
+  ]
+}}
+
+[Event conclusion rules]
+- true: the event reached a natural conclusion with clear results and no major suspense
+- false: unresolved conflict / consequences not yet shown / event interrupted / clear suspense / major relationship change not settled
+- Core test: after reading, would the reader naturally ask "and then?"
+
+[Extraction rules]
+- Storylines: add "new" for unresolved important events, "resolved" for closed ones, "continues" for ongoing ones; empty array for ordinary daily events
+- Facts: only important facts that affect future stories
+- Foreshadowing: at most 1-2 per round, only elements with echo potential
+- Habits: only narratively valuable habits, protagonist and NPCs alike
+- Location/career/commitment/causal: only explicitly stated changes, no speculation
+- Empty arrays when nothing changed"""

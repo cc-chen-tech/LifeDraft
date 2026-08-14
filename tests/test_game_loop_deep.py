@@ -383,12 +383,10 @@ class TestGameLoopMultiRound:
         loop.current_event = test_event
         loop.story_service = Mock()
         loop.story_service.generate_story_continuation.return_value = "Continuation"
-        loop.story_service.compress_narrative.return_value = {
+        loop.story_service.compress_and_extract.return_value = {
             "summary": "Summary",
             "event_concluded": True,
             "storyline_updates": [],
-        }
-        loop.story_service.extract_world_updates.return_value = {
             "fact_updates": [],
             "foreshadowing_seeds": [],
             "habit_updates": [],

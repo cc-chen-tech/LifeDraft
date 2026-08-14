@@ -258,7 +258,9 @@ class RoundChoiceProcessor:
             raise ValueError("Player state is not available")
         requested_effects = normalize_gameplay_effects(effects_requested or effects)
 
-        # 1. Parallel: narrative compression + world extraction + story analyzer
+        # 1. Parallel: combined narrative compression + world extraction + story analyzer
+        # P1-成本优化：compress_narrative 与 extract_world_updates 合并为一次 LLM 调用，
+        # 故事原文只发送一次（此前同一次选择会发送三份完整故事）。
         if status_callback:
             status_callback("compressing")
 
@@ -266,17 +268,12 @@ class RoundChoiceProcessor:
         established_facts = player_state.established_facts
         character_habits = player_state.character_habits
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            narrative_future = executor.submit(
-                self.story_service.compress_narrative,
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            combined_future = executor.submit(
+                self.story_service.compress_and_extract,
                 full_story,
                 choice_text,
                 pending_storylines,
-            )
-            world_future = executor.submit(
-                self.story_service.extract_world_updates,
-                full_story,
-                choice_text,
                 established_facts,
                 character_habits,
             )
@@ -289,10 +286,12 @@ class RoundChoiceProcessor:
                 self.language,
             )
             try:
-                narrative_result = narrative_future.result()
+                compression_result = combined_future.result()
             except Exception as exc:
-                logger.warning("Display summary failed; preserving committed story: %s", exc)
-                narrative_result = {
+                logger.warning(
+                    "Combined postprocess failed; using deterministic fallback: %s", exc
+                )
+                compression_result = {
                     "summary": compact_display_summary(
                         full_story,
                         resolve_information_budget("week", self.language),
@@ -300,12 +299,6 @@ class RoundChoiceProcessor:
                     or ("本轮故事已经完成。" if self.language == "zh" else "This round concluded."),
                     "event_concluded": True,
                     "storyline_updates": [],
-                }
-            try:
-                world_result = world_future.result()
-            except Exception as exc:
-                logger.warning("Optional world extraction failed; using deterministic data: %s", exc)
-                world_result = {
                     "fact_updates": [],
                     "foreshadowing_seeds": [],
                     "habit_updates": [],
@@ -319,8 +312,6 @@ class RoundChoiceProcessor:
             except Exception as exc:
                 logger.warning("Optional story analyzer failed after choice commit: %s", exc)
 
-        # Merge results
-        compression_result = {**narrative_result, **world_result}
         summary = compression_result["summary"]
 
         # 2. Store event conclusion status
