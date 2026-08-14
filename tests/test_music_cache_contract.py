@@ -161,3 +161,61 @@ class TestMusicCacheTTLRiskContract:
             f"TTL ({ttl}s) 应在 CDN 典型有效期 "
             f"[{CDN_TYPICAL_LIFETIME_MIN}s, {CDN_TYPICAL_LIFETIME_MAX}s] 范围内"
         )
+
+
+class TestMusicCacheBoundsContract:
+    """P3-内存修复：类级缓存只有 TTL、没有总量上限，且未访问的过期条目永不淘汰。
+    此契约要求所有类级缓存受总量上限约束（写入路径淘汰最旧条目）。"""
+
+    @pytest.fixture(autouse=True)
+    def _clear_caches(self):
+        from src.services.music_service import MusicService, NeteaseMusicClient
+
+        NeteaseMusicClient._url_cache.clear()
+        MusicService._analysis_cache.clear()
+        MusicService._pool_cache.clear()
+        MusicService._refresh_cursors.clear()
+        yield
+        NeteaseMusicClient._url_cache.clear()
+        MusicService._analysis_cache.clear()
+        MusicService._pool_cache.clear()
+        MusicService._refresh_cursors.clear()
+
+    def test_url_cache_is_bounded_evicting_oldest(self):
+        from src.services.music_service import NeteaseMusicClient, _prune_timestamped_cache
+
+        cap = NeteaseMusicClient.URL_CACHE_MAX_ENTRIES
+        for i in range(cap + 50):
+            NeteaseMusicClient._url_cache[i] = (
+                f"https://cdn.example.com/{i}.mp3",
+                time.time() + i,
+            )
+        _prune_timestamped_cache(NeteaseMusicClient._url_cache, cap)
+
+        assert len(NeteaseMusicClient._url_cache) == cap
+        assert 0 not in NeteaseMusicClient._url_cache  # 最旧被淘汰
+        assert cap + 49 in NeteaseMusicClient._url_cache  # 最新保留
+
+    def test_analysis_cache_is_bounded_evicting_oldest(self):
+        from src.services.music_service import MusicService, _prune_timestamped_cache
+
+        cap = MusicService.ANALYSIS_CACHE_MAX_ENTRIES
+        for i in range(cap + 20):
+            MusicService._analysis_cache[f"story-{i}"] = ({"mood": "平静"}, time.time() + i)
+        _prune_timestamped_cache(MusicService._analysis_cache, cap)
+
+        assert len(MusicService._analysis_cache) == cap
+        assert "story-0" not in MusicService._analysis_cache
+        assert f"story-{cap + 19}" in MusicService._analysis_cache
+
+    def test_refresh_cursors_are_bounded_by_insertion_order(self):
+        from src.services.music_service import MusicService, _prune_insertion_cache
+
+        cap = MusicService.REFRESH_CURSOR_MAX_ENTRIES
+        for i in range(cap + 10):
+            MusicService._refresh_cursors[f"story-{i}"] = i
+        _prune_insertion_cache(MusicService._refresh_cursors, cap)
+
+        assert len(MusicService._refresh_cursors) == cap
+        assert "story-0" not in MusicService._refresh_cursors
+        assert f"story-{cap + 9}" in MusicService._refresh_cursors

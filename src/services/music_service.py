@@ -27,6 +27,27 @@ from src.services.story_tts_provider import build_deterministic_wav
 logger = logging.getLogger(__name__)
 
 
+def _prune_timestamped_cache(cache: Dict[Any, tuple], max_entries: int) -> None:
+    """按时间戳淘汰最旧条目，把缓存总量限制在 max_entries 内。
+
+    P3-内存修复：类级缓存只有 TTL、没有总量上限，且从未被访问的过期条目
+    永远不会被淘汰，长时间运行的实例会无界增长。仅在写入路径调用。
+    """
+    if len(cache) <= max_entries:
+        return
+    oldest = sorted(cache.items(), key=lambda item: item[1][1])
+    for key, _ in oldest[: len(cache) - max_entries]:
+        cache.pop(key, None)
+
+
+def _prune_insertion_cache(cache: Dict[Any, Any], max_entries: int) -> None:
+    """按插入顺序淘汰最旧条目（适用于无时间戳的 dict）。"""
+    if len(cache) <= max_entries:
+        return
+    for key in list(cache)[: len(cache) - max_entries]:
+        cache.pop(key, None)
+
+
 def _truthy_env(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -958,6 +979,7 @@ class NeteaseMusicClient:
 
     HEALTH_CHECK_TIMEOUT = 3.0
     URL_CACHE_TTL = 480
+    URL_CACHE_MAX_ENTRIES = 500
     _url_cache: Dict[int, tuple[str, float]] = {}
 
     def __init__(self, base_url: Optional[str] = None) -> None:
@@ -1107,6 +1129,7 @@ class NeteaseMusicClient:
                             safe_url,
                             time.time() + self.URL_CACHE_TTL,
                         )
+                        _prune_timestamped_cache(self._url_cache, self.URL_CACHE_MAX_ENTRIES)
                         logger.info(f"[NeteaseMusic] Got URL for song {song_id}: {safe_url[:50]}...")
                         return safe_url
                     logger.warning(
@@ -1162,6 +1185,9 @@ class MusicService:
     POOL_CACHE_TTL = 3600
     ANALYSIS_CACHE_TTL = 3600
     SONG_URL_TTL = 600
+    POOL_CACHE_MAX_ENTRIES = 500
+    ANALYSIS_CACHE_MAX_ENTRIES = 500
+    REFRESH_CURSOR_MAX_ENTRIES = 500
 
     _analysis_cache: Dict[str, tuple[Dict[str, Any], float]] = {}
     _pool_cache: Dict[str, tuple[CachedMusicPool, float]] = {}
@@ -1260,6 +1286,7 @@ class MusicService:
         if refresh:
             query_cursor = self._refresh_cursors.get(story_hash, 0) + 1
             self._refresh_cursors[story_hash] = query_cursor
+            _prune_insertion_cache(self._refresh_cursors, self.REFRESH_CURSOR_MAX_ENTRIES)
 
         cached_analysis = self._analysis_cache.get(story_hash)
         if cached_analysis and now - cached_analysis[1] < self.ANALYSIS_CACHE_TTL:
@@ -1267,6 +1294,7 @@ class MusicService:
         else:
             analysis = await self._analyze_story_mood(story_text, character_settings)
             self._analysis_cache[story_hash] = (analysis, now)
+            _prune_timestamped_cache(self._analysis_cache, self.ANALYSIS_CACHE_MAX_ENTRIES)
         analysis = self._enrich_analysis_from_story_context(
             analysis,
             story_text,
@@ -1281,6 +1309,7 @@ class MusicService:
         )
         await self._supplement_pool(pool)
         self._pool_cache[story_hash] = (pool, now)
+        _prune_timestamped_cache(self._pool_cache, self.POOL_CACHE_MAX_ENTRIES)
         return pool
 
     def _enrich_analysis_from_story_context(
