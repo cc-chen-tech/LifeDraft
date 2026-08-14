@@ -371,8 +371,20 @@ class TestOpeningStory:
         from src.api.routers.character import _cache_lock, _opening_story_cache
 
         # Pre-populate cache
+        from src.api.routers.character import _build_opening_story_cache_key
+        from src.api.schemas import OpeningStoryRequest
+
         with _cache_lock:
-            _opening_story_cache["CacheTest"] = {
+            _opening_story_cache[
+                _build_opening_story_cache_key(
+                    OpeningStoryRequest(
+                        character_settings={"era": {"era_name": "现代"}},
+                        player_name="CacheTest",
+                        life_vision="",
+                        language="zh",
+                    )
+                )
+            ] = {
                 "generating": False,
                 "result": "Cached story...",
                 "timestamp": time.time(),
@@ -391,7 +403,16 @@ class TestOpeningStory:
         assert response.status_code == 200
         # Clean up
         with _cache_lock:
-            del _opening_story_cache["CacheTest"]
+            del _opening_story_cache[
+                _build_opening_story_cache_key(
+                    OpeningStoryRequest(
+                        character_settings={"era": {"era_name": "现代"}},
+                        player_name="CacheTest",
+                        life_vision="",
+                        language="zh",
+                    )
+                )
+            ]
 
     def test_opening_story_generation_in_progress(self, client):
         """Test opening story when generation in progress."""
@@ -400,8 +421,20 @@ class TestOpeningStory:
         from src.api.routers.character import _cache_lock, _opening_story_cache
 
         # Pre-populate cache as generating
+        from src.api.routers.character import _build_opening_story_cache_key
+        from src.api.schemas import OpeningStoryRequest
+
         with _cache_lock:
-            _opening_story_cache["GeneratingTest"] = {
+            _opening_story_cache[
+                _build_opening_story_cache_key(
+                    OpeningStoryRequest(
+                        character_settings={},
+                        player_name="GeneratingTest",
+                        life_vision="",
+                        language="zh",
+                    )
+                )
+            ] = {
                 "generating": True,
                 "result": None,
                 "timestamp": time.time(),
@@ -420,4 +453,13 @@ class TestOpeningStory:
         assert response.status_code == 409
         # Clean up
         with _cache_lock:
-            del _opening_story_cache["GeneratingTest"]
+            del _opening_story_cache[
+                _build_opening_story_cache_key(
+                    OpeningStoryRequest(
+                        character_settings={},
+                        player_name="GeneratingTest",
+                        life_vision="",
+                        language="zh",
+                    )
+                )
+            ]

@@ -12,8 +12,22 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from src.api.main import app
+from src.api.routers.character import _build_opening_story_cache_key
+from src.api.schemas import OpeningStoryRequest
 
 client = TestClient(app)
+
+
+def _cache_key(player_name: str) -> str:
+    """与端点使用相同的内容哈希 key（era=现代 / 探索世界 / zh）。"""
+    return _build_opening_story_cache_key(
+        OpeningStoryRequest(
+            character_settings={"era": "现代"},
+            player_name=player_name,
+            life_vision="探索世界",
+            language="zh",
+        )
+    )
 
 
 class TestOpeningStoryAPIContract:
@@ -80,7 +94,7 @@ class TestOpeningStoryAPIContract:
         # 手动设置缓存为 generating 状态，模拟前一个请求正在进行
         with char_module._cache_lock:
             char_module._opening_story_cache.clear()
-            char_module._opening_story_cache["TestConcurrent"] = {
+            char_module._opening_story_cache[_cache_key("TestConcurrent")] = {
                 "generating": True,
                 "result": None,
                 "timestamp": time.time(),  # 刚启动，不会超过 60s
@@ -100,7 +114,7 @@ class TestOpeningStoryAPIContract:
 
         # 清理
         with char_module._cache_lock:
-            char_module._opening_story_cache.pop("TestConcurrent", None)
+            char_module._opening_story_cache.pop(_cache_key("TestConcurrent"), None)
 
         assert (
             response.status_code == 409
@@ -115,7 +129,7 @@ class TestOpeningStoryAPIContract:
 
         with char_module._cache_lock:
             char_module._opening_story_cache.clear()
-            char_module._opening_story_cache["TestStale"] = {
+            char_module._opening_story_cache[_cache_key("TestStale")] = {
                 "generating": True,
                 "result": None,
                 "timestamp": time.time() - 70,  # 70 秒前启动，已超时
@@ -143,7 +157,7 @@ class TestOpeningStoryAPIContract:
 
         # 清理
         with char_module._cache_lock:
-            char_module._opening_story_cache.pop("TestStale", None)
+            char_module._opening_story_cache.pop(_cache_key("TestStale"), None)
 
         assert response.status_code == 200, f"超时后应允许新请求，实际返回 {response.status_code}"
 
@@ -269,7 +283,9 @@ class TestOpeningStoryAPIContract:
             assert "Opening story appears truncated" in body
             assert "event: complete" not in body
             with char_module._cache_lock:
-                cache_entry = char_module._opening_story_cache.get("TestTruncatedOpening")
+                cache_entry = char_module._opening_story_cache.get(
+                    _cache_key("TestTruncatedOpening")
+                )
             assert cache_entry is not None
             assert cache_entry["result"] is None
 
@@ -318,7 +334,9 @@ class TestOpeningStoryAPIContract:
             assert "event: complete" not in body
 
             with char_module._cache_lock:
-                cache_entry = char_module._opening_story_cache.get("TestLengthFinish")
+                cache_entry = char_module._opening_story_cache.get(
+                    _cache_key("TestLengthFinish")
+                )
             assert cache_entry is not None
             assert cache_entry["result"] is None
 
@@ -374,7 +392,7 @@ class TestOpeningStoryAPIContract:
         # 预先设置缓存结果
         with char_module._cache_lock:
             char_module._opening_story_cache.clear()
-            char_module._opening_story_cache["TestCache"] = {
+            char_module._opening_story_cache[_cache_key("TestCache")] = {
                 "generating": False,
                 "result": "这是一个缓存的故事",
                 "timestamp": time.time(),

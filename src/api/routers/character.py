@@ -1,6 +1,7 @@
 """Character creation router — generate settings, relationships, attributes, opening story."""
 
 import asyncio
+import hashlib
 import json
 import logging
 import threading
@@ -20,12 +21,52 @@ from src.game.character_creation import CharacterCreator
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# ★ 开场故事防重复缓存：{player_name: {"generating": bool, "result": str, "timestamp": float}}
+# ★ 开场故事防重复缓存：{content_hash: {"generating": bool, "result": str, "timestamp": float}}
+# P0-正确性修复：key 从 player_name 改为请求内容哈希，
+# 同名但设定不同的玩家不再互相命中缓存。
 _opening_story_cache: Dict[str, Any] = {}
 _cache_lock = threading.Lock()
 OPENING_STORY_HEARTBEAT_INTERVAL = 5.0
 OPENING_STORY_HARD_TIMEOUT = 180.0
 OPENING_STORY_TRUNCATION_MIN_CHARS = 50
+# P3-内存修复：缓存命中窗口为 300s，条目超过 2 倍窗口（600s）即淘汰；
+# 同时限制总条目数，防止字典无界增长。
+OPENING_STORY_CACHE_MAX_AGE = 600.0
+OPENING_STORY_CACHE_MAX_ENTRIES = 100
+
+
+def _build_opening_story_cache_key(req: OpeningStoryRequest) -> str:
+    """按请求内容构建缓存 key。
+
+    同名玩家 + 相同设定 → 相同 key（可复用缓存）；
+    同名玩家 + 不同设定 → 不同 key（修复缓存串档）。
+    """
+    payload = {
+        "player_name": req.player_name,
+        "life_vision": req.life_vision,
+        "language": req.language,
+        "character_settings": req.character_settings,
+    }
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _prune_opening_story_cache_locked(now: float) -> None:
+    """淘汰过期条目并限制缓存总量（调用方必须持有 _cache_lock）。"""
+    expired = [
+        key
+        for key, entry in _opening_story_cache.items()
+        if now - entry.get("timestamp", 0) > OPENING_STORY_CACHE_MAX_AGE
+    ]
+    for key in expired:
+        _opening_story_cache.pop(key, None)
+    if len(_opening_story_cache) > OPENING_STORY_CACHE_MAX_ENTRIES:
+        oldest = sorted(
+            _opening_story_cache.items(),
+            key=lambda item: item[1].get("timestamp", 0.0),
+        )
+        for key, _ in oldest[: len(_opening_story_cache) - OPENING_STORY_CACHE_MAX_ENTRIES]:
+            _opening_story_cache.pop(key, None)
 
 
 def _opening_story_appears_truncated(
@@ -97,7 +138,7 @@ async def generate_attributes(req: GenerateAttributesRequest):
 @router.post("/opening-story")
 async def generate_opening_story(req: OpeningStoryRequest):
     """Generate opening story via SSE streaming."""
-    cache_key = req.player_name
+    cache_key = _build_opening_story_cache_key(req)
 
     # ★ 检查是否正在生成或已有缓存
     with _cache_lock:
@@ -146,6 +187,7 @@ async def generate_opening_story(req: OpeningStoryRequest):
             "result": None,
             "timestamp": time.time(),
         }
+        _prune_opening_story_cache_locked(time.time())
 
     creator = CharacterCreator(language=req.language)
 
@@ -259,6 +301,7 @@ async def generate_opening_story(req: OpeningStoryRequest):
                     "result": full_text_holder[0],
                     "timestamp": time.time(),
                 }
+            _prune_opening_story_cache_locked(time.time())
 
         # Send complete event with full text
         yield f"event: complete\ndata: {json.dumps({'full_story': full_text_holder[0]}, ensure_ascii=False)}\n\n"
