@@ -1,8 +1,11 @@
 """State repository for game state persistence."""
 
 import logging
+import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
+
+from sqlalchemy import or_
 
 from src.database.models import Game, GameState, SessionLocal, get_db
 
@@ -14,6 +17,14 @@ logger = logging.getLogger(__name__)
 
 class StateRepository:
     """Repository for game state read/write operations."""
+
+    # P3-存储优化：自动快照保留上限。
+    # 时间线（get_all_states_for_game）展示最近 50 个快照，保留最近 30 个
+    # 自动快照既维持时间线体验，又阻止 game_states 无界膨胀
+    # （此前每局数百行 × 单行数百KB~3.4MB）。手动存档点永不删除。
+    AUTO_SNAPSHOT_KEEP_COUNT: int = int(
+        os.getenv("GAME_STATE_AUTO_SNAPSHOT_KEEP", "30")
+    )
 
     def save_state(self, game_id: int, player_state: "PlayerState") -> None:
         """
@@ -107,6 +118,21 @@ class StateRepository:
 
             db.commit()
             logger.info(f"save_game_progress: Successfully saved game_id={game_id}")
+
+            # P3-存储优化：清理超出保留上限的旧自动快照。
+            # 清理失败只记日志，绝不影响本次保存的结果。
+            try:
+                pruned = self._prune_old_auto_snapshots(db, game_id)
+                if pruned:
+                    logger.info(
+                        f"save_game_progress: pruned {pruned} old auto snapshots for game_id={game_id}"
+                    )
+            except Exception:
+                logger.warning(
+                    f"save_game_progress: failed to prune old snapshots for game_id={game_id}",
+                    exc_info=True,
+                )
+
             return True
         except Exception as e:
             logger.error(f"save_game_progress: Failed to save game_id={game_id}, error={e}")
@@ -114,6 +140,38 @@ class StateRepository:
             return False
         finally:
             db.close()
+
+    def _prune_old_auto_snapshots(self, db, game_id: int) -> int:
+        """删除超出保留上限的旧自动快照，手动存档点（is_save_point=True）永不删除。
+
+        自动快照判断：is_save_point 为 False 或 NULL（旧数据兼容）。
+        返回删除的行数；调用方负责事务边界。
+        """
+        auto_filter = or_(
+            GameState.is_save_point.is_(False),
+            GameState.is_save_point.is_(None),
+        )
+        keep_rows = (
+            db.query(GameState.state_id)
+            .filter(GameState.game_id == game_id, auto_filter)
+            .order_by(GameState.state_id.desc())
+            .limit(self.AUTO_SNAPSHOT_KEEP_COUNT)
+            .all()
+        )
+        keep_ids = {row[0] for row in keep_rows}
+        if not keep_ids:
+            return 0
+        deleted = (
+            db.query(GameState)
+            .filter(
+                GameState.game_id == game_id,
+                auto_filter,
+                GameState.state_id.notin_(keep_ids),
+            )
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        return int(deleted)
 
     def load_saved_game(self, game_id: int, user_id: int) -> Optional[Dict[str, Any]]:
         """
