@@ -1,5 +1,6 @@
 """收集系统API路由 - 人物和物品收集"""
 
+import asyncio
 import logging
 from typing import Any, Dict, Generator, List, Optional
 from urllib.parse import unquote
@@ -615,7 +616,10 @@ async def recognize_entities(  # type: ignore
         min_appearances = request.get("min_appearances") or default_min
 
         recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
-        return recognition_service.recognize_from_history(
+        # P2-性能修复：实体识别是同步 LLM 调用（缓存未命中时），
+        # 移到线程执行，避免阻塞事件循环。
+        return await asyncio.to_thread(
+            recognition_service.recognize_from_history,
             round_history=recognition_history,
             existing_items=existing_items,
             existing_characters=existing_characters,

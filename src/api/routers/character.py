@@ -87,7 +87,9 @@ async def generate_setting(req: GenerateSettingRequest):
     """Generate a character setting (era, age, gender, world, family, relationships, traits)."""
     creator = CharacterCreator(language=req.language)
     try:
-        result = creator.generate_setting(
+        # P2-性能修复：同步 LLM 调用移出事件循环。
+        result = await asyncio.to_thread(
+            creator.generate_setting,
             setting_type=req.setting_type,
             player_name=req.player_name,
             life_vision=req.life_vision,
@@ -105,7 +107,9 @@ async def generate_relationship(req: GenerateRelationshipRequest):
     """Generate a single relationship person with rich attributes."""
     creator = CharacterCreator(language=req.language)
     try:
-        result = creator.generate_single_relationship_person(
+        # P2-性能修复：同步 LLM 调用移出事件循环。
+        result = await asyncio.to_thread(
+            creator.generate_single_relationship_person,
             player_name=req.player_name,
             life_vision=req.life_vision,
             previous_settings=req.previous_settings,
@@ -125,7 +129,9 @@ async def generate_attributes(req: GenerateAttributesRequest):
     """Generate initial character attributes (energy, mood, knowledge)."""
     creator = CharacterCreator(language=req.language)
     try:
-        result = creator.generate_initial_attributes(
+        # P2-性能修复：同步 LLM 调用移出事件循环。
+        result = await asyncio.to_thread(
+            creator.generate_initial_attributes,
             character_settings=req.character_settings,
             language=req.language,
         )

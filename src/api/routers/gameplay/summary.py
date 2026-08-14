@@ -7,6 +7,7 @@ This module provides endpoints for:
 - DELETE /{game_id}/session-debug: Debug endpoint for session testing
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -200,7 +201,9 @@ async def generate_summary(
         prompt = build_life_summary_prompt(story_history, start_week, end_week)
 
         try:
-            summary_text = game_loop.ai_generator.generate_completion(
+            # P2-性能修复：人生总结是同步 LLM 调用，移到线程执行避免阻塞事件循环。
+            summary_text = await asyncio.to_thread(
+                game_loop.ai_generator.generate_completion,
                 prompt=prompt,
                 system_prompt="你是一位优秀的人生故事记录者。请为这段人生经历生成一段贴切、真实的总结。只返回总结文本，不要标题。",
                 temperature=0.8,

@@ -1,5 +1,6 @@
 """Story adjustment router — rewrite segment, regenerate full story, assistant chat."""
 
+import asyncio
 import logging
 import os
 from typing import Optional
@@ -148,7 +149,9 @@ async def regenerate_story(
 
         if is_daily_timeline(game_loop.player_state):
             db = get_db()
-            new_event = regenerate_daily_event_atomically(
+            # P2-性能修复：同步生成+持久化移出事件循环。
+            new_event = await asyncio.to_thread(
+                regenerate_daily_event_atomically,
                 game_loop,
                 persist_callback=lambda candidate: db.save_game_progress(
                     game_id, candidate
@@ -171,8 +174,9 @@ async def regenerate_story(
         if game_loop.player_state:
             game_loop.player_state.current_event_data = None
 
-        # ★ 使用完整的 generate_round_event 流程
-        new_event = game_loop.generate_round_event(
+        # ★ 使用完整的 generate_round_event 流程（P2-性能修复：移出事件循环）
+        new_event = await asyncio.to_thread(
+            game_loop.generate_round_event,
             stream_callback=None,
             status_callback=None,
         )
