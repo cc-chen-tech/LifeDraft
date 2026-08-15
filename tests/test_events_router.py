@@ -30,7 +30,7 @@ def _event(story: str = "测试事件") -> GameEvent:
 
 
 class TestRequireSession:
-    @patch("src.api.routers.gameplay.events.session_service")
+    @patch("src.api.deps.session_service")
     def test_require_session_returns_session(self, mock_service):
         mock_session = MagicMock()
         mock_service.get_or_restore.return_value = mock_session
