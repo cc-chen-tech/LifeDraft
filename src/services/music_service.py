@@ -869,12 +869,12 @@ class MusicResultRanker:
         strict_no_vocal = _brief_requests_no_vocal(brief)
         seen_titles: set[str] = set()
         filtered: List[TMusicTrack] = []
+        # P2-性能修复：profile 与 scorer 提到循环外（此前每首重建）。
+        profile = _scene_fit_profile_from_brief(brief)
+        scorer = MusicSceneFitScorer()
 
         for song in ranked:
-            decision = MusicSceneFitScorer().score_candidate(
-                song,
-                _scene_fit_profile_from_brief(brief),
-            )
+            decision = scorer.score_candidate(song, profile)
             if decision.rejected:
                 continue
             if _looks_like_generated_placeholder_song(song):
@@ -1405,18 +1405,22 @@ class MusicService:
 
     async def _refresh_pool_urls(self, pool: CachedMusicPool, supplement: bool = True) -> None:
         now = time.time()
-        refreshed_songs: List[CachedSong] = []
-        for song in pool.verified_songs:
-            if song.url and song.url_expires_at > now:
-                refreshed_songs.append(song)
-                continue
-
-            fresh_url = await self.music_client.get_song_url(song.id)
-            if fresh_url:
-                song.url = fresh_url
-                song.url_expires_at = time.time() + self.SONG_URL_TTL
-                song.verified_at = time.time()
-                refreshed_songs.append(song)
+        expired = [song for song in pool.verified_songs if not (song.url and song.url_expires_at > now)]
+        refreshed_songs: List[CachedSong] = [
+            song for song in pool.verified_songs if song.url and song.url_expires_at > now
+        ]
+        if expired:
+            # P2-性能修复：批量刷新 URL（此前逐首串行 N+1）。
+            fetched = await asyncio.gather(
+                *[self.music_client.get_song_url(song.id) for song in expired],
+                return_exceptions=True,
+            )
+            for song, url in zip(expired, fetched):
+                if isinstance(url, str) and url:
+                    song.url = url
+                    song.url_expires_at = time.time() + self.SONG_URL_TTL
+                    song.verified_at = time.time()
+                    refreshed_songs.append(song)
 
         pool.verified_songs = refreshed_songs
         if supplement and len(pool.verified_songs) < 5:
@@ -1437,12 +1441,17 @@ class MusicService:
             else:
                 search_keywords.extend(["轻音乐", "纯音乐", "背景音乐"])
 
-        for keyword in search_keywords[:8]:
-            if len(pool.verified_songs) >= 20:
-                break
-            songs = await self.music_client.search(keyword, limit=10)
+        # P2-性能修复：并行搜索（此前逐关键字串行），URL 批量获取（此前逐首 N+1）。
+        search_results = await asyncio.gather(
+            *[self.music_client.search(keyword, limit=10) for keyword in search_keywords[:8]],
+            return_exceptions=True,
+        )
+        candidates: List[Any] = []
+        for songs in search_results:
+            if not isinstance(songs, list):
+                continue
             for song in songs:
-                if song.id in seen_ids or len(pool.verified_songs) >= 20:
+                if song.id in seen_ids or len(pool.verified_songs) + len(candidates) >= 20:
                     continue
                 canonical_title = _music_title_family_key(song.name)
                 if canonical_title and canonical_title in seen_titles:
@@ -1478,26 +1487,38 @@ class MusicService:
                         song.name[:80],
                     )
                     continue
-                song_url = song.url or await self.music_client.get_song_url(song.id)
-                if not song_url:
-                    continue
-                now = time.time()
-                pool.verified_songs.append(
-                    CachedSong(
-                        id=song.id,
-                        name=song.name,
-                        artists=song.artists,
-                        album=song.album,
-                        duration=song.duration,
-                        url=song_url,
-                        url_expires_at=now + self.SONG_URL_TTL,
-                        verified_at=now,
-                        source=song.source,
-                    )
-                )
+                candidates.append(song)
                 seen_ids.add(song.id)
                 if canonical_title:
                     seen_titles.add(canonical_title)
+
+        missing_urls = [song for song in candidates if not song.url]
+        if missing_urls:
+            fetched = await asyncio.gather(
+                *[self.music_client.get_song_url(song.id) for song in missing_urls],
+                return_exceptions=True,
+            )
+            for song, url in zip(missing_urls, fetched):
+                if isinstance(url, str) and url:
+                    song.url = url
+
+        now = time.time()
+        for song in candidates:
+            if not song.url:
+                continue
+            pool.verified_songs.append(
+                CachedSong(
+                    id=song.id,
+                    name=song.name,
+                    artists=song.artists,
+                    album=song.album,
+                    duration=song.duration,
+                    url=song.url,
+                    url_expires_at=now + self.SONG_URL_TTL,
+                    verified_at=now,
+                    source=song.source,
+                )
+            )
 
     async def _analyze_story_mood(
         self,

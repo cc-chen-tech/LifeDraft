@@ -317,6 +317,9 @@ class MusicPlaylistService:
 
         if current is not None:
             played.append(current)
+            # P3-存储修复：played 历史只保留最近 200 首（此前无限增长，随存档膨胀）。
+            if len(played) > 200:
+                played = played[-200:]
 
         if queue:
             playlist_data.current_song_json = queue[0]

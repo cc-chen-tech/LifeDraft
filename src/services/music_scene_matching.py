@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple, TypeVar
 
@@ -344,6 +345,10 @@ class MiniMaxMusicPromptBuilder:
         )
 
 
+
+_NON_WORD_PUNCT_RE = re.compile(r"[\s\-—_·.。…!！?？,，、:：;；'\"“”‘’《》\[\]【】/\\]+")
+_WHITESPACE_RE = re.compile(r"\s+")
+
 def _context_text(
     analysis: Mapping[str, Any],
     story_text: str,
@@ -439,6 +444,7 @@ def _positive_terms(profile: MusicSceneFitProfile) -> List[str]:
     )
 
 
+@lru_cache(maxsize=32)
 def _strategy_cues(strategy: str) -> List[str]:
     return {
         "investigative_suspense": ["调查", "悬疑", "旧案", "档案", "数据隐私", "科技公司", "证据", "冷色"],
@@ -470,7 +476,7 @@ def _matches_negative_cue(text: str, negative_cues: Sequence[str]) -> bool:
 
 
 def _cue_is_negated_in_candidate_text(cue: str, text: str) -> bool:
-    compact_text = re.sub(r"[\s\-—_·.。…!！?？,，、:：;；'\"“”‘’《》\[\]【】/\\]+", "", text)
+    compact_text = _NON_WORD_PUNCT_RE.sub("", text)
     if cue == "歌词":
         return "无歌词" in compact_text or "没有歌词" in compact_text or "纯音乐" in compact_text
     if cue == "人声":
@@ -508,7 +514,7 @@ def _negative_instructions(negative_cues: Sequence[str]) -> str:
 
 
 def _compact_story_summary(story_text: str, max_chars: int) -> str:
-    normalized = re.sub(r"\s+", " ", story_text).strip()
+    normalized = _WHITESPACE_RE.sub(" ", story_text).strip()
     if len(normalized) <= max_chars:
         return normalized
     return normalized[: max_chars - 1].rstrip(" ,，。.;；") + "."
