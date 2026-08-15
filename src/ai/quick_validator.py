@@ -130,7 +130,7 @@ class QuickValidator:
         "此时",
         "紧接着",
     )
-    CHINESE_NAME_CONSUMED_PREFIXES = (
+    CHINESE_NAME_GOVERNANCE_PREFIXES = (
         "制定",
         "分配",
         "批准",
@@ -142,6 +142,8 @@ class QuickValidator:
         "谈判",
         "签署",
         "统筹",
+    )
+    CHINESE_NAME_CONSUMED_PREFIXES = CHINESE_NAME_GOVERNANCE_PREFIXES + (
         "立即",
         "很快",
         "随后",
@@ -154,6 +156,7 @@ class QuickValidator:
         "分别",
         "亲自",
     )
+    CHINESE_NAME_SINGLE_CHARACTER_MODIFIERS = frozenset("又还则便")
 
     def __init__(self):
         self._forbidden_pattern_zh = self._build_forbidden_pattern("zh")
@@ -654,9 +657,10 @@ class QuickValidator:
                 if index == -1:
                     break
                 suffix = text[index + len(name): index + len(name) + 16]
-                possible_actors_and_tails = [(name, suffix)]
+                possible_actors_and_tails = []
                 if len(name) == 3:
                     possible_actors_and_tails.append((name[:-1], name[-1] + suffix))
+                possible_actors_and_tails.append((name, suffix))
                 # Generic operational verbs such as "负责" and "执行" are
                 # deliberately excluded: product labels and module names can
                 # perform those actions too. Rejoining the candidate's final
@@ -679,7 +683,31 @@ class QuickValidator:
                     break
                 start = index + len(name)
 
+        invented_name_set = set(invented_names)
+        for first_name, second_name, action_start in self._coordinated_name_groups(text):
+            if first_name not in invented_name_set or second_name not in invented_name_set:
+                continue
+            action_tail = text[action_start: action_start + 24]
+            if any(
+                pattern.match(optional_modifiers.sub("", action_tail))
+                for pattern in governance_action_patterns
+            ):
+                active_actors.update((first_name, second_name))
+
         return len(active_actors) >= 2
+
+    def _coordinated_name_groups(self, text: str) -> List[tuple[str, str, int]]:
+        """Return coordinated Chinese names and the start of their shared action."""
+        surname_class = re.escape(self.COMMON_CHINESE_SURNAMES)
+        pattern = re.compile(
+            rf"([{surname_class}][\u4e00-\u9fff]{{1,2}})"
+            rf"(?:与|和|及)([{surname_class}][\u4e00-\u9fff]{{1,2}})"
+            r"(?=共同|一起|分别|协同|联合)"
+        )
+        return [
+            (match.group(1), match.group(2), match.end())
+            for match in pattern.finditer(text)
+        ]
 
     def _extract_required_key_people_names(
         self,
@@ -812,13 +840,8 @@ class QuickValidator:
             rf"([{surname_class}][\u4e00-\u9fff]{{1,2}}(?:{role_titles})?)"
         )
         names: List[str] = []
-        coordinated_pattern = re.compile(
-            rf"([{surname_class}][\u4e00-\u9fff]{{1,2}})"
-            rf"(?:与|和|及)([{surname_class}][\u4e00-\u9fff]{{1,2}})"
-            r"(?=共同|一起|分别|协同|联合)"
-        )
-        for coordinated_match in coordinated_pattern.finditer(text):
-            for raw_candidate in coordinated_match.groups():
+        for first_name, second_name, _ in self._coordinated_name_groups(text):
+            for raw_candidate in (first_name, second_name):
                 candidate = str(raw_candidate).strip()
                 if not candidate or candidate in allowed_names:
                     continue
@@ -868,13 +891,20 @@ class QuickValidator:
             if any(candidate in allowed or allowed in candidate for allowed in allowed_names):
                 continue
             if len(candidate) == 3:
-                reconstructed_suffix = (
-                    candidate[-1] + text[match.end(): match.end() + 8]
-                )
-                if any(
+                following_text = text[match.end(): match.end() + 8]
+                reconstructed_suffix = candidate[-1] + following_text
+                consumed_prefix = any(
                     reconstructed_suffix.startswith(prefix)
                     for prefix in self.CHINESE_NAME_CONSUMED_PREFIXES
-                ):
+                )
+                single_modifier_before_action = (
+                    candidate[-1] in self.CHINESE_NAME_SINGLE_CHARACTER_MODIFIERS
+                    and any(
+                        following_text.startswith(prefix)
+                        for prefix in self.CHINESE_NAME_GOVERNANCE_PREFIXES
+                    )
+                )
+                if consumed_prefix or single_modifier_before_action:
                     candidate = candidate[:-1]
             if candidate not in names:
                 names.append(candidate)

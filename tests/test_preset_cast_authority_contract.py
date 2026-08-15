@@ -512,6 +512,46 @@ def test_quick_validator_deduplicates_marker_actor_before_cast_threshold() -> No
     assert result.issues == []
 
 
+def test_quick_validator_deduplicates_one_character_modifier_variants() -> None:
+    """One-character modifiers must not turn one actor into three names."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起参加项目会议。"
+            "陈越又制定了完整方案，陈越还分配了所有任务，陈越则批准了预算。"
+            "三人确认安排后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+def test_quick_validator_attributes_joint_action_to_both_outside_actors() -> None:
+    """Both coordinated actors own a governance action performed jointly."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强与方蕾共同制定方案，马涛负责记录会议结论。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
 def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
     """Narrative text must not invent names from suffixes such as 元低声."""
     from src.ai.quick_validator import quick_validate_story
