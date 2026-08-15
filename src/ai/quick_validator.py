@@ -620,7 +620,7 @@ class QuickValidator:
             )
         )
         optional_modifiers = re.compile(
-            r"^(?:(?:立即|很快|随后|独自|主动|开始|最终|又|还|则|便|亲自)){0,2}"
+            r"^(?:(?:立即|很快|随后|独自|主动|开始|最终|共同|一起|分别|又|还|则|便|亲自)){0,2}"
         )
         active_actors: set[str] = set()
         for name in invented_names:
@@ -788,6 +788,28 @@ class QuickValidator:
             rf"([{surname_class}][\u4e00-\u9fff]{{1,2}}(?:{role_titles})?)"
         )
         names: List[str] = []
+        coordinated_pattern = re.compile(
+            rf"([{surname_class}][\u4e00-\u9fff]{{1,2}})"
+            rf"(?:与|和|及)([{surname_class}][\u4e00-\u9fff]{{1,2}})"
+            r"(?=共同|一起|分别|协同|联合)"
+        )
+        for coordinated_match in coordinated_pattern.finditer(text):
+            for raw_candidate in coordinated_match.groups():
+                candidate = str(raw_candidate).strip()
+                if not candidate or candidate in allowed_names:
+                    continue
+                if any(
+                    candidate.startswith(non_person)
+                    for non_person in self.NON_PERSON_NAME_CANDIDATES
+                ):
+                    continue
+                if any(
+                    candidate in allowed or allowed in candidate
+                    for allowed in allowed_names
+                ):
+                    continue
+                if candidate not in names:
+                    names.append(candidate)
         for match in pattern.finditer(text):
             candidate_start = match.start()
             # Do not treat a surname-shaped suffix in normal prose as a new

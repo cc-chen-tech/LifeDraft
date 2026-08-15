@@ -472,6 +472,26 @@ def test_quick_validator_rejects_plot_drivers_after_discourse_markers() -> None:
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+def test_quick_validator_rejects_coordinated_outside_plot_drivers() -> None:
+    """Conjunction-delimited outside actors still count toward cast drift."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强与方蕾共同制定方案，马涛批准预算并确定上线日期。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
 def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
     """Narrative text must not invent names from suffixes such as 元低声."""
     from src.ai.quick_validator import quick_validate_story
