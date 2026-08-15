@@ -16,6 +16,18 @@ MUST return a non-zero exit code when either stage fails.
 - **WHEN** backend and frontend coverage both exit zero
 - **THEN** `./test.sh coverage` MUST exit zero
 
+#### Scenario: Successful backend command omits XML evidence
+- **WHEN** backend and frontend coverage exit zero but backend XML is missing
+- **THEN** `./test.sh coverage` MUST exit non-zero
+
+#### Scenario: Successful frontend command omits HTML evidence
+- **WHEN** backend and frontend coverage exit zero but frontend HTML is missing
+- **THEN** `./test.sh coverage` MUST exit non-zero
+
+#### Scenario: Stale evidence cannot be cleared
+- **WHEN** the aggregate command cannot remove a previous coverage output
+- **THEN** it MUST exit non-zero before either coverage stage starts
+
 ### Requirement: Maintained coverage floors reflect measured suites
 The maintained backend coverage gate SHALL enforce a 34% minimum and the
 frontend coverage gate SHALL retain its global 70% Jest thresholds.
@@ -37,6 +49,11 @@ missing.
 - **WHEN** a coverage job reaches artifact upload without its expected report
 - **THEN** the job MUST fail instead of warning or reporting success
 
+#### Scenario: Frontend Tests omits its HTML entry point
+- **WHEN** `Frontend Tests` produces a partial coverage directory without the
+  required HTML index
+- **THEN** the workflow MUST fail before treating that directory as evidence
+
 #### Scenario: Coverage reports are generated
 - **WHEN** backend and frontend coverage commands succeed
 - **THEN** the workflows MUST retain the generated reports as GitHub artifacts
@@ -51,4 +68,5 @@ when that file exists.
 
 #### Scenario: HTML report is missing
 - **WHEN** a coverage stage does not generate its HTML report
-- **THEN** `./test.sh coverage` MUST NOT claim that report was generated
+- **THEN** `./test.sh coverage` MUST NOT claim that report was generated and
+  MUST return a non-zero exit code

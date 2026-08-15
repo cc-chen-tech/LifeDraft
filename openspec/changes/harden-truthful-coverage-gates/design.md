@@ -31,19 +31,23 @@ coverage. The frontend already enforces global 70% Jest thresholds.
 ## Decisions
 
 - `test.sh` will retain independent backend and frontend exit codes, print only
-  report paths that exist, and return failure if either code is non-zero. This
-  preserves both runs for complete local diagnostics while preventing false
-  success. Its backend stage will use the same maintained runner as CI so the
-  aggregate command does not silently select a different legacy suite.
+  report paths that exist, and return failure if either code is non-zero or
+  either required report is missing. Failure to clear stale evidence will stop
+  the run before either coverage stage starts. This preserves both runs for
+  complete local diagnostics while preventing false success. Its backend stage
+  will use the same maintained runner as CI so the aggregate command does not
+  silently select a different legacy suite.
 - Frontend coverage entry points will invoke `npm run test:coverage` so Jest
   receives coverage options directly. Reusing `npm test` was rejected because
   it chains multiple npm scripts and forwards flags only to the final script.
 - The maintained backend runner will pass `--cov-fail-under=34` while producing
   `coverage.xml`. A 34% floor provides one point of tolerance below the current
   rounded 35% result without claiming the obsolete 60% baseline.
-- Workflow artifacts will be uploaded with `if-no-files-found: error`. Codecov
-  uploads are removed because a non-authoritative, failure-tolerant external
-  upload obscures whether repository-owned evidence exists.
+- Workflow artifacts will be uploaded with `if-no-files-found: error`, and each
+  workflow will verify its exact required XML or HTML entry point before upload.
+  Codecov uploads and configuration are removed because a non-authoritative,
+  failure-tolerant external upload obscures whether repository-owned evidence
+  exists.
 - Governance tests will run shell behavior in real subprocesses and parse YAML
   into data structures. They will avoid mocks, skips, and source-line matching.
 

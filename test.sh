@@ -847,8 +847,14 @@ prepare_coverage_run() {
     if [ -z "$backend_report" ] || [ -z "$frontend_coverage_dir" ]; then
         return 2
     fi
-    rm -f -- "$backend_report"
-    rm -rf -- "$frontend_coverage_dir"
+    if ! rm -f -- "$backend_report"; then
+        echo -e "${RED}✗ 无法清理后端覆盖率报告: $backend_report${NC}" >&2
+        return 1
+    fi
+    if ! rm -rf -- "$frontend_coverage_dir"; then
+        echo -e "${RED}✗ 无法清理前端覆盖率目录: $frontend_coverage_dir${NC}" >&2
+        return 1
+    fi
 }
 
 finish_coverage_run() {
@@ -857,6 +863,7 @@ finish_coverage_run() {
     local backend_report="$3"
     local frontend_report="$4"
     local report_header_printed=0
+    local report_missing=0
 
     echo ""
     if [ -f "$backend_report" ]; then
@@ -871,13 +878,22 @@ finish_coverage_run() {
         echo "  前端: $frontend_report"
     fi
 
+    if [ ! -f "$backend_report" ]; then
+        echo -e "${RED}✗ 后端覆盖率报告缺失: $backend_report${NC}" >&2
+        report_missing=1
+    fi
+    if [ ! -f "$frontend_report" ]; then
+        echo -e "${RED}✗ 前端覆盖率报告缺失: $frontend_report${NC}" >&2
+        report_missing=1
+    fi
+
     if [ "$backend_result" -ne 0 ]; then
         echo -e "${RED}✗ 后端覆盖率失败 (exit: $backend_result)${NC}" >&2
     fi
     if [ "$frontend_result" -ne 0 ]; then
         echo -e "${RED}✗ 前端覆盖率失败 (exit: $frontend_result)${NC}" >&2
     fi
-    if [ "$backend_result" -ne 0 ] || [ "$frontend_result" -ne 0 ]; then
+    if [ "$backend_result" -ne 0 ] || [ "$frontend_result" -ne 0 ] || [ "$report_missing" -ne 0 ]; then
         return 1
     fi
     return 0
@@ -892,7 +908,10 @@ run_coverage() {
     local backend_report="$TEST_RUN_DIR/coverage.xml"
     local frontend_coverage_dir="$TEST_RUN_DIR/frontend/coverage"
     local frontend_report="$frontend_coverage_dir/index.html"
-    prepare_coverage_run "$backend_report" "$frontend_coverage_dir"
+    if ! prepare_coverage_run "$backend_report" "$frontend_coverage_dir"; then
+        echo -e "${RED}✗ 覆盖率运行准备失败${NC}" >&2
+        return 1
+    fi
     
     # 后端覆盖率
     echo -e "${YELLOW}--- 后端覆盖率 ---${NC}"
