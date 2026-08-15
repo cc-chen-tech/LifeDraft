@@ -71,7 +71,7 @@ def test_chapter_request_is_idempotent_and_processes_ordered_paragraph_audio() -
 
 def test_failed_segment_marks_chapter_failed_without_browser_audio() -> None:
     class FailingProvider(DeterministicTTSProvider):
-        def synthesize(self, context, voice_id, speed):
+        def synthesize(self, context, voice_id, speed, on_progress=None):
             raise RuntimeError("provider timeout")
 
     init_db()
@@ -111,12 +111,17 @@ def test_first_paragraph_is_visible_while_later_paragraphs_prefetch() -> None:
     class BlockingSecondParagraphProvider(DeterministicTTSProvider):
         calls = 0
 
-        def synthesize(self, context, voice_id, speed):
+        def synthesize(self, context, voice_id, speed, on_progress=None):
             self.calls += 1
             if self.calls == 2:
                 second_started.set()
                 assert release_second.wait(timeout=5)
-            return super().synthesize(context, voice_id, speed)
+            return super().synthesize(
+                context,
+                voice_id,
+                speed,
+                on_progress=on_progress,
+            )
 
     init_db()
     setup_session = SessionLocal()
@@ -177,10 +182,15 @@ def test_failed_chapter_retry_reuses_the_same_job_and_can_recover() -> None:
     class RecoveringProvider(DeterministicTTSProvider):
         should_fail = True
 
-        def synthesize(self, context, voice_id, speed):
+        def synthesize(self, context, voice_id, speed, on_progress=None):
             if self.should_fail:
                 raise RuntimeError("temporary provider failure")
-            return super().synthesize(context, voice_id, speed)
+            return super().synthesize(
+                context,
+                voice_id,
+                speed,
+                on_progress=on_progress,
+            )
 
     init_db()
     session = SessionLocal()

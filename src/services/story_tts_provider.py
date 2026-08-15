@@ -10,11 +10,12 @@ import wave
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Protocol
+from typing import Any, Callable, Dict, Literal, Optional, Protocol
 
 from config.settings import PROJECT_ROOT
 
 PlaybackMode = Literal["audio", "unavailable"]
+ProgressCallback = Callable[[], None]
 MIN_DETERMINISTIC_AUDIO_DURATION_SECONDS = 8.0
 
 
@@ -49,7 +50,13 @@ class StoryTTSProvider(Protocol):
     def metadata(self) -> StoryTTSProviderMetadata:
         """Return provider availability and playback behavior."""
 
-    def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
+    def synthesize(
+        self,
+        context: Dict[str, Any],
+        voice_id: str,
+        speed: float,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> GeneratedSpeech:
         """Synthesize or select playback for a reading context."""
 
 
@@ -69,7 +76,13 @@ class UnavailableTTSProvider:
             backend_audio_enabled=False,
         )
 
-    def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
+    def synthesize(
+        self,
+        context: Dict[str, Any],
+        voice_id: str,
+        speed: float,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> GeneratedSpeech:
         raise TTSProviderUnavailableError("High-quality narration is unavailable")
 
 
@@ -89,7 +102,15 @@ class DeterministicTTSProvider:
             backend_audio_enabled=True,
         )
 
-    def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
+    def synthesize(
+        self,
+        context: Dict[str, Any],
+        voice_id: str,
+        speed: float,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> GeneratedSpeech:
+        if on_progress is not None:
+            on_progress()
         text = str(context["text"])
         text_hash = str(context["text_hash"])
         duration = max(
@@ -142,7 +163,7 @@ def build_deterministic_wav(text_hash: str, voice_id: str) -> bytes:
     return buffer.getvalue()
 
 
-def read_generated_voice_file(file_name: str) -> Optional[bytes]:
+def generated_voice_file_path(file_name: str) -> Optional[Path]:
     configured_dir = os.getenv("STORY_TTS_ASSET_DIR")
     asset_dir = Path(configured_dir) if configured_dir else PROJECT_ROOT / "data" / "voice_assets"
     file_path = (asset_dir / file_name).resolve()
@@ -152,4 +173,10 @@ def read_generated_voice_file(file_name: str) -> Optional[bytes]:
         return None
     if not file_path.is_file():
         return None
-    return file_path.read_bytes()
+    return file_path
+
+
+def read_generated_voice_file(file_name: str) -> Optional[bytes]:
+    """Read a generated asset for legacy consumers that require bytes."""
+    file_path = generated_voice_file_path(file_name)
+    return file_path.read_bytes() if file_path is not None else None

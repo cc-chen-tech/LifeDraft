@@ -272,6 +272,7 @@ async def health_check():
             "daily_timeline_v2": get_feature("daily_timeline_v2"),
             "tts_provider": tts_metadata.provider,
             "tts_provider_available": tts_metadata.backend_audio_enabled,
+            "tts_audio_transport": "range_v2",
             "music_runtime_enabled": False,
         },
     }

@@ -2,6 +2,7 @@
 
 import hashlib
 from pathlib import Path
+import wave
 
 import pytest
 
@@ -49,6 +50,91 @@ def test_local_audio_synthesis_writes_and_reuses_deterministic_wav(tmp_path: Pat
     assert first.storage_path == second.storage_path
     assert first.duration_ms == second.duration_ms
     assert artifact.read_bytes().startswith(b"RIFF")
+
+
+def test_local_audio_is_validated_measured_and_atomically_published(tmp_path: Path) -> None:
+    class RecordingClient:
+        def __init__(self) -> None:
+            self.output_paths: list[Path] = []
+
+        def synthesize_to_file(
+            self,
+            payload: dict[str, object],
+            output_path: Path,
+            on_progress=None,
+        ) -> None:
+            if on_progress is not None:
+                on_progress()
+            self.output_paths.append(output_path)
+            with wave.open(str(output_path), "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(8_000)
+                audio.writeframes(b"\x00\x00" * 1_000)
+
+    client = RecordingClient()
+    provider = MiniMaxTTSProvider(
+        config=_config(tmp_path, {"MINIMAX_E2E_LOCAL_AUDIO": "true"}),
+        client=client,  # type: ignore[arg-type]
+    )
+
+    speech = provider.synthesize(
+        {"text_hash": "atomic-story", "text": "按实际音频时长返回。"},
+        "calm_male",
+        1.25,
+    )
+    asset_dir = tmp_path / "voice"
+    published = asset_dir / Path(str(speech.storage_path)).name
+
+    assert client.output_paths[0].parent == asset_dir
+    assert client.output_paths[0] != published
+    assert "speed-float64-3ff4000000000000" in published.name
+    assert "cache-v2" in published.name
+    assert published.exists()
+    assert list(asset_dir.glob(".*")) == []
+    assert speech.duration_ms == 125
+
+
+def test_close_accepted_speeds_use_distinct_v2_cache_tokens(tmp_path: Path) -> None:
+    provider = MiniMaxTTSProvider(
+        config=_config(tmp_path, {"MINIMAX_E2E_LOCAL_AUDIO": "true"})
+    )
+    context = {"text_hash": "close-speed-story", "text": "相近语速不能共享缓存文件。"}
+
+    first = provider.synthesize(context, "warm_female", 1.0001)
+    second = provider.synthesize(context, "warm_female", 1.0002)
+
+    assert first.storage_path != second.storage_path
+    assert "speed-float64-" in str(first.storage_path)
+    assert "speed-float64-" in str(second.storage_path)
+
+
+def test_invalid_minimax_mp3_is_rejected_and_temporary_file_is_removed(tmp_path: Path) -> None:
+    class InvalidMp3Client:
+        def synthesize_to_file(
+            self,
+            payload: dict[str, object],
+            output_path: Path,
+            on_progress=None,
+        ) -> None:
+            if on_progress is not None:
+                on_progress()
+            output_path.write_bytes(b"not an mp3")
+
+    provider = MiniMaxTTSProvider(
+        config=_config(tmp_path, {"MINIMAX_API_KEY": "configured"}),
+        client=InvalidMp3Client(),  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(TTSProviderUnavailableError):
+        provider.synthesize(
+            {"text_hash": "invalid-mp3", "text": "格式错误的 MiniMax 音频不可发布。"},
+            "warm_female",
+            1.0,
+        )
+
+    asset_dir = tmp_path / "voice"
+    assert list(asset_dir.iterdir()) == []
 
 
 def test_local_async_audio_uses_stable_sha256_text_hash(tmp_path: Path) -> None:

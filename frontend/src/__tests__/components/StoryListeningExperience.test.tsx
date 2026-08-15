@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { StoryListeningExperience } from "@/components/game/StoryListeningExperience";
 import { api } from "@/lib/api";
@@ -54,6 +54,16 @@ const segments = [
   },
 ];
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 function setupApi() {
   voiceApi.getSettings.mockResolvedValue({
     member_required: false,
@@ -95,16 +105,24 @@ function setupApi() {
 describe("StoryListeningExperience", () => {
   const play = jest.fn().mockResolvedValue(undefined);
   const pause = jest.fn();
+  const load = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(console, "info").mockImplementation();
     setupApi();
     Object.defineProperty(HTMLMediaElement.prototype, "play", { configurable: true, value: play });
     Object.defineProperty(HTMLMediaElement.prototype, "pause", { configurable: true, value: pause });
+    Object.defineProperty(HTMLMediaElement.prototype, "load", { configurable: true, value: load });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
   function renderExperience(onSelectChoice = jest.fn()) {
-    render(
+    const view = render(
       <StoryListeningExperience
         context={context}
         storyText={context.text}
@@ -115,7 +133,7 @@ describe("StoryListeningExperience", () => {
         onSelectChoice={onSelectChoice}
       />,
     );
-    return onSelectChoice;
+    return { ...view, onSelectChoice };
   }
 
   it("queues the completed chapter and automatically starts high-quality audio", async () => {
@@ -124,6 +142,7 @@ describe("StoryListeningExperience", () => {
     expect(await screen.findByRole("heading", { name: "听故事" })).toBeInTheDocument();
     await waitFor(() => expect(voiceApi.requestReading).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    fireEvent.canPlay(document.querySelector("audio") as HTMLAudioElement);
     await waitFor(() => expect(play).toHaveBeenCalled());
     expect(screen.queryByText("浏览器语音")).not.toBeInTheDocument();
   });
@@ -137,14 +156,17 @@ describe("StoryListeningExperience", () => {
     });
 
     fireEvent.click(secondParagraph);
+    fireEvent.canPlay(document.querySelector("audio") as HTMLAudioElement);
 
     expect(secondParagraph).toHaveAttribute("aria-current", "true");
     await waitFor(() => expect(play).toHaveBeenCalled());
   });
 
   it("stops narration immediately when a daily choice is selected", async () => {
-    const onSelectChoice = renderExperience();
+    const { onSelectChoice } = renderExperience();
     await screen.findByRole("button", { name: /推开那扇门/ });
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    fireEvent.canPlay(document.querySelector("audio") as HTMLAudioElement);
     await waitFor(() => expect(play).toHaveBeenCalled());
 
     fireEvent.click(screen.getByRole("button", { name: /推开那扇门/ }));
@@ -180,6 +202,7 @@ describe("StoryListeningExperience", () => {
     fireEvent.click(await screen.findByRole("button", { name: "重试高质量语音" }));
 
     await waitFor(() => expect(voiceApi.requestReading).toHaveBeenCalledTimes(2));
+    fireEvent.canPlay(document.querySelector("audio") as HTMLAudioElement);
     await waitFor(() => expect(play).toHaveBeenCalled());
   });
 
@@ -206,6 +229,7 @@ describe("StoryListeningExperience", () => {
     });
 
     await waitFor(() => expect(secondParagraph).toHaveAttribute("aria-current", "true"));
+    fireEvent.canPlay(document.querySelector("audio") as HTMLAudioElement);
     await waitFor(() => expect(play).toHaveBeenCalled());
   });
 
@@ -226,6 +250,9 @@ describe("StoryListeningExperience", () => {
     play.mockRejectedValueOnce(new Error("autoplay blocked"));
     renderExperience();
 
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    fireEvent.canPlay(document.querySelector("audio") as HTMLAudioElement);
+
     expect(await screen.findByText("点击播放，开启自动朗读")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "播放朗读" }));
 
@@ -242,5 +269,421 @@ describe("StoryListeningExperience", () => {
     expect(voiceApi.updateSettings).toHaveBeenCalledWith({ selected_voice_color: "calm_male" });
     expect(voiceApi.updateSettings).toHaveBeenCalledWith({ selected_speed: 1.25 });
     await waitFor(() => expect(voiceApi.requestReading).toHaveBeenCalledTimes(3));
+  });
+
+  it("waits for metadata before applying a cross-paragraph seek and refines chapter duration from the media", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+
+    const firstAudio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(firstAudio, "currentTime", { configurable: true, writable: true, value: 0 });
+
+    fireEvent.change(screen.getByLabelText("朗读进度"), { target: { value: "5000" } });
+
+    expect(firstAudio.currentTime).toBe(0);
+    await waitFor(() => expect((document.querySelector("audio") as HTMLAudioElement).getAttribute("src")).toBe("/api/voice-reading/audio/second.mp3"));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 6 });
+
+    fireEvent.loadedMetadata(audio);
+
+    expect(audio.currentTime).toBe(1);
+    expect(screen.getByLabelText("朗读进度")).toHaveAttribute("max", "10000");
+  });
+
+  it("applies a same-paragraph seek immediately and resumes when metadata is already available", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_METADATA,
+    });
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0.5,
+    });
+    fireEvent.canPlay(audio);
+    fireEvent.playing(audio);
+    play.mockClear();
+
+    fireEvent.change(screen.getByLabelText("朗读进度"), { target: { value: "1000" } });
+
+    expect(audio.currentTime).toBe(1);
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers one stalled paragraph after exactly eight seconds, then offers a manual continuation", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 10 });
+    fireEvent.loadedMetadata(audio);
+    Object.defineProperty(audio, "currentTime", { configurable: true, writable: true, value: 1.75 });
+
+    fireEvent.stalled(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(7_999);
+    });
+    expect(load).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(play).not.toHaveBeenCalled();
+    fireEvent.loadedMetadata(audio);
+    expect(audio.currentTime).toBe(1.75);
+    fireEvent.canPlay(audio);
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+
+    fireEvent.stalled(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+
+    expect(await screen.findByRole("button", { name: "网络不稳定，继续朗读" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "网络不稳定，继续朗读" }));
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(play).toHaveBeenCalledTimes(2);
+    fireEvent.loadedMetadata(audio);
+    expect(audio.currentTime).toBe(1.75);
+    fireEvent.canPlay(audio);
+    expect(play).toHaveBeenCalledTimes(2);
+    jest.useRealTimers();
+  });
+
+  it("preserves a confirmed resume position across consecutive failures before metadata", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 10 });
+    fireEvent.loadedMetadata(audio);
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 1.75,
+    });
+
+    fireEvent.stalled(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+
+    audio.currentTime = 0;
+    fireEvent.error(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "网络不稳定，继续朗读" }));
+    expect(load).toHaveBeenCalledTimes(2);
+
+    fireEvent.loadedMetadata(audio);
+
+    expect(audio.currentTime).toBe(1.75);
+    jest.useRealTimers();
+  });
+
+  it("does not postpone the eight-second watchdog when waiting, error, and stalled repeat", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.waiting(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(4_000);
+    });
+    fireEvent.error(audio);
+    fireEvent.stalled(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(3_999);
+    });
+    expect(load).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts only one play request when canplay fires repeatedly", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.canPlay(audio);
+    fireEvent.playing(audio);
+    fireEvent.canPlay(audio);
+
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not replay after a fulfilled request when the current media is already unpaused", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.canPlay(audio);
+    await act(async () => {});
+    Object.defineProperty(audio, "paused", { configurable: true, value: false });
+    fireEvent.canPlay(audio);
+
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("pauses delayed playback and ignores old-source canplay after changing paragraphs", async () => {
+    const delayedPlay = deferred<void>();
+    play.mockImplementationOnce(() => delayedPlay.promise);
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const firstAudio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.canPlay(firstAudio);
+    expect(play).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByText("查看正文").closest("button") as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("button", { name: "从第 2 段开始朗读" }));
+    await waitFor(() => expect((document.querySelector("audio") as HTMLAudioElement).getAttribute("src")).toBe("/api/voice-reading/audio/second.mp3"));
+
+    pause.mockClear();
+    fireEvent.canPlay(firstAudio);
+    await act(async () => {
+      delayedPlay.resolve();
+    });
+
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("pauses delayed playback after a daily choice or unmount", async () => {
+    const choicePlay = deferred<void>();
+    play.mockImplementationOnce(() => choicePlay.promise);
+    const { onSelectChoice, unmount } = renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    fireEvent.canPlay(audio);
+    expect(play).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /推开那扇门/ }));
+    expect(onSelectChoice).toHaveBeenCalledWith(0);
+    pause.mockClear();
+    fireEvent.canPlay(audio);
+    await act(async () => {
+      choicePlay.resolve();
+    });
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(pause).toHaveBeenCalledTimes(1);
+
+    const unmountPlay = deferred<void>();
+    play.mockImplementationOnce(() => unmountPlay.promise);
+    fireEvent.click(screen.getByRole("button", { name: "播放朗读" }));
+    expect(play).toHaveBeenCalledTimes(2);
+    unmount();
+    pause.mockClear();
+    await act(async () => {
+      unmountPlay.resolve();
+    });
+    expect(pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let an old same-element recovery play promise pause a newer manual recovery", async () => {
+    jest.useFakeTimers();
+    const oldPlay = deferred<void>();
+    const manualPlay = deferred<void>();
+    play.mockImplementationOnce(() => oldPlay.promise).mockImplementationOnce(() => manualPlay.promise);
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.canPlay(audio);
+    fireEvent.stalled(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+    fireEvent.stalled(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "网络不稳定，继续朗读" }));
+    expect(play).toHaveBeenCalledTimes(2);
+
+    pause.mockClear();
+    await act(async () => {
+      oldPlay.resolve();
+    });
+    expect(pause).not.toHaveBeenCalled();
+
+    await act(async () => {
+      manualPlay.resolve();
+      fireEvent.playing(audio);
+    });
+    expect(screen.getByRole("button", { name: "暂停朗读" })).toBeInTheDocument();
+  });
+
+  it("restarts the final segment when replay is selected after ended", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const firstAudio = document.querySelector("audio") as HTMLAudioElement;
+    fireEvent.ended(firstAudio);
+    await waitFor(() => expect((document.querySelector("audio") as HTMLAudioElement).getAttribute("src")).toBe("/api/voice-reading/audio/second.mp3"));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "currentTime", { configurable: true, writable: true, value: 5 });
+
+    fireEvent.ended(audio);
+    fireEvent.click(screen.getByRole("button", { name: "播放朗读" }));
+
+    expect(audio.currentTime).toBe(0);
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a user click to supersede pending autoplay without letting its old promise pause playback", async () => {
+    const autoPlay = deferred<void>();
+    const clickedPlay = deferred<void>();
+    play.mockImplementationOnce(() => autoPlay.promise).mockImplementationOnce(() => clickedPlay.promise);
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.canPlay(audio);
+    expect(play).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "播放朗读" }));
+    expect(play).toHaveBeenCalledTimes(2);
+
+    pause.mockClear();
+    await act(async () => {
+      autoPlay.resolve();
+    });
+    expect(pause).not.toHaveBeenCalled();
+
+    await act(async () => {
+      clickedPlay.resolve();
+      fireEvent.playing(audio);
+    });
+    expect(screen.getByRole("button", { name: "暂停朗读" })).toBeInTheDocument();
+  });
+
+  it("keeps a same-element seek from letting an old play promise pause the new request", async () => {
+    const oldPlay = deferred<void>();
+    const seekPlay = deferred<void>();
+    play.mockImplementationOnce(() => oldPlay.promise).mockImplementationOnce(() => seekPlay.promise);
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_METADATA,
+    });
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+
+    fireEvent.canPlay(audio);
+    fireEvent.change(screen.getByLabelText("朗读进度"), { target: { value: "1000" } });
+    expect(audio.currentTime).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "播放朗读" }));
+    expect(play).toHaveBeenCalledTimes(2);
+
+    pause.mockClear();
+    await act(async () => {
+      oldPlay.resolve();
+    });
+    expect(pause).not.toHaveBeenCalled();
+    await act(async () => {
+      seekPlay.resolve();
+      fireEvent.playing(audio);
+    });
+    expect(screen.getByRole("button", { name: "暂停朗读" })).toBeInTheDocument();
+  });
+
+  it("does not reload when a short waiting period returns to playing", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.waiting(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(2_000);
+    });
+    fireEvent.playing(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(6_000);
+    });
+
+    expect(load).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it("moves to the next paragraph when the current MiniMax audio ends", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.ended(audio);
+
+    expect(await screen.findByText("第 2 段")).toBeInTheDocument();
+    expect(document.querySelector("audio")).toHaveAttribute("src", "/api/voice-reading/audio/second.mp3");
+  });
+
+  it("keeps the next paragraph buffered and starts it without waiting for another canplay event", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+
+    const [currentAudio, bufferedNextAudio] = Array.from(document.querySelectorAll("audio"));
+    expect(currentAudio).toHaveAttribute("src", "/api/voice-reading/audio/first.mp3");
+    expect(bufferedNextAudio).toHaveAttribute("src", "/api/voice-reading/audio/second.mp3");
+    expect(bufferedNextAudio).toHaveAttribute("preload", "auto");
+    Object.defineProperty(bufferedNextAudio, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_FUTURE_DATA,
+    });
+    play.mockClear();
+
+    fireEvent.ended(currentAudio);
+
+    await waitFor(() => expect(screen.getByText("第 2 段")).toBeInTheDocument());
+    const activeAudio = document.querySelector('audio[data-active="true"]');
+    expect(activeAudio).toBe(bufferedNextAudio);
+    await waitFor(() => expect(play.mock.instances).toContain(bufferedNextAudio));
+  });
+
+  it("cancels a pending recovery when the listener selects a daily choice", async () => {
+    jest.useFakeTimers();
+    const { onSelectChoice } = renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.waiting(audio);
+    fireEvent.click(await screen.findByRole("button", { name: /推开那扇门/ }));
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+
+    expect(onSelectChoice).toHaveBeenCalledWith(0);
+    expect(load).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it("cancels a pending recovery when the listening experience unmounts", async () => {
+    jest.useFakeTimers();
+    const { unmount } = renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.waiting(audio);
+    unmount();
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+
+    expect(load).not.toHaveBeenCalled();
+    jest.useRealTimers();
   });
 });

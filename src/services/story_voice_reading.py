@@ -17,6 +17,7 @@ from src.api.schemas import (
     VoiceReadingSegmentResponse,
     VoiceReadingSettingsResponse,
 )
+from src.database.models import VOICE_ASSET_VERSION
 from src.services.minimax_config import build_minimax_config
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 from src.services.story_tts_provider import (
@@ -177,6 +178,7 @@ class StoryVoiceReadingService:
                     str(request.speed),
                     provider_metadata.provider,
                     provider_metadata.model,
+                    f"asset-v{VOICE_ASSET_VERSION}",
                 ]
             )
         )
@@ -201,6 +203,11 @@ class StoryVoiceReadingService:
                     raise
         elif str(job.status) == "failed":
             self.repository.mark_job_queued_for_retry(job)
+        elif str(job.status) == "processing":
+            self.repository.requeue_stale_processing_job(user_id, int(job.job_id))
+            job = self.repository.get_job(int(job.job_id), user_id)
+            if job is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
         if not provider_metadata.backend_audio_enabled:
             setattr(job, "status", "failed")
             setattr(job, "error_code", "tts_provider_unavailable")
@@ -223,25 +230,43 @@ class StoryVoiceReadingService:
         if str(job.status) == "ready":
             return self.get_job(user_id, job_id)
 
+        claimed_lease_token = self.repository.claim_queued_job_for_processing_with_token(
+            user_id, job_id
+        )
+        if claimed_lease_token is None:
+            return self.get_job(user_id, job_id)
+        lease_token = claimed_lease_token
+        job = self.repository.get_job(job_id, user_id)
+        if job is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
         metadata = self.provider.metadata()
         if not metadata.backend_audio_enabled:
-            setattr(job, "status", "failed")
-            setattr(job, "error_code", "tts_provider_unavailable")
-            setattr(
-                job,
-                "error_message",
-                "High-quality narration is temporarily unavailable",
-            )
-            self.repository.db.flush()
+            if (
+                self.repository.commit_processing_changes(
+                    user_id,
+                    job_id,
+                    lease_token,
+                    terminal_status="failed",
+                    error_code="tts_provider_unavailable",
+                    error_message="High-quality narration is temporarily unavailable",
+                )
+                is None
+            ):
+                return self.get_job(user_id, job_id)
             return self.get_job(user_id, job_id)
 
-        setattr(job, "status", "processing")
-        self.repository.db.commit()
+        primary_asset_assigned = job.asset_id is not None
         for segment in job.segments:
             if str(segment.status) == "ready":
                 continue
             segment.status = "processing"
-            self.repository.db.flush()
+            next_token = self.repository.commit_processing_changes(
+                user_id, job_id, lease_token
+            )
+            if next_token is None:
+                return self.get_job(user_id, job_id)
+            lease_token = next_token
             segment_context = dict(job.context_json)
             segment_context["text"] = str(segment.text_content)
             segment_context["text_hash"] = str(segment.text_hash)
@@ -253,10 +278,30 @@ class StoryVoiceReadingService:
                 model=metadata.model,
                 user_id=user_id,
             )
+            if ready_asset is not None and not self._is_valid_cached_asset(ready_asset):
+                self.repository.invalidate_asset(
+                    ready_asset,
+                    "Generated MiniMax audio is missing or invalid",
+                )
+                ready_asset = None
             try:
                 if ready_asset is None:
+                    def refresh_processing_lease() -> None:
+                        nonlocal lease_token
+                        next_lease_token = self.repository.commit_processing_changes(
+                            user_id,
+                            job_id,
+                            lease_token,
+                        )
+                        if next_lease_token is None:
+                            raise RuntimeError("voice reading processing lease was replaced")
+                        lease_token = next_lease_token
+
                     speech = self.provider.synthesize(
-                        segment_context, str(job.voice_id), float(job.speed)
+                        segment_context,
+                        str(job.voice_id),
+                        float(job.speed),
+                        on_progress=refresh_processing_lease,
                     )
                     if (
                         speech.playback_mode != "audio"
@@ -279,30 +324,56 @@ class StoryVoiceReadingService:
                 segment.status = "ready"
                 segment.error_code = None
                 segment.error_message = None
-                if job.asset_id is None:
-                    job.asset = ready_asset
                 # Make each ready paragraph visible immediately so the client can
                 # begin playback while later paragraphs continue generating.
-                self.repository.db.commit()
+                primary_asset_id = (
+                    int(ready_asset.asset_id) if not primary_asset_assigned else None
+                )
+                next_token = self.repository.commit_processing_changes(
+                    user_id,
+                    job_id,
+                    lease_token,
+                    primary_asset_id=primary_asset_id,
+                )
+                if next_token is None:
+                    return self.get_job(user_id, job_id)
+                lease_token = next_token
+                primary_asset_assigned = True
             except Exception as error:
                 segment.status = "failed"
                 segment.error_code = "tts_generation_failed"
                 segment.error_message = str(error)
-                setattr(job, "status", "failed")
-                setattr(job, "error_code", "tts_generation_failed")
-                setattr(
-                    job,
-                    "error_message",
-                    "High-quality narration could not be generated",
-                )
-                self.repository.db.commit()
+                if (
+                    self.repository.commit_processing_changes(
+                        user_id,
+                        job_id,
+                        lease_token,
+                        terminal_status="failed",
+                        error_code="tts_generation_failed",
+                        error_message="High-quality narration could not be generated",
+                    )
+                    is None
+                ):
+                    return self.get_job(user_id, job_id)
                 return self.get_job(user_id, job_id)
 
-        setattr(job, "status", "ready")
-        setattr(job, "error_code", None)
-        setattr(job, "error_message", None)
-        self.repository.db.commit()
+        if (
+            self.repository.commit_processing_changes(
+                user_id,
+                job_id,
+                lease_token,
+                terminal_status="ready",
+            )
+            is None
+        ):
+            return self.get_job(user_id, job_id)
         return self.get_job(user_id, job_id)
+
+    def _is_valid_cached_asset(self, asset: Any) -> bool:
+        validator = getattr(self.provider, "is_valid_cached_asset", None)
+        if not callable(validator):
+            return True
+        return bool(validator(str(asset.storage_path)))
 
     def get_job(self, user_id: int, job_id: int) -> VoiceReadingJobResponse:
         job = self.repository.get_job(job_id, user_id)

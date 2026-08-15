@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence
+from datetime import datetime, timedelta
+from typing import Any, cast, Dict, Optional, Sequence
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from src.database.models import (
     GeneratedVoiceAsset,
+    VOICE_ASSET_VERSION,
     VoiceReadingJob,
     VoiceReadingProgress,
     VoiceReadingSegment,
     VoiceReadingSetting,
 )
+
+PROCESSING_LEASE_DURATION = timedelta(minutes=10)
 
 
 class StoryVoiceReadingRepository:
@@ -65,6 +70,7 @@ class StoryVoiceReadingRepository:
                 GeneratedVoiceAsset.voice_id == voice_id,
                 GeneratedVoiceAsset.speed == speed,
                 GeneratedVoiceAsset.status == "ready",
+                GeneratedVoiceAsset.asset_version == VOICE_ASSET_VERSION,
             )
         )
         if provider is not None:
@@ -98,6 +104,7 @@ class StoryVoiceReadingRepository:
             model=model,
             storage_path=storage_path,
             duration_ms=duration_ms,
+            asset_version=VOICE_ASSET_VERSION,
             status=status,
         )
         self.db.add(asset)
@@ -123,6 +130,7 @@ class StoryVoiceReadingRepository:
             text_hash=str(context["text_hash"]),
             voice_id=voice_id,
             speed=speed,
+            asset_version=VOICE_ASSET_VERSION,
             status=status,
             error_code=error_code,
             error_message=error_message,
@@ -175,6 +183,119 @@ class StoryVoiceReadingRepository:
             .filter(VoiceReadingJob.job_id == job_id, VoiceReadingJob.user_id == user_id)
             .one_or_none()
         )
+
+    def claim_queued_job_for_processing(self, user_id: int, job_id: int) -> bool:
+        """Atomically transition a queued job to processing for one worker."""
+        return self.claim_queued_job_for_processing_with_token(user_id, job_id) is not None
+
+    def claim_queued_job_for_processing_with_token(
+        self, user_id: int, job_id: int
+    ) -> Optional[datetime]:
+        """Claim a queued job and return its committed lease fencing token."""
+        now = datetime.utcnow()
+        claimed = (
+            self.db.query(VoiceReadingJob)
+            .filter(
+                VoiceReadingJob.job_id == job_id,
+                VoiceReadingJob.user_id == user_id,
+                VoiceReadingJob.status == "queued",
+            )
+            .update(
+                {
+                    VoiceReadingJob.status: "processing",
+                    VoiceReadingJob.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
+        self.db.commit()
+        if claimed != 1:
+            return None
+        self.db.expire_all()
+        job = self.get_job(job_id, user_id)
+        return cast(Optional[datetime], job.updated_at) if job is not None else None
+
+    def requeue_stale_processing_job(
+        self,
+        user_id: int,
+        job_id: int,
+        *,
+        now: Optional[datetime] = None,
+    ) -> bool:
+        """Atomically recover a processing job whose worker lease expired."""
+        current_time = now or datetime.utcnow()
+        stale_before = current_time - PROCESSING_LEASE_DURATION
+        recovered = (
+            self.db.query(VoiceReadingJob)
+            .filter(
+                VoiceReadingJob.job_id == job_id,
+                VoiceReadingJob.user_id == user_id,
+                VoiceReadingJob.status == "processing",
+                or_(
+                    VoiceReadingJob.updated_at.is_(None),
+                    VoiceReadingJob.updated_at < stale_before,
+                ),
+            )
+            .update(
+                {
+                    VoiceReadingJob.status: "queued",
+                    VoiceReadingJob.error_code: None,
+                    VoiceReadingJob.error_message: None,
+                    VoiceReadingJob.updated_at: current_time,
+                },
+                synchronize_session="fetch",
+            )
+        )
+        self.db.flush()
+        return recovered == 1
+
+    def commit_processing_changes(
+        self,
+        user_id: int,
+        job_id: int,
+        lease_token: datetime,
+        *,
+        primary_asset_id: Optional[int] = None,
+        terminal_status: Optional[str] = None,
+        error_code: Optional[str] = None,
+        error_message: Optional[str] = None,
+    ) -> Optional[datetime]:
+        """Commit pending worker changes only while its exact lease token is current."""
+        try:
+            self.db.flush()
+            updates: Dict[Any, Any] = {VoiceReadingJob.updated_at: datetime.utcnow()}
+            if primary_asset_id is not None:
+                updates[VoiceReadingJob.asset_id] = primary_asset_id
+            if terminal_status is not None:
+                updates[VoiceReadingJob.status] = terminal_status
+                updates[VoiceReadingJob.error_code] = error_code
+                updates[VoiceReadingJob.error_message] = error_message
+            committed = (
+                self.db.query(VoiceReadingJob)
+                .filter(
+                    VoiceReadingJob.job_id == job_id,
+                    VoiceReadingJob.user_id == user_id,
+                    VoiceReadingJob.status == "processing",
+                    VoiceReadingJob.updated_at == lease_token,
+                )
+                .update(updates, synchronize_session=False)
+            )
+            if committed != 1:
+                self.db.rollback()
+                return None
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        self.db.expire_all()
+        job = self.get_job(job_id, user_id)
+        return cast(Optional[datetime], job.updated_at) if job is not None else None
+
+    def invalidate_asset(self, asset: GeneratedVoiceAsset, reason: str) -> None:
+        """Retain an unusable v2 asset record but prevent further reuse."""
+        setattr(asset, "status", "invalid")
+        setattr(asset, "error_message", reason)
+        self.db.flush()
 
     def mark_job_queued_for_retry(self, job: VoiceReadingJob) -> None:
         setattr(job, "status", "queued")
