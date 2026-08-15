@@ -1,5 +1,26 @@
 import { expect, test, type Page } from '@playwright/test';
 
+function createPlayableWav(): Buffer {
+  const sampleRate = 8_000;
+  const sampleCount = sampleRate;
+  const dataLength = sampleCount * 2;
+  const wav = Buffer.alloc(44 + dataLength);
+
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(36 + dataLength, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(dataLength, 40);
+  return wav;
+}
+
 async function stubHighQualityNarration(page: Page): Promise<void> {
   await page.route('**/api/voice-reading/settings', (route) =>
     route.fulfill({
@@ -45,6 +66,7 @@ async function stubHighQualityNarration(page: Page): Promise<void> {
 
 test('daily choice settles once and automatically opens the next calendar day', async ({ page }) => {
   const gameId = 880001;
+  const playableAudio = createPlayableWav();
   let dayIndex = 0;
   let currentEvent: Record<string, unknown> | null = {
     event_id: 'daily-0',
@@ -65,6 +87,15 @@ test('daily choice settles once and automatically opens the next calendar day', 
       musicCalls += 1;
     }
   });
+  await page.route('**/api/voice-reading/audio/day-*.wav', (route) => route.fulfill({
+    status: 200,
+    contentType: 'audio/wav',
+    headers: {
+      'accept-ranges': 'bytes',
+      'content-length': String(playableAudio.length),
+    },
+    body: playableAudio,
+  }));
 
   const timeline = () => ({
     version: 2,
@@ -207,9 +238,9 @@ test('daily choice settles once and automatically opens the next calendar day', 
         segments: paragraphs.map((_: string, paragraphIndex: number) => ({
           paragraph_index: paragraphIndex,
           status: 'ready',
-          audio_url: `/api/voice-reading/audio/day-${dayIndex}-${paragraphIndex}.mp3`,
+          audio_url: `/api/voice-reading/audio/day-${dayIndex}-${paragraphIndex}.wav`,
           duration_ms: 4_000,
-          media_type: 'audio/mpeg',
+          media_type: 'audio/wav',
         })),
       }),
     });
