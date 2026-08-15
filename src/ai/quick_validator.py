@@ -850,8 +850,18 @@ class QuickValidator:
         ):
             return False
         # Coordination delimiters are parsed between complete name tokens.
-        # Characters that can be grammatical particles therefore still belong
-        # to the given name here (for example 马和平 or 陈可欣).
+        # A particle-shaped character can belong to the middle of a three-char
+        # name (for example 马和平 or 陈可欣), but shorter or suffix-position
+        # matches are still likely coordinated prose such as 何时与何地.
+        particle_indexes = [
+            index
+            for index, char in enumerate(candidate)
+            if char in self.CHINESE_NAME_GRAMMATICAL_PARTICLES
+        ]
+        if particle_indexes and not (
+            len(candidate) == 3 and particle_indexes == [1]
+        ):
+            return False
         return not (
             len(candidate) == 3
             and candidate[-1] in self.CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES
