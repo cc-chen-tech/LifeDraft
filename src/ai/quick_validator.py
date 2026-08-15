@@ -162,6 +162,26 @@ class QuickValidator:
         CHINESE_NAME_GOVERNANCE_PREFIXES + CHINESE_NAME_ACTION_MODIFIERS
     )
     CHINESE_NAME_SINGLE_CHARACTER_MODIFIERS = frozenset("又还则便")
+    CHINESE_GOVERNANCE_OBJECT_TERMS = frozenset(
+        {
+            "方案",
+            "计划",
+            "策略",
+            "任务",
+            "工作",
+            "人员",
+            "预算",
+            "日期",
+            "安排",
+            "会议",
+            "团队",
+            "成员",
+            "同事",
+            "合同",
+            "协议",
+            "项目",
+        }
+    )
     CHINESE_NON_PERSON_IDENTITY_LABELS = (
         "产品代号",
         "模块",
@@ -745,15 +765,40 @@ class QuickValidator:
     def _coordinated_name_groups(self, text: str) -> List[tuple[str, str, int]]:
         """Return coordinated Chinese names and the start of their shared action."""
         surname_class = re.escape(self.COMMON_CHINESE_SURNAMES)
+        action_starts = "|".join(
+            re.escape(prefix)
+            for prefix in (
+                *self.CHINESE_NAME_ACTION_MODIFIERS,
+                *self.CHINESE_NAME_GOVERNANCE_PREFIXES,
+            )
+        )
         pattern = re.compile(
             rf"([{surname_class}][\u4e00-\u9fff]{{1,2}})"
             rf"(?:与|和|及)([{surname_class}][\u4e00-\u9fff]{{1,2}})"
-            r"(?=共同|一起|分别|协同|联合)"
+            rf"(?={action_starts})"
         )
         return [
             (match.group(1), match.group(2), match.end())
             for match in pattern.finditer(text)
+            if self._is_plausible_coordinated_person_name(match.group(1))
+            and self._is_plausible_coordinated_person_name(match.group(2))
         ]
+
+    def _is_plausible_coordinated_person_name(self, candidate: str) -> bool:
+        """Reject coordinated governance objects before treating the pair as people."""
+        if candidate in self.CHINESE_GOVERNANCE_OBJECT_TERMS:
+            return False
+        if any(
+            candidate.startswith(non_person)
+            for non_person in self.NON_PERSON_NAME_CANDIDATES
+        ):
+            return False
+        if any(char in self.CHINESE_NAME_GRAMMATICAL_PARTICLES for char in candidate):
+            return False
+        return not (
+            len(candidate) == 3
+            and candidate[-1] in self.CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES
+        )
 
     def _extract_required_key_people_names(
         self,

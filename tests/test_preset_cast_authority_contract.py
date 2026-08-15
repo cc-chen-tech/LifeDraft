@@ -659,6 +659,46 @@ def test_quick_validator_attributes_all_supported_joint_modifiers(
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+def test_quick_validator_attributes_joint_action_without_modifier() -> None:
+    """A conjunction can lead directly into the shared governance action."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强与方蕾制定方案，马涛批准预算。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_ignores_coordinated_governance_common_nouns() -> None:
+    """Governance objects shaped like names are not coordinated people."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起检查自动化流程。"
+            "安全与方案共同制定计划，云服务负责执行。"
+            "两人确认流程正常后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
 def test_quick_validator_ignores_predicate_after_discourse_marker() -> None:
     """An omitted-subject predicate after a marker is not a third outside person."""
     from src.ai.quick_validator import quick_validate_story
