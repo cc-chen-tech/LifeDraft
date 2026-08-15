@@ -28,9 +28,18 @@ def test_production_frontend_has_no_music_or_unified_sound_entry() -> None:
         assert "打开声音" not in source
 
 
-def test_ecs_compose_does_not_start_netease_music_runtime() -> None:
+def test_ecs_deployment_has_no_netease_music_runtime_references() -> None:
     compose = (ROOT / "docker-compose.ecs.yml").read_text(encoding="utf-8")
+    nginx_configs = [
+        ROOT / "nginx/ecs-nginx.conf",
+        ROOT / "nginx/ecs-nginx-http.conf",
+    ]
 
     assert "music-api:" not in compose
     assert "story2-music" not in compose
     assert "netease-music-api" not in compose
+    for path in nginx_configs:
+        source = path.read_text(encoding="utf-8")
+        assert "music-api" not in source
+        assert "/api/music/" not in source
+        assert "location /music/" not in source
