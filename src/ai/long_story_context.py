@@ -13,7 +13,7 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, cast
+from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Union, cast
 
 from config.feature_flags import get_feature
 
@@ -122,7 +122,7 @@ class LongStoryContextBuilder:
         self._counter = token_counter or DeepSeekTokenCounter()
         self._settings = settings or StoryContextSettings()
 
-    def build(self, player_state: Mapping[str, Any] | Any) -> StoryHistoryContext:
+    def build(self, player_state: Union[Mapping[str, Any], Any]) -> StoryHistoryContext:
         """Render committed rounds, updating derived snapshots in-place if needed."""
         events = self._canonical_events(self._value(player_state, "round_history", []))
         source_events = self._events_with_ledger(player_state, events)
@@ -160,8 +160,8 @@ class LongStoryContextBuilder:
 
     def build_for_request(
         self,
-        player_state: Mapping[str, Any] | Any,
-        dynamic_tail: str | DynamicContextParts,
+        player_state: Union[Mapping[str, Any], Any],
+        dynamic_tail: Union[str, DynamicContextParts],
     ) -> StoryHistoryContext:
         """Build history against the remaining space in one complete request."""
         rendered_tail = (
@@ -225,12 +225,12 @@ class LongStoryContextBuilder:
         return rendered
 
     @staticmethod
-    def _value(player_state: Mapping[str, Any] | Any, field: str, default: Any) -> Any:
+    def _value(player_state: Union[Mapping[str, Any], Any], field: str, default: Any) -> Any:
         if isinstance(player_state, Mapping):
             return player_state.get(field, default)
         return getattr(player_state, field, default)
 
-    def _snapshots(self, player_state: Mapping[str, Any] | Any) -> List[Dict[str, Any]]:
+    def _snapshots(self, player_state: Union[Mapping[str, Any], Any]) -> List[Dict[str, Any]]:
         snapshots = self._value(player_state, "long_context_snapshots", None)
         if isinstance(snapshots, list):
             snapshots[:] = [item for item in snapshots if isinstance(item, dict)]
@@ -284,7 +284,7 @@ class LongStoryContextBuilder:
 
     def _events_with_ledger(
         self,
-        player_state: Mapping[str, Any] | Any,
+        player_state: Union[Mapping[str, Any], Any],
         events: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
         """Enrich only exact source-linked events with authoritative ledger data."""
@@ -410,7 +410,7 @@ class LongStoryContextBuilder:
     def _compact_prefix(
         self,
         events: List[Dict[str, Any]],
-        player_state: Mapping[str, Any] | Any,
+        player_state: Union[Mapping[str, Any], Any],
         budget: int,
         current_end: int,
     ) -> int:
