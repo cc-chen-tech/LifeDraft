@@ -1197,24 +1197,6 @@ async def get_round_scene_image(
     # 返回 202 Accepted，表示已接受生成请求
     raise HTTPException(status_code=202, detail="场景插画生成中，请稍后刷新查看")
 
-    # 构建图片URL
-    storage_service = ImageStorageService()
-    image_url = storage_service.get_image_url(
-        str(scene_image.storage_path), str(scene_image.storage_type)  # type: ignore[arg-type]
-    )
-
-    return {
-        "scene_id": scene_image.scene_id,
-        "game_id": scene_image.game_id,
-        "week": scene_image.week,  # ★ 返回 week
-        "round_number": scene_image.round_number,
-        "stage": scene_image.stage,  # ★ 返回 stage
-        "image_url": image_url,
-        "scene_description": scene_image.scene_description,
-        "referenced_images": scene_image.referenced_images,
-        "created_at": (scene_image.created_at.isoformat() if scene_image.created_at else None),
-    }
-
 
 @router.get("/scenes/{game_id}")
 async def get_all_round_scene_images(

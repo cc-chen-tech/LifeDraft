@@ -768,7 +768,7 @@ async def delete_character(  # type: ignore
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except PermissionDeniedError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=403, detail=str(e))
     except (OSError, IOError) as e:
         raise HTTPException(status_code=500, detail=f"删除失败: {e}")
     except Exception as e:
