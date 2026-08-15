@@ -13,13 +13,24 @@ class FakeAIClient:
         self.response = response
         self.calls = []
 
-    def call(self, *, system_prompt, user_prompt, temperature=0.4, max_tokens=8192):
+    def call(
+        self,
+        *,
+        system_prompt,
+        user_prompt,
+        temperature=0.4,
+        max_tokens=8192,
+        request_timeout=None,
+        generation_tracker=None,
+    ):
         self.calls.append(
             {
                 "system_prompt": system_prompt,
                 "user_prompt": user_prompt,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
+                "request_timeout": request_timeout,
+                "generation_tracker": generation_tracker,
             }
         )
         return self.response
