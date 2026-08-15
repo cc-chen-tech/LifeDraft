@@ -809,7 +809,6 @@ class RoundEventGenerator:
 
         # 构建强制事件的提示
         combined_description = "；".join(descriptions)
-        "；".join(event_hints) if event_hints else ""
         parties_str = "、".join(all_parties) if all_parties else ""
 
         logger.info(

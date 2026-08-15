@@ -65,36 +65,15 @@ class ImagePromptBuilder:
             return "现代"
 
         era_clean = era
-        # 直接移除/替换科幻触发词
-        replacements = {
-            "人工智能": "",
-            "AI": "",
-            "数字化与实体交融": "现代生活",
-            "数字化": "",
-            "虚拟现实": "",
-            "VR": "",
-            "全息投影": "",
-            "全息": "",
-            "科技飞速进步": "",
-            "科技革命": "",
-            "赛博朋克": "",
-            "机械义肢": "",
-            "电子眼": "",
-            "飞行汽车": "",
-            "悬浮载具": "",
-            "发光": "",
-            "霓虹": "",
-            "量子": "",
-            "纳米": "",
-            "基因编辑": "",
-            "脑机接口": "",
-            "元宇宙": "",
-            "区块链": "",
-            "数字孪生": "",
-            "虚拟与现实交织": "现实",
-            "抽象光影": "自然光线",
-        }
-
+        # 直接移除/替换科幻触发词（与 _SCI_FI_ERA_KEYWORDS 共用同一份词表，避免双表漂移）
+        replacements = {word: "" for word in self._SCI_FI_ERA_KEYWORDS}
+        replacements.update(
+            {
+                "数字化与实体交融": "现代生活",
+                "虚拟与现实交织": "现实",
+                "抽象光影": "自然光线",
+            }
+        )
         for old, new in replacements.items():
             era_clean = era_clean.replace(old, new)
 
@@ -890,7 +869,7 @@ class DeepSeekPromptEnhancer:
         desc_lower = description.lower()
 
         # 脸型
-        if any(w in desc_lower for w in ["圆脸", "圆脸"]):
+        if any(w in desc_lower for w in ["圆脸"]):
             anchor["face_shape"] = "圆脸"
         elif any(w in desc_lower for w in ["瓜子脸", "瓜子臉"]):
             anchor["face_shape"] = "瓜子脸"

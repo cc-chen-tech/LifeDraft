@@ -3,6 +3,7 @@
 负责图像生成的核心功能，包括文生图和图生图。
 """
 
+import json
 import base64
 import binascii
 import hashlib
@@ -71,7 +72,8 @@ def _get_prompt_hash(
     extra_params: Optional[Dict[str, Any]] = None,
 ) -> str:
     """生成 prompt 的哈希值作为缓存 key"""
-    cache_key = f"{prompt}|{size}|{extra_params}"
+    params_key = json.dumps(extra_params, sort_keys=True, ensure_ascii=False, default=str)
+    cache_key = f"{prompt}|{size}|{params_key}"
     return hashlib.md5(cache_key.encode(), usedforsecurity=False).hexdigest()
 
 
