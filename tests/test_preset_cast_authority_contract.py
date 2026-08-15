@@ -376,6 +376,61 @@ def test_quick_validator_rejects_invented_cast_that_drives_the_plot() -> None:
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+def test_quick_validator_warns_for_action_bearing_product_labels() -> None:
+    """Product labels with operational verbs are not established as people."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起核对产品方案。"
+            "安神香负责睡眠场景，雷火阵执行风控检查，云梯果是测试数据集。"
+            "两人确认这些模块运行正常后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+    assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
+
+
+def test_quick_validator_rejects_plot_drivers_after_consumed_modifiers() -> None:
+    """Greedy name matching must not hide modifiers before core actions."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强立即制定了完整方案，方蕾随后分配了所有任务，马涛最终批准预算。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
 def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
     """Narrative text must not invent names from suffixes such as 元低声."""
     from src.ai.quick_validator import quick_validate_story

@@ -594,26 +594,21 @@ class QuickValidator:
         invented_names: List[str],
     ) -> bool:
         """Return True when several new names directly perform core plot actions."""
-        plot_action_cues = (
-            "制定",
-            "分配",
-            "批准",
-            "确定",
-            "安排",
-            "拍板",
-            "组织",
-            "带领",
-            "推动",
-            "接手",
-            "负责",
-            "解决",
-            "谈判",
-            "签署",
-            "决定",
-            "提出",
-            "设计",
-            "执行",
-            "统筹",
+        governance_action_patterns = tuple(
+            re.compile(pattern)
+            for pattern in (
+                r"^制定(?:了)?[^，。；！？]{0,16}(?:方案|计划|策略)",
+                r"^分配(?:了)?[^，。；！？]{0,16}(?:任务|工作|人员)",
+                r"^批准(?:了)?[^，。；！？]{0,16}(?:预算|方案|计划)",
+                r"^确定(?:了)?[^，。；！？]{0,16}(?:日期|安排|方案|计划)",
+                r"^安排(?:了)?[^，。；！？]{0,16}(?:任务|工作|人员|会议)",
+                r"^拍板",
+                r"^组织(?:了)?[^，。；！？]{0,16}(?:会议|团队|人员)",
+                r"^带领(?:了)?[^，。；！？]{0,16}(?:团队|成员|同事)",
+                r"^谈判",
+                r"^签署(?:了)?[^，。；！？]{0,16}(?:合同|协议)",
+                r"^统筹(?:了)?[^，。；！？]{0,16}(?:任务|工作|项目|团队)",
+            )
         )
         optional_modifiers = re.compile(
             r"^(?:(?:立即|很快|随后|独自|主动|开始|最终|又|还|则|便|亲自)){0,2}"
@@ -626,17 +621,19 @@ class QuickValidator:
                 if index == -1:
                     break
                 suffix = text[index + len(name): index + len(name) + 16]
-                suffix = optional_modifiers.sub("", suffix)
-                direct_action = any(suffix.startswith(cue) for cue in plot_action_cues)
-                # The broad name recognizer can consume the first character of
-                # a following verb (for example, "方蕾分" + "配"). Rejoin it
-                # only for this subject/action check instead of expanding the
-                # global name heuristic and its false-positive surface.
-                joined_action = any(
-                    name.endswith(cue[0]) and suffix.startswith(cue[1:])
-                    for cue in plot_action_cues
+                possible_tails = (suffix, name[-1] + suffix)
+                has_governance_action = any(
+                    pattern.match(optional_modifiers.sub("", tail))
+                    for tail in possible_tails
+                    for pattern in governance_action_patterns
                 )
-                if direct_action or joined_action:
+                # Generic operational verbs such as "负责" and "执行" are
+                # deliberately excluded: product labels and module names can
+                # perform those actions too. Rejoining the candidate's final
+                # character compensates for the broad recognizer consuming the
+                # start of either a modifier ("赵强立" + "即制定") or an action
+                # verb ("方蕾分" + "配任务").
+                if has_governance_action:
                     active_names += 1
                     break
                 start = index + len(name)
