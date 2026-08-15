@@ -119,7 +119,7 @@ class QuickValidator:
         "的地得了着过是在和与及或把被将让给向从到可也"
     )
     CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES = frozenset(
-        "走脱抬站接翻沉推穿拿刷靠打说合转收坦放问伸"
+        "走脱抬站接翻沉推穿拿刷靠打说合转收坦放问伸盘带"
     )
     CHINESE_NAME_DISCOURSE_BOUNDARIES = (
         "随后",
@@ -848,14 +848,18 @@ class QuickValidator:
             for non_person in self.NON_PERSON_NAME_CANDIDATES
         ):
             return False
-        # Coordination delimiters are parsed between complete name tokens.
-        # A particle-shaped character can belong to the middle of a three-char
-        # name (for example 马和平 or 陈可欣), but shorter or suffix-position
-        # matches are still likely coordinated prose such as 何时与何地.
+        # Coordination delimiters are parsed between complete name tokens, so
+        # 和/与/及 can be a one-character given name or appear inside a longer
+        # given name. Other particle-shaped characters are only plausible in
+        # the middle of a three-character name; this still rejects prose such
+        # as 何时与何地 while preserving names such as 陈可欣 and 陈向东.
+        non_conjunction_particles = self.CHINESE_NAME_GRAMMATICAL_PARTICLES - set(
+            "和与及"
+        )
         particle_indexes = [
             index
             for index, char in enumerate(candidate)
-            if char in self.CHINESE_NAME_GRAMMATICAL_PARTICLES
+            if char in non_conjunction_particles
         ]
         if particle_indexes and not (
             len(candidate) == 3 and particle_indexes == [1]

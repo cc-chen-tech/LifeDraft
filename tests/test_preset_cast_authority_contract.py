@@ -765,6 +765,26 @@ def test_quick_validator_detects_three_coordinated_actors_with_conjunctions_in_n
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+def test_quick_validator_detects_two_character_name_ending_in_conjunction() -> None:
+    """A conjunction-shaped one-character given name remains a person name."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "周和、赵强、方蕾共同制定方案。"
+            "接下来的项目完全按照这三名临时顾问的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
 @pytest.mark.parametrize("given_name", ["陈可欣", "陈向东", "王在田"])
 def test_quick_validator_preserves_particle_shaped_characters_inside_given_names(
     given_name: str,
@@ -813,6 +833,25 @@ def test_quick_validator_ignores_coordinated_object_nouns_without_governance_act
         story_text=(
             "陆昊然与同事复盘汽车设计，"
             "方向盘与安全带一起接受测试。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+def test_quick_validator_ignores_coordinated_object_nouns_with_governance_action() -> None:
+    """Object nouns remain non-people even before a governance-shaped action."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然与同事复盘汽车设计，"
+            "方向盘与安全带共同确定驾驶安全。"
         ),
         character_settings=settings,
         available_people=["陆昊然", "陈晓雨", "林一凡"],
