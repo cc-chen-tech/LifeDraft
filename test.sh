@@ -294,6 +294,44 @@ run_playwright_command() {
     return $result
 }
 
+run_frontend_strict_typecheck() {
+    cd "$PROJECT_DIR/frontend"
+    export PYTHON="$(command -v python)"
+    npx tsc --noEmit --strict
+    local result=$?
+    cd "$PROJECT_DIR"
+    return $result
+}
+
+run_preflight_jest() {
+    echo -e "${YELLOW}运行前端 preflight Jest 回归测试...${NC}"
+    cd "$PROJECT_DIR/frontend"
+    npx jest \
+        src/__tests__/preflight/storyContinuityPreflight.test.tsx \
+        src/__tests__/lib/sse.test.ts \
+        src/__tests__/lib/sessionRecovery.test.ts \
+        src/__tests__/lib/storyTextHash.test.ts \
+        src/__tests__/lib/storyVoiceTextHash.test.ts \
+        src/__tests__/stores/useGameStore.test.ts \
+        src/__tests__/pages/CreatePage.test.tsx \
+        src/__tests__/hooks/eventUtils.test.ts \
+        src/__tests__/components/StoryListeningExperience.test.tsx \
+        src/__tests__/components/StatusBar.test.tsx \
+        src/__tests__/components/DialogA11y.test.tsx \
+        src/__tests__/components/CompletionScreen.loading.test.tsx \
+        src/__tests__/components/SheetA11y.test.tsx \
+        src/__tests__/pages/PlayPage.test.tsx \
+        src/__tests__/components/ChatBar.test.tsx \
+        src/__tests__/lib/apiRetryPolicy.test.ts \
+        src/__tests__/app/api/route.test.ts \
+        src/__tests__/components/game/CollectionPanelAutoCollect.test.tsx \
+        src/__tests__/stores/useCollectionStore.test.ts \
+        --runInBand
+    local result=$?
+    cd "$PROJECT_DIR"
+    return $result
+}
+
 # Preflight: 前置校验
 run_preflight() {
     print_layer_header "0" "前置校验 (preflight)" "OpenSpec、前端类型、关键回归夹具漂移"
@@ -335,11 +373,8 @@ run_preflight() {
     local gate_code=$?
 
     echo -e "${YELLOW}运行前端 strict typecheck...${NC}"
-    cd "$PROJECT_DIR/frontend"
-    export PYTHON="$(command -v python)"
-    npx tsc --noEmit --strict
+    run_frontend_strict_typecheck
     local tsc_code=$?
-    cd "$PROJECT_DIR"
 
     echo -e "${YELLOW}运行 OpenAPI 类型漂移检查...${NC}"
     local openapi_check_dir="$TEST_RUN_DIR/openapi-check"
@@ -369,31 +404,8 @@ run_preflight() {
         openapi_diff_code=1
     fi
 
-    echo -e "${YELLOW}运行前端 preflight Jest 回归测试...${NC}"
-    cd "$PROJECT_DIR/frontend"
-    npx jest \
-        src/__tests__/preflight/storyContinuityPreflight.test.tsx \
-        src/__tests__/lib/sse.test.ts \
-        src/__tests__/lib/sessionRecovery.test.ts \
-        src/__tests__/lib/storyTextHash.test.ts \
-        src/__tests__/lib/storyVoiceTextHash.test.ts \
-        src/__tests__/stores/useGameStore.test.ts \
-        src/__tests__/pages/CreatePage.test.tsx \
-        src/__tests__/hooks/eventUtils.test.ts \
-        src/__tests__/components/StoryListeningExperience.test.tsx \
-        src/__tests__/components/StatusBar.test.tsx \
-        src/__tests__/components/DialogA11y.test.tsx \
-        src/__tests__/components/CompletionScreen.loading.test.tsx \
-        src/__tests__/components/SheetA11y.test.tsx \
-        src/__tests__/pages/PlayPage.test.tsx \
-        src/__tests__/components/ChatBar.test.tsx \
-        src/__tests__/lib/apiRetryPolicy.test.ts \
-        src/__tests__/app/api/route.test.ts \
-        src/__tests__/components/game/CollectionPanelAutoCollect.test.tsx \
-        src/__tests__/stores/useCollectionStore.test.ts \
-        --runInBand
+    run_preflight_jest
     local jest_code=$?
-    cd "$PROJECT_DIR"
 
     local result=0
     if [ $openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $flake8_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $openapi_export_code -ne 0 ] || [ $openapi_ts_code -ne 0 ] || [ $openapi_diff_code -ne 0 ] || [ $jest_code -ne 0 ]; then
@@ -443,6 +455,36 @@ run_mypy() {
     print_layer_result "mypy" $result
     MYPY_RESULT=$result
     return $result
+}
+
+run_maintained_backend_suite() {
+    cd "$PROJECT_DIR"
+    activate_python_env
+    ensure_test_dirs
+    ./scripts/run-maintained-backend-tests.sh test
+}
+
+run_quick() {
+    echo -e "${MAGENTA}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${MAGENTA}║${NC}              ${CYAN}PR 快速门禁 (quick)${NC}                       ${MAGENTA}║${NC}"
+    echo -e "${MAGENTA}╚════════════════════════════════════════════════════════════╝${NC}"
+
+    local failed=0
+
+    run_mypy || failed=$((failed + 1))
+    run_maintained_backend_suite || failed=$((failed + 1))
+
+    echo -e "${YELLOW}运行前端 strict typecheck...${NC}"
+    run_frontend_strict_typecheck || failed=$((failed + 1))
+    run_preflight_jest || failed=$((failed + 1))
+
+    if [ $failed -eq 0 ]; then
+        echo -e "${GREEN}✓ PR 快速门禁通过${NC}"
+        return 0
+    fi
+
+    echo -e "${RED}✗ PR 快速门禁有 $failed 个子门禁失败${NC}"
+    return 1
 }
 
 # Layer 2: 导入验证测试
@@ -1075,6 +1117,7 @@ show_help() {
     echo "  api           - 运行 pytest -m api"
     echo ""
     echo -e "${YELLOW}其他命令:${NC}"
+    echo "  quick          - PR 快速门禁: mypy/static + maintained backend + TypeScript + preflight Jest"
     echo "  all           - 运行全部测试 (Preflight + Layer 1-5)"
     echo "  backend       - 运行后端全量 pytest 测试"
     echo "  frontend      - 运行前端 tsc + Jest 测试"
@@ -1098,6 +1141,9 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
 fi
 
 case "${1:-}" in
+    quick)
+        run_quick
+        ;;
     preflight)
         run_preflight
         ;;

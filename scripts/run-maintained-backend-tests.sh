@@ -33,6 +33,7 @@ maintained_tests=(
   tests/test_story_voice_async_chapter.py
   tests/test_world_model_lifecycle_contracts.py
   tests/test_database_runner_isolation_no_mock.py
+  tests/test_ci_workflow_governance_no_mock.py
 )
 
 case "$mode" in
