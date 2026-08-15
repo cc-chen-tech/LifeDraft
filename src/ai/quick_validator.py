@@ -130,6 +130,7 @@ class QuickValidator:
         "此时",
         "紧接着",
     )
+    CHINESE_NAME_CLAUSE_BOUNDARY_CHARS = frozenset("，。；！？：,.;!?:\n\r")
     CHINESE_NAME_GOVERNANCE_PREFIXES = (
         "制定",
         "分配",
@@ -1049,10 +1050,12 @@ class QuickValidator:
                 text[:candidate_start].endswith(boundary)
                 for boundary in self.CHINESE_NAME_DISCOURSE_BOUNDARIES
             )
-            if after_discourse_marker and self._starts_with_governance_action(
-                text,
-                candidate_start,
-            ):
+            after_clause_boundary = candidate_start == 0 or (
+                text[candidate_start - 1] in self.CHINESE_NAME_CLAUSE_BOUNDARY_CHARS
+            )
+            if (
+                after_discourse_marker or after_clause_boundary
+            ) and self._starts_with_governance_action(text, candidate_start):
                 continue
             # Do not treat a surname-shaped suffix in normal prose as a new
             # person, e.g. "林伯元低声" must not create "元低声".

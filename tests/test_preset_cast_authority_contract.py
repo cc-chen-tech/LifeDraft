@@ -802,6 +802,29 @@ def test_quick_validator_ignores_predicate_after_discourse_marker() -> None:
     assert result.issues == []
 
 
+@pytest.mark.parametrize("separator", ["，", "；", "。"])
+def test_quick_validator_ignores_predicate_after_clause_punctuation(
+    separator: str,
+) -> None:
+    """A punctuation-delimited omitted predicate is not an outside person."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            f"赵强制定方案，方蕾分配任务{separator}安排会议。"
+            "两名临时顾问完成工作后离开。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
 def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
     """Narrative text must not invent names from suffixes such as 元低声."""
     from src.ai.quick_validator import quick_validate_story
