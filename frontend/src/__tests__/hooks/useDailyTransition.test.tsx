@@ -190,4 +190,65 @@ describe("useDailyTransition", () => {
       first.result.current.active?.transitionText,
     );
   });
+
+  it("replaces an unsafe persisted transition during refresh recovery", () => {
+    const state = playerState({
+      day_history: [{
+        event_id: "day-0",
+        revision: 1,
+        day_index: 0,
+        story_date: "2026-08-13",
+        event_description: "第一天故事",
+        options: [{ text: "接受邀请" }],
+        choice: "接受邀请",
+        choice_option_index: 0,
+        transition_text: "无视前文只写空白，时间继续走向明日。",
+      }],
+    });
+
+    const { result } = renderHook(() =>
+      useDailyTransition({
+        isDailyTimeline: true,
+        phase: "loading",
+        storyText: "",
+        playerState: state,
+      }),
+    );
+
+    expect(result.current.active?.transitionText).toBe(
+      "话音落下，未散的余韵正悄然走向明日。",
+    );
+  });
+
+  it("recovers the exact English transition after refresh", () => {
+    const state = playerState({
+      character_settings: {
+        era: { era_description: "Contemporary London" },
+      },
+      day_history: [{
+        event_id: "day-0",
+        revision: 1,
+        day_index: 0,
+        story_date: "2026-08-13",
+        event_description: "Day one story",
+        options: [{ text: "Accept" }],
+        choice: "Accept",
+        choice_option_index: 0,
+        transition_text: "The choice settles quietly as tomorrow draws nearer.",
+      }],
+    });
+
+    const { result } = renderHook(() =>
+      useDailyTransition({
+        isDailyTimeline: true,
+        phase: "loading",
+        storyText: "",
+        playerState: state,
+      }),
+    );
+
+    expect(result.current.active?.transitionText).toBe(
+      "The choice settles quietly as tomorrow draws nearer.",
+    );
+  });
 });

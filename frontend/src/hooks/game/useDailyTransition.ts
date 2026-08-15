@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   deterministicDailyTransition,
+  resolveDailyTransitionLanguage,
   transitionForHistoryEntry,
 } from "@/lib/dailyTransition";
 import type { DailyTimeline, PlayerState } from "@/lib/types";
@@ -38,6 +39,7 @@ export function useDailyTransition({
   storyText: string;
   playerState: PlayerState | null;
 }): { active: DailyTransitionView | null } {
+  const language = resolveDailyTransitionLanguage(playerState);
   const [active, setActive] = useState<ActiveDailyTransition | null>(null);
   const [minimumElapsed, setMinimumElapsed] = useState(false);
   const timerRef = useRef<number | null>(null);
@@ -65,12 +67,17 @@ export function useDailyTransition({
       const transitionText = typeof detail.transitionText === "string"
         && detail.transitionText.trim()
         ? detail.transitionText.trim()
-        : deterministicDailyTransition(Math.max(0, nextDayIndex - 1));
+        : deterministicDailyTransition(
+          Math.max(0, nextDayIndex - 1),
+          0,
+          [],
+          language,
+        );
       beginTransition({ transitionText, nextDate });
     };
     window.addEventListener("story2:daily-settlement", handleSettlement);
     return () => window.removeEventListener("story2:daily-settlement", handleSettlement);
-  }, [beginTransition, playerState?.timeline?.current_date, playerState?.timeline?.day_index]);
+  }, [beginTransition, language, playerState?.timeline?.current_date, playerState?.timeline?.day_index]);
 
   useEffect(() => {
     if (!isDailyTimeline) {
@@ -88,10 +95,10 @@ export function useDailyTransition({
       || timeline.day_index !== latest.day_index + 1
     ) return;
     beginTransition({
-      transitionText: transitionForHistoryEntry(latest, history),
+      transitionText: transitionForHistoryEntry(latest, history, language),
       nextDate: timeline.current_date,
     });
-  }, [active, beginTransition, isDailyTimeline, phase, playerState]);
+  }, [active, beginTransition, isDailyTimeline, language, phase, playerState]);
 
   useEffect(() => {
     if (!active || !minimumElapsed) return;

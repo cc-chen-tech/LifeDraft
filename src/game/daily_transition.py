@@ -57,6 +57,25 @@ _FORBIDDEN_ZH = (
     "数值",
     "一定会",
     "必将",
+    "忽略此前",
+    "此前指令",
+    "系统提示",
+    "系统现在",
+    "新指令",
+    "忽略",
+    "要求",
+    "回答",
+    "输出",
+    "指令",
+    "提示词",
+    "模型",
+    "助手",
+    "用户",
+    "规则",
+    "改成",
+    "改为",
+    "必须",
+    "禁止",
 )
 _FORBIDDEN_EN = (
     "option",
@@ -67,9 +86,34 @@ _FORBIDDEN_EN = (
     "stat",
     "will certainly",
     "is guaranteed",
+    "ignore",
+    "instruction",
+    "system prompt",
+    "assistant",
+    "user prompt",
+    "output",
+    "response",
+    "must",
 )
+_ZH_TIME_MARKERS = (
+    "明日",
+    "明天",
+    "新的一天",
+    "新的一日",
+    "清晨",
+    "天光",
+    "日历",
+    "时间",
+    "下一页",
+    "今夜",
+    "日子",
+)
+_EN_TIME_MARKERS = ("tomorrow", "day", "morning", "time", "calendar", "page", "night")
 _NORMALIZE_RE = re.compile(r"[\s，。！？、,.!?;；:：—\-]+")
 _NUMERIC_RE = re.compile(r"[0-9０-９%％+＋]")
+_HAN_RE = re.compile(r"[\u3400-\u9fff]")
+_ASCII_LETTER_RE = re.compile(r"[A-Za-z]")
+_UNSAFE_FORMATTING_RE = re.compile(r"[\r\n#*_`<>\[\]{}]")
 
 
 def normalize_daily_transition(text: str) -> str:
@@ -83,15 +127,18 @@ def _state_value(state: Any, key: str, default: Any) -> Any:
     return getattr(state, key, default)
 
 
-def _recent_transition_keys(state: Any) -> set[str]:
+def _recent_transition_keys(state: Any, language: str) -> set[str]:
     history = _state_value(state, "day_history", [])
     if not isinstance(history, list):
         return set()
-    return {
-        normalize_daily_transition(str(entry.get("transition_text") or ""))
-        for entry in history[-12:]
-        if isinstance(entry, dict) and entry.get("transition_text")
-    }
+    keys: set[str] = set()
+    for entry in history[-12:]:
+        if not isinstance(entry, dict):
+            continue
+        candidate = entry.get("transition_text")
+        if is_valid_daily_transition(candidate, language=language):
+            keys.add(normalize_daily_transition(str(candidate)))
+    return keys
 
 
 def is_valid_daily_transition(
@@ -107,6 +154,8 @@ def is_valid_daily_transition(
     key = normalize_daily_transition(candidate)
     if not candidate or not key:
         return False
+    if _UNSAFE_FORMATTING_RE.search(candidate):
+        return False
     recent_keys = {
         normalize_daily_transition(item) for item in recent_transitions if item
     }
@@ -119,6 +168,9 @@ def is_valid_daily_transition(
     lowered = candidate.casefold()
     if any(token.casefold() in lowered for token in forbidden):
         return False
+    time_markers = _ZH_TIME_MARKERS if language == "zh" else _EN_TIME_MARKERS
+    if not any(marker.casefold() in lowered for marker in time_markers):
+        return False
 
     terminators = re.findall(r"[。！？.!?]", candidate)
     if len(terminators) > 1:
@@ -127,10 +179,12 @@ def is_valid_daily_transition(
         return False
 
     if language == "zh":
-        compact_length = len(re.sub(r"\s+", "", candidate))
-        return 12 <= compact_length <= 28
+        if _ASCII_LETTER_RE.search(candidate):
+            return False
+        han_count = len(_HAN_RE.findall(candidate))
+        return 12 <= han_count <= 28 and candidate in _ZH_FALLBACKS
     word_count = len(re.findall(r"\b[\w'-]+\b", candidate))
-    return 5 <= word_count <= 18
+    return 5 <= word_count <= 18 and candidate in _EN_FALLBACKS
 
 
 def _fallback_transition(
@@ -163,21 +217,15 @@ def prepare_daily_option_transitions(
         return list(options)
 
     day_index = int(timeline.get("day_index") or 0)
-    excluded = _recent_transition_keys(player_state)
+    excluded = _recent_transition_keys(player_state, language)
     prepared: List[EventOption] = []
     for option_index, option in enumerate(options):
-        candidate = option.transition_text
-        if not is_valid_daily_transition(
-            candidate,
+        candidate = _fallback_transition(
             language=language,
-            recent_transitions=excluded,
-        ):
-            candidate = _fallback_transition(
-                language=language,
-                day_index=day_index,
-                option_index=option_index,
-                excluded_keys=excluded,
-            )
+            day_index=day_index,
+            option_index=option_index,
+            excluded_keys=excluded,
+        )
         prepared.append(option.model_copy(update={"transition_text": candidate}))
         excluded.add(normalize_daily_transition(str(candidate)))
     return prepared
@@ -193,7 +241,7 @@ def resolve_daily_transition(
     """Resolve the exact transition to persist when a daily choice settles."""
     timeline = _state_value(player_state, "timeline", {})
     day_index = int(timeline.get("day_index") or 0) if isinstance(timeline, dict) else 0
-    excluded = _recent_transition_keys(player_state)
+    excluded = _recent_transition_keys(player_state, language)
     if is_valid_daily_transition(
         option.transition_text,
         language=language,

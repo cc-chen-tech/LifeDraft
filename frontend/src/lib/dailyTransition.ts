@@ -1,4 +1,4 @@
-import type { DayHistoryEntry } from "@/lib/types";
+import type { DayHistoryEntry, PlayerState } from "@/lib/types";
 
 
 const DAILY_TRANSITION_FALLBACKS = [
@@ -20,9 +20,46 @@ const DAILY_TRANSITION_FALLBACKS = [
   "此刻终于沉静下来，新的一天正从远处靠近。",
 ] as const;
 
+const DAILY_TRANSITION_FALLBACKS_EN = [
+  "The choice settles quietly as tomorrow draws nearer.",
+  "Its aftertaste lingers while the day turns forward.",
+  "The moment grows still, and a new day approaches.",
+  "What was decided remains as time opens the next page.",
+  "The echo stays behind while morning edges closer.",
+  "The thought settles, and time carries it toward tomorrow.",
+  "The moment closes gently as another day comes into view.",
+  "Its quiet weight remains while the calendar turns.",
+  "The choice finds its place, and the next day draws near.",
+  "The lingering feeling follows time into a new morning.",
+  "The day releases its hold as the next one approaches.",
+  "What remains unsaid grows quiet before another day.",
+  "The moment recedes, leaving tomorrow just ahead.",
+  "Its meaning lingers while time moves one day onward.",
+  "The last echo softens as a new day begins to gather.",
+  "The choice rests quietly on the threshold of tomorrow.",
+] as const;
+
 
 function normalizeTransition(text: string): string {
   return text.replace(/[\s，。！？、,.!?;；:：—\-]+/g, "").toLocaleLowerCase();
+}
+
+
+export function resolveDailyTransitionLanguage(
+  playerState: PlayerState | null,
+): "zh" | "en" {
+  const explicit = playerState?.language;
+  if (explicit === "zh" || explicit === "en") return explicit;
+
+  const settings = playerState?.character_settings as Record<string, unknown> | undefined;
+  const era = settings?.era as Record<string, unknown> | undefined;
+  const description = typeof era?.era_description === "string"
+    ? era.era_description
+    : "";
+  const compact = description.replace(/\s/g, "");
+  return compact && [...compact].every((character) => character.charCodeAt(0) < 128)
+    ? "en"
+    : "zh";
 }
 
 
@@ -30,26 +67,37 @@ export function deterministicDailyTransition(
   dayIndex: number,
   optionIndex = 0,
   recentTransitions: string[] = [],
+  language: "zh" | "en" = "zh",
 ): string {
+  const pool = language === "en"
+    ? DAILY_TRANSITION_FALLBACKS_EN
+    : DAILY_TRANSITION_FALLBACKS;
   const excluded = new Set(recentTransitions.map(normalizeTransition));
   const start = (Math.max(0, dayIndex) * 3 + Math.max(0, optionIndex))
-    % DAILY_TRANSITION_FALLBACKS.length;
-  for (let offset = 0; offset < DAILY_TRANSITION_FALLBACKS.length; offset += 1) {
-    const candidate = DAILY_TRANSITION_FALLBACKS[
-      (start + offset) % DAILY_TRANSITION_FALLBACKS.length
+    % pool.length;
+  for (let offset = 0; offset < pool.length; offset += 1) {
+    const candidate = pool[
+      (start + offset) % pool.length
     ];
     if (!excluded.has(normalizeTransition(candidate))) return candidate;
   }
-  return DAILY_TRANSITION_FALLBACKS[start];
+  return pool[start];
 }
 
 
 export function transitionForHistoryEntry(
   entry: DayHistoryEntry,
   history: DayHistoryEntry[],
+  language: "zh" | "en" = "zh",
 ): string {
-  if (typeof entry.transition_text === "string" && entry.transition_text.trim()) {
-    return entry.transition_text.trim();
+  const pool = language === "en"
+    ? DAILY_TRANSITION_FALLBACKS_EN
+    : DAILY_TRANSITION_FALLBACKS;
+  if (typeof entry.transition_text === "string") {
+    const persisted = entry.transition_text.trim();
+    if ((pool as readonly string[]).includes(persisted)) {
+      return persisted;
+    }
   }
   const recent = history
     .filter((candidate) => candidate.day_index < entry.day_index)
@@ -60,6 +108,7 @@ export function transitionForHistoryEntry(
     entry.day_index,
     entry.choice_option_index ?? 0,
     recent,
+    language,
   );
 }
 

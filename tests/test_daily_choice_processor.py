@@ -31,7 +31,7 @@ def _event(revision: int = 1) -> GameEvent:
             EventOption(
                 text="接受邀请",
                 effects={"energy": -5, "mood": 4},
-                transition_text="话音落下，尚未散去的余韵已轻轻走向明日。",
+                transition_text="话音落下，未散的余韵正悄然走向明日。",
             ),
             EventOption(text="礼貌拒绝", effects={"knowledge": 2}),
         ],
@@ -62,7 +62,7 @@ def test_daily_choice_settles_without_story_model_and_advances_one_day() -> None
     assert state.mood == 54
     assert len(state.day_history) == 1
     assert state.day_history[0]["options"][0]["text"] == "接受邀请"
-    assert result["transition_text"] == "话音落下，尚未散去的余韵已轻轻走向明日。"
+    assert result["transition_text"] == "话音落下，未散的余韵正悄然走向明日。"
     assert state.day_history[0]["transition_text"] == result["transition_text"]
     assert (
         state.day_history[0]["choice_result"]["transition_text"]
@@ -114,7 +114,7 @@ def test_duplicate_daily_choice_is_idempotent() -> None:
     assert state.timeline["day_index"] == 1
     assert state.energy == 45
     assert len(state.day_history) == 1
-    assert second["transition_text"] == "话音落下，尚未散去的余韵已轻轻走向明日。"
+    assert second["transition_text"] == "话音落下，未散的余韵正悄然走向明日。"
 
 
 def test_missing_transition_uses_stable_fallback_and_persists_it() -> None:

@@ -1259,6 +1259,10 @@ def build_daily_story_mode_constraint(
         or (character_settings or {}).get("life_vision")
         or ""
     ).strip()
+    if life_vision:
+        from src.ai.prompt_sanitizer import sanitize_persisted_life_vision
+
+        life_vision = sanitize_persisted_life_vision(life_vision)
 
     if language == "zh":
         first_day = ""
@@ -1336,14 +1340,9 @@ def get_options_only_prompt(
 
     timeline = player_state.get("timeline")
     daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
-    recent_transition_texts = []
-    if daily_mode:
-        for entry in player_state.get("day_history", [])[-12:]:
-            if not isinstance(entry, dict):
-                continue
-            transition = str(entry.get("transition_text") or "").strip()
-            if transition and transition not in recent_transition_texts:
-                recent_transition_texts.append(transition)
+    # Never echo persisted transition prose into a model prompt. The local
+    # post-parser enforces the 12-entry exact-duplicate window deterministically.
+    recent_transition_texts: list[str] = []
 
     # Build character context for option generator (era, personality, key background)
     char_context_parts = []
