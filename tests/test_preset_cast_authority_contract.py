@@ -349,6 +349,482 @@ def test_quick_validator_warns_for_two_of_three_key_people_with_heuristic_names(
     assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
 
 
+def test_quick_validator_rejects_invented_cast_that_drives_the_plot() -> None:
+    """A majority mention cannot hide three new people doing the core work."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵子豪制定了完整方案，方蕾分配了所有任务，马文涛批准预算并确定上线日期。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_warns_for_action_bearing_product_labels() -> None:
+    """Product labels with operational verbs are not established as people."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起核对产品方案。"
+            "安神香负责睡眠场景，雷火阵执行风控检查，云梯果是测试数据集。"
+            "两人确认这些模块运行正常后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+    assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
+
+
+def test_quick_validator_warns_for_explicit_non_person_governance_actors() -> None:
+    """Explicit product/module/data labels remain non-person actors."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起核对产品方案。"
+            "安神香是产品代号，随后安神香制定睡眠方案；"
+            "雷火阵是风控模块，接着雷火阵安排检查任务；"
+            "云梯果是测试数据集。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+    assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
+
+
+def test_quick_validator_rejects_long_governance_action_descriptions() -> None:
+    """Actor scanning must retain the full lookahead allowed by action regexes."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强制定了一个经过多轮讨论审核的完整产品方案，"
+            "方蕾安排了一个经过多轮讨论审核的完整检查任务，"
+            "马涛只负责记录会议结论。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_rejects_plot_drivers_after_consumed_modifiers() -> None:
+    """Greedy name matching must not hide modifiers before core actions."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强立即制定了完整方案，方蕾随后分配了所有任务，马涛最终批准预算。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_deduplicates_one_actor_across_consumed_actions() -> None:
+    """One omitted protagonist must not count as three outside plot drivers."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起参加项目会议。"
+            "陈越制定了完整方案，陈越分配了所有任务，陈越批准了项目预算。"
+            "三人确认安排后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+    assert result.warnings == []
+
+
+def test_quick_validator_rejects_plot_drivers_after_discourse_markers() -> None:
+    """Discourse markers immediately before outside names are valid boundaries."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "随后赵强制定方案，接着方蕾分配任务，最后马文涛批准预算。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_rejects_plot_drivers_after_surname_shaped_markers() -> None:
+    """Surname-shaped discourse markers must not consume the following actors."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "于是赵强制定方案，此时方蕾分配任务，最后马涛批准预算。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_rejects_coordinated_outside_plot_drivers() -> None:
+    """Conjunction-delimited outside actors still count toward cast drift."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强与方蕾共同制定方案，马涛批准预算并确定上线日期。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_treats_technical_occupations_as_people() -> None:
+    """Technical occupation nouns do not establish an object identity."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强是模型专家，随后赵强制定方案；"
+            "方蕾是模型工程师，接着方蕾分配任务；"
+            "马涛只负责记录会议结论。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_deduplicates_marker_actor_before_cast_threshold() -> None:
+    """Marker-extracted variants of one omitted protagonist count only once."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然参加了项目会议。"
+            "随后陈越制定了完整方案，接着陈越分配了所有任务，最后陈越批准了预算。"
+            "两人确认安排后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+def test_quick_validator_deduplicates_one_character_modifier_variants() -> None:
+    """One-character modifiers must not turn one actor into three names."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起参加项目会议。"
+            "陈越又制定了完整方案，陈越还分配了所有任务，陈越则批准了预算。"
+            "三人确认安排后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+def test_quick_validator_attributes_joint_action_to_both_outside_actors() -> None:
+    """Both coordinated actors own a governance action performed jointly."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强与方蕾共同制定方案，马涛负责记录会议结论。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+@pytest.mark.parametrize("modifier", ["协同", "联合"])
+def test_quick_validator_attributes_all_supported_joint_modifiers(
+    modifier: str,
+) -> None:
+    """Every modifier accepted by coordinated-name parsing owns the shared action."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            f"赵强与方蕾{modifier}制定方案，马涛批准预算。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_attributes_joint_action_without_modifier() -> None:
+    """A conjunction can lead directly into the shared governance action."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强与方蕾制定方案，马涛批准预算。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_attributes_enumerated_shared_action_to_all_actors() -> None:
+    """A delimiter-separated actor list shares the following governance action."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强、方蕾、马涛共同制定方案。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_preserves_conjunctions_inside_given_names() -> None:
+    """Delimiter parsing must operate between complete name-token matches."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起参加项目会议。"
+            "马和平与赵强共同制定方案。"
+            "两名临时顾问完成工作后离开。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+@pytest.mark.parametrize("given_name", ["马和平", "马与民", "马及川"])
+def test_quick_validator_detects_three_coordinated_actors_with_conjunctions_in_names(
+    given_name: str,
+) -> None:
+    """A conjunction-shaped given-name character must not discard the actor list."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            f"{given_name}与赵强与方蕾共同制定方案。"
+            "接下来的项目完全按照这三名临时顾问的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_ignores_coordinated_governance_common_nouns() -> None:
+    """Governance objects shaped like names are not coordinated people."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起检查自动化流程。"
+            "安全与方案共同制定计划，云服务负责执行。"
+            "两人确认流程正常后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+def test_quick_validator_ignores_coordinated_technical_common_nouns() -> None:
+    """Technical compound subjects are not promoted to outside people."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起检查自动化流程。"
+            "平台与安全共同制定方案，云服务批准预算。"
+            "两人确认流程正常后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+def test_quick_validator_ignores_predicate_after_discourse_marker() -> None:
+    """An omitted-subject predicate after a marker is not a third outside person."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强制定方案，方蕾分配任务，随后安排会议。"
+            "两名临时顾问完成工作后离开。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+@pytest.mark.parametrize("separator", ["，", "；", "。"])
+def test_quick_validator_ignores_predicate_after_clause_punctuation(
+    separator: str,
+) -> None:
+    """A punctuation-delimited omitted predicate is not an outside person."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            f"赵强制定方案，方蕾分配任务{separator}安排会议。"
+            "两名临时顾问完成工作后离开。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
 def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
     """Narrative text must not invent names from suffixes such as 元低声."""
     from src.ai.quick_validator import quick_validate_story

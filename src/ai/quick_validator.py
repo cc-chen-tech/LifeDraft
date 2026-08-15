@@ -121,6 +121,114 @@ class QuickValidator:
     CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES = frozenset(
         "走脱抬站接翻沉推穿拿刷靠打说合转收坦放问伸"
     )
+    CHINESE_NAME_DISCOURSE_BOUNDARIES = (
+        "随后",
+        "接着",
+        "最后",
+        "然后",
+        "于是",
+        "此时",
+        "紧接着",
+    )
+    CHINESE_NAME_CLAUSE_BOUNDARY_CHARS = frozenset("，。；！？：,.;!?:\n\r")
+    CHINESE_NAME_GOVERNANCE_PREFIXES = (
+        "制定",
+        "分配",
+        "批准",
+        "确定",
+        "安排",
+        "拍板",
+        "组织",
+        "带领",
+        "谈判",
+        "签署",
+        "统筹",
+    )
+    CHINESE_NAME_ACTION_MODIFIERS = (
+        "立即",
+        "很快",
+        "随后",
+        "独自",
+        "主动",
+        "开始",
+        "最终",
+        "共同",
+        "一起",
+        "分别",
+        "亲自",
+        "协同",
+        "联合",
+    )
+    CHINESE_NAME_CONSUMED_PREFIXES = (
+        CHINESE_NAME_GOVERNANCE_PREFIXES + CHINESE_NAME_ACTION_MODIFIERS
+    )
+    CHINESE_NAME_SINGLE_CHARACTER_MODIFIERS = frozenset("又还则便")
+    CHINESE_GOVERNANCE_OBJECT_TERMS = frozenset(
+        {
+            "方案",
+            "计划",
+            "策略",
+            "任务",
+            "工作",
+            "人员",
+            "预算",
+            "日期",
+            "安排",
+            "会议",
+            "团队",
+            "成员",
+            "同事",
+            "合同",
+            "协议",
+            "项目",
+        }
+    )
+    CHINESE_NON_PERSON_SUBJECT_TERMS = frozenset(
+        {
+            "平台",
+            "安全",
+            "服务",
+            "产品",
+            "系统",
+            "模块",
+            "数据",
+            "数据集",
+            "模型",
+            "工具",
+            "流程",
+            "风控",
+            "测试",
+            "接口",
+            "网络",
+            "功能",
+            "业务",
+            "应用",
+            "程序",
+            "代码",
+            "文档",
+            "市场",
+            "运营",
+            "设计",
+            "技术",
+            "算法",
+            "架构",
+            "数据库",
+            "服务器",
+            "客户端",
+            "后端",
+            "前端",
+            "自动化",
+        }
+    )
+    CHINESE_NON_PERSON_IDENTITY_LABELS = (
+        "产品代号",
+        "模块",
+        "数据集",
+        "系统",
+        "工具",
+        "模型",
+    )
+    CHINESE_GOVERNANCE_ACTION_LOOKAHEAD = 32
 
     def __init__(self):
         self._forbidden_pattern_zh = self._build_forbidden_pattern("zh")
@@ -471,6 +579,21 @@ class QuickValidator:
                     ],
                     [],
                 )
+            if (
+                len(key_people_names) >= 3
+                and len(invented_names) >= 3
+                and len(present_key_people) < required_network_count
+                and self._invented_cast_drives_plot(text, invented_names)
+            ):
+                return (
+                    [
+                        "上一版故事预设关键人物使用不足，名单外人物主导剧情"
+                        f"（已使用{len(present_key_people)}/{len(key_people_names)}，"
+                        f"名单外人物：{ '、'.join(invented_names[:5]) }）；"
+                        "请让预设关系网承担方案、任务、决策等主线行动。"
+                    ],
+                    [],
+                )
             if key_people_ratio < 0.5 and len(invented_names) >= 3:
                 return (
                     [
@@ -562,6 +685,8 @@ class QuickValidator:
             "安抚情绪",
         ]
         for name in invented_names:
+            if self._is_explicitly_identified_non_person(text, name):
+                continue
             start = 0
             while True:
                 index = text.find(name, start)
@@ -572,6 +697,169 @@ class QuickValidator:
                     return True
                 start = index + len(name)
         return False
+
+    def _invented_cast_drives_plot(
+        self,
+        text: str,
+        invented_names: List[str],
+    ) -> bool:
+        """Return True when several new names directly perform core plot actions."""
+        governance_action_patterns = tuple(
+            re.compile(pattern)
+            for pattern in (
+                r"^制定(?:了)?[^，。；！？]{0,16}(?:方案|计划|策略)",
+                r"^分配(?:了)?[^，。；！？]{0,16}(?:任务|工作|人员)",
+                r"^批准(?:了)?[^，。；！？]{0,16}(?:预算|方案|计划)",
+                r"^确定(?:了)?[^，。；！？]{0,16}(?:日期|安排|方案|计划)",
+                r"^安排(?:了)?[^，。；！？]{0,16}(?:任务|工作|人员|会议)",
+                r"^拍板",
+                r"^组织(?:了)?[^，。；！？]{0,16}(?:会议|团队|人员)",
+                r"^带领(?:了)?[^，。；！？]{0,16}(?:团队|成员|同事)",
+                r"^谈判",
+                r"^签署(?:了)?[^，。；！？]{0,16}(?:合同|协议)",
+                r"^统筹(?:了)?[^，。；！？]{0,16}(?:任务|工作|项目|团队)",
+            )
+        )
+        action_modifiers = "|".join(
+            re.escape(modifier)
+            for modifier in (
+                *self.CHINESE_NAME_ACTION_MODIFIERS,
+                *self.CHINESE_NAME_SINGLE_CHARACTER_MODIFIERS,
+            )
+        )
+        optional_modifiers = re.compile(rf"^(?:(?:{action_modifiers})){{0,2}}")
+        active_actors: set[str] = set()
+        for name in invented_names:
+            if self._is_explicitly_identified_non_person(text, name):
+                continue
+            start = 0
+            while True:
+                index = text.find(name, start)
+                if index == -1:
+                    break
+                suffix = text[
+                    index + len(name):
+                    index + len(name) + self.CHINESE_GOVERNANCE_ACTION_LOOKAHEAD
+                ]
+                possible_actors_and_tails = []
+                if len(name) == 3:
+                    possible_actors_and_tails.append((name[:-1], name[-1] + suffix))
+                possible_actors_and_tails.append((name, suffix))
+                # Generic operational verbs such as "负责" and "执行" are
+                # deliberately excluded: product labels and module names can
+                # perform those actions too. Rejoining the candidate's final
+                # character compensates for the broad recognizer consuming the
+                # start of either a modifier ("赵强立" + "即制定") or an action
+                # verb ("方蕾分" + "配任务").
+                matched_actor = next(
+                    (
+                        actor
+                        for actor, tail in possible_actors_and_tails
+                        if any(
+                            pattern.match(optional_modifiers.sub("", tail))
+                            for pattern in governance_action_patterns
+                        )
+                    ),
+                    None,
+                )
+                if matched_actor:
+                    active_actors.add(matched_actor)
+                    break
+                start = index + len(name)
+
+        invented_name_set = set(invented_names)
+        for actor_names, action_start in self._coordinated_name_groups(text):
+            invented_actors = [
+                name
+                for name in actor_names
+                if name in invented_name_set
+                and not self._is_explicitly_identified_non_person(text, name)
+            ]
+            if len(invented_actors) < 2:
+                continue
+            action_tail = text[
+                action_start:
+                action_start + self.CHINESE_GOVERNANCE_ACTION_LOOKAHEAD
+            ]
+            if any(
+                pattern.match(optional_modifiers.sub("", action_tail))
+                for pattern in governance_action_patterns
+            ):
+                active_actors.update(invented_actors)
+
+        return len(active_actors) >= 2
+
+    def _is_explicitly_identified_non_person(self, text: str, name: str) -> bool:
+        """Return True when prose explicitly defines a candidate as an object label."""
+        labels = "|".join(
+            re.escape(label) for label in self.CHINESE_NON_PERSON_IDENTITY_LABELS
+        )
+        return bool(
+            re.search(
+                rf"{re.escape(name)}(?:是|为|属于|作为)[^，。；！？]{{0,12}}"
+                rf"(?:{labels})(?=[，。；！？]|$|并|且|而|随后|接着|然后)",
+                text,
+            )
+        )
+
+    def _coordinated_name_groups(
+        self,
+        text: str,
+    ) -> List[tuple[tuple[str, ...], int]]:
+        """Return coordinated Chinese names and the start of their shared action."""
+        surname_class = re.escape(self.COMMON_CHINESE_SURNAMES)
+        name_token = rf"[{surname_class}][\u4e00-\u9fff]{{1,2}}"
+        action_starts = "|".join(
+            re.escape(prefix)
+            for prefix in (
+                *self.CHINESE_NAME_ACTION_MODIFIERS,
+                *self.CHINESE_NAME_GOVERNANCE_PREFIXES,
+            )
+        )
+        pattern = re.compile(
+            rf"(?P<names>{name_token}(?:(?:、|与|和|及){name_token})+)"
+            rf"(?={action_starts})"
+        )
+        groups: List[tuple[tuple[str, ...], int]] = []
+        for match in pattern.finditer(text):
+            actor_names = tuple(
+                re.findall(
+                    rf"{name_token}(?=[、与和及]|$)",
+                    match.group("names"),
+                )
+            )
+            if all(
+                self._is_plausible_coordinated_person_name(name)
+                for name in actor_names
+            ):
+                groups.append((actor_names, match.end()))
+        return groups
+
+    def _is_plausible_coordinated_person_name(self, candidate: str) -> bool:
+        """Reject coordinated governance objects before treating the pair as people."""
+        if candidate in self.CHINESE_GOVERNANCE_OBJECT_TERMS or any(
+            candidate == term or candidate.endswith(term)
+            for term in self.CHINESE_NON_PERSON_SUBJECT_TERMS
+        ):
+            return False
+        if any(
+            candidate.startswith(non_person)
+            for non_person in self.NON_PERSON_NAME_CANDIDATES
+        ):
+            return False
+        # Coordination delimiters are parsed between complete name tokens, so
+        # 和/与/及 inside a token belong to the given name (for example 马和平).
+        # Keep rejecting other grammatical particles that make a broad match
+        # implausible as a person name.
+        non_conjunction_particles = self.CHINESE_NAME_GRAMMATICAL_PARTICLES - set(
+            "和与及"
+        )
+        if any(char in non_conjunction_particles for char in candidate):
+            return False
+        return not (
+            len(candidate) == 3
+            and candidate[-1] in self.CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES
+        )
 
     def _extract_required_key_people_names(
         self,
@@ -704,11 +992,78 @@ class QuickValidator:
             rf"([{surname_class}][\u4e00-\u9fff]{{1,2}}(?:{role_titles})?)"
         )
         names: List[str] = []
+        for actor_names, _ in self._coordinated_name_groups(text):
+            for raw_candidate in actor_names:
+                candidate = str(raw_candidate).strip()
+                if not candidate or candidate in allowed_names:
+                    continue
+                if any(
+                    candidate.startswith(non_person)
+                    for non_person in self.NON_PERSON_NAME_CANDIDATES
+                ):
+                    continue
+                if any(
+                    candidate in allowed or allowed in candidate
+                    for allowed in allowed_names
+                ):
+                    continue
+                if candidate not in names:
+                    names.append(candidate)
+        discourse_markers = "|".join(
+            re.escape(marker)
+            for marker in sorted(
+                self.CHINESE_NAME_DISCOURSE_BOUNDARIES,
+                key=len,
+                reverse=True,
+            )
+        )
+        marker_pattern = re.compile(
+            rf"(?:{discourse_markers})([{surname_class}][\u4e00-\u9fff]{{1,2}})"
+        )
+        for match in marker_pattern.finditer(text):
+            candidate = str(match.group(1)).strip()
+            if self._starts_with_governance_action(text, match.start(1)):
+                continue
+            if (
+                len(candidate) == 3
+                and candidate[-1] in self.CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES
+            ):
+                continue
+            following_text = text[match.end(): match.end() + 8]
+            candidate = self._normalize_consumed_name_suffix(candidate, following_text)
+            if not candidate or candidate in allowed_names:
+                continue
+            if any(
+                candidate.startswith(non_person)
+                for non_person in self.NON_PERSON_NAME_CANDIDATES
+            ):
+                continue
+            if any(char in self.CHINESE_NAME_GRAMMATICAL_PARTICLES for char in candidate):
+                continue
+            if any(candidate in allowed or allowed in candidate for allowed in allowed_names):
+                continue
+            if candidate not in names:
+                names.append(candidate)
         for match in pattern.finditer(text):
             candidate_start = match.start()
+            after_discourse_marker = any(
+                text[:candidate_start].endswith(boundary)
+                for boundary in self.CHINESE_NAME_DISCOURSE_BOUNDARIES
+            )
+            after_clause_boundary = candidate_start == 0 or (
+                text[candidate_start - 1] in self.CHINESE_NAME_CLAUSE_BOUNDARY_CHARS
+            )
+            if (
+                after_discourse_marker or after_clause_boundary
+            ) and self._starts_with_governance_action(text, candidate_start):
+                continue
             # Do not treat a surname-shaped suffix in normal prose as a new
             # person, e.g. "林伯元低声" must not create "元低声".
-            if candidate_start > 0 and "\u4e00" <= text[candidate_start - 1] <= "\u9fff":
+            if (
+                candidate_start > 0
+                and "\u4e00" <= text[candidate_start - 1] <= "\u9fff"
+                and not after_discourse_marker
+            ):
                 continue
             candidate = str(match.group(1)).strip("，。！？、；：“”‘’（）()《》")
             if not candidate or candidate in allowed_names:
@@ -730,9 +1085,42 @@ class QuickValidator:
                 continue
             if any(candidate in allowed or allowed in candidate for allowed in allowed_names):
                 continue
+            following_text = text[match.end(): match.end() + 8]
+            candidate = self._normalize_consumed_name_suffix(candidate, following_text)
             if candidate not in names:
                 names.append(candidate)
         return names
+
+    def _starts_with_governance_action(self, text: str, start: int) -> bool:
+        """Return True when text at start is an omitted-subject core predicate."""
+        return any(
+            text.startswith(prefix, start)
+            for prefix in self.CHINESE_NAME_GOVERNANCE_PREFIXES
+        )
+
+    def _normalize_consumed_name_suffix(
+        self,
+        candidate: str,
+        following_text: str,
+    ) -> str:
+        """Restore an action or modifier character consumed by broad name matching."""
+        if len(candidate) != 3:
+            return candidate
+        reconstructed_suffix = candidate[-1] + following_text
+        consumed_prefix = any(
+            reconstructed_suffix.startswith(prefix)
+            for prefix in self.CHINESE_NAME_CONSUMED_PREFIXES
+        )
+        single_modifier_before_action = (
+            candidate[-1] in self.CHINESE_NAME_SINGLE_CHARACTER_MODIFIERS
+            and any(
+                following_text.startswith(prefix)
+                for prefix in self.CHINESE_NAME_GOVERNANCE_PREFIXES
+            )
+        )
+        if consumed_prefix or single_modifier_before_action:
+            return candidate[:-1]
+        return candidate
 
     def _check_perspective_consistency(self, text: str, language: str) -> List[str]:
         """Check that narrative does not use first-person perspective.
