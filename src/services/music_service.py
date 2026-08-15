@@ -26,8 +26,12 @@ from src.services.story_tts_provider import build_deterministic_wav
 
 logger = logging.getLogger(__name__)
 
+TCacheKey = TypeVar("TCacheKey")
+TCacheValue = TypeVar("TCacheValue")
 
-def _prune_timestamped_cache(cache: Dict[Any, tuple], max_entries: int) -> None:
+def _prune_timestamped_cache(
+    cache: Dict[TCacheKey, tuple[TCacheValue, float]], max_entries: int
+) -> None:
     """按时间戳淘汰最旧条目，把缓存总量限制在 max_entries 内。
 
     P3-内存修复：类级缓存只有 TTL、没有总量上限，且从未被访问的过期条目
