@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_session
@@ -21,7 +22,7 @@ from src.api.schemas import (
 )
 from src.database.models import SessionLocal
 from src.services.minimax_config import build_minimax_config
-from src.services.story_tts_provider import read_generated_voice_file
+from src.services.story_tts_provider import generated_voice_file_path
 from src.services.story_voice_reading import StoryVoiceReadingService, build_deterministic_wav
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 
@@ -159,11 +160,11 @@ async def update_voice_reading_progress(
 async def get_voice_reading_audio(file_name: str) -> Response:
     if not (file_name.endswith(".wav") or file_name.endswith(".mp3")):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")
-    generated_audio = read_generated_voice_file(file_name)
-    if generated_audio is not None:
+    generated_audio_path = generated_voice_file_path(file_name)
+    if generated_audio_path is not None:
         media_type = "audio/mpeg" if file_name.endswith(".mp3") else "audio/wav"
-        return Response(
-            content=generated_audio,
+        return FileResponse(
+            path=generated_audio_path,
             media_type=media_type,
             headers={"Cache-Control": "public, max-age=31536000, immutable"},
         )

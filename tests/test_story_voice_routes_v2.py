@@ -110,6 +110,7 @@ def test_health_exposes_daily_tts_and_music_runtime_capabilities(monkeypatch) ->
         "daily_timeline_v2": True,
         "tts_provider": "minimax",
         "tts_provider_available": True,
+        "tts_audio_transport": "range_v2",
         "music_runtime_enabled": False,
     }
 

@@ -142,7 +142,7 @@ def build_deterministic_wav(text_hash: str, voice_id: str) -> bytes:
     return buffer.getvalue()
 
 
-def read_generated_voice_file(file_name: str) -> Optional[bytes]:
+def generated_voice_file_path(file_name: str) -> Optional[Path]:
     configured_dir = os.getenv("STORY_TTS_ASSET_DIR")
     asset_dir = Path(configured_dir) if configured_dir else PROJECT_ROOT / "data" / "voice_assets"
     file_path = (asset_dir / file_name).resolve()
@@ -152,4 +152,10 @@ def read_generated_voice_file(file_name: str) -> Optional[bytes]:
         return None
     if not file_path.is_file():
         return None
-    return file_path.read_bytes()
+    return file_path
+
+
+def read_generated_voice_file(file_name: str) -> Optional[bytes]:
+    """Read a generated asset for legacy consumers that require bytes."""
+    file_path = generated_voice_file_path(file_name)
+    return file_path.read_bytes() if file_path is not None else None
