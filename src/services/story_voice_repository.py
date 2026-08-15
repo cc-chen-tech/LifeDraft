@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, cast, Dict, Optional, Sequence
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -213,7 +213,7 @@ class StoryVoiceReadingRepository:
             return None
         self.db.expire_all()
         job = self.get_job(job_id, user_id)
-        return job.updated_at if job is not None else None
+        return cast(Optional[datetime], job.updated_at) if job is not None else None
 
     def requeue_stale_processing_job(
         self,
@@ -289,12 +289,12 @@ class StoryVoiceReadingRepository:
             raise
         self.db.expire_all()
         job = self.get_job(job_id, user_id)
-        return job.updated_at if job is not None else None
+        return cast(Optional[datetime], job.updated_at) if job is not None else None
 
     def invalidate_asset(self, asset: GeneratedVoiceAsset, reason: str) -> None:
         """Retain an unusable v2 asset record but prevent further reuse."""
-        asset.status = "invalid"
-        asset.error_message = reason
+        setattr(asset, "status", "invalid")
+        setattr(asset, "error_message", reason)
         self.db.flush()
 
     def mark_job_queued_for_retry(self, job: VoiceReadingJob) -> None:

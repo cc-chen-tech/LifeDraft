@@ -16,7 +16,7 @@ from typing import Any, Dict, Mapping, Optional, cast
 from urllib.parse import urlparse
 
 import httpx
-from mutagen import File as MutagenFile
+import mutagen
 from mutagen.mp3 import MP3
 from mutagen.wave import WAVE
 
@@ -342,7 +342,8 @@ def _normalized_speed_token(speed: float) -> str:
 
 def _validated_audio_duration_ms(audio_path: Path, extension: str) -> int:
     try:
-        audio = MutagenFile(audio_path)
+        mutagen_file = cast(Any, getattr(mutagen, "File"))
+        audio = mutagen_file(audio_path)
         expected_type = MP3 if extension == "mp3" else WAVE
         if not isinstance(audio, expected_type):
             raise ValueError(f"expected valid {extension} audio")
@@ -351,7 +352,7 @@ def _validated_audio_duration_ms(audio_path: Path, extension: str) -> int:
             raise ValueError("audio duration is missing or invalid")
     except Exception as error:
         raise RuntimeError("MiniMax TTS generated invalid audio") from error
-    return max(1, round(duration_seconds * 1000))
+    return max(1, int(round(float(duration_seconds) * 1000)))
 
 
 def _json_dumps(payload: Mapping[str, Any]) -> str:
