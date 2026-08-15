@@ -50,11 +50,11 @@ get_db = get_game_db
 
 def create_token(user_id: int) -> str:
     """Create a JWT token for a user."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timezone, timedelta
 
     payload = {
         "sub": str(user_id),
-        "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS),
     }
     return jwt.encode(payload, _get_jwt_secret(), algorithm=JWT_ALGORITHM)  # type: ignore[no-any-return]
 

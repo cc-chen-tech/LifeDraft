@@ -2,7 +2,7 @@
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from sqlalchemy import or_
@@ -116,7 +116,7 @@ class StateRepository:
             # 更新 Game 表的 updated_at
             game = db.query(Game).filter(Game.game_id == game_id).first()
             if game:
-                game.updated_at = datetime.utcnow()  # type: ignore[assignment]
+                game.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
                 logger.info(f"save_game_progress: Updated game {game_id} updated_at")
             else:
                 logger.warning(f"save_game_progress: Game {game_id} not found in database")
@@ -228,7 +228,7 @@ class StateRepository:
                 state_json=player_state.to_dict(),
             )
         )
-        game.updated_at = datetime.utcnow()
+        game.updated_at = datetime.now(timezone.utc)
         game.narrative_style_id = None
         db.query(Image).filter(
             Image.game_id == game_id,

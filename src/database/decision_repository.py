@@ -3,6 +3,8 @@
 import logging
 from typing import Any, Dict, List
 
+from sqlalchemy import or_
+
 from src.database.models import Decision, SessionLocal, get_db
 
 logger = logging.getLogger(__name__)
