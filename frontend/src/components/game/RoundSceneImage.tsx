@@ -73,7 +73,16 @@ export function RoundSceneImageDisplay({
         onRefresh();
       }, 500);
     }
-  }, [retryCount, clearImageCache, onRefresh, sceneImage?.image_url]);
+  }, [
+    currentRound,
+    invalidateSceneImage,
+    onRefresh,
+    retryCount,
+    sceneImage?.image_url,
+    sceneImage?.round_number,
+    sceneImage?.stage,
+    sceneImage?.week,
+  ]);
 
   // 如果禁用自动生成，不显示组件
   if (!enableSceneImage) {

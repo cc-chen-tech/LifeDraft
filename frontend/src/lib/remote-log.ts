@@ -103,8 +103,6 @@ function maybeRecoverFromStaleAsset(
   }
 }
 
-let reporterInstalled = false;
-
 let _installedErrorHandler: ((event: ErrorEvent) => void) | null = null;
 let _installedRejectionHandler: ((event: PromiseRejectionEvent) => void) | null = null;
 
