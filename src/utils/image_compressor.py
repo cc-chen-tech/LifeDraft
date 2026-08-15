@@ -33,8 +33,10 @@ def compress_image(
     Raises:
         ValueError: If image_data is not a valid image.
     """
+    opened: Optional[ImageType] = None
     try:
         img: ImageType = Image.open(io.BytesIO(image_data))
+        opened = img
     except Exception as e:
         raise ValueError(f"Invalid image data: {e}")
 
@@ -74,4 +76,7 @@ def compress_image(
         f"({reduction:.1f}% reduction)"
     )
 
+    # P-修复：显式关闭原始打开的图像，避免句柄泄漏。
+    if opened is not None:
+        opened.close()
     return compressed_data

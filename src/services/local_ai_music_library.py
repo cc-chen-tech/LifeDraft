@@ -10,7 +10,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping, Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from src.database.models import GeneratedMusicAsset, GeneratedMusicLibraryEntry
 from src.services.music_scene_matching import MusicSceneFitProfile, MusicSceneFitScorer
@@ -166,6 +166,7 @@ class LocalAiMusicLibraryService:
             )
         entries = (
             db.query(GeneratedMusicLibraryEntry)
+            .options(joinedload(GeneratedMusicLibraryEntry.asset))
             .filter(GeneratedMusicLibraryEntry.status == "ready")
             .all()
         )

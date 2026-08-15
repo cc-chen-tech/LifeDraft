@@ -9,9 +9,11 @@ import json
 import logging
 import re
 import threading
+from functools import lru_cache
+import threading
 import time
 from collections import OrderedDict
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from src.services.base_extraction import BaseExtractionService
 
@@ -24,6 +26,16 @@ ENTITY_RECOGNITION_CACHE_TTL = 3600.0
 ENTITY_RECOGNITION_CACHE_MAX_ENTRIES = 200
 _ENTITY_RECOGNITION_CACHE: "OrderedDict[str, tuple[float, Dict[str, Any]]]" = OrderedDict()
 _ENTITY_RECOGNITION_CACHE_LOCK = threading.Lock()
+
+
+_NAMED_PEOPLE_CACHE: Dict[Tuple[str, Tuple[str, ...]], Tuple[str, ...]] = {}
+_NAMED_PEOPLE_CACHE_LOCK = threading.Lock()
+_NAMED_PEOPLE_CACHE_MAX = 32
+
+
+@lru_cache(maxsize=16)
+def _normalize_story_text_cached(story_text: str) -> str:
+    return re.sub(r"\s+", " ", story_text).strip()
 
 
 def _build_entity_recognition_cache_key(
@@ -505,7 +517,29 @@ class EntityRecognitionService(BaseExtractionService):
         story_text: str,
         known_person_names: Optional[List[str]] = None,
     ) -> List[str]:
-        """提取中文故事中明确命名的人物。"""
+        """提取中文故事中明确命名的人物。
+
+        P2-性能修复：同一次识别内该方法会被调用两次（主流程 + 补充流程），
+        用模块级小缓存（按故事文本+已知人名）避免重复全量正则扫描。
+        """
+        cache_key = (story_text, tuple(sorted(known_person_names or [])))
+        with _NAMED_PEOPLE_CACHE_LOCK:
+            cached = _NAMED_PEOPLE_CACHE.get(cache_key)
+        if cached is not None:
+            return list(cached)
+        result = self._extract_named_people_uncached(story_text, known_person_names)
+        with _NAMED_PEOPLE_CACHE_LOCK:
+            if len(_NAMED_PEOPLE_CACHE) >= _NAMED_PEOPLE_CACHE_MAX:
+                _NAMED_PEOPLE_CACHE.clear()
+            _NAMED_PEOPLE_CACHE[cache_key] = tuple(result)
+        return result
+
+    def _extract_named_people_uncached(
+        self,
+        story_text: str,
+        known_person_names: Optional[List[str]] = None,
+    ) -> List[str]:
+        """提取中文故事中明确命名的人物（原始实现）。"""
         single_surnames = (
             "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜姚"
             "戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳刘鲍史唐费"
@@ -779,7 +813,7 @@ class EntityRecognitionService(BaseExtractionService):
         }
 
     def _first_context(self, name: str, story_text: str) -> str:
-        normalized_story = re.sub(r"\s+", " ", story_text).strip()
+        normalized_story = _normalize_story_text_cached(story_text)
         index = normalized_story.find(name)
         if index < 0:
             return ""
