@@ -840,29 +840,98 @@ run_backend() {
     return $result
 }
 
+prepare_coverage_run() {
+    local backend_report="$1"
+    local frontend_coverage_dir="$2"
+
+    if [ -z "$backend_report" ] || [ -z "$frontend_coverage_dir" ]; then
+        return 2
+    fi
+    if ! rm -f -- "$backend_report"; then
+        echo -e "${RED}✗ 无法清理后端覆盖率报告: $backend_report${NC}" >&2
+        return 1
+    fi
+    if ! rm -rf -- "$frontend_coverage_dir"; then
+        echo -e "${RED}✗ 无法清理前端覆盖率目录: $frontend_coverage_dir${NC}" >&2
+        return 1
+    fi
+}
+
+finish_coverage_run() {
+    local backend_result="$1"
+    local frontend_result="$2"
+    local backend_report="$3"
+    local frontend_report="$4"
+    local report_header_printed=0
+    local report_missing=0
+
+    echo ""
+    if [ -f "$backend_report" ]; then
+        echo -e "${GREEN}覆盖率报告已生成:${NC}"
+        report_header_printed=1
+        echo "  后端: $backend_report"
+    fi
+    if [ -f "$frontend_report" ]; then
+        if [ "$report_header_printed" -eq 0 ]; then
+            echo -e "${GREEN}覆盖率报告已生成:${NC}"
+        fi
+        echo "  前端: $frontend_report"
+    fi
+
+    if [ ! -f "$backend_report" ]; then
+        echo -e "${RED}✗ 后端覆盖率报告缺失: $backend_report${NC}" >&2
+        report_missing=1
+    fi
+    if [ ! -f "$frontend_report" ]; then
+        echo -e "${RED}✗ 前端覆盖率报告缺失: $frontend_report${NC}" >&2
+        report_missing=1
+    fi
+
+    if [ "$backend_result" -ne 0 ]; then
+        echo -e "${RED}✗ 后端覆盖率失败 (exit: $backend_result)${NC}" >&2
+    fi
+    if [ "$frontend_result" -ne 0 ]; then
+        echo -e "${RED}✗ 前端覆盖率失败 (exit: $frontend_result)${NC}" >&2
+    fi
+    if [ "$backend_result" -ne 0 ] || [ "$frontend_result" -ne 0 ] || [ "$report_missing" -ne 0 ]; then
+        return 1
+    fi
+    return 0
+}
+
 # 覆盖率测试
 run_coverage() {
     echo -e "${BLUE}========================================${NC}"
     echo -e "${YELLOW}运行测试并生成覆盖率报告...${NC}"
     echo -e "${BLUE}========================================${NC}"
     ensure_test_dirs
+    local backend_report="$TEST_RUN_DIR/coverage.xml"
+    local frontend_coverage_dir="$TEST_RUN_DIR/frontend/coverage"
+    local frontend_report="$frontend_coverage_dir/index.html"
+    if ! prepare_coverage_run "$backend_report" "$frontend_coverage_dir"; then
+        echo -e "${RED}✗ 覆盖率运行准备失败${NC}" >&2
+        return 1
+    fi
     
     # 后端覆盖率
     echo -e "${YELLOW}--- 后端覆盖率 ---${NC}"
     cd "$PROJECT_DIR"
     activate_python_env
-    pytest tests/ --cov=src --cov-report=term-missing --cov-report=html:"$TEST_RUN_DIR"/htmlcov/backend
+    local backend_result=0
+    COVERAGE_XML_PATH="$backend_report" ./scripts/run-maintained-backend-tests.sh coverage || backend_result=$?
     
     # 前端覆盖率
     echo ""
     echo -e "${YELLOW}--- 前端覆盖率 ---${NC}"
     cd "$PROJECT_DIR/frontend"
-    npm test -- --coverage --coverageReporters=text --coverageReporters=html --coverageDirectory="$TEST_RUN_DIR"/frontend/coverage
-    
-    echo ""
-    echo -e "${GREEN}覆盖率报告已生成:${NC}"
-    echo "  后端: $TEST_RUN_DIR/htmlcov/backend/index.html"
-    echo "  前端: $TEST_RUN_DIR/frontend/coverage/lcov-report/index.html"
+    local frontend_result=0
+    npm run test:coverage -- --coverageReporters=text --coverageReporters=html --coverageDirectory="$frontend_coverage_dir" || frontend_result=$?
+
+    finish_coverage_run \
+        "$backend_result" \
+        "$frontend_result" \
+        "$backend_report" \
+        "$frontend_report"
 }
 
 # 安全扫描

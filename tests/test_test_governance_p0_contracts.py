@@ -23,8 +23,13 @@ def test_maintained_backend_manifest_is_shared_by_both_ci_workflows() -> None:
     assert "test_music_runtime_removed.py" in runner
     assert '"${maintained_tests[@]}" -v --tb=short' in runner
     assert 'coverage_xml_path="${COVERAGE_XML_PATH:-coverage.xml}"' in runner
-    assert '--cov=src --cov-report="xml:${coverage_xml_path}" --cov-report=term' in runner
-    assert "./scripts/run-maintained-backend-tests.sh coverage" in coverage_workflow
+    assert "--cov=src --cov-fail-under=34" in runner
+    assert (
+        '--cov-report="xml:${coverage_xml_path}" --cov-report=term' in runner
+    )
+    assert (
+        "./scripts/run-maintained-backend-tests.sh coverage" in coverage_workflow
+    )
     assert "./scripts/run-maintained-backend-tests.sh test" in backend_workflow
     assert "tests/test_gate_preflight_no_mock.py" not in coverage_workflow
     assert "tests/test_gate_preflight_no_mock.py" not in backend_workflow

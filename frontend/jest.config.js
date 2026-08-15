@@ -21,7 +21,7 @@ const config = {
     '!src/**/types.ts',
     '!src/**/__tests__/**',
   ],
-  // M-11: Coverage thresholds aligned with codecov.yml (temporarily lowered due to Phase 2-3 refactoring)
+  // Repository-owned coverage policy; enforced directly by Jest.
   coverageThreshold: {
     global: {
       branches: 70,

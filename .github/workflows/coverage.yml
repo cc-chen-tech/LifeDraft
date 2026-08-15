@@ -53,14 +53,14 @@ jobs:
           IMAGE_API_BASE_URL: 'https://api.openai.com/v1'
           OPENAI_BASE_URL: 'https://api.openai.com/v1'
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Upload backend coverage artifact
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
-          files: ./coverage.xml
-          flags: python
-          name: python-coverage
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
+          name: backend-coverage-report
+          path: coverage.xml
+          if-no-files-found: error
+          retention-days: 30
 
   frontend-coverage:
     name: Frontend Coverage
@@ -84,13 +84,18 @@ jobs:
         run: npm ci
 
       - name: Run Jest with coverage
-        run: npm run test:coverage -- --coverageReporters=text --coverageReporters=cobertura
+        run: npm run test:coverage -- --coverageReporters=text --coverageReporters=cobertura --coverageReporters=html
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Verify frontend coverage reports
+        run: |
+          test -f coverage/cobertura-coverage.xml
+          test -f coverage/index.html
+
+      - name: Upload frontend coverage artifact
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
-          files: ./frontend/coverage/cobertura-coverage.xml
-          flags: frontend
-          name: frontend-coverage
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
+          name: frontend-coverage-report
+          path: frontend/coverage/
+          if-no-files-found: error
+          retention-days: 30
