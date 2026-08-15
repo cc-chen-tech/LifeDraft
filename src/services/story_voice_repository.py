@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 from sqlalchemy.orm import Session
 
-from src.database.models import GeneratedVoiceAsset, VoiceReadingJob, VoiceReadingSetting
+from src.database.models import (
+    GeneratedVoiceAsset,
+    VoiceReadingJob,
+    VoiceReadingProgress,
+    VoiceReadingSegment,
+    VoiceReadingSetting,
+)
 
 
 class StoryVoiceReadingRepository:
@@ -27,6 +33,7 @@ class StoryVoiceReadingRepository:
         user_id: int,
         selected_voice_color: Optional[str],
         auto_read_enabled: Optional[bool],
+        selected_speed: Optional[float] = None,
     ) -> VoiceReadingSetting:
         setting = self.get_settings(user_id)
         if setting is None:
@@ -37,6 +44,8 @@ class StoryVoiceReadingRepository:
             setattr(setting, "selected_voice_color", selected_voice_color)
         if auto_read_enabled is not None:
             setattr(setting, "auto_read_enabled", auto_read_enabled)
+        if selected_speed is not None:
+            setattr(setting, "selected_speed", selected_speed)
         self.db.flush()
         return setting
 
@@ -105,6 +114,7 @@ class StoryVoiceReadingRepository:
         asset_id: Optional[int] = None,
         error_code: Optional[str] = None,
         error_message: Optional[str] = None,
+        dedupe_key: Optional[str] = None,
     ) -> VoiceReadingJob:
         job = VoiceReadingJob(
             user_id=user_id,
@@ -116,8 +126,46 @@ class StoryVoiceReadingRepository:
             status=status,
             error_code=error_code,
             error_message=error_message,
+            dedupe_key=dedupe_key,
         )
         self.db.add(job)
+        self.db.flush()
+        return job
+
+    def find_job_by_dedupe_key(self, dedupe_key: str) -> Optional[VoiceReadingJob]:
+        return (
+            self.db.query(VoiceReadingJob)
+            .filter(VoiceReadingJob.dedupe_key == dedupe_key)
+            .one_or_none()
+        )
+
+    def create_chapter_job(
+        self,
+        *,
+        user_id: int,
+        context: Dict[str, Any],
+        voice_id: str,
+        speed: float,
+        dedupe_key: str,
+        paragraphs: Sequence[str],
+    ) -> VoiceReadingJob:
+        job = self.create_job(
+            user_id=user_id,
+            context=context,
+            voice_id=voice_id,
+            speed=speed,
+            status="queued",
+            dedupe_key=dedupe_key,
+        )
+        for index, paragraph in enumerate(paragraphs):
+            job.segments.append(
+                VoiceReadingSegment(
+                    paragraph_index=index,
+                    text_hash=_normalize_text_hash(paragraph),
+                    text_content=paragraph,
+                    status="queued",
+                )
+            )
         self.db.flush()
         return job
 
@@ -127,3 +175,77 @@ class StoryVoiceReadingRepository:
             .filter(VoiceReadingJob.job_id == job_id, VoiceReadingJob.user_id == user_id)
             .one_or_none()
         )
+
+    def mark_job_queued_for_retry(self, job: VoiceReadingJob) -> None:
+        setattr(job, "status", "queued")
+        setattr(job, "error_code", None)
+        setattr(job, "error_message", None)
+        for segment in job.segments:
+            if segment.status == "failed":
+                segment.status = "queued"
+                segment.error_code = None
+                segment.error_message = None
+        self.db.flush()
+
+    def get_progress(
+        self,
+        user_id: int,
+        game_id: int,
+        day_index: int,
+        text_hash: str,
+        voice_id: str,
+        speed: float,
+    ) -> Optional[VoiceReadingProgress]:
+        return (
+            self.db.query(VoiceReadingProgress)
+            .filter(
+                VoiceReadingProgress.user_id == user_id,
+                VoiceReadingProgress.game_id == game_id,
+                VoiceReadingProgress.day_index == day_index,
+                VoiceReadingProgress.text_hash == text_hash,
+                VoiceReadingProgress.voice_id == voice_id,
+                VoiceReadingProgress.speed == speed,
+            )
+            .one_or_none()
+        )
+
+    def upsert_progress(
+        self,
+        *,
+        user_id: int,
+        game_id: int,
+        day_index: int,
+        story_date: Optional[str],
+        text_hash: str,
+        voice_id: str,
+        speed: float,
+        paragraph_index: int,
+        position_ms: int,
+        completed: bool,
+    ) -> VoiceReadingProgress:
+        progress = self.get_progress(
+            user_id, game_id, day_index, text_hash, voice_id, speed
+        )
+        if progress is None:
+            progress = VoiceReadingProgress(
+                user_id=user_id,
+                game_id=game_id,
+                day_index=day_index,
+                text_hash=text_hash,
+                voice_id=voice_id,
+                speed=speed,
+            )
+            self.db.add(progress)
+        setattr(progress, "story_date", story_date)
+        setattr(progress, "paragraph_index", max(0, paragraph_index))
+        setattr(progress, "position_ms", max(0, position_ms))
+        setattr(progress, "completed", completed)
+        self.db.flush()
+        return progress
+
+
+def _normalize_text_hash(text: str) -> str:
+    import hashlib
+
+    normalized = " ".join(text.split())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()

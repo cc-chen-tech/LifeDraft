@@ -3,7 +3,7 @@
  * Tests the feedback card for character settings
  */
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingFeedbackCard } from "@/components/create/SettingFeedbackCard";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
@@ -148,7 +148,9 @@ describe("SettingFeedbackCard", () => {
       render(<SettingFeedbackCard {...baseProps} onRegenerate={onRegenerate} />);
       await user.click(screen.getByTestId("background-feedback-button"));
       const input = screen.getByTestId("background-feedback-input");
-      await user.type(input, "😀".repeat(INPUT_LIMITS.feedback + 1));
+      fireEvent.change(input, {
+        target: { value: "😀".repeat(INPUT_LIMITS.feedback + 1) },
+      });
       expect(screen.getByText("已超出 1 字")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "重新生成家庭背景" })).toBeDisabled();
       expect(input).toHaveValue("😀".repeat(INPUT_LIMITS.feedback + 1));

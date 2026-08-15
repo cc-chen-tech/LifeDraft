@@ -295,17 +295,19 @@ class VoiceReadingSettingsResponse(BaseModel):
     available_voice_colors: List[str] = Field(default_factory=list)
     selected_voice_color: Optional[str] = None
     uploaded_voice_available: bool = False
-    auto_read_enabled: bool = False
-    tts_provider: str = "browser"
-    tts_model: str = "browser-speech"
-    tts_provider_available: bool = True
+    auto_read_enabled: bool = True
+    selected_speed: float = 1.0
+    tts_provider: str = "minimax"
+    tts_model: str = "speech-02-turbo"
+    tts_provider_available: bool = False
     backend_audio_enabled: bool = False
-    playback_mode: str = "browser_speech"
+    playback_mode: str = "unavailable"
 
 
 class VoiceReadingSettingsUpdateRequest(BaseModel):
     selected_voice_color: Optional[str] = None
     auto_read_enabled: Optional[bool] = None
+    selected_speed: Optional[float] = Field(default=None, ge=0.5, le=2.0)
 
 
 class VoiceUploadConsentRequest(BaseModel):
@@ -314,12 +316,14 @@ class VoiceUploadConsentRequest(BaseModel):
 
 
 class ReadingContext(BaseModel):
-    source_type: str = Field(..., description="current_story|history_round|summary|ending")
+    source_type: str = Field(..., description="current_story")
     game_id: int
     week: Optional[int] = None
     round_number: Optional[int] = None
     stage: Optional[str] = None
     attempt_id: Optional[str] = None
+    day_index: Optional[int] = None
+    story_date: Optional[str] = None
     text_hash: str
     text: str = Field(..., min_length=1, max_length=VOICE_TEXT_MAX_CHARS)
 
@@ -329,7 +333,16 @@ class StoryVoiceReadingRequest(BaseModel):
     voice_id: str = "warm_female"
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     auto_play: bool = False
-    preferred_provider: Optional[str] = None
+
+
+class VoiceReadingSegmentResponse(BaseModel):
+    paragraph_index: int
+    status: str
+    audio_url: Optional[str] = None
+    asset_id: Optional[int] = None
+    duration_ms: Optional[int] = None
+    media_type: Optional[str] = None
+    error_code: Optional[str] = None
 
 
 class StoryVoiceReadingResponse(BaseModel):
@@ -338,12 +351,13 @@ class StoryVoiceReadingResponse(BaseModel):
     audio_url: Optional[str] = None
     asset_id: Optional[int] = None
     duration_ms: Optional[int] = None
-    playback_mode: str = "browser_speech"
-    provider: str = "browser"
-    model: str = "browser-speech"
+    playback_mode: str = "unavailable"
+    provider: str = "minimax"
+    model: str = ""
     media_type: Optional[str] = None
     error_code: Optional[str] = None
     message: str = ""
+    segments: List[VoiceReadingSegmentResponse] = Field(default_factory=list)
 
 
 class VoiceReadingJobResponse(BaseModel):
@@ -352,12 +366,29 @@ class VoiceReadingJobResponse(BaseModel):
     audio_url: Optional[str] = None
     asset_id: Optional[int] = None
     duration_ms: Optional[int] = None
-    playback_mode: str = "browser_speech"
-    provider: str = "browser"
-    model: str = "browser-speech"
+    playback_mode: str = "unavailable"
+    provider: str = "minimax"
+    model: str = ""
     media_type: Optional[str] = None
     error_code: Optional[str] = None
     message: str = ""
+    segments: List[VoiceReadingSegmentResponse] = Field(default_factory=list)
+
+
+class VoiceReadingProgressRequest(BaseModel):
+    game_id: int
+    day_index: int = Field(ge=0)
+    story_date: Optional[str] = None
+    text_hash: str = Field(min_length=1, max_length=128)
+    voice_id: str
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    paragraph_index: int = Field(default=0, ge=0)
+    position_ms: int = Field(default=0, ge=0)
+    completed: bool = False
+
+
+class VoiceReadingProgressResponse(VoiceReadingProgressRequest):
+    updated_at: Optional[str] = None
 
 
 class VoiceAssetResponse(BaseModel):

@@ -2,33 +2,34 @@
 
 from pathlib import Path
 
+import pytest
+
 from src.services.minimax_config import MiniMaxConfig
 from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+from src.services.story_tts_provider import TTSProviderUnavailableError
 
 
 def _config(tmp_path: Path, env: dict[str, str]) -> MiniMaxConfig:
     return MiniMaxConfig.from_env(
         env=env,
         voice_asset_dir=tmp_path / "voice",
-        music_asset_dir=tmp_path / "music",
     )
 
 
-def test_missing_minimax_credential_uses_browser_speech_metadata(tmp_path: Path) -> None:
+def test_missing_minimax_credential_reports_unavailable_without_fallback(tmp_path: Path) -> None:
     provider = MiniMaxTTSProvider(config=_config(tmp_path, {}))
 
     metadata = provider.metadata()
-    speech = provider.synthesize(
-        {"text_hash": "fallback-story", "text": "无凭证时保留浏览器朗读。"},
-        "warm_female",
-        1.0,
-    )
+    with pytest.raises(TTSProviderUnavailableError):
+        provider.synthesize(
+            {"text_hash": "fallback-story", "text": "无凭证时不降级浏览器朗读。"},
+            "warm_female",
+            1.0,
+        )
 
     assert metadata.available is False
-    assert metadata.playback_mode == "browser_speech"
+    assert metadata.playback_mode == "unavailable"
     assert metadata.backend_audio_enabled is False
-    assert speech.playback_mode == "browser_speech"
-    assert speech.storage_path is None
 
 
 def test_local_audio_synthesis_writes_and_reuses_deterministic_wav(tmp_path: Path) -> None:
@@ -49,7 +50,7 @@ def test_local_audio_synthesis_writes_and_reuses_deterministic_wav(tmp_path: Pat
     assert artifact.read_bytes().startswith(b"RIFF")
 
 
-def test_payload_and_oversized_text_keep_transport_and_fallback_boundaries(tmp_path: Path) -> None:
+def test_payload_and_oversized_text_keep_transport_and_failure_boundaries(tmp_path: Path) -> None:
     provider = MiniMaxTTSProvider(
         config=_config(
             tmp_path,
@@ -59,15 +60,15 @@ def test_payload_and_oversized_text_keep_transport_and_fallback_boundaries(tmp_p
 
     async_payload = provider.build_async_create_payload("短文本", "clear_neutral", 0.9)
     websocket_payload = provider.build_websocket_start_payload("短文本", "clear_neutral", 0.9)
-    speech = provider.synthesize(
-        {"text_hash": "long-story", "text": "超过上限的文本会使用浏览器朗读。"},
-        "clear_neutral",
-        1.0,
-    )
+    with pytest.raises(TTSProviderUnavailableError):
+        provider.synthesize(
+            {"text_hash": "long-story", "text": "超过上限的文本不会使用浏览器朗读。"},
+            "clear_neutral",
+            1.0,
+        )
 
     assert async_payload["language_boost"] == "auto"
     assert async_payload["voice_setting"]["voice_id"] == "female-yujie"
     assert websocket_payload["stream"] is False
     assert "language_boost" not in websocket_payload
-    assert speech.playback_mode == "browser_speech"
     assert not (tmp_path / "voice").exists()

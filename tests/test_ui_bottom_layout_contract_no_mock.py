@@ -8,9 +8,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CHAT_BAR = ROOT / "frontend" / "src" / "components" / "game" / "ChatBar.tsx"
 PLAY_PAGE = ROOT / "frontend" / "src" / "app" / "play" / "page.tsx"
-MUSIC_PLAYER = ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"
+LISTENING_EXPERIENCE = ROOT / "frontend" / "src" / "components" / "game" / "StoryListeningExperience.tsx"
 REWRITE_E2E = ROOT / "frontend" / "e2e" / "rewrite-button-discoverable.spec.ts"
-PLAYLIST_E2E = ROOT / "frontend" / "e2e" / "music-playlist-persistence.spec.ts"
+DAILY_LISTENING_E2E = ROOT / "frontend" / "e2e" / "daily-timeline.spec.ts"
 
 
 def test_chatbar_owns_inline_rewrite_sheet_contract() -> None:
@@ -35,22 +35,20 @@ def test_play_page_no_longer_mounts_story_adjuster() -> None:
     assert "onRewriteComplete" in source
 
 
-def test_global_music_player_mobile_top_desktop_bottom_contract() -> None:
-    source = MUSIC_PLAYER.read_text(encoding="utf-8")
+def test_daily_listener_keeps_choices_in_a_sticky_bottom_action_area() -> None:
+    source = LISTENING_EXPERIENCE.read_text(encoding="utf-8")
 
-    assert 'data-testid="global-music-player"' in source
-    assert 'data-testid="global-music-mini-bar"' in source
-    assert "top-16" in source
-    assert "safe-area-pt" in source
-    assert "md:bottom-4" not in source
-    assert "bottom-0 left-0 right-0" not in source
+    assert 'data-testid="story-listening-experience"' in source
+    assert "sticky bottom-0" in source
+    assert "safe-area-inset-bottom" in source
+    assert "OptionCards" in source
 
 
-def test_e2e_specs_track_new_bottom_and_music_contracts() -> None:
+def test_e2e_specs_track_rewrite_and_daily_listening_contracts() -> None:
     rewrite_e2e = REWRITE_E2E.read_text(encoding="utf-8")
-    playlist_e2e = PLAYLIST_E2E.read_text(encoding="utf-8")
+    daily_e2e = DAILY_LISTENING_E2E.read_text(encoding="utf-8")
 
     assert "collapsed chat bar exposes rewrite/regenerate/summary actions" in rewrite_e2e
     assert "inline rewrite sheet" in rewrite_e2e
-    assert 'data-testid="global-music-mini-bar"' in playlist_e2e
-    assert ".bottom-0" not in playlist_e2e
+    assert "从第 2 段开始朗读" in daily_e2e
+    assert "expect(musicCalls).toBe(0)" in daily_e2e

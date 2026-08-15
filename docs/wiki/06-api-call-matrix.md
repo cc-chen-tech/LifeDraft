@@ -40,7 +40,7 @@
 - `api.images.*` -> `/api/images/*`
 - `api.collection.*` -> `/api/collection/*`（含批量生成地标图）
 - `api.auth.*` -> `/api/auth/*`
-- `api.music.*`（如果直接使用）-> `/api/music/*`
+- `api.voiceReading.*` -> `/api/voice-reading/*`
 - `api.achievements.*` -> `/api/achievements/*`
 
 ## 需要特别注意的“历史/兼容”路径

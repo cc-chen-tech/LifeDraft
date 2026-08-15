@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Callable, Generator, TypeVar, cast
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
-                        Index, Integer, String, Text, create_engine, text)
+                        Index, Integer, String, Text, create_engine, inspect, text)
 from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
 
 from config.settings import settings
@@ -375,7 +375,8 @@ class VoiceReadingSetting(Base):
     setting_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False, unique=True, index=True)
     selected_voice_color = Column(String(80), nullable=True)
-    auto_read_enabled = Column(Boolean, default=False, nullable=False)
+    auto_read_enabled = Column(Boolean, default=True, nullable=False)
+    selected_speed = Column(Float, default=1.0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -423,6 +424,7 @@ class VoiceReadingJob(Base):
 
     job_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False, index=True)
+    dedupe_key = Column(String(128), nullable=True, unique=True, index=True)
     asset_id = Column(Integer, ForeignKey("generated_voice_assets.asset_id"), nullable=True)
     context_json = Column(JSON, nullable=False)
     text_hash = Column(String(128), nullable=False, index=True)
@@ -436,6 +438,78 @@ class VoiceReadingJob(Base):
 
     user = relationship("User")
     asset = relationship("GeneratedVoiceAsset")
+    segments = relationship(
+        "VoiceReadingSegment",
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="VoiceReadingSegment.paragraph_index",
+    )
+
+
+class VoiceReadingSegment(Base):
+    """One ordered paragraph in a chapter narration job."""
+
+    __tablename__ = "voice_reading_segments"
+
+    segment_id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(Integer, ForeignKey("voice_reading_jobs.job_id"), nullable=False, index=True)
+    asset_id = Column(Integer, ForeignKey("generated_voice_assets.asset_id"), nullable=True)
+    paragraph_index = Column(Integer, nullable=False)
+    text_hash = Column(String(128), nullable=False, index=True)
+    text_content = Column(Text, nullable=False)
+    status = Column(String(30), nullable=False, default="queued", index=True)
+    error_code = Column(String(80), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    job = relationship("VoiceReadingJob", back_populates="segments")
+    asset = relationship("GeneratedVoiceAsset")
+
+    __table_args__ = (
+        Index(
+            "ix_voice_segment_job_paragraph",
+            "job_id",
+            "paragraph_index",
+            unique=True,
+        ),
+    )
+
+
+class VoiceReadingProgress(Base):
+    """Per-story listening position owned by one user."""
+
+    __tablename__ = "voice_reading_progress"
+
+    progress_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False, index=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    day_index = Column(Integer, nullable=False)
+    story_date = Column(String(10), nullable=True)
+    text_hash = Column(String(128), nullable=False)
+    voice_id = Column(String(80), nullable=False)
+    speed = Column(Float, nullable=False, default=1.0)
+    paragraph_index = Column(Integer, nullable=False, default=0)
+    position_ms = Column(Integer, nullable=False, default=0)
+    completed = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = relationship("User")
+    game = relationship("Game")
+
+    __table_args__ = (
+        Index(
+            "ix_voice_progress_story_identity",
+            "user_id",
+            "game_id",
+            "day_index",
+            "text_hash",
+            "voice_id",
+            "speed",
+            unique=True,
+        ),
+    )
 
 
 class GeneratedMusicAsset(Base):
@@ -582,8 +656,8 @@ def init_db() -> None:
 
 
 def _ensure_legacy_columns() -> None:
-    """Add columns introduced after older local SQLite DBs were created."""
-    sqlite_columns = {
+    """Add compatible columns to existing SQLite and PostgreSQL databases."""
+    legacy_columns = {
         "games": {
             "narrative_style_id": "VARCHAR",
             "constraint_level": "VARCHAR DEFAULT 'expert'",
@@ -596,26 +670,42 @@ def _ensure_legacy_columns() -> None:
             "story_date": "VARCHAR(10)",
             "day_index": "INTEGER",
         },
+        "voice_reading_settings": {
+            "selected_speed": "FLOAT DEFAULT 1.0 NOT NULL",
+        },
+        "voice_reading_jobs": {
+            "dedupe_key": "VARCHAR(128)",
+        },
     }
 
-    if engine.dialect.name != "sqlite":
-        return
-
     with engine.begin() as connection:
-        for table_name, columns in sqlite_columns.items():
-            pragma_query = "PRAGMA table_info(" + table_name + ")"
-            existing = {row[1] for row in connection.execute(text(pragma_query))}
+        inspector = inspect(connection)
+        available_tables = set(inspector.get_table_names())
+        for table_name, columns in legacy_columns.items():
+            if table_name not in available_tables:
+                continue
+            existing = {
+                str(column["name"])
+                for column in inspector.get_columns(table_name)
+            }
             for column_name, column_type in columns.items():
                 if column_name not in existing:
                     alter_query = (
-                        "ALTER TABLE "
+                        'ALTER TABLE "'
                         + table_name
-                        + " ADD COLUMN "
+                        + '" ADD COLUMN "'
                         + column_name
-                        + " "
+                        + '" '
                         + column_type
                     )
                     connection.execute(text(alter_query))
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "ix_voice_reading_jobs_dedupe_key_runtime "
+                "ON voice_reading_jobs (dedupe_key)"
+            )
+        )
 
 
 @contextmanager

@@ -20,14 +20,17 @@ maintained_tests=(
   tests/test_active_game_owner_recovery_db_no_mock.py
   tests/test_round_event_sse_terminal_contracts.py
   tests/test_image_service_db_failure_contracts.py
-  tests/test_story_music_recommendation_contract.py
+  tests/test_story_voice_reading_contract.py
+  tests/test_story_voice_chapter_contract.py
+  tests/test_story_voice_routes_v2.py
+  tests/test_music_runtime_removed.py
   tests/test_integration_real_db.py
   tests/test_database.py
   tests/test_gate_real_db_no_mock.py
   tests/test_scene_image_sse_replay_contract_no_mock.py
   tests/test_session_recovery_db_contract_no_mock.py
-  tests/test_story_music_recommendation_db.py
-  tests/test_music_degradation_no_mock.py
+  tests/test_story_voice_reading_db.py
+  tests/test_story_voice_async_chapter.py
   tests/test_world_model_lifecycle_contracts.py
 )
 

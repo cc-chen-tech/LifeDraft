@@ -200,7 +200,6 @@ def test_daily_timeline_feature_flag_defaults_off_and_can_be_enabled() -> None:
     assert get_feature("daily_timeline_v2") is False
 
     set_feature("daily_timeline_v2", True)
-
     assert get_feature("daily_timeline_v2") is True
 
 

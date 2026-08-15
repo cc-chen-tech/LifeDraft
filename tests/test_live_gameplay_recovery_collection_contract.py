@@ -6,7 +6,6 @@ import pytest
 
 from config.prompts.character_prompts import get_opening_story_prompt
 from src.services.entity_recognition_service import EntityRecognitionService
-from src.services.music_service import NeteaseMusicClient
 
 
 class _FakeAIClient:
@@ -266,24 +265,3 @@ def test_opening_prompt_lists_key_people_as_story_constraints() -> None:
     assert "林一凡" in prompt
     assert "工程负责人" in prompt
     assert "必须优先使用上述家庭成员和关键人物" in prompt
-
-
-@pytest.mark.asyncio
-async def test_music_client_normalizes_http_media_url_to_https() -> None:
-    """Production HTTPS pages must not receive raw http:// audio URLs."""
-
-    class _Response:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {"code": 200, "data": [{"url": "http://m7.music.126.net/song.mp3"}]}
-
-    class _Client:
-        async def get(self, *_: object, **__: object) -> _Response:
-            return _Response()
-
-    client = NeteaseMusicClient(base_url="http://music-api:3001")
-    client.client = _Client()  # type: ignore[assignment]
-
-    assert await client.get_song_url(123) == "https://m7.music.126.net/song.mp3"

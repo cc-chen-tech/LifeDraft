@@ -64,7 +64,8 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     assert "tests/test_gate_preflight_no_mock.py" in script
     assert "tests/test_gate_gameplay_behavior_no_mock.py" in script
     assert "tests/test_gate_contracts_no_mock.py" in script
-    assert "tests/test_music_degradation_no_mock.py" in script
+    assert "tests/test_story_voice_chapter_contract.py" in script
+    assert "tests/test_music_runtime_removed.py" in script
     assert "tests/test_shift_left_e2e_contract_no_mock.py" in script
     assert "storyContinuityPreflight.test.tsx" in script
     assert "src/__tests__/lib/sse.test.ts" in script
@@ -124,18 +125,14 @@ def test_preflight_validates_archived_provider_story_tts_spec() -> None:
     assert "openspec validate add-provider-backed-story-tts --strict" not in script
 
 
-def test_preflight_validates_minimax_story_audio_generation_change() -> None:
+def test_preflight_validates_current_story_tts_contracts() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
-    change_dir = ROOT / "openspec" / "changes" / "add-minimax-story-audio-generation"
 
-    assert change_dir.exists()
-    assert (change_dir / "proposal.md").exists()
-    assert (change_dir / "design.md").exists()
-    assert (change_dir / "tasks.md").exists()
-    assert "openspec validate add-minimax-story-audio-generation --strict" in script
-    assert "tests/test_minimax_audio_generation_contract.py" in script
-    assert "tests/test_minimax_audio_generation_db.py" in script
+    assert "openspec validate add-story-voice-reading --strict" in script
+    assert "openspec validate provider-backed-story-tts --strict" in script
+    assert "tests/test_story_voice_chapter_contract.py" in script
+    assert "tests/test_story_voice_async_chapter.py" in script
     assert 'run_playwright_command "core" npx playwright test --project=core' in script
     assert "minimax-story-audio-generation.spec.ts" not in config.split(
         "const AI_HEAVY_TESTS", 1
@@ -164,9 +161,10 @@ def test_e2e_backend_uses_dotenv_minimax_key_not_fake_override() -> None:
 
     assert "MINIMAX_API_KEY=test-key" not in script
     assert (
-        "MINIMAX_E2E_LOCAL_AUDIO=1 MINIMAX_E2E_LOCAL_IMAGE=1 "
-        "NETEASE_E2E_LOCAL_MUSIC=1 API_RELOAD=false"
+        "STORY_TTS_PROVIDER=minimax"
     ) in script
+    assert "MINIMAX_E2E_LOCAL_AUDIO=1 MINIMAX_E2E_LOCAL_IMAGE=1 API_RELOAD=false" in script
+    assert "NETEASE_E2E_LOCAL_MUSIC" not in script
 
 
 def _iter_scannable_files(
@@ -205,135 +203,6 @@ def test_frontend_layout_does_not_depend_on_google_font_network() -> None:
     assert "--font-serif-sc" in globals_css
 
 
-def test_global_music_player_uses_app_shell_route_safe_positioning() -> None:
-    play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
-        encoding="utf-8"
-    )
-    music_player = (
-        ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"
-    ).read_text(encoding="utf-8")
-
-    collection_sheet = re.search(
-        r'<Sheet(?P<attrs>[^>]*\bopen=\{collectionPanelOpen\}[^>]*)>'
-        r'(?P<body>.*?)</Sheet>',
-        play_page,
-        re.DOTALL,
-    )
-
-    assert collection_sheet is not None
-    sheet_attrs = collection_sheet.group("attrs")
-    collection_body = collection_sheet.group("body")
-    assert re.search(r"(?:^|\s)modal(?=\s|$)", sheet_attrs)
-    assert re.search(r"\bonOpenChange=\{handleCollectionOpenChange\}", sheet_attrs)
-
-    collection_content = re.search(
-        r'<SheetContent\b(?P<attrs>.*?)>\s*'
-        r'<SheetTitle\s+className="sr-only">收集</SheetTitle>',
-        collection_body,
-        re.DOTALL,
-    )
-    assert collection_content is not None
-    content_attrs = collection_content.group("attrs")
-    assert re.search(r'\bside="right"', content_attrs)
-    assert re.search(r"\bshowCloseButton=\{false\}", content_attrs)
-    assert re.search(r'\boverlayClassName="bg-transparent"', content_attrs)
-    content_class = re.search(r'\bclassName="([^"]+)"', content_attrs)
-    assert content_class is not None
-    assert {
-        "z-[70]",
-        "w-full",
-        "max-w-[min(100vw,34rem)]",
-        "p-0",
-        "sm:w-[34rem]",
-    } <= set(content_class.group(1).split())
-
-    close_control = re.search(
-        r"<SheetClose\s+asChild>\s*"
-        r"<Button(?P<attrs>.*?)>\s*"
-        r'<X\s+className="h-4 w-4"\s*/>\s*'
-        r"</Button>\s*</SheetClose>",
-        collection_body,
-        re.DOTALL,
-    )
-    assert close_control is not None
-    close_attrs = close_control.group("attrs")
-    assert re.search(r'\btype="button"', close_attrs)
-    assert re.search(r'\bvariant="quiet"', close_attrs)
-    assert re.search(r'\bsize="icon-touch"', close_attrs)
-    assert re.search(r'\baria-label="关闭收集"', close_attrs)
-    collection_panel = re.search(
-        r"<CollectionPanel\s+gameId=\{gameId \|\| 0\}\s*/>",
-        collection_body,
-    )
-    assert collection_panel is not None
-    assert close_control.end() < collection_panel.start()
-
-    play_route_guard = re.search(
-        r"const usesPlayToolsOnly\s*=\s*(?P<expr>.*?);",
-        music_player,
-        re.DOTALL,
-    )
-    assert play_route_guard is not None
-    assert re.fullmatch(
-        r'pathname\s*===\s*"/play"',
-        play_route_guard.group("expr").strip(),
-    )
-    bottom_route_guard = re.search(
-        r"const usesBottomAppShellDock\s*=\s*(?P<expr>.*?);",
-        music_player,
-        re.DOTALL,
-    )
-
-    assert bottom_route_guard is not None
-    bottom_routes = re.findall(
-        r'pathname\s*===\s*"([^"]+)"',
-        bottom_route_guard.group("expr"),
-    )
-    assert len(bottom_routes) == 6
-    assert set(bottom_routes) == {
-        "/",
-        "/saves",
-        "/presets",
-        "/create",
-        "/story/opening",
-        "/ending",
-    }
-    guard_residue = re.sub(
-        r'pathname\s*===\s*"[^"]+"',
-        "",
-        bottom_route_guard.group("expr"),
-    )
-    assert re.fullmatch(r"\s*(?:\|\|\s*){5}", guard_residue)
-
-    spacer_branch = re.search(
-        r"\{usesBottomAppShellDock\s*&&\s*\(.*?"
-        r'data-app-shell-reserve-spacer="bottom".*?\)\}',
-        music_player,
-        re.DOTALL,
-    )
-    class_branch = re.search(
-        r"className=\{\s*usesBottomAppShellDock\s*\?\s*"
-        r'"([^"]+)"\s*:\s*"([^"]+)"\s*\}',
-        music_player,
-        re.DOTALL,
-    )
-
-    assert spacer_branch is not None
-    assert (
-        'data-app-shell-reserve={usesBottomAppShellDock ? "bottom" : undefined}'
-        in music_player
-    )
-    assert class_branch is not None
-    bottom_classes, top_classes = class_branch.groups()
-    assert "app-shell-bottom-dock" in bottom_classes
-    assert "left-4 right-4 safe-area-pb" in bottom_classes
-    assert "top-16 left-0 right-0 safe-area-pt mt-2" in top_classes
-    assert re.search(
-        r"\{!isExpanded\s*&&\s*!usesPlayToolsOnly\s*&&\s*\(\s*"
-        r'<div\s+data-testid="global-music-mini-bar"',
-        music_player,
-        re.DOTALL,
-    )
 
 
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
@@ -570,10 +439,12 @@ def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
         assert test_name in e2e
 
 
-def test_regression_fixture_does_not_hit_real_music_recommendation_by_default() -> None:
+def test_regression_fixture_contains_no_retired_music_runtime() -> None:
     fixture = _read_e2e_regression_fixture_sources()
 
-    assert "autoFetchRecommendation={false}" in fixture
+    assert "MusicPlayer" not in fixture
+    assert "useMusicStore" not in fixture
+    assert "/api/music" not in fixture
 
 
 def test_frontend_image_generation_path_is_checked_before_e2e() -> None:
@@ -656,70 +527,53 @@ def test_rewrite_discoverability_e2e_seeds_story_before_clicking_rewrite() -> No
 
 def test_story_voice_test_controls_stay_out_of_real_play_page() -> None:
     component = (
-        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryListeningExperience.tsx"
     ).read_text(encoding="utf-8")
     play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
         encoding="utf-8"
     )
-    global_music_player = (
-        ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"
-    ).read_text(encoding="utf-8")
-    regression_page = _read_e2e_regression_fixture_sources()
-
-    assert "showTestControls?: boolean" in component
-    assert "showTestControls = false" in component
-    assert "enablePlaybackControls?: boolean" in component
-    assert "enablePlaybackControls = false" in component
-    assert "{showTestControls &&" in component
-    assert "setActiveReadingTarget" in play_page
-    assert "enablePlaybackControls" in global_music_player
-    assert "StoryVoiceControls" in global_music_player
-    assert "showTestControls" not in play_page
-    assert "showTestControls" not in global_music_player
-    assert "showTestControls" in regression_page
+    assert "showTestControls" not in component
+    assert "StoryListeningExperience" in play_page
+    assert "useStoryVoiceStore" not in play_page
+    assert "GlobalMusicPlayer" not in play_page
 
 
 def test_story_voice_production_controls_expose_persistent_auto_read_toggle() -> None:
     component = (
-        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryListeningExperience.tsx"
     ).read_text(encoding="utf-8")
 
-    auto_read_label = 'aria-label="自动朗读"'
+    auto_read_label = "下一章自动播放"
     assert auto_read_label in component
     assert "api.voice_reading.getSettings" in component
     assert "api.voice_reading.updateSettings" in component
     assert "settings.auto_read_enabled" in component
-    assert component.index(auto_read_label) < component.index("{showTestControls &&")
+    assert "autoReadRef.current" in component
 
 
 def test_story_voice_production_controls_expose_voice_selection() -> None:
     component = (
-        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryListeningExperience.tsx"
     ).read_text(encoding="utf-8")
-    store = (ROOT / "frontend" / "src" / "stores" / "useStoryVoiceStore.ts").read_text(
-        encoding="utf-8"
-    )
 
-    assert 'aria-label="选择朗读声音"' in component
+    assert "音色" in component
     assert "warm_female" in component
     assert "calm_male" in component
     assert "clear_neutral" in component
-    assert "selectedVoiceId" in store
+    assert "selectedVoice" in component
     assert "settings.selected_voice_color" in component
-    assert "options?.voiceId ?? get().selectedVoiceId" in store
-    assert "startReading(activeContext, { voiceId: nextVoiceId })" in component
-    assert "voice_id: selectedVoiceId" in store
-    assert 'voice_id: "warm_female"' not in store
+    assert "voice_id: selectedVoice" in component
+    assert "selected_speed" in component
 
 
 def test_story_voice_production_settings_do_not_duplicate_test_controls() -> None:
     component = (
-        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryListeningExperience.tsx"
     ).read_text(encoding="utf-8")
 
-    assert "const showProductionSettings = !showTestControls;" in component
-    assert "{showProductionSettings && (" in component
-    assert component.index("{showProductionSettings && (") < component.index("{showTestControls &&")
+    assert "showTestControls" not in component
+    assert "SPEEDS.map" in component
+    assert "VOICES.map" in component
 
 
 def test_preflight_runs_dialog_and_sheet_a11y_regressions() -> None:
@@ -729,25 +583,21 @@ def test_preflight_runs_dialog_and_sheet_a11y_regressions() -> None:
     assert "src/__tests__/components/SheetA11y.test.tsx" in script
 
 
-def test_global_music_player_autogenerates_music_from_completed_story_when_collapsed() -> None:
-    global_player = (
-        ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"
-    ).read_text(encoding="utf-8")
+def test_production_layout_does_not_mount_global_music_player() -> None:
+    layout = (ROOT / "frontend" / "src" / "app" / "layout.tsx").read_text(encoding="utf-8")
 
-    assert "const shouldAutoFetchRecommendation" in global_player
-    assert "activeStoryText" in global_player
-    assert "effectiveGameId" in global_player
-    assert "autoFetchRecommendation={shouldAutoFetchRecommendation}" in global_player
-    assert "autoFetchRecommendation={isExpanded}" not in global_player
+    assert "GlobalMusicPlayer" not in layout
+    assert "fixedRegions" not in layout
 
 
-def test_regression_fixture_does_not_autogenerate_global_ai_music() -> None:
-    fixture = _read_e2e_regression_fixture_sources()
+def test_play_page_does_not_activate_music_or_unified_sound_state() -> None:
+    play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
+        encoding="utf-8"
+    )
 
-    assert "setActiveStoryText(null);" in fixture
-    assert 'setActiveStoryText("雨夜码头的旧账册被风吹开。");' not in fixture
-    assert "setActiveGameId(null);" in fixture
-    assert "setActiveGameId(101);" not in fixture
+    assert "useMusicStore" not in play_page
+    assert "setActiveStoryText" not in play_page
+    assert "SOUND_PANEL" not in play_page
 
 
 def test_play_page_missing_game_state_has_actionable_recovery_ui() -> None:
@@ -781,11 +631,11 @@ def test_story_voice_e2e_workflow_enables_deterministic_backend_audio() -> None:
         encoding="utf-8"
     )
 
-    assert "STORY_TTS_PROVIDER=local" in workflow
-    assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
+    assert "STORY_TTS_PROVIDER=minimax" in workflow
     assert "MINIMAX_E2E_LOCAL_AUDIO=1" in workflow
     assert "MINIMAX_E2E_LOCAL_IMAGE=1" in workflow
-    assert "NETEASE_E2E_LOCAL_MUSIC=1" in workflow
+    assert "NETEASE_E2E_LOCAL_MUSIC" not in workflow
+    assert "STORY_TTS_ALLOW_REQUEST_PROVIDER" not in workflow
     assert "MINIMAX_API_KEY=test-key" in workflow
 
 
@@ -809,8 +659,10 @@ def test_production_deploy_syncs_minimax_secret_to_ecs_env_without_committing_ke
     assert "MINIMAX_API_KEY_B64" in workflow
     assert "STORY_TTS_PROVIDER" in workflow
     assert "STORY_TTS_PROVIDER=minimax" in workflow
-    assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
-    assert "STORY_MUSIC_AI_GENERATION_ENABLED=true" in workflow
+    assert "STORY_TTS_ALLOW_REQUEST_PROVIDER" not in workflow
+    assert "STORY_TTS_AUTO_READ_DEFAULT_ENABLED=true" in workflow
+    assert "ENABLE_DAILY_TIMELINE_V2=true" in workflow
+    assert "STORY_MUSIC_AI_GENERATION_ENABLED" not in workflow
     assert "MINIMAX_TIMEOUT_SECONDS=180" in workflow
     assert "IMAGE_API_KEY" in workflow
     assert "IMAGE_API_BASE_URL=https://api.minimaxi.com/v1" in workflow
@@ -859,15 +711,12 @@ def test_env_example_documents_minimax_production_audio_settings() -> None:
     required_lines = [
         "MINIMAX_API_KEY=",
         "MINIMAX_TTS_MODEL=speech-02-turbo",
-        "MINIMAX_MUSIC_MODEL=music-2.6",
         "MINIMAX_TIMEOUT_SECONDS=180",
         "MINIMAX_TTS_MAX_CHARS=50000",
-        "MINIMAX_MUSIC_PROMPT_MAX_CHARS=900",
-        "STORY_TTS_PROVIDER=browser",
-        "STORY_TTS_ALLOW_REQUEST_PROVIDER=0",
-        "STORY_MUSIC_AI_GENERATION_ENABLED=true",
+        "STORY_TTS_PROVIDER=minimax",
+        "STORY_TTS_AUTO_READ_DEFAULT_ENABLED=true",
+        "ENABLE_DAILY_TIMELINE_V2=true",
         "STORY_TTS_ASSET_DIR=./data/voice_assets",
-        "STORY_MUSIC_ASSET_DIR=./data/music_assets",
     ]
     for line in required_lines:
         assert line in env_example
@@ -906,6 +755,12 @@ def test_e2e_prod_frontend_disables_standalone_output_for_next_start() -> None:
     assert "process.env.NEXT_DISABLE_STANDALONE === '1'" in next_config
     assert "output: process.env.NEXT_DISABLE_STANDALONE === '1' ? undefined : 'standalone'" in next_config
     assert 'NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$backend_url" NEXT_PUBLIC_API_URL="/api" npm run build' in script
+
+
+def test_e2e_prod_frontend_explicitly_enables_regression_fixtures() -> None:
+    script = (ROOT / "test.sh").read_text()
+
+    assert "export ENABLE_E2E_REGRESSION_FIXTURES=1" in script
     assert 'NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$backend_url" NEXT_PUBLIC_API_URL="/api" CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start' in script
     assert "npm run start -- --hostname 127.0.0.1" in script
     assert "node .next/standalone/server.js" not in script
@@ -927,17 +782,17 @@ def test_e2e_api_contract_probe_does_not_trigger_long_story_regeneration() -> No
     assert "API contract probe should not trigger event generation" in events_router
 
 
-def test_story_voice_browser_fallback_e2e_accepts_real_browser_speech_capability() -> None:
-    spec = (ROOT / "frontend" / "e2e" / "story-voice-reading.spec.ts").read_text(
+def test_daily_story_e2e_covers_high_quality_audio_without_music_fallback() -> None:
+    spec = (ROOT / "frontend" / "e2e" / "daily-timeline.spec.ts").read_text(
         encoding="utf-8"
     )
-    fallback_test = spec.split(
-        "uses browser speech fallback with the actual story text when backend audio is unavailable"
-    )[1].split("test('auto-read supersedes stale regenerated attempts", 1)[0]
 
-    assert "const fallbackState = await expectBrowserSpeechAttempt(page);" in fallback_test
-    assert "if (fallbackState === 'playing')" in fallback_test
-    assert "speechSynthesis" in fallback_test
+    assert "selected paragraph" not in spec
+    assert "从第 2 段开始朗读" in spec
+    assert "narrationCalls" in spec
+    assert "musicCalls" in spec
+    assert "expect(musicCalls).toBe(0)" in spec
+    assert "speechSynthesis" not in spec
 
 
 def test_security_e2e_logout_uses_context_request_not_cross_origin_page_fetch() -> None:

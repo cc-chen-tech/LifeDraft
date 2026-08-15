@@ -1,6 +1,5 @@
 """Real DB integration tests for story voice reading save-read chains."""
 
-from pathlib import Path
 from uuid import uuid4
 import wave
 
@@ -19,11 +18,10 @@ from src.services.story_voice_reading import (
     normalize_text_hash,
 )
 from src.services.story_tts_provider import (
-    BrowserSpeechTTSProvider,
     DeterministicTTSProvider,
     GeneratedSpeech,
-    OpenAICompatibleTTSProvider,
     StoryTTSProviderMetadata,
+    UnavailableTTSProvider,
 )
 from src.api.schemas import StoryVoiceReadingRequest
 
@@ -240,7 +238,7 @@ def test_provider_model_identity_prevents_wrong_audio_reuse() -> None:
         session.close()
 
 
-def test_browser_fallback_request_saves_job_without_wav_asset() -> None:
+def test_unavailable_provider_saves_failed_job_without_audio_asset() -> None:
     init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
     public_id = f"pub_{uuid4().hex[:6]}"
@@ -251,7 +249,7 @@ def test_browser_fallback_request_saves_job_without_wav_asset() -> None:
         session.add(user)
         session.flush()
         repository = StoryVoiceReadingRepository(session)
-        service = StoryVoiceReadingService(repository, provider=BrowserSpeechTTSProvider())
+        service = StoryVoiceReadingService(repository, provider=UnavailableTTSProvider())
         text = "浏览器应该朗读这段真实故事文字。"
         text_hash = normalize_text_hash(text)
         response = service.request_reading(
@@ -274,12 +272,13 @@ def test_browser_fallback_request_saves_job_without_wav_asset() -> None:
         )
         session.commit()
 
-        assert response.playback_mode == "browser_speech"
+        assert response.playback_mode == "unavailable"
         assert response.audio_url is None
-        assert response.provider == "browser"
+        assert response.provider == "unavailable"
         assert response.asset_id is None
         assert session.query(GeneratedVoiceAsset).filter_by(text_hash=text_hash).count() == 0
-        assert session.query(VoiceReadingJob).filter_by(job_id=response.job_id).one().status == "ready"
+        assert response.error_code == "tts_provider_unavailable"
+        assert session.query(VoiceReadingJob).filter_by(job_id=response.job_id).one().status == "failed"
     finally:
         session.rollback()
         session.close()
@@ -317,13 +316,15 @@ def test_provider_backed_request_saves_and_reuses_asset() -> None:
 
         first = service.request_reading(int(user.user_id), request)
         second = service.request_reading(int(user.user_id), request)
+        ready = service.process_job(int(user.user_id), first.job_id)
         session.commit()
 
-        assert first.playback_mode == "audio"
-        assert first.audio_url is not None
-        assert first.provider == "local"
-        assert first.model == "deterministic-v1"
-        assert second.asset_id == first.asset_id
+        assert first.status == "queued"
+        assert second.job_id == first.job_id
+        assert ready.playback_mode == "audio"
+        assert ready.audio_url is not None
+        assert ready.provider == "local"
+        assert ready.model == "deterministic-v1"
         assert (
             session.query(GeneratedVoiceAsset)
             .filter_by(text_hash=text_hash, user_id=int(user.user_id))
@@ -334,7 +335,7 @@ def test_provider_backed_request_saves_and_reuses_asset() -> None:
             session.query(VoiceReadingJob)
             .filter_by(text_hash=text_hash, user_id=int(user.user_id))
             .count()
-            == 2
+            == 1
         )
     finally:
         session.rollback()
@@ -403,11 +404,10 @@ def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
         )
 
         response = service.request_reading(int(user.user_id), request)
-        job = service.get_job(int(user.user_id), int(response.job_id))
+        job = service.process_job(int(user.user_id), int(response.job_id))
 
-        assert response.playback_mode == "audio"
-        assert response.audio_url is not None and response.audio_url.endswith(".mp3")
-        assert response.media_type == "audio/mpeg"
+        assert response.status == "queued"
+        assert job.audio_url is not None and job.audio_url.endswith(".mp3")
         assert job.media_type == "audio/mpeg"
     finally:
         session.rollback()
@@ -466,11 +466,12 @@ def test_provider_backed_request_does_not_reuse_other_users_voice_asset() -> Non
                 auto_play=True,
             ),
         )
+        ready = service.process_job(int(requester.user_id), response.job_id)
         session.commit()
 
-        assert response.playback_mode == "audio"
-        assert response.asset_id != int(owner_asset.asset_id)
-        assert response.audio_url != "/api/voice-reading/audio/owner-only.wav"
+        assert ready.playback_mode == "audio"
+        assert ready.asset_id != int(owner_asset.asset_id)
+        assert ready.audio_url != "/api/voice-reading/audio/owner-only.wav"
         assert (
             session.query(GeneratedVoiceAsset)
             .filter_by(text_hash=text_hash, user_id=int(requester.user_id))
@@ -529,9 +530,11 @@ def test_cached_mp3_voice_asset_returns_mpeg_media_type() -> None:
             ),
         )
 
-        assert response.playback_mode == "audio"
-        assert response.audio_url == "/api/voice-reading/audio/minimax-story.mp3"
-        assert response.media_type == "audio/mpeg"
+        ready = service.process_job(int(user.user_id), response.job_id)
+
+        assert ready.playback_mode == "audio"
+        assert ready.audio_url == "/api/voice-reading/audio/minimax-story.mp3"
+        assert ready.media_type == "audio/mpeg"
     finally:
         session.rollback()
         session.close()
@@ -588,38 +591,6 @@ def test_job_response_for_mp3_voice_asset_returns_mpeg_media_type() -> None:
     finally:
         session.rollback()
         session.close()
-
-
-def test_openai_compatible_provider_keeps_generated_files_inside_asset_dir(tmp_path: Path) -> None:
-    class ExistingFileOpenAIProvider(OpenAICompatibleTTSProvider):
-        def _request_speech(self, text: str, voice_id: str, speed: float, output_path: Path) -> None:
-            raise AssertionError("fixture file should be reused without network access")
-
-    text_hash = "safe-story-hash"
-    expected_file = tmp_path / "safe-story-hash-warm_female-openai-model-with-path.wav"
-    with wave.open(str(expected_file), "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(16_000)
-        wav.writeframes(b"\x00\x00" * 16)
-
-    provider = ExistingFileOpenAIProvider(
-        api_key="test-key",
-        model="../model/with:path",
-        asset_dir=tmp_path,
-    )
-    speech = provider.synthesize(
-        {
-            "text_hash": text_hash,
-            "text": "路径字符不应该逃出语音资产目录。",
-        },
-        "warm_female",
-        1.0,
-    )
-
-    assert speech.storage_path == "/api/voice-reading/audio/safe-story-hash-warm_female-openai-model-with-path.wav"
-    assert expected_file.is_file()
-    assert not (tmp_path.parent / "model").exists()
 
 
 def test_deterministic_voice_audio_bytes_are_playable_wav() -> None:

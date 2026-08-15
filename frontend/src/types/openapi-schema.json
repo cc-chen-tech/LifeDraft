@@ -4164,575 +4164,6 @@
         }
       }
     },
-    "/api/music/recommend": {
-      "post": {
-        "tags": [
-          "Music"
-        ],
-        "summary": "Recommend Music",
-        "description": "根据故事内容推荐音乐\n\n分析故事的情绪和场景，搜索匹配的音乐\n并批量获取所有歌曲的播放 URL",
-        "operationId": "recommend_music_api_music_recommend_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MusicRecommendationRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MusicRecommendationResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/music/generate": {
-      "post": {
-        "tags": [
-          "Music"
-        ],
-        "summary": "Generate Music",
-        "description": "Generate story-conditioned AI music without blocking recommendation search.",
-        "operationId": "generate_music_api_music_generate_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "sync",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "description": "Debug/local verification only: wait for provider generation and return the ready track.",
-              "default": false,
-              "title": "Sync"
-            },
-            "description": "Debug/local verification only: wait for provider generation and return the ready track."
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MusicGenerationRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/MusicGenerationResponse"
-                    },
-                    {
-                      "$ref": "#/components/schemas/MusicGenerationEnqueueResponse"
-                    }
-                  ],
-                  "title": "Response Generate Music Api Music Generate Post"
-                }
-              }
-            }
-          },
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MusicGenerationEnqueueResponse"
-                }
-              }
-            },
-            "description": "Accepted"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/music/generate-async": {
-      "post": {
-        "tags": [
-          "Music"
-        ],
-        "summary": "Enqueue Music Generation",
-        "description": "Start AI music generation in the background and return immediately.",
-        "operationId": "enqueue_music_generation_api_music_generate_async_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MusicGenerationRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MusicGenerationEnqueueResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/music/song-url": {
-      "get": {
-        "tags": [
-          "Music"
-        ],
-        "summary": "Get Song Url",
-        "description": "获取歌曲播放 URL\n\n注意：URL 有过期时间，需要时重新获取",
-        "operationId": "get_song_url_api_music_song_url_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "song_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "description": "歌曲ID",
-              "title": "Song Id"
-            },
-            "description": "歌曲ID"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/music/search": {
-      "get": {
-        "tags": [
-          "Music"
-        ],
-        "summary": "Search Music",
-        "description": "直接搜索音乐",
-        "operationId": "search_music_api_music_search_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "keyword",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 50,
-              "description": "搜索关键词",
-              "title": "Keyword"
-            },
-            "description": "搜索关键词"
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 30,
-              "minimum": 1,
-              "description": "返回数量",
-              "default": 10,
-              "title": "Limit"
-            },
-            "description": "返回数量"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/music/generated/{file_name}": {
-      "get": {
-        "tags": [
-          "Music"
-        ],
-        "summary": "Get Generated Music",
-        "description": "Serve provider-generated music assets from the configured asset directory.",
-        "operationId": "get_generated_music_api_music_generated__file_name__get",
-        "parameters": [
-          {
-            "name": "file_name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "File Name"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/music/stream/{song_id}": {
-      "get": {
-        "tags": [
-          "Music"
-        ],
-        "summary": "Stream Song",
-        "description": "代理音乐流，绕过 CDN 的 Referer 限制。\n\n完整下载 CDN 音频后一次性返回（带 content-length），\n避免流式代理链延迟导致浏览器 waiting/stalled。\n支持 Range 请求（用于拖拽跳转），以及 403/401 时自动刷新 URL 重试。\n内存 LRU 缓存最多 10 首歌，避免重复下载。",
-        "operationId": "stream_song_api_music_stream__song_id__get",
-        "parameters": [
-          {
-            "name": "song_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Song Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/music/playlist/{game_id}": {
-      "get": {
-        "tags": [
-          "Music"
-        ],
-        "summary": "Get Playlist",
-        "description": "Get the current playlist state for a game.",
-        "operationId": "get_playlist_api_music_playlist__game_id__get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "game_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Game Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Music"
-        ],
-        "summary": "Update Playlist",
-        "description": "Merge new recommendation songs into the playlist.\n\nPreserves the currently playing song; only the upcoming queue is replaced.",
-        "operationId": "update_playlist_api_music_playlist__game_id__put",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "game_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Game Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlaylistUpdateRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/music/playlist/{game_id}/sync": {
-      "post": {
-        "tags": [
-          "Music"
-        ],
-        "summary": "Sync Playlist State",
-        "description": "Sync current playback position and state.",
-        "operationId": "sync_playlist_state_api_music_playlist__game_id__sync_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "game_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Game Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlaylistSyncRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/music/playlist/{game_id}/advance": {
-      "post": {
-        "tags": [
-          "Music"
-        ],
-        "summary": "Advance Playlist",
-        "description": "Advance to the next song in the queue.",
-        "operationId": "advance_playlist_api_music_playlist__game_id__advance_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "game_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Game Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/voice-reading/settings": {
       "get": {
         "tags": [
@@ -4879,6 +4310,134 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VoiceReadingJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/voice-reading/progress": {
+      "get": {
+        "tags": [
+          "VoiceReading"
+        ],
+        "summary": "Get Voice Reading Progress",
+        "operationId": "get_voice_reading_progress_api_voice_reading_progress_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "day_index",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Day Index"
+            }
+          },
+          {
+            "name": "text_hash",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Text Hash"
+            }
+          },
+          {
+            "name": "voice_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Voice Id"
+            }
+          },
+          {
+            "name": "speed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 1.0,
+              "title": "Speed"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceReadingProgressResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "VoiceReading"
+        ],
+        "summary": "Update Voice Reading Progress",
+        "operationId": "update_voice_reading_progress_api_voice_reading_progress_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceReadingProgressRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceReadingProgressResponse"
                 }
               }
             }
@@ -6287,246 +5846,6 @@
         ],
         "title": "MessageResponse"
       },
-      "MusicGenerationEnqueueResponse": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "game_id": {
-            "type": "integer",
-            "title": "Game Id"
-          },
-          "insert_policy": {
-            "type": "string",
-            "title": "Insert Policy"
-          }
-        },
-        "type": "object",
-        "required": [
-          "status",
-          "game_id",
-          "insert_policy"
-        ],
-        "title": "MusicGenerationEnqueueResponse",
-        "description": "Accepted background music generation job."
-      },
-      "MusicGenerationRequest": {
-        "properties": {
-          "game_id": {
-            "type": "integer",
-            "title": "Game Id"
-          },
-          "story_text": {
-            "type": "string",
-            "maxLength": 32000,
-            "title": "Story Text"
-          },
-          "analysis": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Analysis"
-          }
-        },
-        "type": "object",
-        "required": [
-          "game_id",
-          "story_text"
-        ],
-        "title": "MusicGenerationRequest",
-        "description": "Request body for story-conditioned generated music."
-      },
-      "MusicGenerationResponse": {
-        "properties": {
-          "track": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Track"
-          },
-          "insert_policy": {
-            "type": "string",
-            "title": "Insert Policy"
-          }
-        },
-        "type": "object",
-        "required": [
-          "track",
-          "insert_policy"
-        ],
-        "title": "MusicGenerationResponse",
-        "description": "Generated music result for frontend queue insertion."
-      },
-      "MusicRecommendationRequest": {
-        "properties": {
-          "story_text": {
-            "type": "string",
-            "maxLength": 32000,
-            "title": "Story Text"
-          },
-          "game_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Game Id"
-          },
-          "refresh": {
-            "type": "boolean",
-            "title": "Refresh",
-            "default": false
-          },
-          "character_settings": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object",
-                "x-maxBytes": 262144
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Character Settings"
-          }
-        },
-        "type": "object",
-        "required": [
-          "story_text"
-        ],
-        "title": "MusicRecommendationRequest",
-        "description": "音乐推荐请求"
-      },
-      "MusicRecommendationResponse": {
-        "properties": {
-          "keywords": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Keywords"
-          },
-          "mood": {
-            "type": "string",
-            "title": "Mood"
-          },
-          "scene_type": {
-            "type": "string",
-            "title": "Scene Type"
-          },
-          "environment": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Environment"
-          },
-          "story_style": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Story Style"
-          },
-          "music_style": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Music Style"
-          },
-          "instruments": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Instruments"
-          },
-          "pacing": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pacing"
-          },
-          "time_weather": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Time Weather"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "music_brief": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Music Brief"
-          },
-          "songs": {
-            "items": {
-              "$ref": "#/components/schemas/SongResponse"
-            },
-            "type": "array",
-            "title": "Songs"
-          }
-        },
-        "type": "object",
-        "required": [
-          "keywords",
-          "mood",
-          "scene_type",
-          "songs"
-        ],
-        "title": "MusicRecommendationResponse",
-        "description": "音乐推荐响应"
-      },
       "NarrativeStyleResponse": {
         "properties": {
           "style_id": {
@@ -6623,70 +5942,6 @@
           "life_vision"
         ],
         "title": "OpeningStoryRequest"
-      },
-      "PlaylistSyncRequest": {
-        "properties": {
-          "current_position_ms": {
-            "type": "integer",
-            "title": "Current Position Ms",
-            "default": 0
-          },
-          "is_playing": {
-            "type": "boolean",
-            "title": "Is Playing",
-            "default": false
-          },
-          "volume": {
-            "type": "number",
-            "title": "Volume",
-            "default": 0.5
-          }
-        },
-        "type": "object",
-        "title": "PlaylistSyncRequest",
-        "description": "Request body for syncing playback state."
-      },
-      "PlaylistUpdateRequest": {
-        "properties": {
-          "songs": {
-            "items": {
-              "$ref": "#/components/schemas/SongResponse"
-            },
-            "type": "array",
-            "title": "Songs"
-          },
-          "mood": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mood"
-          },
-          "keywords": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Keywords"
-          }
-        },
-        "type": "object",
-        "required": [
-          "songs"
-        ],
-        "title": "PlaylistUpdateRequest",
-        "description": "Request body for updating a game playlist with new recommendation songs."
       },
       "PortraitImageGenerationJobResponse": {
         "properties": {
@@ -6827,7 +6082,7 @@
           "source_type": {
             "type": "string",
             "title": "Source Type",
-            "description": "current_story|history_round|summary|ending"
+            "description": "current_story"
           },
           "game_id": {
             "type": "integer",
@@ -6876,6 +6131,28 @@
               }
             ],
             "title": "Attempt Id"
+          },
+          "day_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Index"
+          },
+          "story_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Story Date"
           },
           "text_hash": {
             "type": "string",
@@ -7536,66 +6813,6 @@
         "title": "SavePointListResponse",
         "description": "存档点列表响应"
       },
-      "SongResponse": {
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "string"
-              }
-            ],
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "artists": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Artists"
-          },
-          "album": {
-            "type": "string",
-            "title": "Album"
-          },
-          "duration": {
-            "type": "integer",
-            "title": "Duration"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Url"
-          },
-          "source": {
-            "type": "string",
-            "title": "Source",
-            "default": "netease"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "artists",
-          "album",
-          "duration"
-        ],
-        "title": "SongResponse",
-        "description": "歌曲响应"
-      },
       "StateSnapshotItem": {
         "properties": {
           "state_id": {
@@ -7787,17 +7004,6 @@
             "type": "boolean",
             "title": "Auto Play",
             "default": false
-          },
-          "preferred_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Preferred Provider"
           }
         },
         "type": "object",
@@ -7852,17 +7058,17 @@
           "playback_mode": {
             "type": "string",
             "title": "Playback Mode",
-            "default": "browser_speech"
+            "default": "unavailable"
           },
           "provider": {
             "type": "string",
             "title": "Provider",
-            "default": "browser"
+            "default": "minimax"
           },
           "model": {
             "type": "string",
             "title": "Model",
-            "default": "browser-speech"
+            "default": ""
           },
           "media_type": {
             "anyOf": [
@@ -7890,6 +7096,13 @@
             "type": "string",
             "title": "Message",
             "default": ""
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/VoiceReadingSegmentResponse"
+            },
+            "type": "array",
+            "title": "Segments"
           }
         },
         "type": "object",
@@ -8095,17 +7308,17 @@
           "playback_mode": {
             "type": "string",
             "title": "Playback Mode",
-            "default": "browser_speech"
+            "default": "unavailable"
           },
           "provider": {
             "type": "string",
             "title": "Provider",
-            "default": "browser"
+            "default": "minimax"
           },
           "model": {
             "type": "string",
             "title": "Model",
-            "default": "browser-speech"
+            "default": ""
           },
           "media_type": {
             "anyOf": [
@@ -8133,6 +7346,13 @@
             "type": "string",
             "title": "Message",
             "default": ""
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/VoiceReadingSegmentResponse"
+            },
+            "type": "array",
+            "title": "Segments"
           }
         },
         "type": "object",
@@ -8141,6 +7361,222 @@
           "status"
         ],
         "title": "VoiceReadingJobResponse"
+      },
+      "VoiceReadingProgressRequest": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "day_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Day Index"
+          },
+          "story_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Story Date"
+          },
+          "text_hash": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Text Hash"
+          },
+          "voice_id": {
+            "type": "string",
+            "title": "Voice Id"
+          },
+          "speed": {
+            "type": "number",
+            "maximum": 2.0,
+            "minimum": 0.5,
+            "title": "Speed",
+            "default": 1.0
+          },
+          "paragraph_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Paragraph Index",
+            "default": 0
+          },
+          "position_ms": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Position Ms",
+            "default": 0
+          },
+          "completed": {
+            "type": "boolean",
+            "title": "Completed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "day_index",
+          "text_hash",
+          "voice_id"
+        ],
+        "title": "VoiceReadingProgressRequest"
+      },
+      "VoiceReadingProgressResponse": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "day_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Day Index"
+          },
+          "story_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Story Date"
+          },
+          "text_hash": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Text Hash"
+          },
+          "voice_id": {
+            "type": "string",
+            "title": "Voice Id"
+          },
+          "speed": {
+            "type": "number",
+            "maximum": 2.0,
+            "minimum": 0.5,
+            "title": "Speed",
+            "default": 1.0
+          },
+          "paragraph_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Paragraph Index",
+            "default": 0
+          },
+          "position_ms": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Position Ms",
+            "default": 0
+          },
+          "completed": {
+            "type": "boolean",
+            "title": "Completed",
+            "default": false
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "day_index",
+          "text_hash",
+          "voice_id"
+        ],
+        "title": "VoiceReadingProgressResponse"
+      },
+      "VoiceReadingSegmentResponse": {
+        "properties": {
+          "paragraph_index": {
+            "type": "integer",
+            "title": "Paragraph Index"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "asset_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paragraph_index",
+          "status"
+        ],
+        "title": "VoiceReadingSegmentResponse"
       },
       "VoiceReadingSettingsResponse": {
         "properties": {
@@ -8180,22 +7616,27 @@
           "auto_read_enabled": {
             "type": "boolean",
             "title": "Auto Read Enabled",
-            "default": false
+            "default": true
+          },
+          "selected_speed": {
+            "type": "number",
+            "title": "Selected Speed",
+            "default": 1.0
           },
           "tts_provider": {
             "type": "string",
             "title": "Tts Provider",
-            "default": "browser"
+            "default": "minimax"
           },
           "tts_model": {
             "type": "string",
             "title": "Tts Model",
-            "default": "browser-speech"
+            "default": "speech-02-turbo"
           },
           "tts_provider_available": {
             "type": "boolean",
             "title": "Tts Provider Available",
-            "default": true
+            "default": false
           },
           "backend_audio_enabled": {
             "type": "boolean",
@@ -8205,7 +7646,7 @@
           "playback_mode": {
             "type": "string",
             "title": "Playback Mode",
-            "default": "browser_speech"
+            "default": "unavailable"
           }
         },
         "type": "object",
@@ -8234,6 +7675,19 @@
               }
             ],
             "title": "Auto Read Enabled"
+          },
+          "selected_speed": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.5
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Speed"
           }
         },
         "type": "object",

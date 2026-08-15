@@ -96,13 +96,14 @@ def test_voice_settings_contract_supports_reading_defaults() -> None:
         "selected_voice_color",
         "uploaded_voice_available",
         "auto_read_enabled",
+        "selected_speed",
         "tts_provider",
         "tts_model",
         "tts_provider_available",
         "backend_audio_enabled",
         "playback_mode",
     } <= _fields(VoiceReadingSettingsResponse)
-    assert {"selected_voice_color", "auto_read_enabled"} <= _fields(
+    assert {"selected_voice_color", "auto_read_enabled", "selected_speed"} <= _fields(
         VoiceReadingSettingsUpdateRequest
     )
     assert "voice_reading" in FRONTEND_API
@@ -111,29 +112,22 @@ def test_voice_settings_contract_supports_reading_defaults() -> None:
     assert "requestReading" in FRONTEND_API
 
 
-def test_story_voice_controls_use_browser_speech_for_immediate_text_reading() -> None:
+def test_daily_listener_uses_chapter_audio_without_browser_speech() -> None:
     component = (
-        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
-    ).read_text(encoding="utf-8")
-    store = (
-        ROOT / "frontend" / "src" / "stores" / "useStoryVoiceStore.ts"
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryListeningExperience.tsx"
     ).read_text(encoding="utf-8")
     hash_helper = (
         ROOT / "frontend" / "src" / "lib" / "storyVoiceTextHash.ts"
     ).read_text(encoding="utf-8")
 
-    assert "voice-reading-job" in component
-    assert "voice-reading-audio-url" in component
-    assert "api.voice_reading.requestReading" in store
-    assert "storyVoiceTextToHash" in store
+    assert "api.voice_reading.requestReading" in component
+    assert "api.voice_reading.getProgress" in component
+    assert "api.voice_reading.updateProgress" in component
+    assert "storyVoiceTextToHash" in component
     assert "crypto.subtle.digest" in hash_helper
-    assert "playback_mode === \"audio\"" in store
-    assert "speechSynthesis" in store
-    assert "SpeechSynthesisUtterance" in store
-    assert "voice-reading-mode" in component
-    assert "voice-reading-spoken-length" in component
-    assert "voice-reading-playback-mode" in component
-    assert "voice-reading-speech-text" in component
+    assert "speechSynthesis" not in component
+    assert "SpeechSynthesisUtterance" not in component
+    assert "从第 ${index + 1} 段开始朗读" in component
 
 
 def test_story_voice_reading_routes_are_registered_before_browser_e2e() -> None:
@@ -142,19 +136,17 @@ def test_story_voice_reading_routes_are_registered_before_browser_e2e() -> None:
     assert "/api/voice-reading/settings" in routes
     assert "/api/voice-reading/read" in routes
     assert "/api/voice-reading/jobs/{job_id}" in routes
+    assert "/api/voice-reading/progress" in routes
     assert "/api/voice-reading/upload-consent" in routes
     assert "/api/voice-reading/audio/{file_name}" in routes
 
 
-def test_story_voice_response_does_not_force_wav_for_browser_fallback() -> None:
+def test_story_voice_response_exposes_only_backend_audio_or_unavailable() -> None:
     fields = _fields(StoryVoiceReadingResponse)
-    store = (
-        ROOT / "frontend" / "src" / "stores" / "useStoryVoiceStore.ts"
-    ).read_text(encoding="utf-8")
 
     assert {"playback_mode", "provider", "model", "media_type"} <= fields
-    assert "browser_speech" in FRONTEND_TYPES
-    assert "currentSpeechText" in store
+    assert "browser_speech" not in FRONTEND_TYPES
+    assert 'playback_mode: "audio" | "unavailable"' in FRONTEND_TYPES
 
 
 def test_voice_reading_audio_route_serves_minimax_mp3_assets(tmp_path: Path) -> None:
@@ -177,3 +169,15 @@ def test_voice_reading_audio_route_serves_minimax_mp3_assets(tmp_path: Path) -> 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("audio/mpeg")
     assert response.content.startswith(b"ID3")
+
+
+def test_voice_reading_audio_route_never_synthesizes_local_fixture_in_runtime(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("MINIMAX_E2E_LOCAL_AUDIO", raising=False)
+
+    response = TestClient(app).get(
+        "/api/voice-reading/audio/guessed-hash-warm_female.wav"
+    )
+
+    assert response.status_code == 404

@@ -23,7 +23,6 @@ from src.api.input_limits import (
     compact_json_size_bytes,
 )
 from src.api.main import app
-from src.api.routers.music import MusicGenerationRequest, MusicRecommendationRequest
 from src.api.schemas import (
     AddEntitiesRequest,
     BatchGenerateCharactersRequest,
@@ -289,8 +288,6 @@ def test_legacy_response_models_do_not_reject_or_truncate_saved_text() -> None:
         (RegenerateRoundSceneRequest, "user_prompt", FEEDBACK_MAX_CHARS),
         (GenerateRoundSceneRequest, "story_text", FULL_STORY_MAX_CHARS),
         (GenerateRoundSceneRequest, "player_name", NAME_MAX_CHARS),
-        (MusicRecommendationRequest, "story_text", FULL_STORY_MAX_CHARS),
-        (MusicGenerationRequest, "story_text", FULL_STORY_MAX_CHARS),
     ],
 )
 def test_all_public_text_request_fields_publish_their_limit(
@@ -319,7 +316,6 @@ def test_all_public_text_request_fields_publish_their_limit(
         (RegenerateOpeningIllustrationRequest, "character_settings"),
         (RegenerateRoundSceneRequest, "character_settings"),
         (GenerateRoundSceneRequest, "character_settings"),
-        (MusicRecommendationRequest, "character_settings"),
     ],
 )
 def test_all_character_setting_request_fields_publish_byte_limit(model: type, field: str) -> None:

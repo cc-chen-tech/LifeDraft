@@ -57,18 +57,18 @@
 - 服务：`src/services/image_service.py`  
 - 存储：`src/services/image_storage.py`
 
-## 5) 音乐播放 403 或 URL 很快失效
+## 5) 故事朗读生成失败或不可播放
 
-这是高频现象，优先排查 URL 过期：
+先检查 MiniMax TTS 配置和章节任务状态：
 
-- 播放 URL 不是长期链接，服务端会刷新。  
-- 建议走 `/api/music/stream/{song_id}` 代理播放，不直接打 CDN。
-- 服务端已启用混合缓存池（CachedMusicPool），优先从缓存获取 URL，减少重复分析。
+- `MINIMAX_API_KEY` 是否配置且凭据有效。
+- `GET /api/voice-reading/jobs/{job_id}` 的章节或段落是否为 `failed`。
+- 音频 URL 是否仍通过同域 `/api/voice-reading/audio/*` 访问。
 
 定位入口：
 
-- 路由：`src/api/routers/music.py`  
-- 服务：`src/services/music_service.py`
+- 路由：`src/api/routers/voice_reading.py`
+- 服务：`src/services/story_voice_reading.py`
 
 ## 6) SSE 场景图事件 401
 

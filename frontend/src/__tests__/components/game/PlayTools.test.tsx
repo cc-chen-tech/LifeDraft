@@ -36,7 +36,6 @@ function createProps(overrides: Partial<PlayToolsProps> = {}): PlayToolsProps {
     onOpenRewrite: jest.fn(),
     onOpenSummary: jest.fn(),
     onRegenerate: jest.fn(),
-    onOpenSound: jest.fn(),
     onHome: jest.fn(),
     onConstraintLevelChange: jest.fn(),
     onNarrativeStyleChange: jest.fn(),
@@ -76,7 +75,7 @@ describe("PlayTools", () => {
     expect(within(sheet).getByRole("button", { name: "改写当前故事" })).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "生成人生总结" })).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "重新生成当前故事" })).toBeInTheDocument();
-    expect(within(sheet).getByRole("button", { name: "打开声音" })).toBeInTheDocument();
+    expect(within(sheet).queryByRole("button", { name: "打开声音" })).not.toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "返回首页" })).toBeInTheDocument();
     expect(props.onRequestNarrativeStyles).not.toHaveBeenCalled();
   });
@@ -89,29 +88,6 @@ describe("PlayTools", () => {
     ).getByRole("button", { name: "保存中" });
     expect(save).toBeDisabled();
     expect(save).toHaveAttribute("aria-busy", "true");
-  });
-
-  it("keeps the sound action disabled with a reason until playable context exists", async () => {
-    const user = userEvent.setup();
-    const props = { ...createProps(), soundAvailable: false };
-    render(<PlayTools {...props} />);
-
-    await user.click(screen.getByRole("button", { name: "打开工具" }));
-    const sheet = screen.getByRole("dialog", { name: "游戏工具" });
-    const soundAction = within(sheet).getByRole("button", { name: "打开声音" });
-
-    expect(soundAction).toBeDisabled();
-    expect(soundAction).toHaveAttribute(
-      "aria-describedby",
-      "play-sound-unavailable",
-    );
-    expect(within(sheet).getByText("故事声音准备好后可在这里打开")).toHaveAttribute(
-      "id",
-      "play-sound-unavailable",
-    );
-    await user.click(soundAction);
-    expect(props.onOpenSound).not.toHaveBeenCalled();
-    expect(sheet).toBeInTheDocument();
   });
 
   it("keeps quality, real narrative styles, and scene-image state controlled by props", async () => {
@@ -269,7 +245,6 @@ describe("PlayTools", () => {
       onOpenChat: observe("chat"),
       onOpenRewrite: observe("rewrite"),
       onOpenSummary: observe("summary"),
-      onOpenSound: observe("sound"),
     });
     render(<PlayTools {...props} />);
 
@@ -280,7 +255,6 @@ describe("PlayTools", () => {
       ["打开剧情助手", "chat"],
       ["改写当前故事", "rewrite"],
       ["生成人生总结", "summary"],
-      ["打开声音", "sound"],
     ] as const) {
       await user.click(screen.getByRole("button", { name: "打开工具" }));
       await user.click(
@@ -302,7 +276,6 @@ describe("PlayTools", () => {
     expect(props.onOpenChat).toHaveBeenCalledTimes(1);
     expect(props.onOpenRewrite).toHaveBeenCalledTimes(1);
     expect(props.onOpenSummary).toHaveBeenCalledTimes(1);
-    expect(props.onOpenSound).toHaveBeenCalledTimes(1);
   });
 
   it("closes on busy or history transitions without reopening when they clear", async () => {
@@ -339,7 +312,7 @@ describe("PlayTools", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("layers the modal above the persistent sound control", async () => {
+  it("keeps the modal above the reading surface", async () => {
     const user = userEvent.setup();
     render(<PlayTools {...createProps()} />);
 

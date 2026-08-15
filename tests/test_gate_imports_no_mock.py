@@ -62,17 +62,14 @@ def test_scene_image_and_collection_lazy_import_paths_are_reachable() -> None:
         assert hasattr(module, attr_name), f"{module_name}.{attr_name} is not importable"
 
 
-def test_story_music_recommendation_import_paths_are_reachable() -> None:
+def test_story_voice_chapter_import_paths_are_reachable() -> None:
     imports = [
-        ("src.services.music_service", "MusicBrief"),
-        ("src.services.music_service", "MusicContextBuilder"),
-        ("src.services.music_service", "MusicResultRanker"),
-        ("src.services.music_service", "MusicGenerationJob"),
-        ("src.services.music_service", "MusicProviderPolicy"),
-        ("src.services.music_service", "MusicGenerationCoordinator"),
-        ("src.services.music_playlist_service", "PlaylistQueuePolicy"),
-        ("src.services.music_playlist_service", "MusicPlaylistService"),
-        ("src.database.models", "GeneratedMusicAsset"),
+        ("src.services.story_voice_reading", "StoryVoiceReadingService"),
+        ("src.services.story_voice_reading", "split_story_paragraphs"),
+        ("src.services.story_voice_repository", "StoryVoiceReadingRepository"),
+        ("src.services.minimax_story_tts_provider", "MiniMaxTTSProvider"),
+        ("src.database.models", "VoiceReadingSegment"),
+        ("src.database.models", "VoiceReadingProgress"),
     ]
 
     for module_name, attr_name in imports:
@@ -88,8 +85,7 @@ def test_story_voice_reading_import_paths_are_reachable() -> None:
         ("src.services.story_voice_reading", "ReadingContextValidator"),
         ("src.services.story_voice_reading", "DeterministicTTSProvider"),
         ("src.services.story_tts_provider", "StoryTTSProvider"),
-        ("src.services.story_tts_provider", "BrowserSpeechTTSProvider"),
-        ("src.services.story_tts_provider", "OpenAICompatibleTTSProvider"),
+        ("src.services.story_tts_provider", "UnavailableTTSProvider"),
         ("src.services.story_tts_provider", "build_story_tts_provider"),
         ("src.services.story_voice_repository", "StoryVoiceReadingRepository"),
         ("src.database.models", "VoiceReadingSetting"),
@@ -102,16 +98,12 @@ def test_story_voice_reading_import_paths_are_reachable() -> None:
         assert hasattr(module, attr_name), f"{module_name}.{attr_name} is not importable"
 
 
-def test_minimax_story_audio_generation_import_paths_are_reachable() -> None:
+def test_minimax_story_tts_import_paths_are_reachable() -> None:
     imports = [
         ("src.services.minimax_config", "MiniMaxConfig"),
         ("src.services.minimax_config", "build_minimax_config"),
         ("src.services.minimax_story_tts_provider", "MiniMaxTTSProvider"),
         ("src.services.minimax_story_tts_provider", "MiniMaxWebSocketTTSClient"),
-        ("src.services.minimax_music_generation", "MiniMaxMusicGenerationProvider"),
-        ("src.services.minimax_music_generation", "MiniMaxMusicGenerationRequest"),
-        ("src.services.minimax_music_generation", "StoryMusicGenerationService"),
-        ("src.services.minimax_music_generation", "GeneratedMusicAssetRepository"),
     ]
 
     for module_name, attr_name in imports:

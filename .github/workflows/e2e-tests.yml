@@ -49,12 +49,10 @@ jobs:
           echo "JWT_SECRET=test-secret-for-ci" >> .env
           echo "IMAGE_API_KEY=sk-test-dummy-key-for-ci" >> .env
           echo "IMAGE_API_BASE_URL=https://api.openai.com/v1" >> .env
-          echo "STORY_TTS_PROVIDER=local" >> .env
-          echo "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" >> .env
+          echo "STORY_TTS_PROVIDER=minimax" >> .env
           echo "MINIMAX_API_KEY=test-key" >> .env
           echo "MINIMAX_E2E_LOCAL_AUDIO=1" >> .env
           echo "MINIMAX_E2E_LOCAL_IMAGE=1" >> .env
-          echo "NETEASE_E2E_LOCAL_MUSIC=1" >> .env
 
       - name: Run E2E tests
         run: ./test.sh e2e
