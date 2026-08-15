@@ -730,8 +730,14 @@ class QuickValidator:
                 start = index + len(name)
 
         invented_name_set = set(invented_names)
-        for first_name, second_name, action_start in self._coordinated_name_groups(text):
-            if first_name not in invented_name_set or second_name not in invented_name_set:
+        for actor_names, action_start in self._coordinated_name_groups(text):
+            invented_actors = [
+                name
+                for name in actor_names
+                if name in invented_name_set
+                and not self._is_explicitly_identified_non_person(text, name)
+            ]
+            if len(invented_actors) < 2:
                 continue
             action_tail = text[
                 action_start:
@@ -741,11 +747,7 @@ class QuickValidator:
                 pattern.match(optional_modifiers.sub("", action_tail))
                 for pattern in governance_action_patterns
             ):
-                active_actors.update(
-                    name
-                    for name in (first_name, second_name)
-                    if not self._is_explicitly_identified_non_person(text, name)
-                )
+                active_actors.update(invented_actors)
 
         return len(active_actors) >= 2
 
@@ -762,9 +764,13 @@ class QuickValidator:
             )
         )
 
-    def _coordinated_name_groups(self, text: str) -> List[tuple[str, str, int]]:
+    def _coordinated_name_groups(
+        self,
+        text: str,
+    ) -> List[tuple[tuple[str, ...], int]]:
         """Return coordinated Chinese names and the start of their shared action."""
         surname_class = re.escape(self.COMMON_CHINESE_SURNAMES)
+        name_token = rf"[{surname_class}][\u4e00-\u9fff]{{1,2}}"
         action_starts = "|".join(
             re.escape(prefix)
             for prefix in (
@@ -773,16 +779,18 @@ class QuickValidator:
             )
         )
         pattern = re.compile(
-            rf"([{surname_class}][\u4e00-\u9fff]{{1,2}})"
-            rf"(?:与|和|及)([{surname_class}][\u4e00-\u9fff]{{1,2}})"
+            rf"(?P<names>{name_token}(?:(?:、|与|和|及){name_token})+)"
             rf"(?={action_starts})"
         )
-        return [
-            (match.group(1), match.group(2), match.end())
-            for match in pattern.finditer(text)
-            if self._is_plausible_coordinated_person_name(match.group(1))
-            and self._is_plausible_coordinated_person_name(match.group(2))
-        ]
+        groups: List[tuple[tuple[str, ...], int]] = []
+        for match in pattern.finditer(text):
+            actor_names = tuple(re.split(r"[、与和及]", match.group("names")))
+            if all(
+                self._is_plausible_coordinated_person_name(name)
+                for name in actor_names
+            ):
+                groups.append((actor_names, match.end()))
+        return groups
 
     def _is_plausible_coordinated_person_name(self, candidate: str) -> bool:
         """Reject coordinated governance objects before treating the pair as people."""
@@ -931,8 +939,8 @@ class QuickValidator:
             rf"([{surname_class}][\u4e00-\u9fff]{{1,2}}(?:{role_titles})?)"
         )
         names: List[str] = []
-        for first_name, second_name, _ in self._coordinated_name_groups(text):
-            for raw_candidate in (first_name, second_name):
+        for actor_names, _ in self._coordinated_name_groups(text):
+            for raw_candidate in actor_names:
                 candidate = str(raw_candidate).strip()
                 if not candidate or candidate in allowed_names:
                     continue

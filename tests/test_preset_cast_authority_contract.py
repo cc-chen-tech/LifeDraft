@@ -679,6 +679,26 @@ def test_quick_validator_attributes_joint_action_without_modifier() -> None:
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+def test_quick_validator_attributes_enumerated_shared_action_to_all_actors() -> None:
+    """A delimiter-separated actor list shares the following governance action."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强、方蕾、马涛共同制定方案。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
 def test_quick_validator_ignores_coordinated_governance_common_nouns() -> None:
     """Governance objects shaped like names are not coordinated people."""
     from src.ai.quick_validator import quick_validate_story
