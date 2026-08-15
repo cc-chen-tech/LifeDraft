@@ -2,12 +2,31 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from src.api.deps import create_token
 from src.api.main import app
+from src.api.routers.images import get_session
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _mock_db_session():
+    """让文件端点独立于真实文件 DB 状态（此前依赖其他测试先建表/造 game，属顺序污染）。"""
+    mock_db = MagicMock()
+    mock_game = MagicMock()
+    mock_game.user_id = 1
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_game
+
+    def override_get_session():
+        yield mock_db
+
+    app.dependency_overrides[get_session] = override_get_session
+    yield
+    app.dependency_overrides.pop(get_session, None)
 
 # Create a valid test token for authentication
 TEST_USER_ID = 1
