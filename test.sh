@@ -238,6 +238,14 @@ activate_python_env() {
     fi
 }
 
+run_pytest_with_isolated_database() {
+    ensure_test_dirs
+    "$PROJECT_DIR/scripts/run-with-isolated-test-database.sh" \
+        "$TEST_DATA_DIR/pytest" \
+        python \
+        python -m pytest "$@"
+}
+
 # 打印层级标题
 print_layer_header() {
     local layer_num=$1
@@ -308,7 +316,7 @@ run_preflight() {
     local flake8_code=$?
 
     echo -e "${YELLOW}运行前置 gate 测试...${NC}"
-    python -m pytest \
+    run_pytest_with_isolated_database \
         tests/test_gate_preflight_no_mock.py \
         tests/test_e2e_runtime_isolation_no_mock.py \
         tests/test_e2e_lock_owner_publication_no_mock.py \
@@ -424,7 +432,7 @@ run_mypy() {
     local mypy_code=$?
 
     echo -e "${YELLOW}运行静态 gate 测试...${NC}"
-    python -m pytest tests/test_gate_static_no_mock.py -v
+    run_pytest_with_isolated_database tests/test_gate_static_no_mock.py -v
     local gate_code=$?
 
     local result=0
@@ -444,7 +452,7 @@ run_imports() {
     activate_python_env
     
     echo -e "${YELLOW}运行导入验证测试...${NC}"
-    python -m pytest \
+    run_pytest_with_isolated_database \
         tests/test_imports.py \
         tests/test_gate_imports_no_mock.py \
         tests/test_audio_regeneration_state_imports_no_mock.py \
@@ -468,7 +476,7 @@ run_contract() {
     activate_python_env
     
     echo -e "${YELLOW}运行 API 契约测试...${NC}"
-    python -m pytest \
+    run_pytest_with_isolated_database \
         tests/test_api_contract.py \
         tests/test_input_limits_contract.py \
         tests/test_player_name_in_prompts_contract.py \
@@ -503,20 +511,12 @@ run_contract() {
 # Layer 4: 真实 DB 集成测试
 run_db() {
     print_layer_header "4" "真实 DB 集成测试" "保存→读取链路完整性"
+    ensure_test_dirs
     cd "$PROJECT_DIR"
     activate_python_env
-    
-    echo -e "${YELLOW}初始化真实数据库表结构...${NC}"
-    python -c "from src.database.models import init_db; init_db()"
-    local init_result=$?
-    if [ $init_result -ne 0 ]; then
-        print_layer_result "db" $init_result
-        DB_RESULT=$init_result
-        return $init_result
-    fi
 
-    echo -e "${YELLOW}运行真实数据库集成测试...${NC}"
-    python -m pytest \
+    echo -e "${YELLOW}在独立数据库中初始化并运行真实数据库集成测试...${NC}"
+    run_pytest_with_isolated_database \
         tests/test_integration_real_db.py \
         tests/test_database.py \
         tests/test_gate_real_db_no_mock.py \
@@ -529,6 +529,7 @@ run_db() {
         tests/test_world_fact_safety_db_no_mock.py \
         tests/test_entity_collection_reliability_db_no_mock.py \
         tests/test_realistic_style_alignment_no_mock.py \
+        tests/test_database_runner_isolation_no_mock.py \
         -v
     local result=$?
     
@@ -738,7 +739,7 @@ run_unit() {
     cd "$PROJECT_DIR"
     activate_python_env
     
-    python -m pytest tests/ -m unit -v
+    run_pytest_with_isolated_database tests/ -m unit -v
     local result=$?
     
     if [ $result -eq 0 ]; then
@@ -757,7 +758,7 @@ run_integration() {
     cd "$PROJECT_DIR"
     activate_python_env
     
-    python -m pytest tests/ -m integration -v
+    run_pytest_with_isolated_database tests/ -m integration -v
     local result=$?
     
     if [ $result -eq 0 ]; then
@@ -776,7 +777,7 @@ run_api() {
     cd "$PROJECT_DIR"
     activate_python_env
     
-    python -m pytest tests/ -m api -v
+    run_pytest_with_isolated_database tests/ -m api -v
     local result=$?
     
     if [ $result -eq 0 ]; then
@@ -830,7 +831,7 @@ run_backend() {
     echo -e "${BLUE}========================================${NC}"
     cd "$PROJECT_DIR"
     activate_python_env
-    pytest tests/ -v --tb=short
+    run_pytest_with_isolated_database tests/ -v --tb=short
     local result=$?
     if [ $result -eq 0 ]; then
         echo -e "${GREEN}✓ 后端测试通过${NC}"
