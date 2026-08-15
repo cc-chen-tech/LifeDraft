@@ -103,6 +103,11 @@ function maybeRecoverFromStaleAsset(
   }
 }
 
+let reporterInstalled = false;
+
+let _installedErrorHandler: ((event: ErrorEvent) => void) | null = null;
+let _installedRejectionHandler: ((event: PromiseRejectionEvent) => void) | null = null;
+
 export function installGlobalErrorReporter(options: GlobalErrorReporterOptions = {}): void {
   if (typeof window === 'undefined') return;
 
@@ -111,23 +116,36 @@ export function installGlobalErrorReporter(options: GlobalErrorReporterOptions =
     now: options.now ?? (() => Date.now()),
   };
 
-  window.addEventListener('error', (event) => {
+  // P-修复：重复安装（StrictMode 双挂载等）先移除旧监听器，避免叠加重复上报。
+  if (_installedErrorHandler) {
+    window.removeEventListener('error', _installedErrorHandler);
+  }
+  if (_installedRejectionHandler) {
+    window.removeEventListener('unhandledrejection', _installedRejectionHandler);
+  }
+
+  const errorHandler = (event: ErrorEvent) => {
     if (maybeRecoverFromStaleAsset(event, reporterOptions)) {
       return;
     }
 
     console.error('[Global Error]', event.error);
     // Could send to remote logging service here
-  });
+  };
 
-  window.addEventListener('unhandledrejection', (event) => {
+  const rejectionHandler = (event: PromiseRejectionEvent) => {
     if (maybeRecoverFromStaleAsset(event.reason, reporterOptions)) {
       return;
     }
 
     console.error('[Unhandled Rejection]', event.reason);
     // Could send to remote logging service here
-  });
+  };
+
+  window.addEventListener('error', errorHandler);
+  window.addEventListener('unhandledrejection', rejectionHandler);
+  _installedErrorHandler = errorHandler;
+  _installedRejectionHandler = rejectionHandler;
 }
 
 export function reportError(error: Error, context?: Record<string, unknown>): void {

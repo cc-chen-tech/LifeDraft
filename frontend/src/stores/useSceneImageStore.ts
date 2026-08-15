@@ -117,6 +117,7 @@ interface SceneImageState {
   // Actions — Cache
   clearImageCache: () => void;
   clearCurrentRoundImages: () => void;
+  invalidateSceneImage: (week: number, roundNumber: number, stage: string) => void;
 }
 
 export const useSceneImageStore = create<SceneImageState>()(
@@ -702,6 +703,23 @@ export const useSceneImageStore = create<SceneImageState>()(
       });
       useImageStore.getState().clearCache?.();
       console.log("[clearImageCache] Image cache cleared");
+    },
+
+    invalidateSceneImage: (week, roundNumber, stage) => {
+      // P-修复：单图失败只失效该 (week, round, stage) 的场景，不再清空全部图片缓存。
+      console.log(`[invalidateSceneImage] Invalidating scene week=${week} round=${roundNumber} stage=${stage}`);
+      const matches = (img: RoundSceneImage | null) =>
+        img && img.week === week && img.round_number === roundNumber && img.stage === stage
+          ? null
+          : img;
+      set((state) => ({
+        roundSceneImages: state.roundSceneImages.filter(
+          (img) => !(img.week === week && img.round_number === roundNumber && img.stage === stage)
+        ),
+        currentRoundSceneImage: matches(state.currentRoundSceneImage),
+        eventSceneImage: matches(state.eventSceneImage),
+        resultSceneImage: matches(state.resultSceneImage),
+      }));
     },
 
     clearCurrentRoundImages: () => {
