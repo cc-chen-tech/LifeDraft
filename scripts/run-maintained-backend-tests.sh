@@ -40,7 +40,8 @@ case "$mode" in
     ;;
   coverage)
     python -m pytest "${maintained_tests[@]}" \
-      --cov=src --cov-report="xml:${coverage_xml_path}" --cov-report=term
+      --cov=src --cov-fail-under=34 \
+      --cov-report="xml:${coverage_xml_path}" --cov-report=term
     ;;
   *)
     echo "usage: $0 [test|coverage]" >&2
