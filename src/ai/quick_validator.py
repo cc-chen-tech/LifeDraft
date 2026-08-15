@@ -811,16 +811,15 @@ class QuickValidator:
         """Return coordinated Chinese names and the start of their shared action."""
         surname_class = re.escape(self.COMMON_CHINESE_SURNAMES)
         name_token = rf"[{surname_class}][\u4e00-\u9fff]{{1,2}}"
-        action_starts = "|".join(
-            re.escape(prefix)
-            for prefix in (
-                *self.CHINESE_NAME_ACTION_MODIFIERS,
-                *self.CHINESE_NAME_GOVERNANCE_PREFIXES,
-            )
+        action_modifiers = "|".join(
+            re.escape(prefix) for prefix in self.CHINESE_NAME_ACTION_MODIFIERS
+        )
+        governance_starts = "|".join(
+            re.escape(prefix) for prefix in self.CHINESE_NAME_GOVERNANCE_PREFIXES
         )
         pattern = re.compile(
             rf"(?P<names>{name_token}(?:(?:、|与|和|及){name_token})+)"
-            rf"(?={action_starts})"
+            rf"(?=(?:(?:{action_modifiers}))?(?:{governance_starts}))"
         )
         groups: List[tuple[tuple[str, ...], int]] = []
         for match in pattern.finditer(text):
