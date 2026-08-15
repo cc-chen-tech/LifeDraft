@@ -636,6 +636,49 @@ def test_quick_validator_attributes_joint_action_to_both_outside_actors() -> Non
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+@pytest.mark.parametrize("modifier", ["协同", "联合"])
+def test_quick_validator_attributes_all_supported_joint_modifiers(
+    modifier: str,
+) -> None:
+    """Every modifier accepted by coordinated-name parsing owns the shared action."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            f"赵强与方蕾{modifier}制定方案，马涛批准预算。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_ignores_predicate_after_discourse_marker() -> None:
+    """An omitted-subject predicate after a marker is not a third outside person."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强制定方案，方蕾分配任务，随后安排会议。"
+            "两名临时顾问完成工作后离开。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
 def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
     """Narrative text must not invent names from suffixes such as 元低声."""
     from src.ai.quick_validator import quick_validate_story

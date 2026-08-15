@@ -143,7 +143,7 @@ class QuickValidator:
         "签署",
         "统筹",
     )
-    CHINESE_NAME_CONSUMED_PREFIXES = CHINESE_NAME_GOVERNANCE_PREFIXES + (
+    CHINESE_NAME_ACTION_MODIFIERS = (
         "立即",
         "很快",
         "随后",
@@ -155,6 +155,11 @@ class QuickValidator:
         "一起",
         "分别",
         "亲自",
+        "协同",
+        "联合",
+    )
+    CHINESE_NAME_CONSUMED_PREFIXES = (
+        CHINESE_NAME_GOVERNANCE_PREFIXES + CHINESE_NAME_ACTION_MODIFIERS
     )
     CHINESE_NAME_SINGLE_CHARACTER_MODIFIERS = frozenset("又还则便")
     CHINESE_NON_PERSON_IDENTITY_LABELS = (
@@ -657,9 +662,14 @@ class QuickValidator:
                 r"^统筹(?:了)?[^，。；！？]{0,16}(?:任务|工作|项目|团队)",
             )
         )
-        optional_modifiers = re.compile(
-            r"^(?:(?:立即|很快|随后|独自|主动|开始|最终|共同|一起|分别|又|还|则|便|亲自)){0,2}"
+        action_modifiers = "|".join(
+            re.escape(modifier)
+            for modifier in (
+                *self.CHINESE_NAME_ACTION_MODIFIERS,
+                *self.CHINESE_NAME_SINGLE_CHARACTER_MODIFIERS,
+            )
         )
+        optional_modifiers = re.compile(rf"^(?:(?:{action_modifiers})){{0,2}}")
         active_actors: set[str] = set()
         for name in invented_names:
             if self._is_explicitly_identified_non_person(text, name):
@@ -906,6 +916,8 @@ class QuickValidator:
         )
         for match in marker_pattern.finditer(text):
             candidate = str(match.group(1)).strip()
+            if self._starts_with_governance_action(text, match.start(1)):
+                continue
             if (
                 len(candidate) == 3
                 and candidate[-1] in self.CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES
@@ -928,15 +940,21 @@ class QuickValidator:
                 names.append(candidate)
         for match in pattern.finditer(text):
             candidate_start = match.start()
+            after_discourse_marker = any(
+                text[:candidate_start].endswith(boundary)
+                for boundary in self.CHINESE_NAME_DISCOURSE_BOUNDARIES
+            )
+            if after_discourse_marker and self._starts_with_governance_action(
+                text,
+                candidate_start,
+            ):
+                continue
             # Do not treat a surname-shaped suffix in normal prose as a new
             # person, e.g. "林伯元低声" must not create "元低声".
             if (
                 candidate_start > 0
                 and "\u4e00" <= text[candidate_start - 1] <= "\u9fff"
-                and not any(
-                    text[:candidate_start].endswith(boundary)
-                    for boundary in self.CHINESE_NAME_DISCOURSE_BOUNDARIES
-                )
+                and not after_discourse_marker
             ):
                 continue
             candidate = str(match.group(1)).strip("，。！？、；：“”‘’（）()《》")
@@ -964,6 +982,13 @@ class QuickValidator:
             if candidate not in names:
                 names.append(candidate)
         return names
+
+    def _starts_with_governance_action(self, text: str, start: int) -> bool:
+        """Return True when text at start is an omitted-subject core predicate."""
+        return any(
+            text.startswith(prefix, start)
+            for prefix in self.CHINESE_NAME_GOVERNANCE_PREFIXES
+        )
 
     def _normalize_consumed_name_suffix(
         self,
