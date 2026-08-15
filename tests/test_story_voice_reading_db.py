@@ -609,22 +609,142 @@ def test_lease_heartbeat_prevents_stale_recovery() -> None:
             dedupe_key=f"heartbeat-{uuid4().hex}",
             paragraphs=[str(context["text"])],
         )
-        stale_at = datetime.utcnow() - timedelta(minutes=11)
-        job.status = "processing"
-        job.updated_at = stale_at
         session.commit()
 
-        repository.refresh_processing_lease(job)
+        lease_token = repository.claim_queued_job_for_processing_with_token(
+            int(user.user_id), int(job.job_id)
+        )
+        assert lease_token is not None
+        refreshed_token = repository.commit_processing_changes(
+            int(user.user_id), int(job.job_id), lease_token
+        )
+        assert refreshed_token is not None
         recovered = repository.requeue_stale_processing_job(
-            int(user.user_id), int(job.job_id), now=datetime.utcnow()
+            int(user.user_id), int(job.job_id), now=refreshed_token + timedelta(minutes=9)
         )
 
-        assert job.updated_at is not None and job.updated_at > stale_at
         assert recovered is False
-        assert job.status == "processing"
+        current = session.query(VoiceReadingJob).filter_by(job_id=job.job_id).one()
+        assert current.updated_at == refreshed_token
+        assert current.status == "processing"
     finally:
         session.rollback()
         session.close()
+
+
+def test_replaced_worker_token_cannot_refresh_or_commit_stale_results() -> None:
+    init_db()
+    setup_session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice Fenced Lease",
+        )
+        setup_session.add(user)
+        setup_session.flush()
+        context = {
+            "source_type": "current_story",
+            "game_id": 919,
+            "week": 1,
+            "round_number": 1,
+            "stage": "event",
+            "attempt_id": "fenced-worker",
+            "text_hash": normalize_text_hash("旧 worker 恢复时不得覆盖新的处理租约。"),
+            "text": "旧 worker 恢复时不得覆盖新的处理租约。",
+        }
+        job = StoryVoiceReadingRepository(setup_session).create_chapter_job(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            dedupe_key=f"fenced-{uuid4().hex}",
+            paragraphs=[str(context["text"])],
+        )
+        setup_session.commit()
+        user_id = int(user.user_id)
+        job_id = int(job.job_id)
+    finally:
+        setup_session.close()
+
+    old_session = SessionLocal()
+    try:
+        old_repository = StoryVoiceReadingRepository(old_session)
+        old_token = old_repository.claim_queued_job_for_processing_with_token(user_id, job_id)
+        assert old_token is not None
+        old_job = old_repository.get_job(job_id, user_id)
+        assert old_job is not None
+        old_segment = old_job.segments[0]
+
+        stale_writer = SessionLocal()
+        try:
+            stale_job = stale_writer.query(VoiceReadingJob).filter_by(job_id=job_id).one()
+            stale_job.updated_at = datetime.utcnow() - timedelta(minutes=11)
+            stale_writer.commit()
+        finally:
+            stale_writer.close()
+
+        recovery_session = SessionLocal()
+        try:
+            recovery_repository = StoryVoiceReadingRepository(recovery_session)
+            assert recovery_repository.requeue_stale_processing_job(user_id, job_id)
+            recovery_session.commit()
+        finally:
+            recovery_session.close()
+
+        replacement_session = SessionLocal()
+        try:
+            replacement_token = StoryVoiceReadingRepository(
+                replacement_session
+            ).claim_queued_job_for_processing_with_token(user_id, job_id)
+            assert replacement_token is not None
+        finally:
+            replacement_session.close()
+
+        assert old_repository.commit_processing_changes(user_id, job_id, old_token) is None
+
+        stale_asset = old_repository.create_asset(
+            user_id=user_id,
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            provider="minimax",
+            model="speech-02-turbo",
+            storage_path="/api/voice-reading/audio/stale-worker.wav",
+            duration_ms=1_000,
+            status="ready",
+        )
+        old_segment.asset = stale_asset
+        old_segment.status = "ready"
+        assert (
+            old_repository.commit_processing_changes(
+                user_id,
+                job_id,
+                old_token,
+                primary_asset_id=int(stale_asset.asset_id),
+                terminal_status="ready",
+            )
+            is None
+        )
+    finally:
+        old_session.close()
+
+    observer = SessionLocal()
+    try:
+        current = observer.query(VoiceReadingJob).filter_by(job_id=job_id).one()
+        segment = current.segments[0]
+
+        assert current.status == "processing"
+        assert current.updated_at == replacement_token
+        assert segment.status == "queued"
+        assert (
+            observer.query(GeneratedVoiceAsset)
+            .filter_by(user_id=user_id, text_hash=str(context["text_hash"]))
+            .count()
+            == 0
+        )
+    finally:
+        observer.close()
 
 
 def test_same_round_different_text_hash_does_not_reuse_old_audio() -> None:

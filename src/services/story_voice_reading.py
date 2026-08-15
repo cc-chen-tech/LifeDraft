@@ -230,7 +230,10 @@ class StoryVoiceReadingService:
         if str(job.status) == "ready":
             return self.get_job(user_id, job_id)
 
-        if not self.repository.claim_queued_job_for_processing(user_id, job_id):
+        lease_token = self.repository.claim_queued_job_for_processing_with_token(
+            user_id, job_id
+        )
+        if lease_token is None:
             return self.get_job(user_id, job_id)
         job = self.repository.get_job(job_id, user_id)
         if job is None:
@@ -238,22 +241,31 @@ class StoryVoiceReadingService:
 
         metadata = self.provider.metadata()
         if not metadata.backend_audio_enabled:
-            setattr(job, "status", "failed")
-            setattr(job, "error_code", "tts_provider_unavailable")
-            setattr(
-                job,
-                "error_message",
-                "High-quality narration is temporarily unavailable",
-            )
-            self.repository.db.flush()
+            if (
+                self.repository.commit_processing_changes(
+                    user_id,
+                    job_id,
+                    lease_token,
+                    terminal_status="failed",
+                    error_code="tts_provider_unavailable",
+                    error_message="High-quality narration is temporarily unavailable",
+                )
+                is None
+            ):
+                return self.get_job(user_id, job_id)
             return self.get_job(user_id, job_id)
 
+        primary_asset_assigned = job.asset_id is not None
         for segment in job.segments:
             if str(segment.status) == "ready":
                 continue
             segment.status = "processing"
-            self.repository.refresh_processing_lease(job)
-            self.repository.db.commit()
+            next_token = self.repository.commit_processing_changes(
+                user_id, job_id, lease_token
+            )
+            if next_token is None:
+                return self.get_job(user_id, job_id)
+            lease_token = next_token
             segment_context = dict(job.context_json)
             segment_context["text"] = str(segment.text_content)
             segment_context["text_hash"] = str(segment.text_hash)
@@ -297,30 +309,49 @@ class StoryVoiceReadingService:
                 segment.status = "ready"
                 segment.error_code = None
                 segment.error_message = None
-                if job.asset_id is None:
-                    job.asset = ready_asset
                 # Make each ready paragraph visible immediately so the client can
                 # begin playback while later paragraphs continue generating.
-                self.repository.refresh_processing_lease(job)
-                self.repository.db.commit()
+                primary_asset_id = (
+                    int(ready_asset.asset_id) if not primary_asset_assigned else None
+                )
+                next_token = self.repository.commit_processing_changes(
+                    user_id,
+                    job_id,
+                    lease_token,
+                    primary_asset_id=primary_asset_id,
+                )
+                if next_token is None:
+                    return self.get_job(user_id, job_id)
+                lease_token = next_token
+                primary_asset_assigned = True
             except Exception as error:
                 segment.status = "failed"
                 segment.error_code = "tts_generation_failed"
                 segment.error_message = str(error)
-                setattr(job, "status", "failed")
-                setattr(job, "error_code", "tts_generation_failed")
-                setattr(
-                    job,
-                    "error_message",
-                    "High-quality narration could not be generated",
-                )
-                self.repository.db.commit()
+                if (
+                    self.repository.commit_processing_changes(
+                        user_id,
+                        job_id,
+                        lease_token,
+                        terminal_status="failed",
+                        error_code="tts_generation_failed",
+                        error_message="High-quality narration could not be generated",
+                    )
+                    is None
+                ):
+                    return self.get_job(user_id, job_id)
                 return self.get_job(user_id, job_id)
 
-        setattr(job, "status", "ready")
-        setattr(job, "error_code", None)
-        setattr(job, "error_message", None)
-        self.repository.db.commit()
+        if (
+            self.repository.commit_processing_changes(
+                user_id,
+                job_id,
+                lease_token,
+                terminal_status="ready",
+            )
+            is None
+        ):
+            return self.get_job(user_id, job_id)
         return self.get_job(user_id, job_id)
 
     def _is_valid_cached_asset(self, asset: Any) -> bool:

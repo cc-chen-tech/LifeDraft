@@ -186,6 +186,12 @@ class StoryVoiceReadingRepository:
 
     def claim_queued_job_for_processing(self, user_id: int, job_id: int) -> bool:
         """Atomically transition a queued job to processing for one worker."""
+        return self.claim_queued_job_for_processing_with_token(user_id, job_id) is not None
+
+    def claim_queued_job_for_processing_with_token(
+        self, user_id: int, job_id: int
+    ) -> Optional[datetime]:
+        """Claim a queued job and return its committed lease fencing token."""
         now = datetime.utcnow()
         claimed = (
             self.db.query(VoiceReadingJob)
@@ -203,7 +209,11 @@ class StoryVoiceReadingRepository:
             )
         )
         self.db.commit()
-        return claimed == 1
+        if claimed != 1:
+            return None
+        self.db.expire_all()
+        job = self.get_job(job_id, user_id)
+        return job.updated_at if job is not None else None
 
     def requeue_stale_processing_job(
         self,
@@ -239,15 +249,47 @@ class StoryVoiceReadingRepository:
         self.db.flush()
         return recovered == 1
 
-    def refresh_processing_lease(
+    def commit_processing_changes(
         self,
-        job: VoiceReadingJob,
+        user_id: int,
+        job_id: int,
+        lease_token: datetime,
         *,
-        now: Optional[datetime] = None,
-    ) -> None:
-        """Advance a claimed worker's lease at a safe processing boundary."""
-        job.updated_at = now or datetime.utcnow()
-        self.db.flush()
+        primary_asset_id: Optional[int] = None,
+        terminal_status: Optional[str] = None,
+        error_code: Optional[str] = None,
+        error_message: Optional[str] = None,
+    ) -> Optional[datetime]:
+        """Commit pending worker changes only while its exact lease token is current."""
+        try:
+            self.db.flush()
+            updates: Dict[Any, Any] = {VoiceReadingJob.updated_at: datetime.utcnow()}
+            if primary_asset_id is not None:
+                updates[VoiceReadingJob.asset_id] = primary_asset_id
+            if terminal_status is not None:
+                updates[VoiceReadingJob.status] = terminal_status
+                updates[VoiceReadingJob.error_code] = error_code
+                updates[VoiceReadingJob.error_message] = error_message
+            committed = (
+                self.db.query(VoiceReadingJob)
+                .filter(
+                    VoiceReadingJob.job_id == job_id,
+                    VoiceReadingJob.user_id == user_id,
+                    VoiceReadingJob.status == "processing",
+                    VoiceReadingJob.updated_at == lease_token,
+                )
+                .update(updates, synchronize_session=False)
+            )
+            if committed != 1:
+                self.db.rollback()
+                return None
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        self.db.expire_all()
+        job = self.get_job(job_id, user_id)
+        return job.updated_at if job is not None else None
 
     def invalidate_asset(self, asset: GeneratedVoiceAsset, reason: str) -> None:
         """Retain an unusable v2 asset record but prevent further reuse."""
