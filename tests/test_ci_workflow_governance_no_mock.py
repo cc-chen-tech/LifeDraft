@@ -202,7 +202,7 @@ def test_deployment_required_workflows_match_active_workflows() -> None:
     }.issubset(required_names)
 
 
-def test_pr_quick_gate_precedes_playwright_in_e2e_job() -> None:
+def test_pr_quick_gate_precedes_e2e_environment_and_playwright() -> None:
     workflow = _load_workflow(E2E_WORKFLOW)
     jobs = workflow["jobs"]
     assert isinstance(jobs, dict)
@@ -217,11 +217,12 @@ def test_pr_quick_gate_precedes_playwright_in_e2e_job() -> None:
     }
 
     quick_index, quick_step = named_steps["Run PR quick gate"]
+    env_index, _ = named_steps["Create .env file"]
     browser_index, _ = named_steps["Install Playwright browsers"]
     e2e_index, _ = named_steps["Run E2E tests"]
     assert quick_step["run"] == "./test.sh quick"
     assert quick_step["if"] == "github.event_name == 'pull_request'"
-    assert quick_index < browser_index < e2e_index
+    assert quick_index < env_index < browser_index < e2e_index
 
 
 def test_every_non_deploy_workflow_cancels_only_obsolete_pr_runs() -> None:

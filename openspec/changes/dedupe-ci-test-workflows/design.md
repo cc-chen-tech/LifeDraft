@@ -28,7 +28,7 @@ The production deployment workflow polls a hard-coded list of workflow names for
 
 ### Gate PR E2E before installing browsers
 
-The E2E job already owns the Python and Node dependency environment needed by quick. A pull-request-only step will run `./test.sh quick` after dependencies and test environment setup but before Playwright browser installation. Main pushes skip the extra step to avoid extending the deployment critical path.
+The E2E job already owns the Python and Node dependency environment needed by quick. A pull-request-only step will run `./test.sh quick` after dependencies but before creating the browser-E2E `.env` or installing Playwright. Keeping the browser-specific feature flags out of the general gate prevents those flags from changing maintained-suite semantics. Main pushes skip the extra step to avoid extending the deployment critical path.
 
 ### Assign frontend coverage to Frontend Tests
 

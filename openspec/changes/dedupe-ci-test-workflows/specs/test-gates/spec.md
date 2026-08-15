@@ -13,7 +13,7 @@ The repository SHALL expose `./test.sh quick` and SHALL run it before browser in
 
 #### Scenario: Pull-request E2E starts
 - **WHEN** the E2E workflow runs for a pull request
-- **THEN** it MUST execute `./test.sh quick` in the same job and dependency environment before installing or running Playwright
+- **THEN** it MUST execute `./test.sh quick` in the same job and dependency environment before creating the browser-E2E `.env` or installing or running Playwright
 
 #### Scenario: Main E2E starts
 - **WHEN** the E2E workflow runs for a push to main
