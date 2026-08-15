@@ -12,8 +12,14 @@ type AudioDiagnostic = {
   observedAtMs: number;
 };
 
+type AudioRouteRequest = {
+  path: string;
+  observedAtMs: number;
+};
+
 type AudioFixture = {
   audioRequests: string[];
+  audioRouteRequests: AudioRouteRequest[];
   rangeRequests: string[];
   choiceRequests: number;
   diagnostics: AudioDiagnostic[];
@@ -73,7 +79,11 @@ function parseRange(range: string | undefined, byteLength: number): { start: num
 async function fulfillRangeAudio(route: Route, wav: Buffer, fixture: AudioFixture, shouldFail: boolean): Promise<void> {
   const request = route.request();
   const range = request.headers().range;
-  fixture.audioRequests.push(new URL(request.url()).pathname);
+  const path = new URL(request.url()).pathname;
+  fixture.audioRequests.push(path);
+  // Browser diagnostic Date.now() and this test-process Date.now() use the
+  // same local host's Unix wall-clock epoch, so their deltas are comparable.
+  fixture.audioRouteRequests.push({ path, observedAtMs: Date.now() });
   if (range) fixture.rangeRequests.push(range);
 
   if (shouldFail) {
@@ -113,7 +123,13 @@ function observeAudioDiagnostics(page: Page, fixture: AudioFixture): void {
 }
 
 async function installFixture(page: Page, options: FixtureOptions = {}): Promise<AudioFixture> {
-  const fixture: AudioFixture = { audioRequests: [], rangeRequests: [], choiceRequests: 0, diagnostics: [] };
+  const fixture: AudioFixture = {
+    audioRequests: [],
+    audioRouteRequests: [],
+    rangeRequests: [],
+    choiceRequests: 0,
+    diagnostics: [],
+  };
   observeAudioDiagnostics(page, fixture);
   const wav = createPlayableWav();
   let failNextAudioRequest = options.failFirstAudioRequest === true;
@@ -243,11 +259,27 @@ async function expectRealPlayback(page: Page): Promise<void> {
   ).toBe(true);
 }
 
-async function expectErrorWatchdogArmed(fixture: AudioFixture): Promise<void> {
+function routeRequestsForPath(fixture: AudioFixture, path: string): AudioRouteRequest[] {
+  return fixture.audioRouteRequests.filter((request) => request.path === path);
+}
+
+async function expectErrorWatchdogArmed(
+  fixture: AudioFixture,
+  paragraphIndex: number,
+  path: string,
+): Promise<AudioDiagnostic> {
   await expect.poll(
-    () => fixture.diagnostics.some((diagnostic) => diagnostic.mediaState === 'error'),
+    () => fixture.diagnostics.some((diagnostic) => (
+      diagnostic.mediaState === 'error'
+      && diagnostic.paragraphIndex === paragraphIndex
+    )) && routeRequestsForPath(fixture, path).length === 1,
     { timeout: 5_000 },
   ).toBe(true);
+  const diagnostic = [...fixture.diagnostics]
+    .reverse()
+    .find((entry) => entry.mediaState === 'error' && entry.paragraphIndex === paragraphIndex);
+  if (!diagnostic) throw new Error(`Missing error diagnostic for paragraph ${paragraphIndex}`);
+  return diagnostic;
 }
 
 test.describe('StoryListeningExperience audio transport', () => {
@@ -266,11 +298,14 @@ test.describe('StoryListeningExperience audio transport', () => {
     await page.goto(`/play?gameId=${GAME_ID}`);
 
     await expect.poll(() => fixture.audioRequests.length).toBe(1);
-    await expectErrorWatchdogArmed(fixture);
+    const errorDiagnostic = await expectErrorWatchdogArmed(fixture, 0, FIXTURE_AUDIO_PATH);
     await page.waitForTimeout(STALL_WATCHDOG_MS - 500);
     expect(fixture.audioRequests).toEqual([FIXTURE_AUDIO_PATH]);
     await expect.poll(() => fixture.audioRequests.length, { timeout: 5_000 }).toBeGreaterThanOrEqual(2);
     expect(fixture.audioRequests[1]).toBe(FIXTURE_AUDIO_PATH);
+    const secondSourceRequest = routeRequestsForPath(fixture, FIXTURE_AUDIO_PATH)[1];
+    if (!secondSourceRequest) throw new Error('Missing second fixture-0 audio request');
+    expect(secondSourceRequest.observedAtMs - errorDiagnostic.observedAtMs).toBeGreaterThanOrEqual(7_950);
     // A delayed retry may lose the browser's autoplay gesture. The transport
     // recovery is complete once the real source has reloaded; a user click is
     // then the portable way to resume on both configured browser projects.
@@ -294,7 +329,7 @@ test.describe('StoryListeningExperience audio transport', () => {
     await page.goto(`/play?gameId=${GAME_ID}`);
 
     await expect.poll(() => fixture.audioRequests.length).toBe(1);
-    await expectErrorWatchdogArmed(fixture);
+    await expectErrorWatchdogArmed(fixture, 0, FIXTURE_AUDIO_PATH);
     await page.getByRole('button', { name: '拆开信封' }).click();
     await expect.poll(() => fixture.choiceRequests).toBe(1);
     await expect(page.locator('audio')).toHaveCount(0);
