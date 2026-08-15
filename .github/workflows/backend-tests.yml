@@ -42,12 +42,7 @@ jobs:
 
       - name: Run maintained backend gates
         run: |
-          python -m mypy \
-            src/ai/text_quality.py \
-            src/services/music_service.py \
-            src/services/music_playlist_service.py \
-            src/database/models.py \
-            --strict
+          ./test.sh mypy
           ./scripts/run-maintained-backend-tests.sh test
         env:
           PYTHONPATH: ${{ github.workspace }}

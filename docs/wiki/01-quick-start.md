@@ -8,7 +8,7 @@
 
 - 后端：FastAPI（`src/api`）+ 游戏核心（`src/game`）+ AI 生成（`src/ai`）+ 数据持久化（`src/database`）
 - 前端：Next.js App Router（`frontend/src/app`），通过同域 API 代理访问后端
-- 额外服务：网易云音乐 API（`netease-music-api`，可选）
+- 故事朗读：MiniMax 高质量 TTS（正文与剧情选择不依赖朗读服务可用性）
 
 ## 本地启动（推荐）
 
@@ -30,7 +30,6 @@
 
 - 前端：`3000`
 - 后端：`8000`
-- 音乐服务：`3001`
 
 ## 手动启动
 

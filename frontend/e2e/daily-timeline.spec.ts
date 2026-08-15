@@ -59,6 +59,11 @@ test('daily choice settles once and automatically opens the next calendar day', 
   let choiceCalls = 0;
   let narrationCalls = 0;
   let musicCalls = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/music/')) {
+      musicCalls += 1;
+    }
+  });
 
   const timeline = () => ({
     version: 2,
@@ -205,10 +210,6 @@ test('daily choice settles once and automatically opens the next calendar day', 
         })),
       }),
     });
-  });
-  await page.route('**/api/music/**', async (route) => {
-    musicCalls += 1;
-    await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
   });
   await page.addInitScript(() => {
     const playback = { play: 0, pause: 0 };
