@@ -469,7 +469,7 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
 
             options_event = ai_generator.generate_options_only(
                 story_description=story_description,
-                player_state=player_state.to_dict(),
+                player_state=player_state.to_prompt_context(),
                 character_settings=player_state.character_settings,
                 language=game_loop.language,
             )

@@ -263,6 +263,34 @@ class PlayerDataMixin:
             data["continuity_ledger"] = ContinuityLedger(ledger).to_dict()
         return data  # type: ignore[no-any-return]
 
+    def to_prompt_context(
+        self,
+        recent_rounds: int = 3,
+        recent_decisions: int = 30,
+    ) -> Dict[str, Any]:
+        """P2-性能优化：为 AI 生成 prompt 提供字段投影。
+
+        与 to_dict() 的区别：
+        - round_history / decision_history 只保留最近 N 条（生成只消费近期上下文，
+          decision_history 仅用于过用短语提取与上一事件定位）；
+        - 排除与 prompt 无关的无界历史（story_history / 各类 summary /
+          情绪弧线 / 新颖度等）。持久化与 HTTP 响应仍使用 to_dict()。
+        """
+        data = self.to_dict()
+        data["round_history"] = (data.get("round_history") or [])[-recent_rounds:]
+        data["decision_history"] = (data.get("decision_history") or [])[-recent_decisions:]
+        for key in (
+            "story_history",
+            "four_week_summaries",
+            "yearly_summaries",
+            "weekly_summaries",
+            "emotional_arc_history",
+            "novelty_scores",
+            "world_breathing_events",
+        ):
+            data.pop(key, None)
+        return data
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PlayerDataMixin":
         """Create state from dictionary."""
