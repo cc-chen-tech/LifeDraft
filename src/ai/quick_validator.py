@@ -130,7 +130,9 @@ class QuickValidator:
         "此时",
         "紧接着",
     )
-    CHINESE_NAME_CLAUSE_BOUNDARY_CHARS = frozenset("，。；！？：,.;!?:\n\r")
+    CHINESE_NAME_CLAUSE_BOUNDARY_CHARS = frozenset(
+        "，。；！？：,.;!?:\n\r“‘「『（([{【《〈\"'"
+    )
     CHINESE_NAME_GOVERNANCE_PREFIXES = (
         "制定",
         "分配",
@@ -847,15 +849,9 @@ class QuickValidator:
             for non_person in self.NON_PERSON_NAME_CANDIDATES
         ):
             return False
-        # Coordination delimiters are parsed between complete name tokens, so
-        # 和/与/及 inside a token belong to the given name (for example 马和平).
-        # Keep rejecting other grammatical particles that make a broad match
-        # implausible as a person name.
-        non_conjunction_particles = self.CHINESE_NAME_GRAMMATICAL_PARTICLES - set(
-            "和与及"
-        )
-        if any(char in non_conjunction_particles for char in candidate):
-            return False
+        # Coordination delimiters are parsed between complete name tokens.
+        # Characters that can be grammatical particles therefore still belong
+        # to the given name here (for example 马和平 or 陈可欣).
         return not (
             len(candidate) == 3
             and candidate[-1] in self.CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES
