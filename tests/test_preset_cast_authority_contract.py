@@ -742,6 +742,29 @@ def test_quick_validator_detects_three_coordinated_actors_with_conjunctions_in_n
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+@pytest.mark.parametrize("given_name", ["陈可欣", "陈向东", "王在田"])
+def test_quick_validator_preserves_particle_shaped_characters_inside_given_names(
+    given_name: str,
+) -> None:
+    """Internal characters that can also be particles remain part of a name token."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            f"{given_name}、赵强、方蕾共同制定方案。"
+            "接下来的项目完全按照这三名临时顾问的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
 def test_quick_validator_ignores_coordinated_governance_common_nouns() -> None:
     """Governance objects shaped like names are not coordinated people."""
     from src.ai.quick_validator import quick_validate_story
@@ -814,6 +837,34 @@ def test_quick_validator_ignores_predicate_after_clause_punctuation(
         story_text=(
             "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
             f"赵强制定方案，方蕾分配任务{separator}安排会议。"
+            "两名临时顾问完成工作后离开。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+@pytest.mark.parametrize(
+    ("opening", "closing"),
+    [("“", "”"), ("「", "」"), ("（", "）")],
+)
+def test_quick_validator_ignores_predicate_after_opening_delimiter(
+    opening: str,
+    closing: str,
+) -> None:
+    """An opening quote or parenthesis also starts an omitted-subject clause."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强制定方案，方蕾分配任务。"
+            f"陈晓雨补充：{opening}安排会议{closing}。"
             "两名临时顾问完成工作后离开。"
         ),
         character_settings=settings,
