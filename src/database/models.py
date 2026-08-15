@@ -10,6 +10,8 @@ from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
 
 from config.settings import settings
 
+VOICE_ASSET_VERSION = 2
+
 
 class Base(DeclarativeBase):
     pass
@@ -399,6 +401,7 @@ class GeneratedVoiceAsset(Base):
     model = Column(String(120), nullable=False)
     storage_path = Column(String(500), nullable=False)
     duration_ms = Column(Integer, nullable=False)
+    asset_version = Column(Integer, default=VOICE_ASSET_VERSION, nullable=False)
     status = Column(String(30), nullable=False, index=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -430,6 +433,7 @@ class VoiceReadingJob(Base):
     text_hash = Column(String(128), nullable=False, index=True)
     voice_id = Column(String(80), nullable=False)
     speed = Column(Float, default=1.0, nullable=False)
+    asset_version = Column(Integer, default=VOICE_ASSET_VERSION, nullable=False)
     status = Column(String(30), nullable=False, index=True)
     error_code = Column(String(80), nullable=True)
     error_message = Column(Text, nullable=True)
@@ -637,7 +641,6 @@ else:
 
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
-
 def init_db() -> None:
     """Initialize database tables and performance indexes."""
     Base.metadata.create_all(engine, checkfirst=True)
@@ -675,6 +678,10 @@ def _ensure_legacy_columns() -> None:
         },
         "voice_reading_jobs": {
             "dedupe_key": "VARCHAR(128)",
+            "asset_version": "INTEGER DEFAULT 1 NOT NULL",
+        },
+        "generated_voice_assets": {
+            "asset_version": "INTEGER DEFAULT 1 NOT NULL",
         },
     }
 

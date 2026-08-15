@@ -17,6 +17,7 @@ from src.api.schemas import (
     VoiceReadingSegmentResponse,
     VoiceReadingSettingsResponse,
 )
+from src.database.models import VOICE_ASSET_VERSION
 from src.services.minimax_config import build_minimax_config
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 from src.services.story_tts_provider import (
@@ -177,6 +178,7 @@ class StoryVoiceReadingService:
                     str(request.speed),
                     provider_metadata.provider,
                     provider_metadata.model,
+                    f"asset-v{VOICE_ASSET_VERSION}",
                 ]
             )
         )

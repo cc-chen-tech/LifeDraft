@@ -3,6 +3,9 @@
 from uuid import uuid4
 import wave
 
+from sqlalchemy import create_engine, inspect, text
+
+from src.database import models as database_models
 from src.database.models import (
     GeneratedVoiceAsset,
     SessionLocal,
@@ -24,6 +27,35 @@ from src.services.story_tts_provider import (
     UnavailableTTSProvider,
 )
 from src.api.schemas import StoryVoiceReadingRequest
+
+
+def test_asset_version_schema_migration_is_additive_and_idempotent(tmp_path, monkeypatch) -> None:
+    migration_engine = create_engine(f"sqlite:///{tmp_path / 'legacy-voice.db'}")
+    with migration_engine.begin() as connection:
+        connection.execute(text("CREATE TABLE generated_voice_assets (asset_id INTEGER PRIMARY KEY)"))
+        connection.execute(text("CREATE TABLE voice_reading_jobs (job_id INTEGER PRIMARY KEY)"))
+
+    monkeypatch.setattr(database_models, "engine", migration_engine)
+    database_models._ensure_legacy_columns()
+    database_models._ensure_legacy_columns()
+
+    inspector = inspect(migration_engine)
+    asset_columns = {column["name"] for column in inspector.get_columns("generated_voice_assets")}
+    job_columns = {column["name"] for column in inspector.get_columns("voice_reading_jobs")}
+    with migration_engine.begin() as connection:
+        connection.execute(text("INSERT INTO generated_voice_assets (asset_id) VALUES (1)"))
+        connection.execute(text("INSERT INTO voice_reading_jobs (job_id) VALUES (1)"))
+        asset_version = connection.execute(
+            text("SELECT asset_version FROM generated_voice_assets WHERE asset_id = 1")
+        ).scalar_one()
+        job_version = connection.execute(
+            text("SELECT asset_version FROM voice_reading_jobs WHERE job_id = 1")
+        ).scalar_one()
+
+    assert "asset_version" in asset_columns
+    assert "asset_version" in job_columns
+    assert asset_version == 1
+    assert job_version == 1
 
 
 def test_voice_settings_save_read_chain_uses_real_database() -> None:
@@ -137,6 +169,140 @@ def test_voice_job_and_asset_reuse_by_text_hash_uses_real_database() -> None:
         assert loaded_job.asset_id == asset.asset_id
         assert loaded_job.context_json["game_id"] == 101
         assert loaded_job.context_json["stage"] == "event"
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_v1_voice_assets_are_retained_but_excluded_from_v2_reuse() -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice Cache Version",
+        )
+        session.add(user)
+        session.flush()
+        repository = StoryVoiceReadingRepository(session)
+        context = {
+            "source_type": "current_story",
+            "game_id": 911,
+            "week": 1,
+            "round_number": 1,
+            "stage": "event",
+            "attempt_id": "legacy-v1",
+            "text_hash": "v1-cache-key",
+            "text": "保留旧资产但不能复用。",
+        }
+        legacy_asset = GeneratedVoiceAsset(
+            user_id=int(user.user_id),
+            source_type="current_story",
+            context_json=context,
+            text_hash="v1-cache-key",
+            voice_id="warm_female",
+            speed=1.0,
+            provider="minimax",
+            model="speech-02-turbo",
+            storage_path="/api/voice-reading/audio/legacy-v1.mp3",
+            duration_ms=800,
+            status="ready",
+            asset_version=1,
+        )
+        session.add(legacy_asset)
+        session.flush()
+
+        fresh_asset = repository.create_asset(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            provider="minimax",
+            model="speech-02-turbo",
+            storage_path="/api/voice-reading/audio/fresh-v2.mp3",
+            duration_ms=800,
+            status="ready",
+        )
+
+        reusable = repository.find_ready_asset(
+            "v1-cache-key",
+            "warm_female",
+            1.0,
+            provider="minimax",
+            model="speech-02-turbo",
+            user_id=int(user.user_id),
+        )
+
+        assert legacy_asset.asset_version == 1
+        assert fresh_asset.asset_version == 2
+        assert reusable is not None
+        assert reusable.asset_id == fresh_asset.asset_id
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_v2_request_deduplication_isolated_from_legacy_jobs() -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice Job Cache Version",
+        )
+        session.add(user)
+        session.flush()
+        context = {
+            "source_type": "current_story",
+            "game_id": 912,
+            "week": 1,
+            "round_number": 1,
+            "stage": "event",
+            "attempt_id": "legacy-v1-job",
+            "text_hash": normalize_text_hash("旧任务不得阻断 v2 音频生成。"),
+            "text": "旧任务不得阻断 v2 音频生成。",
+        }
+        legacy_dedupe_key = normalize_text_hash(
+            ":".join(
+                [
+                    str(user.user_id),
+                    str(context["text_hash"]),
+                    "warm_female",
+                    "1.0",
+                    "local",
+                    "deterministic-v1",
+                ]
+            )
+        )
+        legacy_job = VoiceReadingJob(
+            user_id=int(user.user_id),
+            context_json=context,
+            text_hash=str(context["text_hash"]),
+            voice_id="warm_female",
+            speed=1.0,
+            asset_version=1,
+            status="ready",
+            dedupe_key=legacy_dedupe_key,
+        )
+        session.add(legacy_job)
+        session.flush()
+
+        response = StoryVoiceReadingService(
+            StoryVoiceReadingRepository(session), provider=DeterministicTTSProvider()
+        ).request_reading(
+            int(user.user_id),
+            StoryVoiceReadingRequest(
+                context=context,
+                voice_id="warm_female",
+                speed=1.0,
+            ),
+        )
+        created = session.query(VoiceReadingJob).filter_by(job_id=response.job_id).one()
+
+        assert created.job_id != legacy_job.job_id
+        assert created.asset_version == 2
     finally:
         session.rollback()
         session.close()

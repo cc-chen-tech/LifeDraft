@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.database.models import (
     GeneratedVoiceAsset,
+    VOICE_ASSET_VERSION,
     VoiceReadingJob,
     VoiceReadingProgress,
     VoiceReadingSegment,
@@ -65,6 +66,7 @@ class StoryVoiceReadingRepository:
                 GeneratedVoiceAsset.voice_id == voice_id,
                 GeneratedVoiceAsset.speed == speed,
                 GeneratedVoiceAsset.status == "ready",
+                GeneratedVoiceAsset.asset_version == VOICE_ASSET_VERSION,
             )
         )
         if provider is not None:
@@ -98,6 +100,7 @@ class StoryVoiceReadingRepository:
             model=model,
             storage_path=storage_path,
             duration_ms=duration_ms,
+            asset_version=VOICE_ASSET_VERSION,
             status=status,
         )
         self.db.add(asset)
@@ -123,6 +126,7 @@ class StoryVoiceReadingRepository:
             text_hash=str(context["text_hash"]),
             voice_id=voice_id,
             speed=speed,
+            asset_version=VOICE_ASSET_VERSION,
             status=status,
             error_code=error_code,
             error_message=error_message,

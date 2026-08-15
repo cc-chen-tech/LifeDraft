@@ -7,6 +7,7 @@ import json
 import os
 import re
 import tarfile
+import tempfile
 import time
 from io import BytesIO
 from pathlib import Path
@@ -14,7 +15,11 @@ from typing import Any, Dict, Mapping, Optional, cast
 from urllib.parse import urlparse
 
 import httpx
+from mutagen import File as MutagenFile
+from mutagen.mp3 import MP3
+from mutagen.wave import WAVE
 
+from src.database.models import VOICE_ASSET_VERSION
 from src.services.minimax_config import MiniMaxConfig, build_minimax_config
 from src.services.story_tts_provider import (
     GeneratedSpeech,
@@ -259,20 +264,39 @@ class MiniMaxTTSProvider:
         media_type = "audio/wav" if extension == "wav" else "audio/mpeg"
         file_name = (
             f"{_safe_token(text_hash)}-{_safe_token(voice_id)}-"
-            f"{_safe_token(self.provider)}-{_safe_token(self.model)}.{extension}"
+            f"{_safe_token(self.provider)}-{_safe_token(self.model)}-"
+            f"speed-{_normalized_speed_token(speed)}-cache-v{VOICE_ASSET_VERSION}.{extension}"
         )
         self.config.voice_asset_dir.mkdir(parents=True, exist_ok=True)
         output_path = self.config.voice_asset_dir / file_name
-        if not output_path.exists():
-            payload = self.build_async_create_payload(text, voice_id, speed)
+        duration_ms: Optional[int] = None
+        if output_path.exists():
             try:
-                self.client.synthesize_to_file(payload, output_path)
+                duration_ms = _validated_audio_duration_ms(output_path, extension)
+            except Exception:
+                output_path.unlink(missing_ok=True)
+        if duration_ms is None:
+            payload = self.build_async_create_payload(text, voice_id, speed)
+            temporary_path: Optional[Path] = None
+            try:
+                descriptor, temporary_name = tempfile.mkstemp(
+                    dir=self.config.voice_asset_dir,
+                    prefix=f".{file_name}.",
+                    suffix=f".{extension}",
+                )
+                os.close(descriptor)
+                temporary_path = Path(temporary_name)
+                self.client.synthesize_to_file(payload, temporary_path)
+                duration_ms = _validated_audio_duration_ms(temporary_path, extension)
+                os.replace(temporary_path, output_path)
             except Exception as error:
+                if temporary_path is not None:
+                    temporary_path.unlink(missing_ok=True)
                 raise TTSProviderUnavailableError("MiniMax TTS generation failed") from error
 
         return GeneratedSpeech(
             storage_path=f"/api/voice-reading/audio/{file_name}",
-            duration_ms=max(1_000, int(len(text) * 120 / speed)),
+            duration_ms=duration_ms,
             provider=self.provider,
             model=self.model,
             media_type=media_type,
@@ -291,6 +315,27 @@ def _map_voice_id(voice_id: str) -> str:
 def _safe_token(value: str) -> str:
     token = re.sub(r"[^A-Za-z0-9_-]+", "-", value).strip("-_")
     return token or "unknown"
+
+
+def _normalized_speed_token(speed: float) -> str:
+    if speed <= 0:
+        raise ValueError("MiniMax TTS speed must be positive")
+    normalized = format(speed, ".3f").rstrip("0").rstrip(".")
+    return normalized.replace(".", "p")
+
+
+def _validated_audio_duration_ms(audio_path: Path, extension: str) -> int:
+    try:
+        audio = MutagenFile(audio_path)
+        expected_type = MP3 if extension == "mp3" else WAVE
+        if not isinstance(audio, expected_type):
+            raise ValueError(f"expected valid {extension} audio")
+        duration_seconds = getattr(audio.info, "length", None)
+        if duration_seconds is None or duration_seconds <= 0:
+            raise ValueError("audio duration is missing or invalid")
+    except Exception as error:
+        raise RuntimeError("MiniMax TTS generated invalid audio") from error
+    return max(1, round(duration_seconds * 1000))
 
 
 def _json_dumps(payload: Mapping[str, Any]) -> str:
