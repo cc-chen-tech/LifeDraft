@@ -471,6 +471,21 @@ class QuickValidator:
                     ],
                     [],
                 )
+            if (
+                len(key_people_names) >= 3
+                and len(invented_names) >= 3
+                and len(present_key_people) < required_network_count
+                and self._invented_cast_drives_plot(text, invented_names)
+            ):
+                return (
+                    [
+                        "上一版故事预设关键人物使用不足，名单外人物主导剧情"
+                        f"（已使用{len(present_key_people)}/{len(key_people_names)}，"
+                        f"名单外人物：{ '、'.join(invented_names[:5]) }）；"
+                        "请让预设关系网承担方案、任务、决策等主线行动。"
+                    ],
+                    [],
+                )
             if key_people_ratio < 0.5 and len(invented_names) >= 3:
                 return (
                     [
@@ -572,6 +587,61 @@ class QuickValidator:
                     return True
                 start = index + len(name)
         return False
+
+    def _invented_cast_drives_plot(
+        self,
+        text: str,
+        invented_names: List[str],
+    ) -> bool:
+        """Return True when several new names directly perform core plot actions."""
+        plot_action_cues = (
+            "制定",
+            "分配",
+            "批准",
+            "确定",
+            "安排",
+            "拍板",
+            "组织",
+            "带领",
+            "推动",
+            "接手",
+            "负责",
+            "解决",
+            "谈判",
+            "签署",
+            "决定",
+            "提出",
+            "设计",
+            "执行",
+            "统筹",
+        )
+        optional_modifiers = re.compile(
+            r"^(?:(?:立即|很快|随后|独自|主动|开始|最终|又|还|则|便|亲自)){0,2}"
+        )
+        active_names = 0
+        for name in invented_names:
+            start = 0
+            while True:
+                index = text.find(name, start)
+                if index == -1:
+                    break
+                suffix = text[index + len(name): index + len(name) + 16]
+                suffix = optional_modifiers.sub("", suffix)
+                direct_action = any(suffix.startswith(cue) for cue in plot_action_cues)
+                # The broad name recognizer can consume the first character of
+                # a following verb (for example, "方蕾分" + "配"). Rejoin it
+                # only for this subject/action check instead of expanding the
+                # global name heuristic and its false-positive surface.
+                joined_action = any(
+                    name.endswith(cue[0]) and suffix.startswith(cue[1:])
+                    for cue in plot_action_cues
+                )
+                if direct_action or joined_action:
+                    active_names += 1
+                    break
+                start = index + len(name)
+
+        return active_names >= 2
 
     def _extract_required_key_people_names(
         self,

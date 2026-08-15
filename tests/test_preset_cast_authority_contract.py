@@ -349,6 +349,33 @@ def test_quick_validator_warns_for_two_of_three_key_people_with_heuristic_names(
     assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
 
 
+def test_quick_validator_rejects_invented_cast_that_drives_the_plot() -> None:
+    """A majority mention cannot hide three new people doing the core work."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵子豪制定了完整方案，方蕾分配了所有任务，马文涛批准预算并确定上线日期。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
 def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
     """Narrative text must not invent names from suffixes such as 元低声."""
     from src.ai.quick_validator import quick_validate_story
