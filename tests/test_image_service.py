@@ -128,6 +128,30 @@ class TestGenerateSceneImage:
         assert hasattr(service, "generate_round_scene_image")
         assert callable(service.generate_round_scene_image)
 
+    def test_generate_round_scene_image_forwards_daily_identity(self, service):
+        """每日场景的日期身份必须穿过公开门面传给底层服务。"""
+        expected_scene = object()
+        service._scene_service.generate_round_scene_image = MagicMock(
+            return_value=expected_scene
+        )
+
+        result = service.generate_round_scene_image(
+            game_id=7,
+            round_number=3,
+            story_text="林舟在雨后的书铺里拆开信封。",
+            character_settings={"identity": {"name": "林舟"}},
+            player_name="林舟",
+            stage="event",
+            week=0,
+            story_date="2026-08-13",
+            day_index=0,
+        )
+
+        assert result is expected_scene
+        forwarded = service._scene_service.generate_round_scene_image.call_args.kwargs
+        assert forwarded["story_date"] == "2026-08-13"
+        assert forwarded["day_index"] == 0
+
     def test_generate_opening_illustration_exists(self, service):
         """测试开场插画方法存在"""
         assert hasattr(service, "generate_opening_illustration")
