@@ -190,6 +190,15 @@ export interface UseCharacterCreationReturn {
 }
 
 export function useCharacterCreation(): UseCharacterCreationReturn {
+  // P-修复：登记轮询/超时定时器，组件卸载时统一清理（此前 60s 超时前卸载会泄漏）。
+  const pollTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  useEffect(() => {
+    return () => {
+      pollTimersRef.current.forEach((timer) => clearTimeout(timer));
+      pollTimersRef.current = [];
+    };
+  }, []);
+
   const router = useRouter();
   
   const {
@@ -702,6 +711,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         setAutoGenLabel((currentLabel) => currentLabel || "剩余角色背景");
         
         const checkInterval = setInterval(() => {
+          pollTimersRef.current.push(checkInterval as ReturnType<typeof setTimeout>);
           const settings = useGameStore.getState().characterSettings;
           const done = AUTO_ADVANCE_STEPS.every((step) => settings[step] != null);
           if (done) {
@@ -711,7 +721,8 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
           }
         }, 500);
         
-        setTimeout(() => {
+        const pollTimeout = setTimeout(() => {
+          pollTimersRef.current = pollTimersRef.current.filter((t) => t !== pollTimeout);
           clearInterval(checkInterval);
           const settings = useGameStore.getState().characterSettings;
           const stillNotDone = AUTO_ADVANCE_STEPS.filter((step) => settings[step] == null);
@@ -720,6 +731,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
             setAutoGenPhase("done");
           }
         }, 60000);
+        pollTimersRef.current.push(pollTimeout as unknown as ReturnType<typeof setTimeout>);
       } else {
         console.warn("[portrait] Background generation not started, starting now...");
         runAutoGeneration();

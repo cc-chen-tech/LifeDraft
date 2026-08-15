@@ -65,7 +65,8 @@ export function shouldRetryApiResponse(status: number, url: string, attemptIndex
   if (isChoiceMutation(url)) return false;
   if (isImageGenerationMutation(url)) return false;
   if (status === 502 || status === 504) return true;
-  if (status >= 500) return true;
+  // P-修复：只重试可重试的 5xx（500/502/503/504），501 等无意义重试。
+  if (status === 500 || status === 503) return true;
   if (status !== 401) return false;
   return attemptIndex === 0;
 }

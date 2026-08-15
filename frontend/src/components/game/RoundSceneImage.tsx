@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { FormField } from "@/components/story101";
 import type { RoundSceneImage } from "@/stores/useGameStore";
 import { useGameStore } from "@/stores/useGameStore";
+import { useSceneImageStore } from "@/stores/useSceneImageStore";
 
 interface RoundSceneImageProps {
   sceneImage: RoundSceneImage | null;
@@ -43,6 +44,7 @@ export function RoundSceneImageDisplay({
   // ★ 从 store 获取设置和方法
   const enableSceneImage = useGameStore((s) => s.enableSceneImage);
   const clearImageCache = useGameStore((s) => s.clearImageCache);
+  const invalidateSceneImage = useSceneImageStore((s) => s.invalidateSceneImage);
 
   // 当场景变化时重置加载状态（包括重新生成）
   useEffect(() => {
@@ -57,10 +59,14 @@ export function RoundSceneImageDisplay({
     setImageError(true);
     setImageLoaded(true);  // 停止加载动画
     
-    // ★ 如果是第一次失败，尝试清理缓存并重试
+    // ★ 如果是第一次失败，尝试清理该场景缓存并重试（不清空全局图片缓存）
     if (retryCount === 0) {
-      console.log("[RoundSceneImage] Clearing cache and retrying...");
-      clearImageCache();
+      console.log("[RoundSceneImage] Invalidating scene cache and retrying...");
+      invalidateSceneImage(
+        sceneImage?.week ?? 0,
+        sceneImage?.round_number ?? currentRound,
+        sceneImage?.stage ?? "event",
+      );
       setRetryCount(1);
       // 强制刷新图片
       setTimeout(() => {
