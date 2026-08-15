@@ -1,6 +1,7 @@
 """Provider-free contracts for image router local delivery boundaries."""
 
 import json
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -51,7 +52,11 @@ async def test_local_image_file_returns_stored_bytes_with_webp_cache_metadata() 
     image_path.write_bytes(expected_bytes)
 
     try:
-        response = await get_image_file(game_id, image_type, filename, user=1)
+        mock_db = MagicMock()
+        mock_game = MagicMock()
+        mock_game.user_id = 1
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_game
+        response = await get_image_file(game_id, image_type, filename, db=mock_db, user=1)
 
         assert response.body == expected_bytes
         assert response.media_type == "image/webp"
