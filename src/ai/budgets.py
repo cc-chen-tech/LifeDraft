@@ -13,7 +13,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Callable, Iterator, Literal, Optional
+from typing import Callable, Iterator, Literal, Optional, Union
 
 ABSOLUTE_MAX_NARRATIVE_CHARS = 32_000
 
@@ -261,8 +261,8 @@ def resolve_display_budget(
 
 
 def resolve_narrative_budget(
-    kind: NarrativeKind | str,
-    operation: GenerationOperation | str,
+    kind: Union[NarrativeKind, str],
+    operation: Union[GenerationOperation, str],
     quality_level: str,
     language: str,
     *,
@@ -331,11 +331,11 @@ def format_length_requirement(budget: NarrativeBudget) -> str:
 
 
 def resolve_prompt_length_requirement(
-    kind: NarrativeKind | str,
+    kind: Union[NarrativeKind, str],
     quality_level: str,
     language: str,
     *,
-    operation: GenerationOperation | str = GenerationOperation.GENERATE,
+    operation: Union[GenerationOperation, str] = GenerationOperation.GENERATE,
     original_length: Optional[int] = None,
 ) -> str:
     """Resolve prompt wording without duplicating product ranges in templates."""

@@ -7,6 +7,7 @@
 可防止: 图片生成完成但前端收不到通知，或事件格式错误
 """
 
+from typing import Optional
 import json
 import os
 from datetime import datetime, timedelta
@@ -34,7 +35,7 @@ def _auth_headers(user_id: int = 1) -> dict:
 def _create_game(
     game_id: int,
     user_id: int = 1,
-    initial_state: dict | None = None,
+    initial_state: Optional[dict] = None,
 ) -> None:
     init_db()
     db = SessionLocal()

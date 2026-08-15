@@ -1,6 +1,7 @@
 """Retirement contract for the removed friends product surface."""
 
 from pathlib import Path
+from typing import Optional
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,7 +34,7 @@ def test_retired_friend_routes_return_not_found(
     client: TestClient,
     method: str,
     path: str,
-    json: dict[str, object] | None,
+    json: Optional[dict],
 ) -> None:
     response = client.request(method, path, json=json)
 
