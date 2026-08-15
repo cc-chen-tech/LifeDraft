@@ -65,10 +65,10 @@ def build_required_cast_constraints(
         lines.append(f"  [MUST] 本轮必须至少使用1位预设关键人物：{names}至少一位。")
         if len(people) >= 3:
             lines.append(
-                "  [MUST] 如果本轮是多人关系戏或冲突戏，必须让至少80%的预设关系网参与推进，"
+                "  [SHOULD] 如果本轮是多人关系戏或冲突戏，优先让至少80%的预设关系网参与推进，"
                 "不得只点名一两位预设人物后让名单外新人物主导主线。"
             )
-        lines.append("  ⚠️ 不得把这些人物的身份、关系或剧情功能转移给新命名人物。")
+        lines.append("  [MUST] 不得把这些人物的身份、关系或剧情功能转移给新命名人物。")
         lines.append("  ✅ 非关键背景人物只能使用「路人」「陌生人」「同事」等通用称谓。")
         return "\n".join(lines)
 
@@ -84,11 +84,11 @@ def build_required_cast_constraints(
     lines.append(f"  [MUST] Each round must use at least one preset key person: one of {names}.")
     if len(people) >= 3:
         lines.append(
-            "  [MUST] If the round is a multi-person relationship or conflict scene, "
-            "at least 80% of the preset relationship network must drive the scene; "
+            "  [SHOULD] If the round is a multi-person relationship or conflict scene, "
+            "prefer at least 80% of the preset relationship network to drive the scene; "
             "do not merely name one or two preset people while new named characters lead the plot."
         )
-    lines.append("  Do not transfer these identities, relationships, or plot functions to new named people.")
+    lines.append("  [MUST] Do not transfer these identities, relationships, or plot functions to new named people.")
     lines.append("  Generic background people may use labels such as passerby, stranger, or colleague.")
     return "\n".join(lines)
 

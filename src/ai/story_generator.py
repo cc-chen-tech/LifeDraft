@@ -251,6 +251,26 @@ class StoryGenerator:
         return sanitize_persisted_player_name(name)
 
     @staticmethod
+    def _validation_people_names(
+        player_state: Optional[Dict[str, Any]],
+        character_settings: Optional[Dict[str, Any]],
+    ) -> list[str]:
+        """Return the canonical cast plus protagonist for local story validation."""
+        from config.prompts._helpers import _collect_available_people
+
+        names = [
+            str(person.get("name") or "").strip()
+            for person in _collect_available_people(character_settings)
+            if str(person.get("name") or "").strip()
+        ]
+        protagonist_name = resolve_protagonist_name(
+            player_state or {}, character_settings, None
+        )
+        if protagonist_name and protagonist_name not in names:
+            names.append(protagonist_name)
+        return names
+
+    @staticmethod
     def _canonical_story_for_repeat_check(story: str) -> str:
         """Normalize prose for a semantic duplicate check without changing stored text."""
         return re.sub(r"\s+", "", (story or "").replace("\r\n", "\n"))
@@ -510,14 +530,11 @@ class StoryGenerator:
                 logger.debug(f"Story preview (first 200 chars): {story_text[:200]}...")
                 logger.debug(f"Story preview (last 200 chars): ...{story_text[-200:]}")
 
-                from config.prompts._helpers import _collect_available_people
                 from src.ai.quick_validator import quick_validate_story
 
-                available_people_names = [
-                    p.get("name", "")
-                    for p in _collect_available_people(character_settings)
-                    if p.get("name")
-                ]
+                available_people_names = self._validation_people_names(
+                    player_state, character_settings
+                )
                 quick_result = quick_validate_story(
                     story_text=story_text,
                     character_settings=character_settings,
@@ -767,7 +784,6 @@ class StoryGenerator:
             temperature = 0.75  # 允许更多创意
             logger.info(f"Dynamic temperature: {temperature} (new event)")
 
-        from config.prompts._helpers import _collect_available_people
         from src.ai.quick_validator import quick_validate_story
 
         # 最多尝试次数：默认仅保留 QUICK 重试的一次回退；只有启用约束增强时才走 profile 次数重试。
@@ -779,11 +795,9 @@ class StoryGenerator:
             else (self._quality_profile.max_retries + 1 if self._harness_enabled else 1)
         )
 
-        available_people_names = [
-            p.get("name", "")
-            for p in _collect_available_people(character_settings)
-            if p.get("name")
-        ]
+        available_people_names = self._validation_people_names(
+            player_state, character_settings
+        )
         committed_stories = self._committed_round_stories(
             player_state,
             last_round_full_story,
