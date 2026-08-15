@@ -431,6 +431,47 @@ def test_quick_validator_rejects_plot_drivers_after_consumed_modifiers() -> None
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+def test_quick_validator_deduplicates_one_actor_across_consumed_actions() -> None:
+    """One omitted protagonist must not count as three outside plot drivers."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起参加项目会议。"
+            "陈越制定了完整方案，陈越分配了所有任务，陈越批准了项目预算。"
+            "三人确认安排后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+    assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
+
+
+def test_quick_validator_rejects_plot_drivers_after_discourse_markers() -> None:
+    """Discourse markers immediately before outside names are valid boundaries."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "随后赵强制定方案，接着方蕾分配任务，最后马文涛批准预算。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
 def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
     """Narrative text must not invent names from suffixes such as 元低声."""
     from src.ai.quick_validator import quick_validate_story

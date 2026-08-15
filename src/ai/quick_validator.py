@@ -121,6 +121,15 @@ class QuickValidator:
     CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES = frozenset(
         "走脱抬站接翻沉推穿拿刷靠打说合转收坦放问伸"
     )
+    CHINESE_NAME_DISCOURSE_BOUNDARIES = (
+        "随后",
+        "接着",
+        "最后",
+        "然后",
+        "于是",
+        "此时",
+        "紧接着",
+    )
 
     def __init__(self):
         self._forbidden_pattern_zh = self._build_forbidden_pattern("zh")
@@ -613,7 +622,7 @@ class QuickValidator:
         optional_modifiers = re.compile(
             r"^(?:(?:立即|很快|随后|独自|主动|开始|最终|又|还|则|便|亲自)){0,2}"
         )
-        active_names = 0
+        active_actors: set[str] = set()
         for name in invented_names:
             start = 0
             while True:
@@ -621,24 +630,32 @@ class QuickValidator:
                 if index == -1:
                     break
                 suffix = text[index + len(name): index + len(name) + 16]
-                possible_tails = (suffix, name[-1] + suffix)
-                has_governance_action = any(
-                    pattern.match(optional_modifiers.sub("", tail))
-                    for tail in possible_tails
-                    for pattern in governance_action_patterns
-                )
+                possible_actors_and_tails = [(name, suffix)]
+                if len(name) == 3:
+                    possible_actors_and_tails.append((name[:-1], name[-1] + suffix))
                 # Generic operational verbs such as "负责" and "执行" are
                 # deliberately excluded: product labels and module names can
                 # perform those actions too. Rejoining the candidate's final
                 # character compensates for the broad recognizer consuming the
                 # start of either a modifier ("赵强立" + "即制定") or an action
                 # verb ("方蕾分" + "配任务").
-                if has_governance_action:
-                    active_names += 1
+                matched_actor = next(
+                    (
+                        actor
+                        for actor, tail in possible_actors_and_tails
+                        if any(
+                            pattern.match(optional_modifiers.sub("", tail))
+                            for pattern in governance_action_patterns
+                        )
+                    ),
+                    None,
+                )
+                if matched_actor:
+                    active_actors.add(matched_actor)
                     break
                 start = index + len(name)
 
-        return active_names >= 2
+        return len(active_actors) >= 2
 
     def _extract_required_key_people_names(
         self,
@@ -775,7 +792,14 @@ class QuickValidator:
             candidate_start = match.start()
             # Do not treat a surname-shaped suffix in normal prose as a new
             # person, e.g. "林伯元低声" must not create "元低声".
-            if candidate_start > 0 and "\u4e00" <= text[candidate_start - 1] <= "\u9fff":
+            if (
+                candidate_start > 0
+                and "\u4e00" <= text[candidate_start - 1] <= "\u9fff"
+                and not any(
+                    text[:candidate_start].endswith(boundary)
+                    for boundary in self.CHINESE_NAME_DISCOURSE_BOUNDARIES
+                )
+            ):
                 continue
             candidate = str(match.group(1)).strip("，。！？、；：“”‘’（）()《》")
             if not candidate or candidate in allowed_names:
