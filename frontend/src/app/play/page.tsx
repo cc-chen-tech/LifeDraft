@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense, useCallback, useRef } from "react";
+import { useState, useEffect, Suspense, useCallback, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -537,6 +537,21 @@ export default function PlayPage() {
     requestAssistantAction(action);
   }, [closeSoundPanel, requestAssistantAction, setShowHistory, showHistory]);
 
+  // P2-性能优化（前端 Step 1）：为 memo 化的 PlayReadingFrame 提供稳定回调引用，
+  // 流式期间不再因内联箭头函数导致工具栏每 chunk 重渲染。
+  const handleOpenChat = useCallback(
+    () => handleOpenAssistantSurface("chat"),
+    [handleOpenAssistantSurface],
+  );
+  const handleOpenRewrite = useCallback(
+    () => handleOpenAssistantSurface("rewrite"),
+    [handleOpenAssistantSurface],
+  );
+  const handleOpenSummary = useCallback(
+    () => handleOpenAssistantSurface("summary"),
+    [handleOpenAssistantSurface],
+  );
+
   const handleOpenTools = useCallback(() => {
     closeAssistantAndSound();
     setShowCollection(false);
@@ -615,6 +630,69 @@ export default function PlayPage() {
       />
     );
   }
+
+  // P2-性能优化（前端 Step 1）：稳定 toolsProps 引用，配合 memo 化的
+  // PlayReadingFrame，流式期间工具栏/框架不再随每个 story chunk 重渲染。
+  const toolsProps = useMemo(
+    () => ({
+      isSaving,
+      isStoryBusy: shouldRenderGameplayLoading,
+      isViewingHistory,
+      constraintLevel,
+      narrativeStyleId,
+      narrativeStyles: narrativeStyleOptions,
+      narrativeStylesLoading: styleLoading,
+      rewriteDisabled: storyRewriteDisabled,
+      rewriteDisabledReason: storyRewriteDisabledReason,
+      soundAvailable,
+      enableSceneImage,
+      onSave: handleCoordinatedSave,
+      onOpenHistory: handleOpenHistoryPanel,
+      onOpenCollection: handleOpenCollection,
+      onOpenChat: handleOpenChat,
+      onOpenRewrite: handleOpenRewrite,
+      onOpenSummary: handleOpenSummary,
+      onRegenerate: handleCoordinatedRegenerate,
+      onOpenSound: handleOpenSound,
+      onHome: handleHome,
+      onConstraintLevelChange: setConstraintLevel,
+      onNarrativeStyleChange: handleStyleChange,
+      onSceneImageChange: setEnableSceneImage,
+      onRequestNarrativeStyles: loadNarrativeStyles,
+      onOpenTools: handleOpenTools,
+      onToolsOpenChange: setToolsSurfaceOpen,
+      isDailyTimeline,
+    }),
+    [
+      isSaving,
+      shouldRenderGameplayLoading,
+      isViewingHistory,
+      constraintLevel,
+      narrativeStyleId,
+      narrativeStyleOptions,
+      styleLoading,
+      storyRewriteDisabled,
+      storyRewriteDisabledReason,
+      soundAvailable,
+      enableSceneImage,
+      handleCoordinatedSave,
+      handleOpenHistoryPanel,
+      handleOpenCollection,
+      handleOpenChat,
+      handleOpenRewrite,
+      handleOpenSummary,
+      handleCoordinatedRegenerate,
+      handleOpenSound,
+      handleHome,
+      setConstraintLevel,
+      handleStyleChange,
+      setEnableSceneImage,
+      loadNarrativeStyles,
+      handleOpenTools,
+      setToolsSurfaceOpen,
+      isDailyTimeline,
+    ],
+  );
 
   const sceneMedia = isViewingHistory ? (
     currentHistoryRound ? (
@@ -800,35 +878,7 @@ export default function PlayPage() {
         playerState={playerState}
         progress={progress}
         isViewingHistory={isViewingHistory}
-        toolsProps={{
-          isSaving,
-          isStoryBusy: shouldRenderGameplayLoading,
-          isViewingHistory,
-          constraintLevel,
-          narrativeStyleId,
-          narrativeStyles: narrativeStyleOptions,
-          narrativeStylesLoading: styleLoading,
-          rewriteDisabled: storyRewriteDisabled,
-          rewriteDisabledReason: storyRewriteDisabledReason,
-          soundAvailable,
-          enableSceneImage,
-          onSave: handleCoordinatedSave,
-          onOpenHistory: handleOpenHistoryPanel,
-          onOpenCollection: handleOpenCollection,
-          onOpenChat: () => handleOpenAssistantSurface("chat"),
-          onOpenRewrite: () => handleOpenAssistantSurface("rewrite"),
-          onOpenSummary: () => handleOpenAssistantSurface("summary"),
-          onRegenerate: handleCoordinatedRegenerate,
-          onOpenSound: handleOpenSound,
-          onHome: handleHome,
-          onConstraintLevelChange: setConstraintLevel,
-          onNarrativeStyleChange: handleStyleChange,
-          onSceneImageChange: setEnableSceneImage,
-          onRequestNarrativeStyles: loadNarrativeStyles,
-          onOpenTools: handleOpenTools,
-          onToolsOpenChange: setToolsSurfaceOpen,
-          isDailyTimeline,
-        }}
+        toolsProps={toolsProps}
       >
         {!isViewingHistory && dailyDateTitle && (
           <div className="mb-6 text-center">

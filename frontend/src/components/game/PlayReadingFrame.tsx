@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentProps, ReactNode, Ref } from "react";
+import { memo, type ComponentProps, type ReactNode, type Ref } from "react";
 
 import { PageEdgeBookmark, PageTransition, Surface } from "@/components/story101";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,7 @@ export interface PlayReadingFrameProps
 }
 
 /** Shared visual frame for the real play page and its deterministic fixture. */
-export function PlayReadingFrame({
+export const PlayReadingFrame = memo(function PlayReadingFrame({
   className,
   contentRef,
   playerState,
@@ -70,4 +70,4 @@ export function PlayReadingFrame({
       </div>
     </PageTransition>
   );
-}
+});
