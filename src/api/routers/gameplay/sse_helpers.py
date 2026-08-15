@@ -8,11 +8,13 @@ import asyncio
 import copy
 import json
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from threading import RLock
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional
+from weakref import WeakValueDictionary
 
 from config.settings import settings
 from src.api.deps import get_db
@@ -34,6 +36,22 @@ _sse_thread_pool: Optional[ThreadPoolExecutor] = None
 _background_thread_pool: Optional[ThreadPoolExecutor] = None
 _thread_pool_lock = RLock()
 _background_jobs_enabled = True
+
+# P0-并发修复：同一 game 的状态变更入口（事件生成/选择/重生成/改写）此前互不协调，
+# 多个 SSE worker 可能同时改写同一个 player_state/current_event。
+# 用 per-game 锁串行化这些入口；WeakValueDictionary 保证锁随 game 引用消失自动回收。
+_game_state_locks: "WeakValueDictionary[int, threading.Lock]" = WeakValueDictionary()
+_game_state_locks_guard = threading.Lock()
+
+
+def _get_game_state_lock(game_id: int) -> threading.Lock:
+    """Return the per-game lock serializing all state-mutating generation paths."""
+    with _game_state_locks_guard:
+        lock = _game_state_locks.get(game_id)
+        if lock is None:
+            lock = threading.Lock()
+            _game_state_locks[game_id] = lock
+        return lock
 
 
 def invalidate_daily_media_after_event_replacement(game_loop, game_id: int) -> None:
@@ -594,19 +612,20 @@ def build_event_generation_key(game_id: int, game_loop) -> EventGenerationKey:
 def _run_event_generation_operation(operation, game_loop, game_id: int, session) -> None:
     """Run one event generation job independently of all SSE subscribers."""
     try:
-        event = game_loop.generate_round_event(
-            stream_callback=operation.publish_story,
-            status_callback=operation.publish_phase,
-            session=session,
-        )
-        if event is None:
-            raise RuntimeError("No event returned from event generation")
-        _set_generation_resume_view(game_loop, game_id, "options")
-        operation.complete(event)
-        try:
-            _trigger_round_illustration_generation(game_loop, game_id, event, stage="event")
-        except Exception as exc:
-            logger.exception("Failed to trigger round illustration: %s", exc)
+        with _get_game_state_lock(game_id):
+            event = game_loop.generate_round_event(
+                stream_callback=operation.publish_story,
+                status_callback=operation.publish_phase,
+                session=session,
+            )
+            if event is None:
+                raise RuntimeError("No event returned from event generation")
+            _set_generation_resume_view(game_loop, game_id, "options")
+            operation.complete(event)
+            try:
+                _trigger_round_illustration_generation(game_loop, game_id, event, stage="event")
+            except Exception as exc:
+                logger.exception("Failed to trigger round illustration: %s", exc)
     except Exception as exc:
         logger.exception("Event generation operation failed: %s", exc)
         _set_generation_resume_view(game_loop, game_id, "failed", str(exc))
@@ -739,7 +758,7 @@ async def stream_choice(
     result_holder = [None]
     error_holder = [None]
 
-    def run():
+    def _run_locked():
         try:
             if is_custom:
                 result_holder[0] = game_loop.make_custom_choice(
@@ -787,6 +806,12 @@ async def stream_choice(
                     loop.call_soon_threadsafe(q.put_nowait, ("__done__", None))
                 except RuntimeError:
                     pass
+
+    def run():
+        # P0-并发修复：与同 game 的事件生成/重生成/改写串行化，
+        # 防止多个 worker 同时改写 player_state/current_event。
+        with _get_game_state_lock(game_id):
+            _run_locked()
 
     # ---- Reconnection: replay cached chunks if last_event_id provided ----
     if last_event_id is not None and session is not None:
@@ -929,13 +954,15 @@ async def stream_regenerate(
     result_holder = [None]
     error_holder = [None]
 
-    def run():
+    def _run_locked():
         try:
             # ★ 使用完整的 generate_round_event 流程
             # 这确保了一致性校验、关系事件、世界模型等都正常工作
 
             # ★ 重置生成标志位，防止并发检查失败
             # （用户可能在之前生成未完成时点击重新生成）
+            # P0-并发修复：真正的状态写入已由 per-game 锁串行化，
+            # 此重置只影响 RoundEventGenerator 内部的重入防护标志。
             if hasattr(game_loop, "_event_generator_service"):
                 game_loop._event_generator_service._generating = False
                 game_loop._event_generator_service._generating_start_time = None
@@ -1057,6 +1084,11 @@ async def stream_regenerate(
                 logger.warning(
                     f"[stream_regenerate] Skipped sending __done__, closed={closed[0]}, loop_closed={loop.is_closed()}"
                 )
+
+    def run():
+        # P0-并发修复：与同 game 的事件生成/选择/改写串行化。
+        with _get_game_state_lock(game_id):
+            _run_locked()
 
     # Tell client we're starting
     yield make_sse_event("status", {"phase": "regenerating"})
@@ -1191,7 +1223,7 @@ async def stream_rewrite(
         except RuntimeError:
             closed[0] = True
 
-    def run():
+    def _run_locked():
         try:
             # Get story context from recent rounds
             story_context = ""
@@ -1253,6 +1285,11 @@ async def stream_rewrite(
                     loop.call_soon_threadsafe(q.put_nowait, ("__done__", None))
                 except RuntimeError:
                     pass
+
+    def run():
+        # P0-并发修复：与同 game 的事件生成/选择/重生成串行化。
+        with _get_game_state_lock(game_id):
+            _run_locked()
 
     # Tell client we're starting
     yield make_sse_event("status", {"phase": "rewriting"})
