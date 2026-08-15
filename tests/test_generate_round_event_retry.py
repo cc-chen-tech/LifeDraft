@@ -27,6 +27,71 @@ def _make_generator(level: QualityLevel):
     return StoryGenerator(mock_client, quality_level=level), mock_client
 
 
+def _three_person_relationship_settings():
+    return {
+        "era": {
+            "era_description": "2026年现代都市",
+            "world_context": "互联网产品团队核对需求与测试材料。",
+        },
+        "relationships": {
+            "key_people": [
+                {"name": "陆昊然", "role": "导师"},
+                {"name": "陈晓雨", "role": "同事"},
+                {"name": "林一凡", "role": "朋友"},
+            ]
+        },
+    }
+
+
+def test_validation_people_include_protagonist_once():
+    names = StoryGenerator._validation_people_names(
+        player_state={"player_name": "孙悟空"},
+        character_settings={
+            "family": {"family_members": [{"name": "孙悟空", "role": "本人"}]},
+            **_three_person_relationship_settings(),
+        },
+    )
+
+    assert names == ["孙悟空", "陆昊然", "陈晓雨", "林一凡"]
+
+
+def test_round_event_does_not_retry_majority_cast_with_heuristic_object_names():
+    opening = (
+        "陆昊然和陈晓雨同孙悟空核对方案。"
+        "安神香是产品代号，雷火阵是风控模块，云梯果是测试数据集。"
+    )
+    detail = "他们逐页核对需求说明和测试记录，把需要补充的证据写在纸上。"
+    story = opening + detail * 28
+    assert 800 <= len(story) <= 1200
+
+    mock_client = MagicMock()
+    mock_client.call.return_value = story
+    gen = StoryGenerator(mock_client, quality_level=QualityLevel.EXPERT)
+    mock_option_gen = MagicMock()
+    mock_option_gen.generate_options_only.return_value = MagicMock(
+        options=[MagicMock(text="继续核对材料")]
+    )
+    statuses = []
+
+    gen.generate_round_event(
+        player_state={
+            "game_id": 1,
+            "player_name": "孙悟空",
+            "current_week": 1,
+        },
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings=_three_person_relationship_settings(),
+        option_generator=mock_option_gen,
+        status_callback=statuses.append,
+    )
+
+    assert mock_client.call.call_count == 1
+    assert "retry" not in statuses
+    mock_option_gen.generate_options_only.assert_called_once()
+
+
 def test_fast_mode_single_attempt():
     """FAST 模式下 generate_round_event 只尝试 1 次."""
     gen, client = _make_generator(QualityLevel.FAST)
