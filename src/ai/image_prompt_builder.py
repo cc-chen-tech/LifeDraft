@@ -4,9 +4,8 @@
 """
 
 import logging
+import threading
 from typing import Any, Dict, List, Optional, Tuple
-
-import openai
 
 from config.prompts._helpers import _build_image_era_constraints
 from src.ai.harness.era_validator import validate_era_consistency
@@ -322,6 +321,23 @@ class ImagePromptBuilder:
 class DeepSeekPromptEnhancer:
     """使用 DeepSeek 增强 Prompt 的工具类"""
 
+    # P1-修复：按（key/base/model）复用 AIClient，取代每调用新建 openai.OpenAI。
+    # AIClient 提供并发信号量（5）、模型降级、max_tokens 自动降级与统一超时。
+    _clients: Dict[tuple, Any] = {}
+    _clients_lock = threading.Lock()
+
+    @staticmethod
+    def _get_client(api_key: str, base_url: str, model: str) -> Any:
+        key = (api_key or "", base_url or "", model or "")
+        with DeepSeekPromptEnhancer._clients_lock:
+            client = DeepSeekPromptEnhancer._clients.get(key)
+            if client is None:
+                from src.ai.client import AIClient
+
+                client = AIClient(api_key=api_key, model=model, base_url=base_url)
+                DeepSeekPromptEnhancer._clients[key] = client
+            return client
+
     @staticmethod
     def _build_scene_visual_era_constraints(era: str) -> str:
         """Build visual era constraints from the compact era string used by scene analysis."""
@@ -390,18 +406,15 @@ class DeepSeekPromptEnhancer:
 请生成一段适合 AI 绘画的详细人物描述。"""
 
         try:
-            client = openai.OpenAI(api_key=api_key, base_url=base_url)
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+            client = self._get_client(api_key, base_url, model)
+            prompt = client.call(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.8,
                 max_tokens=500,
+                model=model,
             )
 
-            prompt = (response.choices[0].message.content or "").strip()
             logger.debug(f"DeepSeek generated prompt: {prompt[:100]}...")
             return prompt
 
@@ -475,18 +488,15 @@ class DeepSeekPromptEnhancer:
 请选择一个最能展现故事氛围和主角特点的场景，并生成插画指导。"""
 
         try:
-            client = openai.OpenAI(api_key=api_key, base_url=base_url)
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+            client = self._get_client(api_key, base_url, model)
+            result = client.call(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.7,
                 max_tokens=800,
+                model=model,
             )
 
-            result = (response.choices[0].message.content or "").strip()
             logger.info(f"DeepSeek scene analysis: {result[:200]}...")
 
             # 解析结果
@@ -654,18 +664,15 @@ class DeepSeekPromptEnhancer:
 请改写提示词，移除敏感内容，保持视觉表达效果。"""
 
         try:
-            client = openai.OpenAI(api_key=api_key, base_url=base_url)
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+            client = self._get_client(api_key, base_url, model)
+            result = client.call(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.7,
                 max_tokens=800,
+                model=model,
             )
 
-            result = (response.choices[0].message.content or "").strip()
             logger.debug(
                 f"DeepSeek prompt rewrite (api_error={bool(api_error_message)}): {result[:200]}..."
             )
@@ -795,19 +802,16 @@ class DeepSeekPromptEnhancer:
 """
 
         try:
-            client = openai.OpenAI(api_key=api_key, base_url=base_url)
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+            client = self._get_client(api_key, base_url, model)
+            result = client.call(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.7,
                 max_tokens=1500,
+                model=model,
                 response_format={"type": "json_object"},
             )
 
-            result = (response.choices[0].message.content or "").strip()
             logger.info(f"Generated appearance anchor for {name}")
             logger.debug(f"Anchor content: {result[:300]}...")
 
