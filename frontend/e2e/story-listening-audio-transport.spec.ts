@@ -2,11 +2,21 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 const GAME_ID = 880101;
 const AUDIO_DURATION_SECONDS = 12;
+const STALL_WATCHDOG_MS = 8_000;
+const FIXTURE_AUDIO_PATH = '/api/voice-reading/audio/fixture-0.wav';
+
+type AudioDiagnostic = {
+  paragraphIndex: number;
+  mediaState: string;
+  currentTimeMs: number;
+  observedAtMs: number;
+};
 
 type AudioFixture = {
   audioRequests: string[];
   rangeRequests: string[];
   choiceRequests: number;
+  diagnostics: AudioDiagnostic[];
 };
 
 type FixtureOptions = {
@@ -92,8 +102,19 @@ async function fulfillRangeAudio(route: Route, wav: Buffer, fixture: AudioFixtur
   });
 }
 
+function observeAudioDiagnostics(page: Page, fixture: AudioFixture): void {
+  page.on('console', async (message) => {
+    if (message.type() !== 'info' || message.args().length < 2) return;
+    const [label, diagnostic] = message.args();
+    if (await label.jsonValue() !== '[StoryListeningExperience] audio') return;
+    const value = await diagnostic.jsonValue() as AudioDiagnostic;
+    if (typeof value.mediaState === 'string') fixture.diagnostics.push(value);
+  });
+}
+
 async function installFixture(page: Page, options: FixtureOptions = {}): Promise<AudioFixture> {
-  const fixture: AudioFixture = { audioRequests: [], rangeRequests: [], choiceRequests: 0 };
+  const fixture: AudioFixture = { audioRequests: [], rangeRequests: [], choiceRequests: 0, diagnostics: [] };
+  observeAudioDiagnostics(page, fixture);
   const wav = createPlayableWav();
   let failNextAudioRequest = options.failFirstAudioRequest === true;
   const story = [
@@ -222,6 +243,13 @@ async function expectRealPlayback(page: Page): Promise<void> {
   ).toBe(true);
 }
 
+async function expectErrorWatchdogArmed(fixture: AudioFixture): Promise<void> {
+  await expect.poll(
+    () => fixture.diagnostics.some((diagnostic) => diagnostic.mediaState === 'error'),
+    { timeout: 5_000 },
+  ).toBe(true);
+}
+
 test.describe('StoryListeningExperience audio transport', () => {
   test('autoplays generated WAV audio through the Range-aware fixture', async ({ page }) => {
     const fixture = await installFixture(page);
@@ -238,7 +266,11 @@ test.describe('StoryListeningExperience audio transport', () => {
     await page.goto(`/play?gameId=${GAME_ID}`);
 
     await expect.poll(() => fixture.audioRequests.length).toBe(1);
-    await expect.poll(() => fixture.audioRequests.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
+    await expectErrorWatchdogArmed(fixture);
+    await page.waitForTimeout(STALL_WATCHDOG_MS - 500);
+    expect(fixture.audioRequests).toEqual([FIXTURE_AUDIO_PATH]);
+    await expect.poll(() => fixture.audioRequests.length, { timeout: 5_000 }).toBeGreaterThanOrEqual(2);
+    expect(fixture.audioRequests[1]).toBe(FIXTURE_AUDIO_PATH);
     // A delayed retry may lose the browser's autoplay gesture. The transport
     // recovery is complete once the real source has reloaded; a user click is
     // then the portable way to resume on both configured browser projects.
@@ -262,9 +294,12 @@ test.describe('StoryListeningExperience audio transport', () => {
     await page.goto(`/play?gameId=${GAME_ID}`);
 
     await expect.poll(() => fixture.audioRequests.length).toBe(1);
+    await expectErrorWatchdogArmed(fixture);
     await page.getByRole('button', { name: '拆开信封' }).click();
     await expect.poll(() => fixture.choiceRequests).toBe(1);
-    await page.waitForTimeout(8_500);
-    expect(fixture.audioRequests).toHaveLength(1);
+    await expect(page.locator('audio')).toHaveCount(0);
+    await page.waitForTimeout(STALL_WATCHDOG_MS + 500);
+    expect(fixture.audioRequests).toEqual([FIXTURE_AUDIO_PATH]);
+    expect(fixture.diagnostics.some((diagnostic) => diagnostic.mediaState === 'automatic_recovery')).toBe(false);
   });
 });
