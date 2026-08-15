@@ -230,11 +230,12 @@ class StoryVoiceReadingService:
         if str(job.status) == "ready":
             return self.get_job(user_id, job_id)
 
-        lease_token = self.repository.claim_queued_job_for_processing_with_token(
+        claimed_lease_token = self.repository.claim_queued_job_for_processing_with_token(
             user_id, job_id
         )
-        if lease_token is None:
+        if claimed_lease_token is None:
             return self.get_job(user_id, job_id)
+        lease_token = claimed_lease_token
         job = self.repository.get_job(job_id, user_id)
         if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
@@ -285,8 +286,22 @@ class StoryVoiceReadingService:
                 ready_asset = None
             try:
                 if ready_asset is None:
+                    def refresh_processing_lease() -> None:
+                        nonlocal lease_token
+                        next_lease_token = self.repository.commit_processing_changes(
+                            user_id,
+                            job_id,
+                            lease_token,
+                        )
+                        if next_lease_token is None:
+                            raise RuntimeError("voice reading processing lease was replaced")
+                        lease_token = next_lease_token
+
                     speech = self.provider.synthesize(
-                        segment_context, str(job.voice_id), float(job.speed)
+                        segment_context,
+                        str(job.voice_id),
+                        float(job.speed),
+                        on_progress=refresh_processing_lease,
                     )
                     if (
                         speech.playback_mode != "audio"

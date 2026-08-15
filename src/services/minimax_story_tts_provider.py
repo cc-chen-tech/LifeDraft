@@ -24,6 +24,7 @@ from src.database.models import VOICE_ASSET_VERSION
 from src.services.minimax_config import MiniMaxConfig, build_minimax_config
 from src.services.story_tts_provider import (
     GeneratedSpeech,
+    ProgressCallback,
     StoryTTSProviderMetadata,
     TTSProviderUnavailableError,
     build_deterministic_wav,
@@ -40,12 +41,14 @@ class MiniMaxWebSocketTTSClient:
         self,
         payload: Mapping[str, Any],
         output_path: Path,
+        on_progress: Optional[ProgressCallback] = None,
     ) -> None:
         """Write synthesized audio to `output_path`.
 
         The real network implementation is intentionally isolated here so provider
         contracts and DB tests can exercise all higher layers without credentials.
         """
+        _report_progress(on_progress)
         if os.getenv("MINIMAX_E2E_LOCAL_AUDIO", "0") == "1":
             text = str(payload.get("text") or "minimax-local-audio")
             text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -71,6 +74,7 @@ class MiniMaxWebSocketTTSClient:
         if not audio_chunks:
             raise RuntimeError("MiniMax WebSocket synthesis returned no audio")
         output_path.write_bytes(b"".join(audio_chunks))
+        _report_progress(on_progress)
 
 
 class MiniMaxAsyncTTSClient:
@@ -83,14 +87,18 @@ class MiniMaxAsyncTTSClient:
         self,
         payload: Mapping[str, Any],
         output_path: Path,
+        on_progress: Optional[ProgressCallback] = None,
     ) -> None:
+        _report_progress(on_progress)
         if self.config.local_audio_enabled:
             text = str(payload.get("text") or "minimax-local-audio")
             text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
             output_path.write_bytes(build_deterministic_wav(text_hash, "warm_female"))
+            _report_progress(on_progress)
             return
 
         create_response = self._post_json(self.config.tts_async_create_url, payload)
+        _report_progress(on_progress)
         _raise_for_base_resp(create_response)
         task_id = create_response.get("task_id")
         if task_id is None:
@@ -113,7 +121,9 @@ class MiniMaxAsyncTTSClient:
                     self.config.tts_async_query_url,
                     {"task_id": str(task_id)},
                 )
+                _report_progress(on_progress)
             except httpx.HTTPStatusError as exc:
+                _report_progress(on_progress)
                 if 400 <= exc.response.status_code < 500 and exc.response.status_code != 429:
                     raise
                 # 429/5xx：瞬时错误，继续轮询直到 deadline
@@ -140,7 +150,8 @@ class MiniMaxAsyncTTSClient:
 
         if file_id is None:
             raise RuntimeError("MiniMax async TTS query response did not include file_id")
-        output_path.write_bytes(self._download_file(file_id))
+        output_path.write_bytes(self._download_file(file_id, on_progress=on_progress))
+        _report_progress(on_progress)
 
     def _post_json(self, url: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         _ensure_http_url(url)
@@ -167,7 +178,12 @@ class MiniMaxAsyncTTSClient:
         response.raise_for_status()
         return cast(Mapping[str, Any], response.json())
 
-    def _download_file(self, file_id: Any) -> bytes:
+    def _download_file(
+        self,
+        file_id: Any,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> bytes:
+        _report_progress(on_progress)
         _ensure_http_url(self.config.file_retrieve_url)
         response = httpx.get(
             self.config.file_retrieve_url,
@@ -176,15 +192,18 @@ class MiniMaxAsyncTTSClient:
             timeout=self.config.request_timeout_seconds,
         )
         response.raise_for_status()
+        _report_progress(on_progress)
         download_url = _extract_file_download_url(response)
         if download_url is not None:
             _ensure_http_url(download_url)
+            _report_progress(on_progress)
             audio_response = httpx.get(
                 download_url,
                 headers={"Authorization": f"Bearer {self.config.api_key or ''}"},
                 timeout=self.config.request_timeout_seconds,
             )
             audio_response.raise_for_status()
+            _report_progress(on_progress)
             return _extract_audio_file_bytes(
                 audio_response.content,
                 audio_response.headers.get("content-type", ""),
@@ -253,7 +272,13 @@ class MiniMaxTTSProvider:
         payload.pop("language_boost", None)
         return payload
 
-    def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
+    def synthesize(
+        self,
+        context: Dict[str, Any],
+        voice_id: str,
+        speed: float,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> GeneratedSpeech:
         if not self.config.api_key and not self.config.local_audio_enabled:
             raise TTSProviderUnavailableError("MiniMax TTS is not configured")
 
@@ -287,7 +312,11 @@ class MiniMaxTTSProvider:
                 )
                 os.close(descriptor)
                 temporary_path = Path(temporary_name)
-                self.client.synthesize_to_file(payload, temporary_path)
+                self.client.synthesize_to_file(
+                    payload,
+                    temporary_path,
+                    on_progress=on_progress,
+                )
                 duration_ms = _validated_audio_duration_ms(temporary_path, extension)
                 os.replace(temporary_path, output_path)
             except Exception as error:
@@ -319,6 +348,11 @@ class MiniMaxTTSProvider:
         except (OSError, RuntimeError, ValueError):
             return False
         return True
+
+
+def _report_progress(on_progress: Optional[ProgressCallback]) -> None:
+    if on_progress is not None:
+        on_progress()
 
 
 def _map_voice_id(voice_id: str) -> str:

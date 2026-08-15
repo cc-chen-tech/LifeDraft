@@ -452,7 +452,7 @@ def test_processing_job_loser_exits_without_synthesizing() -> None:
                 backend_audio_enabled=True,
             )
 
-        def synthesize(self, context, voice_id, speed):
+        def synthesize(self, context, voice_id, speed, on_progress=None):
             raise AssertionError("a losing worker must not synthesize")
 
     init_db()
@@ -627,6 +627,83 @@ def test_lease_heartbeat_prevents_stale_recovery() -> None:
         current = session.query(VoiceReadingJob).filter_by(job_id=job.job_id).one()
         assert current.updated_at == refreshed_token
         assert current.status == "processing"
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_process_job_refreshes_lease_during_provider_synthesis() -> None:
+    class HeartbeatObservingProvider(DeterministicTTSProvider):
+        job_id = None
+        user_id = None
+        refreshed_during_synthesis = False
+
+        def synthesize(self, context, voice_id, speed, on_progress=None):
+            assert on_progress is not None
+            assert self.job_id is not None
+            assert self.user_id is not None
+            observer = SessionLocal()
+            try:
+                before = (
+                    observer.query(VoiceReadingJob)
+                    .filter_by(job_id=self.job_id, user_id=self.user_id)
+                    .one()
+                    .updated_at
+                )
+                on_progress()
+                observer.expire_all()
+                after = (
+                    observer.query(VoiceReadingJob)
+                    .filter_by(job_id=self.job_id, user_id=self.user_id)
+                    .one()
+                    .updated_at
+                )
+                self.refreshed_during_synthesis = after > before
+            finally:
+                observer.close()
+            return super().synthesize(context, voice_id, speed, on_progress=on_progress)
+
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice In-flight Heartbeat",
+        )
+        session.add(user)
+        session.flush()
+        user_id = int(user.user_id)
+        provider = HeartbeatObservingProvider()
+        service = StoryVoiceReadingService(
+            StoryVoiceReadingRepository(session), provider=provider
+        )
+        text_value = "单段生成期间必须持续刷新任务租约。"
+        request = StoryVoiceReadingRequest.model_validate(
+            {
+                "voice_id": "warm_female",
+                "speed": 1.0,
+                "context": {
+                    "source_type": "current_story",
+                    "game_id": 920,
+                    "week": 1,
+                    "round_number": 1,
+                    "stage": "event",
+                    "attempt_id": "inflight-heartbeat",
+                    "text_hash": normalize_text_hash(text_value),
+                    "text": text_value,
+                },
+            }
+        )
+        queued = service.request_reading(user_id, request)
+        session.commit()
+        provider.job_id = queued.job_id
+        provider.user_id = user_id
+
+        completed = service.process_job(user_id, queued.job_id)
+
+        assert completed.status == "ready"
+        assert provider.refreshed_during_synthesis is True
     finally:
         session.rollback()
         session.close()
@@ -962,7 +1039,7 @@ def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
                 backend_audio_enabled=True,
             )
 
-        def synthesize(self, context, voice_id, speed) -> GeneratedSpeech:
+        def synthesize(self, context, voice_id, speed, on_progress=None) -> GeneratedSpeech:
             raise AssertionError("cached mp3 asset should be reused without synthesis")
 
     init_db()

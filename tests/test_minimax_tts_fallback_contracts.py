@@ -57,7 +57,14 @@ def test_local_audio_is_validated_measured_and_atomically_published(tmp_path: Pa
         def __init__(self) -> None:
             self.output_paths: list[Path] = []
 
-        def synthesize_to_file(self, payload: dict[str, object], output_path: Path) -> None:
+        def synthesize_to_file(
+            self,
+            payload: dict[str, object],
+            output_path: Path,
+            on_progress=None,
+        ) -> None:
+            if on_progress is not None:
+                on_progress()
             self.output_paths.append(output_path)
             with wave.open(str(output_path), "wb") as audio:
                 audio.setnchannels(1)
@@ -104,7 +111,14 @@ def test_close_accepted_speeds_use_distinct_v2_cache_tokens(tmp_path: Path) -> N
 
 def test_invalid_minimax_mp3_is_rejected_and_temporary_file_is_removed(tmp_path: Path) -> None:
     class InvalidMp3Client:
-        def synthesize_to_file(self, payload: dict[str, object], output_path: Path) -> None:
+        def synthesize_to_file(
+            self,
+            payload: dict[str, object],
+            output_path: Path,
+            on_progress=None,
+        ) -> None:
+            if on_progress is not None:
+                on_progress()
             output_path.write_bytes(b"not an mp3")
 
     provider = MiniMaxTTSProvider(

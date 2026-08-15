@@ -10,11 +10,12 @@ import wave
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Protocol
+from typing import Any, Callable, Dict, Literal, Optional, Protocol
 
 from config.settings import PROJECT_ROOT
 
 PlaybackMode = Literal["audio", "unavailable"]
+ProgressCallback = Callable[[], None]
 MIN_DETERMINISTIC_AUDIO_DURATION_SECONDS = 8.0
 
 
@@ -49,7 +50,13 @@ class StoryTTSProvider(Protocol):
     def metadata(self) -> StoryTTSProviderMetadata:
         """Return provider availability and playback behavior."""
 
-    def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
+    def synthesize(
+        self,
+        context: Dict[str, Any],
+        voice_id: str,
+        speed: float,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> GeneratedSpeech:
         """Synthesize or select playback for a reading context."""
 
 
@@ -69,7 +76,13 @@ class UnavailableTTSProvider:
             backend_audio_enabled=False,
         )
 
-    def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
+    def synthesize(
+        self,
+        context: Dict[str, Any],
+        voice_id: str,
+        speed: float,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> GeneratedSpeech:
         raise TTSProviderUnavailableError("High-quality narration is unavailable")
 
 
@@ -89,7 +102,15 @@ class DeterministicTTSProvider:
             backend_audio_enabled=True,
         )
 
-    def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
+    def synthesize(
+        self,
+        context: Dict[str, Any],
+        voice_id: str,
+        speed: float,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> GeneratedSpeech:
+        if on_progress is not None:
+            on_progress()
         text = str(context["text"])
         text_hash = str(context["text_hash"])
         duration = max(
