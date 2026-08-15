@@ -637,8 +637,8 @@ class OptionGenerator:
         if max(total_effects) - min(total_effects) < 5:
             logger.warning("Event options may not present clear trade-offs")
 
+    @staticmethod
     def validate_options_consistency(
-        self,
         event: GameEvent,
         story_description: str,
         available_people: Optional[List[str]] = None,
@@ -760,9 +760,7 @@ class OptionGenerator:
         language: str = "zh",
     ) -> None:
         """Raise when options are too generic or detached from the story."""
-        validator = object.__new__(OptionGenerator)
         issues = OptionGenerator.validate_options_consistency(
-            validator,
             event=event,
             story_description=story_description,
             available_people=available_people,

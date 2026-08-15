@@ -1559,6 +1559,9 @@ class StoryGenerator:
                 f"Skipping duplicate story consistency validation for round={round_key}"
             )
             return story_text
+        # P4-防膨胀：集合跨游戏持续增长，超限时整体重置（去重只需近期轮次）。
+        if len(self._validated_round_keys) > 500:
+            self._validated_round_keys.clear()
         self._validated_round_keys.add(round_key)
 
         try:
