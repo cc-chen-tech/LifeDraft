@@ -7,6 +7,7 @@ import asyncio
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from starlette.types import Message, Receive, Scope, Send
 
 from src.api.deps import get_current_user, get_session
 from src.api.schemas import (
@@ -27,6 +28,23 @@ from src.services.story_voice_reading import StoryVoiceReadingService, build_det
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 
 router = APIRouter()
+
+
+class _StandardRangeFileResponse(FileResponse):
+    """Delegate file transport to Starlette while standardizing its 416 header."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        async def send_with_standard_unsatisfied_range(message: Message) -> None:
+            if message["type"] == "http.response.start" and message["status"] == 416:
+                headers = list(message["headers"])
+                for index, (name, value) in enumerate(headers):
+                    if name.lower() == b"content-range" and value.startswith(b"*/"):
+                        headers[index] = (name, b"bytes " + value)
+                        message = {**message, "headers": headers}
+                        break
+            await send(message)
+
+        await super().__call__(scope, receive, send_with_standard_unsatisfied_range)
 
 
 def get_service(db: Session) -> StoryVoiceReadingService:
@@ -163,7 +181,7 @@ async def get_voice_reading_audio(file_name: str) -> Response:
     generated_audio_path = generated_voice_file_path(file_name)
     if generated_audio_path is not None:
         media_type = "audio/mpeg" if file_name.endswith(".mp3") else "audio/wav"
-        return FileResponse(
+        return _StandardRangeFileResponse(
             path=generated_audio_path,
             media_type=media_type,
             headers={"Cache-Control": "public, max-age=31536000, immutable"},

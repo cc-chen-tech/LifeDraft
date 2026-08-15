@@ -75,7 +75,7 @@ def test_voice_reading_audio_supports_open_ended_range(tmp_path: Path, monkeypat
 
 
 def test_voice_reading_audio_rejects_unsatisfiable_range(tmp_path: Path, monkeypatch) -> None:
-    """A range beyond the asset must receive the standard 416 response."""
+    """Dropping the bytes unit from an unsatisfied Content-Range must fail."""
     _write_minimax_asset(tmp_path)
     monkeypatch.setenv("STORY_TTS_ASSET_DIR", str(tmp_path))
 
@@ -84,7 +84,7 @@ def test_voice_reading_audio_rejects_unsatisfiable_range(tmp_path: Path, monkeyp
     )
 
     assert response.status_code == 416
-    assert response.headers["content-range"] == "*/10"
+    assert response.headers["content-range"] == "bytes */10"
 
 
 def test_voice_reading_audio_honors_if_range(tmp_path: Path, monkeypatch) -> None:

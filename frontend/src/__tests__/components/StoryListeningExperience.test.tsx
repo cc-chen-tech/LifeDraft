@@ -291,12 +291,37 @@ describe("StoryListeningExperience", () => {
     expect(screen.getByLabelText("朗读进度")).toHaveAttribute("max", "10000");
   });
 
+  it("applies a same-paragraph seek immediately and resumes when metadata is already available", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_METADATA,
+    });
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0.5,
+    });
+    fireEvent.canPlay(audio);
+    fireEvent.playing(audio);
+    play.mockClear();
+
+    fireEvent.change(screen.getByLabelText("朗读进度"), { target: { value: "1000" } });
+
+    expect(audio.currentTime).toBe(1);
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
   it("recovers one stalled paragraph after exactly eight seconds, then offers a manual continuation", async () => {
     jest.useFakeTimers();
     renderExperience();
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
 
     const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 10 });
+    fireEvent.loadedMetadata(audio);
     Object.defineProperty(audio, "currentTime", { configurable: true, writable: true, value: 1.75 });
 
     fireEvent.stalled(audio);
@@ -310,7 +335,6 @@ describe("StoryListeningExperience", () => {
     });
     expect(load).toHaveBeenCalledTimes(1);
     expect(play).not.toHaveBeenCalled();
-    Object.defineProperty(audio, "duration", { configurable: true, value: 10 });
     fireEvent.loadedMetadata(audio);
     expect(audio.currentTime).toBe(1.75);
     fireEvent.canPlay(audio);
@@ -329,6 +353,39 @@ describe("StoryListeningExperience", () => {
     expect(audio.currentTime).toBe(1.75);
     fireEvent.canPlay(audio);
     expect(play).toHaveBeenCalledTimes(2);
+    jest.useRealTimers();
+  });
+
+  it("preserves a confirmed resume position across consecutive failures before metadata", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 10 });
+    fireEvent.loadedMetadata(audio);
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 1.75,
+    });
+
+    fireEvent.stalled(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+
+    audio.currentTime = 0;
+    fireEvent.error(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "网络不稳定，继续朗读" }));
+    expect(load).toHaveBeenCalledTimes(2);
+
+    fireEvent.loadedMetadata(audio);
+
+    expect(audio.currentTime).toBe(1.75);
     jest.useRealTimers();
   });
 
@@ -517,10 +574,19 @@ describe("StoryListeningExperience", () => {
     renderExperience();
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
     const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_METADATA,
+    });
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
 
     fireEvent.canPlay(audio);
     fireEvent.change(screen.getByLabelText("朗读进度"), { target: { value: "1000" } });
-    fireEvent.loadedMetadata(audio);
+    expect(audio.currentTime).toBe(1);
     fireEvent.click(screen.getByRole("button", { name: "播放朗读" }));
     expect(play).toHaveBeenCalledTimes(2);
 

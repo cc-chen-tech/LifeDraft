@@ -254,7 +254,10 @@ async function installFixture(page: Page, options: FixtureOptions = {}): Promise
 
 async function expectRealPlayback(page: Page): Promise<void> {
   await expect.poll(
-    () => page.locator('audio').evaluate((audio) => !audio.paused && audio.currentTime > 0.05),
+    () => page.locator('audio').evaluate((element) => {
+      const audio = element as HTMLAudioElement;
+      return !audio.paused && audio.currentTime > 0.05;
+    }),
     { timeout: 15_000 },
   ).toBe(true);
 }

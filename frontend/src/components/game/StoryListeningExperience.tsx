@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -130,7 +131,10 @@ export function StoryListeningExperience({
   const currentSegment = segments.find(
     (segment) => segment.paragraph_index === activeParagraph,
   );
-  activeAudioSourceRef.current = currentSegment?.audio_url ?? null;
+  const activeAudioSource = currentSegment?.audio_url ?? null;
+  useLayoutEffect(() => {
+    activeAudioSourceRef.current = activeAudioSource;
+  }, [activeAudioSource]);
   const readySegments = segments.filter((segment) => segment.audio_url);
   const segmentDuration = (segment: VoiceReadingSegment) =>
     mediaDurations[segment.paragraph_index] ?? segment.duration_ms ?? 0;
@@ -496,6 +500,14 @@ export function StoryListeningExperience({
       const duration = segmentDuration(segment);
       if (remaining <= duration || segment === segments.at(-1)) {
         const wasPlaying = status === "playing";
+        const audio = audioRef.current;
+        const source = segment.audio_url;
+        const canSeekImmediately =
+          audio !== null &&
+          typeof source === "string" &&
+          segment.paragraph_index === activeParagraph &&
+          isCurrentAudio(audio, source) &&
+          audio.readyState >= HTMLMediaElement.HAVE_METADATA;
         cancelActivePlayback();
         setActiveParagraph(segment.paragraph_index);
         setPositionMs(remaining);
@@ -504,6 +516,11 @@ export function StoryListeningExperience({
         finalSegmentEndedRef.current = false;
         setNetworkRetryRequired(false);
         persistProgress(segment.paragraph_index, remaining);
+        if (canSeekImmediately) {
+          audio.currentTime = remaining / 1000;
+          pendingResumePositionRef.current = null;
+          if (wasPlaying) playAudio(audio, source, true);
+        }
         break;
       }
       remaining -= duration;
@@ -555,7 +572,8 @@ export function StoryListeningExperience({
     if (recoveryTimerRef.current !== null) return;
     const paragraphIndex = activeParagraph;
     const playbackGeneration = playbackGenerationRef.current;
-    const resumePositionMs = Math.max(0, audio.currentTime * 1000);
+    const resumePositionMs = pendingResumePositionRef.current
+      ?? Math.max(0, audio.currentTime * 1000);
     recoveryStartPositionMsRef.current = resumePositionMs;
     recoveryTimerRef.current = window.setTimeout(() => {
       recoveryTimerRef.current = null;
@@ -646,7 +664,8 @@ export function StoryListeningExperience({
     playbackGenerationRef.current += 1;
     playRequestRef.current = null;
     playingAudioRef.current = null;
-    pendingResumePositionRef.current = Math.max(0, audio.currentTime * 1000);
+    pendingResumePositionRef.current = pendingResumePositionRef.current
+      ?? Math.max(0, audio.currentTime * 1000);
     autoPlayRequestedRef.current = true;
     setStatus("ready");
     setErrorMessage("");
