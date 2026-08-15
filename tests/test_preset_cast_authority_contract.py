@@ -699,6 +699,29 @@ def test_quick_validator_attributes_enumerated_shared_action_to_all_actors() -> 
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+@pytest.mark.parametrize("modifier", ["一起主动", "共同立即"])
+def test_quick_validator_attributes_double_modified_shared_action_to_all_actors(
+    modifier: str,
+) -> None:
+    """Two action modifiers still lead into the shared governance action."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            f"赵强、方蕾、马涛{modifier}制定方案。"
+            "接下来的项目完全按照这三人的安排执行。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
 def test_quick_validator_preserves_conjunctions_inside_given_names() -> None:
     """Delimiter parsing must operate between complete name-token matches."""
     from src.ai.quick_validator import quick_validate_story

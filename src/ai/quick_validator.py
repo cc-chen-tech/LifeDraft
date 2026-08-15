@@ -819,7 +819,7 @@ class QuickValidator:
         )
         pattern = re.compile(
             rf"(?P<names>{name_token}(?:(?:、|与|和|及){name_token})+)"
-            rf"(?=(?:(?:{action_modifiers}))?(?:{governance_starts}))"
+            rf"(?=(?:(?:{action_modifiers})){{0,2}}(?:{governance_starts}))"
         )
         groups: List[tuple[tuple[str, ...], int]] = []
         for match in pattern.finditer(text):
