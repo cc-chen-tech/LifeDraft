@@ -726,7 +726,8 @@ class QuickValidator:
         )
         return bool(
             re.search(
-                rf"{re.escape(name)}(?:是|为|属于|作为)[^，。；！？]{{0,12}}(?:{labels})",
+                rf"{re.escape(name)}(?:是|为|属于|作为)[^，。；！？]{{0,12}}"
+                rf"(?:{labels})(?=[，。；！？]|$|并|且|而|随后|接着|然后)",
                 text,
             )
         )
@@ -892,6 +893,39 @@ class QuickValidator:
                     continue
                 if candidate not in names:
                     names.append(candidate)
+        discourse_markers = "|".join(
+            re.escape(marker)
+            for marker in sorted(
+                self.CHINESE_NAME_DISCOURSE_BOUNDARIES,
+                key=len,
+                reverse=True,
+            )
+        )
+        marker_pattern = re.compile(
+            rf"(?:{discourse_markers})([{surname_class}][\u4e00-\u9fff]{{1,2}})"
+        )
+        for match in marker_pattern.finditer(text):
+            candidate = str(match.group(1)).strip()
+            if (
+                len(candidate) == 3
+                and candidate[-1] in self.CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES
+            ):
+                continue
+            following_text = text[match.end(): match.end() + 8]
+            candidate = self._normalize_consumed_name_suffix(candidate, following_text)
+            if not candidate or candidate in allowed_names:
+                continue
+            if any(
+                candidate.startswith(non_person)
+                for non_person in self.NON_PERSON_NAME_CANDIDATES
+            ):
+                continue
+            if any(char in self.CHINESE_NAME_GRAMMATICAL_PARTICLES for char in candidate):
+                continue
+            if any(candidate in allowed or allowed in candidate for allowed in allowed_names):
+                continue
+            if candidate not in names:
+                names.append(candidate)
         for match in pattern.finditer(text):
             candidate_start = match.start()
             # Do not treat a surname-shaped suffix in normal prose as a new
@@ -925,25 +959,35 @@ class QuickValidator:
                 continue
             if any(candidate in allowed or allowed in candidate for allowed in allowed_names):
                 continue
-            if len(candidate) == 3:
-                following_text = text[match.end(): match.end() + 8]
-                reconstructed_suffix = candidate[-1] + following_text
-                consumed_prefix = any(
-                    reconstructed_suffix.startswith(prefix)
-                    for prefix in self.CHINESE_NAME_CONSUMED_PREFIXES
-                )
-                single_modifier_before_action = (
-                    candidate[-1] in self.CHINESE_NAME_SINGLE_CHARACTER_MODIFIERS
-                    and any(
-                        following_text.startswith(prefix)
-                        for prefix in self.CHINESE_NAME_GOVERNANCE_PREFIXES
-                    )
-                )
-                if consumed_prefix or single_modifier_before_action:
-                    candidate = candidate[:-1]
+            following_text = text[match.end(): match.end() + 8]
+            candidate = self._normalize_consumed_name_suffix(candidate, following_text)
             if candidate not in names:
                 names.append(candidate)
         return names
+
+    def _normalize_consumed_name_suffix(
+        self,
+        candidate: str,
+        following_text: str,
+    ) -> str:
+        """Restore an action or modifier character consumed by broad name matching."""
+        if len(candidate) != 3:
+            return candidate
+        reconstructed_suffix = candidate[-1] + following_text
+        consumed_prefix = any(
+            reconstructed_suffix.startswith(prefix)
+            for prefix in self.CHINESE_NAME_CONSUMED_PREFIXES
+        )
+        single_modifier_before_action = (
+            candidate[-1] in self.CHINESE_NAME_SINGLE_CHARACTER_MODIFIERS
+            and any(
+                following_text.startswith(prefix)
+                for prefix in self.CHINESE_NAME_GOVERNANCE_PREFIXES
+            )
+        )
+        if consumed_prefix or single_modifier_before_action:
+            return candidate[:-1]
+        return candidate
 
     def _check_perspective_consistency(self, text: str, language: str) -> List[str]:
         """Check that narrative does not use first-person perspective.
