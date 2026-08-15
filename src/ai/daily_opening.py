@@ -148,6 +148,8 @@ def _has_vision_anchor(first: str, vision: str, language: str) -> bool:
         for word in re.findall(r"[A-Za-z][A-Za-z0-9']*", vision)
         if word.casefold() not in ignored
     }
+    if not anchors:
+        return True
     lowered = first.casefold()
     return any(anchor in lowered for anchor in anchors)
 

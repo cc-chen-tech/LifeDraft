@@ -228,6 +228,20 @@ def test_english_first_day_validator_supports_short_ascii_visions() -> None:
         assert validate_daily_first_opening(story, state, settings, "en") == []
 
 
+def test_english_first_day_validator_allows_visions_without_ascii_anchors() -> None:
+    state = _daily_state()
+    state["player_name"] = "Alex"
+    settings = {"name": "Alex"}
+    story = (
+        "Alex still faces a difficult decision before the day can begin.\n\n"
+        "That morning, Alex stood by the shop door and opened the lease."
+    )
+
+    for vision in ("life", "their life", "人生"):
+        state["life_vision"] = vision
+        assert validate_daily_first_opening(story, state, settings, "en") == []
+
+
 def test_daily_validator_rejects_legacy_week_or_chapter_heading_on_later_days() -> None:
     issues = validate_daily_first_opening(
         "第1周·周中 河边仓库\n\n林岚沿着河岸继续调查。",
