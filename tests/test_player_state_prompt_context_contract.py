@@ -1,5 +1,8 @@
 """P2-性能优化：PlayerState.to_prompt_context 字段投影契约。"""
 
+from typing import Any
+
+from src.game.round.event_generator import RoundEventGenerator
 from src.game.state import PlayerState
 
 
@@ -61,3 +64,16 @@ def test_to_dict_remains_complete() -> None:
     assert len(full["decision_history"]) == 40
     assert len(full["story_history"]) == 10
     assert "four_week_summaries" in full
+
+
+def test_round_event_prompt_context_falls_back_for_legacy_state_adapter() -> None:
+    """Old state adapters without the optimization API remain usable."""
+
+    class LegacyState:
+        def to_dict(self) -> dict[str, Any]:
+            return {"player_name": "林岚", "round_history": [{"round": 1}]}
+
+    assert RoundEventGenerator._prompt_context(LegacyState()) == {
+        "player_name": "林岚",
+        "round_history": [{"round": 1}],
+    }

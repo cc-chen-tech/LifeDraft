@@ -107,6 +107,14 @@ class RoundEventGenerator:
         if isinstance(snapshots, list):
             player_state.long_context_snapshots = snapshots
 
+    @staticmethod
+    def _prompt_context(player_state: Any) -> Dict[str, Any]:
+        """Use the projected state when available, preserving legacy state adapters."""
+        prompt_context = getattr(player_state, "to_prompt_context", None)
+        if callable(prompt_context):
+            return prompt_context()
+        return player_state.to_dict()
+
     @property
     def player_state(self):
         return self._get_player_state()
@@ -419,7 +427,7 @@ class RoundEventGenerator:
 
             # 获取最新的状态（可能已包含新引入的人物）
             # P2-性能优化：生成 prompt 只需近期上下文，使用字段投影避免全量序列化。
-            state_dict = player_state.to_prompt_context()
+            state_dict = self._prompt_context(player_state)
             character_settings = state_dict.get("character_settings", {})
 
             # Reviews keep their summaries, while story generation receives the
@@ -545,7 +553,7 @@ class RoundEventGenerator:
         def call_options_generator() -> GameEvent:
             return self.ai_generator.generate_options_only(
                 story_description=existing_story,
-                player_state=player_state.to_prompt_context(),
+                player_state=self._prompt_context(player_state),
                 character_settings=player_state.character_settings,
                 language=self.language,
             )
@@ -618,7 +626,7 @@ class RoundEventGenerator:
         player_state = self.player_state
         language = self.language
         character_settings = getattr(player_state, "character_settings", {}) or {}
-        player_dict = player_state.to_prompt_context() if hasattr(player_state, "to_prompt_context") else {}
+        player_dict = self._prompt_context(player_state)
         protagonist_name = (
             resolve_protagonist_name(player_dict, character_settings, None)
             or getattr(player_state, "player_name", "")
@@ -811,10 +819,7 @@ class RoundEventGenerator:
         try:
             # 使用AI生成事件内容，但必须包含承诺的核心元素
             # P2-性能优化：投影近期上下文即可；duck-typed 状态回退到全量序列化。
-            if hasattr(player_state, "to_prompt_context"):
-                state_dict = player_state.to_prompt_context()
-            else:
-                state_dict = player_state.to_dict()
+            state_dict = self._prompt_context(player_state)
             character_settings = state_dict.get("character_settings", {})
 
             # 构建强制事件提示词
