@@ -96,10 +96,18 @@ export function StoryListeningExperience({
   const recoveryTimerRef = useRef<number | null>(null);
   const recoveryStartPositionMsRef = useRef<number | null>(null);
   const playRequestRef = useRef<{
+    id: number;
     audio: HTMLAudioElement;
     source: string;
     generation: number;
   } | null>(null);
+  const latestPlayRequestIdRef = useRef(0);
+  const playingAudioRef = useRef<{
+    audio: HTMLAudioElement;
+    source: string;
+    generation: number;
+  } | null>(null);
+  const finalSegmentEndedRef = useRef(false);
   const activeAudioSourceRef = useRef<string | null>(null);
   const recoveredParagraphsRef = useRef(new Set<number>());
 
@@ -160,6 +168,7 @@ export function StoryListeningExperience({
     const audio = audioRef.current;
     if (audio) audio.pause();
     playRequestRef.current = null;
+    playingAudioRef.current = null;
   };
 
   const isCurrentAudio = (audio: HTMLAudioElement, source: string) =>
@@ -196,6 +205,7 @@ export function StoryListeningExperience({
       clearRecoveryWatchdog();
       playbackGenerationRef.current += 1;
       playRequestRef.current = null;
+      playingAudioRef.current = null;
       if (audio) audio.pause();
     };
   }, [storyText]);
@@ -225,6 +235,7 @@ export function StoryListeningExperience({
     setPositionMs(0);
     pendingResumePositionRef.current = 0;
     recoveredParagraphsRef.current.clear();
+    finalSegmentEndedRef.current = false;
     setMediaDurations({});
     setNetworkRetryRequired(false);
 
@@ -328,14 +339,26 @@ export function StoryListeningExperience({
     [context.day_index, context.game_id, context.story_date, selectedVoice, speed, textHash],
   );
 
-  const playAudio = (audio: HTMLAudioElement, source: string) => {
+  const playAudio = (audio: HTMLAudioElement, source: string, force = false) => {
     if (!isCurrentAudio(audio, source)) {
       audio.pause();
       return;
     }
     const playbackGeneration = playbackGenerationRef.current;
+    const playingAudio = playingAudioRef.current;
+    if (
+      !force &&
+      playingAudio &&
+      playingAudio.audio === audio &&
+      playingAudio.source === source &&
+      playingAudio.generation === playbackGeneration
+    ) {
+      return;
+    }
+    if (!force && !audio.paused) return;
     const pendingRequest = playRequestRef.current;
     if (
+      !force &&
       pendingRequest &&
       pendingRequest.audio === audio &&
       pendingRequest.source === source &&
@@ -343,25 +366,35 @@ export function StoryListeningExperience({
     ) {
       return;
     }
-    const request = { audio, source, generation: playbackGeneration };
+    const request = {
+      id: latestPlayRequestIdRef.current + 1,
+      audio,
+      source,
+      generation: playbackGeneration,
+    };
+    latestPlayRequestIdRef.current = request.id;
     playRequestRef.current = request;
     void audio.play().then(() => {
+      if (playRequestRef.current?.id === request.id) playRequestRef.current = null;
+      const ownsLatestRequest = latestPlayRequestIdRef.current === request.id;
       if (
-        playbackGeneration !== playbackGenerationRef.current ||
-        !isCurrentAudio(audio, source)
+        !isCurrentAudio(audio, source) ||
+        (ownsLatestRequest && playbackGeneration !== playbackGenerationRef.current)
       ) {
         audio.pause();
         return;
       }
     }).catch(() => {
-      if (playRequestRef.current === request) playRequestRef.current = null;
+      if (playRequestRef.current?.id === request.id) playRequestRef.current = null;
+      const ownsLatestRequest = latestPlayRequestIdRef.current === request.id;
       if (
-        playbackGeneration !== playbackGenerationRef.current ||
-        !isCurrentAudio(audio, source)
+        !isCurrentAudio(audio, source) ||
+        (ownsLatestRequest && playbackGeneration !== playbackGenerationRef.current)
       ) {
         audio.pause();
         return;
       }
+      if (!ownsLatestRequest) return;
       setStatus("ready");
       setErrorMessage("点击播放，开启自动朗读");
     });
@@ -377,6 +410,7 @@ export function StoryListeningExperience({
       clearRecoveryWatchdog();
       playbackGenerationRef.current += 1;
       if (playRequestRef.current?.audio === audio) playRequestRef.current = null;
+      if (playingAudioRef.current?.audio === audio) playingAudioRef.current = null;
       audio.pause();
     };
   }, [currentSegment?.audio_url, currentSegment?.paragraph_index]);
@@ -387,6 +421,7 @@ export function StoryListeningExperience({
     setPositionMs(0);
     pendingResumePositionRef.current = 0;
     autoPlayRequestedRef.current = true;
+    finalSegmentEndedRef.current = false;
     setNetworkRetryRequired(false);
     persistProgress(index, 0);
   };
@@ -403,6 +438,11 @@ export function StoryListeningExperience({
       chooseParagraph(nextIndex);
       return;
     }
+    playRequestRef.current = null;
+    playingAudioRef.current = null;
+    playbackGenerationRef.current += 1;
+    finalSegmentEndedRef.current = true;
+    autoPlayRequestedRef.current = false;
     setStatus("ready");
     const duration = currentSegment ? segmentDuration(currentSegment) : 0;
     setPositionMs(duration);
@@ -438,7 +478,13 @@ export function StoryListeningExperience({
       return;
     }
     autoPlayRequestedRef.current = true;
-    if (currentSegment?.audio_url) playAudio(audio, currentSegment.audio_url);
+    if (finalSegmentEndedRef.current) {
+      audio.currentTime = 0;
+      pendingResumePositionRef.current = 0;
+      setPositionMs(0);
+      finalSegmentEndedRef.current = false;
+    }
+    if (currentSegment?.audio_url) playAudio(audio, currentSegment.audio_url, true);
   };
 
   const handleRestart = () => chooseParagraph(0);
@@ -455,6 +501,7 @@ export function StoryListeningExperience({
         setPositionMs(remaining);
         pendingResumePositionRef.current = remaining;
         autoPlayRequestedRef.current = wasPlaying;
+        finalSegmentEndedRef.current = false;
         setNetworkRetryRequired(false);
         persistProgress(segment.paragraph_index, remaining);
         break;
@@ -535,6 +582,7 @@ export function StoryListeningExperience({
       setStatus("ready");
       recordAudioDiagnostic("automatic_recovery");
       if (playRequestRef.current?.audio === audio) playRequestRef.current = null;
+      if (playingAudioRef.current?.audio === audio) playingAudioRef.current = null;
       audio.load();
     }, STALL_WATCHDOG_MS);
   };
@@ -578,6 +626,12 @@ export function StoryListeningExperience({
       return;
     }
     clearRecoveryWatchdog();
+    playRequestRef.current = null;
+    playingAudioRef.current = {
+      audio,
+      source,
+      generation: playbackGenerationRef.current,
+    };
     recordAudioDiagnostic("playing");
     setStatus("playing");
     setErrorMessage("");
@@ -591,6 +645,7 @@ export function StoryListeningExperience({
     clearRecoveryWatchdog();
     playbackGenerationRef.current += 1;
     playRequestRef.current = null;
+    playingAudioRef.current = null;
     pendingResumePositionRef.current = Math.max(0, audio.currentTime * 1000);
     autoPlayRequestedRef.current = true;
     setStatus("ready");
@@ -598,7 +653,7 @@ export function StoryListeningExperience({
     setNetworkRetryRequired(false);
     recordAudioDiagnostic("manual_recovery");
     audio.load();
-    playAudio(audio, source);
+    playAudio(audio, source, true);
   };
 
   const statusLabel =

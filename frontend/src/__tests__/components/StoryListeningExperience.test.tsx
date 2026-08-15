@@ -367,6 +367,19 @@ describe("StoryListeningExperience", () => {
     expect(play).toHaveBeenCalledTimes(1);
   });
 
+  it("does not replay after a fulfilled request when the current media is already unpaused", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.canPlay(audio);
+    await act(async () => {});
+    Object.defineProperty(audio, "paused", { configurable: true, value: false });
+    fireEvent.canPlay(audio);
+
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
   it("pauses delayed playback and ignores old-source canplay after changing paragraphs", async () => {
     const delayedPlay = deferred<void>();
     play.mockImplementationOnce(() => delayedPlay.promise);
@@ -419,6 +432,108 @@ describe("StoryListeningExperience", () => {
       unmountPlay.resolve();
     });
     expect(pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let an old same-element recovery play promise pause a newer manual recovery", async () => {
+    jest.useFakeTimers();
+    const oldPlay = deferred<void>();
+    const manualPlay = deferred<void>();
+    play.mockImplementationOnce(() => oldPlay.promise).mockImplementationOnce(() => manualPlay.promise);
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.canPlay(audio);
+    fireEvent.stalled(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+    fireEvent.stalled(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "网络不稳定，继续朗读" }));
+    expect(play).toHaveBeenCalledTimes(2);
+
+    pause.mockClear();
+    await act(async () => {
+      oldPlay.resolve();
+    });
+    expect(pause).not.toHaveBeenCalled();
+
+    await act(async () => {
+      manualPlay.resolve();
+      fireEvent.playing(audio);
+    });
+    expect(screen.getByRole("button", { name: "暂停朗读" })).toBeInTheDocument();
+  });
+
+  it("restarts the final segment when replay is selected after ended", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const firstAudio = document.querySelector("audio") as HTMLAudioElement;
+    fireEvent.ended(firstAudio);
+    await waitFor(() => expect((document.querySelector("audio") as HTMLAudioElement).getAttribute("src")).toBe("/api/voice-reading/audio/second.mp3"));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "currentTime", { configurable: true, writable: true, value: 5 });
+
+    fireEvent.ended(audio);
+    fireEvent.click(screen.getByRole("button", { name: "播放朗读" }));
+
+    expect(audio.currentTime).toBe(0);
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a user click to supersede pending autoplay without letting its old promise pause playback", async () => {
+    const autoPlay = deferred<void>();
+    const clickedPlay = deferred<void>();
+    play.mockImplementationOnce(() => autoPlay.promise).mockImplementationOnce(() => clickedPlay.promise);
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.canPlay(audio);
+    expect(play).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "播放朗读" }));
+    expect(play).toHaveBeenCalledTimes(2);
+
+    pause.mockClear();
+    await act(async () => {
+      autoPlay.resolve();
+    });
+    expect(pause).not.toHaveBeenCalled();
+
+    await act(async () => {
+      clickedPlay.resolve();
+      fireEvent.playing(audio);
+    });
+    expect(screen.getByRole("button", { name: "暂停朗读" })).toBeInTheDocument();
+  });
+
+  it("keeps a same-element seek from letting an old play promise pause the new request", async () => {
+    const oldPlay = deferred<void>();
+    const seekPlay = deferred<void>();
+    play.mockImplementationOnce(() => oldPlay.promise).mockImplementationOnce(() => seekPlay.promise);
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+
+    fireEvent.canPlay(audio);
+    fireEvent.change(screen.getByLabelText("朗读进度"), { target: { value: "1000" } });
+    fireEvent.loadedMetadata(audio);
+    fireEvent.click(screen.getByRole("button", { name: "播放朗读" }));
+    expect(play).toHaveBeenCalledTimes(2);
+
+    pause.mockClear();
+    await act(async () => {
+      oldPlay.resolve();
+    });
+    expect(pause).not.toHaveBeenCalled();
+    await act(async () => {
+      seekPlay.resolve();
+      fireEvent.playing(audio);
+    });
+    expect(screen.getByRole("button", { name: "暂停朗读" })).toBeInTheDocument();
   });
 
   it("does not reload when a short waiting period returns to playing", async () => {
