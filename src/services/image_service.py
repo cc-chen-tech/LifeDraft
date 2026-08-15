@@ -154,6 +154,8 @@ class ImageService:
         player_image_id: Optional[int] = None,
         stage: str = "result",
         week: Optional[int] = None,
+        story_date: Optional[str] = None,
+        day_index: Optional[int] = None,
     ):
         """自动生成每轮场景插画"""
         return self._scene_service.generate_round_scene_image(
@@ -165,6 +167,8 @@ class ImageService:
             player_image_id=player_image_id,
             stage=stage,
             week=week,
+            story_date=story_date,
+            day_index=day_index,
             get_week_func=self._get_current_week_from_db,  # type: ignore[arg-type]
             get_player_image_func=self._get_player_image_base64,
         )
