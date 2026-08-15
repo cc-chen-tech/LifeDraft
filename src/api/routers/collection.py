@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,15 +29,6 @@ from src.services.landmark_extraction_service import LandmarkExtractionService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-def get_session() -> Generator[Session, None, None]:
-    """Get a SQLAlchemy session for collection operations."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def _require_user(user_id: Optional[int]) -> int:

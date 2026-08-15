@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Generator
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from src.api.deps import get_current_user
+from src.api.deps import get_current_user, get_session
 from src.api.schemas import (
     MessageResponse,
     StoryVoiceReadingRequest,
@@ -27,14 +26,6 @@ from src.services.story_voice_reading import StoryVoiceReadingService, build_det
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 
 router = APIRouter()
-
-
-def get_session() -> Generator[Session, None, None]:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def get_service(db: Session) -> StoryVoiceReadingService:

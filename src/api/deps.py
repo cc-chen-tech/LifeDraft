@@ -2,14 +2,16 @@
 
 import logging
 import os
-from typing import Optional
+from typing import Generator, Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from sqlalchemy.orm import Session
 
 from src.api.services.session_service import session_service
 from src.api.session_store import GameLoopSession
+from src.database.models import SessionLocal
 from src.database.singletons import get_game_db, get_user_manager  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -160,3 +162,15 @@ def get_game_session(
     Raises 404 if game not found.
     """
     return session_service.get_or_restore(game_id, user_id)
+
+def get_session() -> Generator[Session, None, None]:
+    """Get a SQLAlchemy session for router operations.
+
+    P4-去重：此前 images/collection/voice_reading 三个路由各自复制了
+    完全相同的实现，统一收敛到这里。
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

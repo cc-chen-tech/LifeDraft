@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timedelta
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.params import Query
@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from src.api.deps import get_current_user, get_current_user_optional
+from src.api.deps import get_current_user, get_current_user_optional, get_session
 from src.api.routers.image_failures import (image_failure_http_exception,
                                             public_image_failure)
 from src.api.schemas import (BatchGenerateCharactersRequest,
@@ -30,7 +30,7 @@ from src.api.schemas import (BatchGenerateCharactersRequest,
                              RegenerateRoundSceneRequest, RoundSceneResponse)
 from src.database.models import Game
 from src.database.models import Image as ImageModel
-from src.database.models import PortraitImageGenerationJob, SessionLocal, User
+from src.database.models import PortraitImageGenerationJob, User
 from src.services.image_service import (ImageContentError,
                                         ImageProviderServiceError, ImageService,
                                         ImageServiceError)
@@ -103,15 +103,6 @@ async def _drain_pending_events() -> None:
     """Compatibility task hook for app lifespan; events are cached synchronously."""
     while True:
         await asyncio.sleep(60)
-
-
-def get_session() -> Generator[Session, None, None]:
-    """Get a SQLAlchemy session for image operations."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.get("/scene/events/{game_id}")
