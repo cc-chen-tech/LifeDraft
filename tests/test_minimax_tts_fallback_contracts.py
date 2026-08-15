@@ -1,12 +1,13 @@
 """Provider-free MiniMax narration fallback and local-audio contracts."""
 
+import hashlib
 from pathlib import Path
 
 import pytest
 
 from src.services.minimax_config import MiniMaxConfig
-from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
-from src.services.story_tts_provider import TTSProviderUnavailableError
+from src.services.minimax_story_tts_provider import MiniMaxAsyncTTSClient, MiniMaxTTSProvider
+from src.services.story_tts_provider import TTSProviderUnavailableError, build_deterministic_wav
 
 
 def _config(tmp_path: Path, env: dict[str, str]) -> MiniMaxConfig:
@@ -48,6 +49,19 @@ def test_local_audio_synthesis_writes_and_reuses_deterministic_wav(tmp_path: Pat
     assert first.storage_path == second.storage_path
     assert first.duration_ms == second.duration_ms
     assert artifact.read_bytes().startswith(b"RIFF")
+
+
+def test_local_async_audio_uses_stable_sha256_text_hash(tmp_path: Path) -> None:
+    text = "本地音频必须跨 Python 进程保持一致。"
+    output_path = tmp_path / "local.wav"
+    client = MiniMaxAsyncTTSClient(
+        _config(tmp_path, {"MINIMAX_E2E_LOCAL_AUDIO": "true"})
+    )
+
+    client.synthesize_to_file({"text": text}, output_path)
+
+    expected_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    assert output_path.read_bytes() == build_deterministic_wav(expected_hash, "warm_female")
 
 
 def test_payload_and_oversized_text_keep_transport_and_failure_boundaries(tmp_path: Path) -> None:

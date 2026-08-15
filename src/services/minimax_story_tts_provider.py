@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -41,7 +42,7 @@ class MiniMaxWebSocketTTSClient:
         """
         if os.getenv("MINIMAX_E2E_LOCAL_AUDIO", "0") == "1":
             text = str(payload.get("text") or "minimax-local-audio")
-            text_hash = str(abs(hash(text)))
+            text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
             output_path.write_bytes(build_deterministic_wav(text_hash, "warm_female"))
             return
         from websockets.sync.client import connect
@@ -55,10 +56,11 @@ class MiniMaxWebSocketTTSClient:
         ) as websocket:
             websocket.send(_json_dumps(payload))
             for message in websocket:
-                audio_hex = _extract_audio_hex(json.loads(str(message)))
+                payload_obj = json.loads(str(message))
+                audio_hex = _extract_audio_hex(payload_obj)
                 if audio_hex:
                     audio_chunks.append(bytes.fromhex(audio_hex))
-                if _is_done_message(json.loads(str(message))):
+                if _is_done_message(payload_obj):
                     break
         if not audio_chunks:
             raise RuntimeError("MiniMax WebSocket synthesis returned no audio")
@@ -78,7 +80,7 @@ class MiniMaxAsyncTTSClient:
     ) -> None:
         if self.config.local_audio_enabled:
             text = str(payload.get("text") or "minimax-local-audio")
-            text_hash = str(abs(hash(text)))
+            text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
             output_path.write_bytes(build_deterministic_wav(text_hash, "warm_female"))
             return
 
