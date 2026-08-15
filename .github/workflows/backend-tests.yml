@@ -33,13 +33,6 @@ jobs:
           pip install -r requirements.txt
           pip install pytest-asyncio
 
-      - name: Setup test database
-        run: |
-          mkdir -p data
-          python -c "from src.database.models import init_db; init_db()"
-        env:
-          PYTHONPATH: ${{ github.workspace }}
-
       - name: Run maintained backend gates
         run: |
           ./test.sh mypy

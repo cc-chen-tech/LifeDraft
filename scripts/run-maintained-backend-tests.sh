@@ -32,19 +32,32 @@ maintained_tests=(
   tests/test_story_voice_reading_db.py
   tests/test_story_voice_async_chapter.py
   tests/test_world_model_lifecycle_contracts.py
+  tests/test_database_runner_isolation_no_mock.py
 )
 
 case "$mode" in
   test)
-    python -m pytest "${maintained_tests[@]}" -v --tb=short
+    pytest_command=(python -m pytest "${maintained_tests[@]}" -v --tb=short)
     ;;
   coverage)
-    python -m pytest "${maintained_tests[@]}" \
+    pytest_command=(python -m pytest "${maintained_tests[@]}" \
       --cov=src --cov-fail-under=34 \
-      --cov-report="xml:${coverage_xml_path}" --cov-report=term
+      --cov-report="xml:${coverage_xml_path}" --cov-report=term)
     ;;
   *)
     echo "usage: $0 [test|coverage]" >&2
     exit 2
     ;;
 esac
+
+isolated_database_root="${TEST_RUN_DIR:-}"
+if [ -n "$isolated_database_root" ]; then
+  isolated_database_root="$isolated_database_root/data/maintained-backend"
+else
+  isolated_database_root="${TEST_RUN_ROOT:-${TMPDIR:-/tmp}/story2-test-runs}/maintained-backend"
+fi
+
+"$(dirname "$0")/run-with-isolated-test-database.sh" \
+  "$isolated_database_root" \
+  python \
+  "${pytest_command[@]}"

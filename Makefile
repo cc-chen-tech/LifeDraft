@@ -19,16 +19,16 @@ check: all-checks
 
 test:
 	@echo "Running tests..."
-	@python3 -m pytest tests/ -v
+	@./scripts/run-with-isolated-test-database.sh "$${TEST_RUN_DIR:-$${TMPDIR:-/tmp}/story2-test-runs/make}/data/pytest" python3 python3 -m pytest tests/ -v
 
 test-cov:
 	@echo "Running tests with coverage..."
-	@python3 -m pytest tests/ -v --cov=src --cov-report=html --cov-report=term
+	@./scripts/run-with-isolated-test-database.sh "$${TEST_RUN_DIR:-$${TMPDIR:-/tmp}/story2-test-runs/make}/data/pytest" python3 python3 -m pytest tests/ -v --cov=src --cov-report=html --cov-report=term
 	@echo "Coverage report generated in htmlcov/"
 
 test-fast:
 	@echo "Running tests (fail fast)..."
-	@python3 -m pytest tests/ -v -x
+	@./scripts/run-with-isolated-test-database.sh "$${TEST_RUN_DIR:-$${TMPDIR:-/tmp}/story2-test-runs/make}/data/pytest" python3 python3 -m pytest tests/ -v -x
 
 format:
 	@echo "Formatting code..."

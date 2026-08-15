@@ -33,6 +33,15 @@ elif [[ -x "$PROJECT_DIR/.env/bin/python3" ]]; then
     PYTHON3="$PROJECT_DIR/.env/bin/python3"
 fi
 
+PRECOMMIT_TEST_RUN_DIR="${TEST_RUN_DIR:-${TMPDIR:-/tmp}/story2-test-runs/pre-commit}"
+
+run_isolated_pytest() {
+    "$PROJECT_DIR/scripts/run-with-isolated-test-database.sh" \
+        "$PRECOMMIT_TEST_RUN_DIR/data/pytest" \
+        "$PYTHON3" \
+        "$PYTHON3" -m pytest "$@"
+}
+
 echo -e "${BLUE}========================================${NC}"
 echo -e "${YELLOW}Running pre-commit checks...${NC}"
 echo -e "${BLUE}========================================${NC}"
@@ -166,7 +175,7 @@ if [[ -n "$STAGED_PY_FILES" ]] && [[ "$RUN_COVERAGE_ON_COMMIT" == "true" ]]; the
 
             # Run pytest with coverage on ALL tests to get project-wide coverage.
             # Note: this runs the full test suite and can take 2+ minutes.
-            COVERAGE_OUTPUT=$($PYTHON3 -m pytest --cov=src --cov-report=term-missing -q 2>&1)
+            COVERAGE_OUTPUT=$(run_isolated_pytest --cov=src --cov-report=term-missing -q 2>&1)
             PYTEST_EXIT=$?
 
             # Extract TOTAL coverage percentage (works even if tests fail)
@@ -208,7 +217,7 @@ fi
 if [[ -n "$STAGED_PY_FILES" ]] && [[ "$RUN_TESTS_ON_COMMIT" == "true" ]]; then
     echo ""
     echo -e "${YELLOW}--- Running Quick Tests ---${NC}"
-    if $PYTHON3 -m pytest tests/ -v -x --tb=short -q 2>/dev/null; then
+    if run_isolated_pytest tests/ -v -x --tb=short -q 2>/dev/null; then
         echo -e "${GREEN}✓ Tests passed${NC}"
     else
         echo -e "${RED}✗ Tests failed${NC}"
