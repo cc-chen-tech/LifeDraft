@@ -58,6 +58,7 @@ const VOICES = [
   { id: "clear_neutral", label: "清澈中性" },
 ];
 const SPEEDS = [0.75, 1, 1.25, 1.5];
+const STALL_WATCHDOG_MS = 8_000;
 
 function splitParagraphs(text: string): string[] {
   return text
@@ -88,8 +89,12 @@ export function StoryListeningExperience({
   const generationRef = useRef(0);
   const autoPlayRequestedRef = useRef(true);
   const autoReadRef = useRef(true);
-  const resumePositionRef = useRef(0);
+  const pendingResumePositionRef = useRef<number | null>(0);
   const lastProgressWriteRef = useRef(0);
+  const activeParagraphRef = useRef(0);
+  const playbackGenerationRef = useRef(0);
+  const recoveryTimerRef = useRef<number | null>(null);
+  const recoveredParagraphsRef = useRef(new Set<number>());
 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [textHash, setTextHash] = useState("");
@@ -104,23 +109,51 @@ export function StoryListeningExperience({
   const [positionMs, setPositionMs] = useState(0);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [mediaDurations, setMediaDurations] = useState<Record<number, number>>({});
+  const [networkRetryRequired, setNetworkRetryRequired] = useState(false);
 
   const currentSegment = segments.find(
     (segment) => segment.paragraph_index === activeParagraph,
   );
   const readySegments = segments.filter((segment) => segment.audio_url);
-  const totalDurationMs = segments.reduce(
-    (total, segment) => total + (segment.duration_ms ?? 0),
-    0,
-  );
+  const segmentDuration = (segment: VoiceReadingSegment) =>
+    mediaDurations[segment.paragraph_index] ?? segment.duration_ms ?? 0;
+  const totalDurationMs = segments.reduce((total, segment) => total + segmentDuration(segment), 0);
   const elapsedBeforeCurrent = segments
     .filter((segment) => segment.paragraph_index < activeParagraph)
-    .reduce((total, segment) => total + (segment.duration_ms ?? 0), 0);
+    .reduce((total, segment) => total + segmentDuration(segment), 0);
   const chapterPositionMs = Math.min(
     totalDurationMs,
     elapsedBeforeCurrent + positionMs,
   );
   const progressRatio = totalDurationMs > 0 ? chapterPositionMs / totalDurationMs : 0;
+
+  const clearRecoveryWatchdog = () => {
+    if (recoveryTimerRef.current !== null) {
+      window.clearTimeout(recoveryTimerRef.current);
+      recoveryTimerRef.current = null;
+    }
+  };
+
+  const recordAudioDiagnostic = (mediaState: string) => {
+    const audio = audioRef.current;
+    console.info("[StoryListeningExperience] audio", {
+      paragraphIndex: activeParagraphRef.current,
+      mediaState,
+      currentTimeMs: Math.round((audio?.currentTime ?? 0) * 1000),
+      observedAtMs: Date.now(),
+    });
+  };
+
+  const cancelActivePlayback = () => {
+    clearRecoveryWatchdog();
+    playbackGenerationRef.current += 1;
+    audioRef.current?.pause();
+  };
+
+  useEffect(() => {
+    activeParagraphRef.current = activeParagraph;
+  }, [activeParagraph]);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -144,7 +177,9 @@ export function StoryListeningExperience({
     return () => {
       cancelledRef.current = true;
       generationRef.current += 1;
-      if (audio && !audio.paused) audio.pause();
+      clearRecoveryWatchdog();
+      playbackGenerationRef.current += 1;
+      if (audio) audio.pause();
     };
   }, [storyText]);
 
@@ -171,7 +206,10 @@ export function StoryListeningExperience({
     setSegments([]);
     setActiveParagraph(0);
     setPositionMs(0);
-    resumePositionRef.current = 0;
+    pendingResumePositionRef.current = 0;
+    recoveredParagraphsRef.current.clear();
+    setMediaDurations({});
+    setNetworkRetryRequired(false);
 
     const identity = {
       game_id: context.game_id,
@@ -188,7 +226,7 @@ export function StoryListeningExperience({
           if (!active || generation !== generationRef.current) return;
           setActiveParagraph(Math.min(progress.paragraph_index, Math.max(0, paragraphs.length - 1)));
           setPositionMs(progress.position_ms);
-          resumePositionRef.current = progress.position_ms;
+          pendingResumePositionRef.current = progress.position_ms;
         } catch (error) {
           if ((error as { status?: number }).status !== 404) {
             console.warn("[StoryListeningExperience] Progress recovery unavailable", error);
@@ -276,11 +314,15 @@ export function StoryListeningExperience({
   const playAudio = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio || !currentSegment?.audio_url) return;
+    const playbackGeneration = playbackGenerationRef.current;
     try {
       await audio.play();
+      if (playbackGeneration !== playbackGenerationRef.current) return;
       setStatus("playing");
       setErrorMessage("");
+      setNetworkRetryRequired(false);
     } catch {
+      if (playbackGeneration !== playbackGenerationRef.current) return;
       setStatus("ready");
       setErrorMessage("点击播放，开启自动朗读");
     }
@@ -289,31 +331,32 @@ export function StoryListeningExperience({
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !currentSegment?.audio_url) return;
-    if (resumePositionRef.current > 0) {
-      audio.currentTime = resumePositionRef.current / 1000;
-      resumePositionRef.current = 0;
-    }
-    if (autoPlayRequestedRef.current) void playAudio();
-  }, [currentSegment?.audio_url, playAudio]);
+    clearRecoveryWatchdog();
+    playbackGenerationRef.current += 1;
+  }, [activeParagraph, currentSegment?.audio_url]);
 
   const chooseParagraph = (index: number) => {
-    audioRef.current?.pause();
+    cancelActivePlayback();
     setActiveParagraph(index);
     setPositionMs(0);
-    resumePositionRef.current = 0;
+    pendingResumePositionRef.current = 0;
     autoPlayRequestedRef.current = true;
+    setNetworkRetryRequired(false);
     persistProgress(index, 0);
   };
 
   const handleEnded = () => {
+    clearRecoveryWatchdog();
+    recordAudioDiagnostic("ended");
     const nextIndex = activeParagraph + 1;
     if (nextIndex < paragraphs.length) {
       chooseParagraph(nextIndex);
       return;
     }
     setStatus("ready");
-    setPositionMs(currentSegment?.duration_ms ?? 0);
-    persistProgress(activeParagraph, currentSegment?.duration_ms ?? 0, true);
+    const duration = currentSegment ? segmentDuration(currentSegment) : 0;
+    setPositionMs(duration);
+    persistProgress(activeParagraph, duration, true);
   };
 
   const handleTimeUpdate = () => {
@@ -330,7 +373,8 @@ export function StoryListeningExperience({
     const audio = audioRef.current;
     if (!audio) return;
     if (status === "playing") {
-      audio.pause();
+      cancelActivePlayback();
+      autoPlayRequestedRef.current = false;
       setStatus("paused");
       persistProgress(activeParagraph, audio.currentTime * 1000);
       return;
@@ -345,13 +389,15 @@ export function StoryListeningExperience({
     const target = Number(event.target.value);
     let remaining = target;
     for (const segment of segments) {
-      const duration = segment.duration_ms ?? 0;
+      const duration = segmentDuration(segment);
       if (remaining <= duration || segment === segments.at(-1)) {
-        audioRef.current?.pause();
+        const wasPlaying = status === "playing";
+        cancelActivePlayback();
         setActiveParagraph(segment.paragraph_index);
         setPositionMs(remaining);
-        resumePositionRef.current = remaining;
-        autoPlayRequestedRef.current = status === "playing";
+        pendingResumePositionRef.current = remaining;
+        autoPlayRequestedRef.current = wasPlaying;
+        setNetworkRetryRequired(false);
         persistProgress(segment.paragraph_index, remaining);
         break;
       }
@@ -360,14 +406,14 @@ export function StoryListeningExperience({
   };
 
   const handleVoiceChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    audioRef.current?.pause();
+    cancelActivePlayback();
     const value = event.target.value;
     setSelectedVoice(value);
     void api.voice_reading.updateSettings({ selected_voice_color: value });
   };
 
   const handleSpeedChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    audioRef.current?.pause();
+    cancelActivePlayback();
     const value = Number(event.target.value);
     setSpeed(value);
     void api.voice_reading.updateSettings({ selected_speed: value });
@@ -383,12 +429,94 @@ export function StoryListeningExperience({
 
   const handleChoice = (index: number) => {
     const audio = audioRef.current;
-    audio?.pause();
+    cancelActivePlayback();
     if (audio) persistProgress(activeParagraph, audio.currentTime * 1000);
     generationRef.current += 1;
     autoPlayRequestedRef.current = false;
     setStatus("paused");
     return onSelectChoice(index);
+  };
+
+  const scheduleRecoveryWatchdog = (mediaState: "waiting" | "stalled" | "error") => {
+    clearRecoveryWatchdog();
+    recordAudioDiagnostic(mediaState);
+    const audio = audioRef.current;
+    if (!audio || !currentSegment?.audio_url) return;
+    const paragraphIndex = activeParagraph;
+    const playbackGeneration = playbackGenerationRef.current;
+    const resumePositionMs = Math.max(0, audio.currentTime * 1000);
+    recoveryTimerRef.current = window.setTimeout(() => {
+      recoveryTimerRef.current = null;
+      if (
+        playbackGeneration !== playbackGenerationRef.current ||
+        paragraphIndex !== activeParagraphRef.current
+      ) {
+        return;
+      }
+      if (recoveredParagraphsRef.current.has(paragraphIndex)) {
+        autoPlayRequestedRef.current = false;
+        setStatus("failed");
+        setNetworkRetryRequired(true);
+        setErrorMessage("网络不稳定，继续朗读");
+        recordAudioDiagnostic("recovery_required");
+        return;
+      }
+      recoveredParagraphsRef.current.add(paragraphIndex);
+      pendingResumePositionRef.current = resumePositionMs;
+      autoPlayRequestedRef.current = true;
+      setStatus("ready");
+      recordAudioDiagnostic("automatic_recovery");
+      audio.load();
+    }, STALL_WATCHDOG_MS);
+  };
+
+  const handleLoadedMetadata = () => {
+    const audio = audioRef.current;
+    if (!audio || !currentSegment) return;
+    const durationMs = Math.round(audio.duration * 1000);
+    if (Number.isFinite(durationMs) && durationMs > 0) {
+      setMediaDurations((current) => (
+        current[currentSegment.paragraph_index] === durationMs
+          ? current
+          : { ...current, [currentSegment.paragraph_index]: durationMs }
+      ));
+    }
+    if (pendingResumePositionRef.current !== null) {
+      const resumeMs = durationMs > 0
+        ? Math.min(Math.max(0, pendingResumePositionRef.current), durationMs)
+        : Math.max(0, pendingResumePositionRef.current);
+      audio.currentTime = resumeMs / 1000;
+      setPositionMs(resumeMs);
+      pendingResumePositionRef.current = null;
+    }
+    recordAudioDiagnostic("loadedmetadata");
+  };
+
+  const handleCanPlay = () => {
+    recordAudioDiagnostic("canplay");
+    if (autoPlayRequestedRef.current && !networkRetryRequired) void playAudio();
+  };
+
+  const handlePlaying = () => {
+    clearRecoveryWatchdog();
+    recordAudioDiagnostic("playing");
+    setStatus("playing");
+    setErrorMessage("");
+    setNetworkRetryRequired(false);
+  };
+
+  const handleNetworkRetry = () => {
+    const audio = audioRef.current;
+    if (!audio || !currentSegment?.audio_url) return;
+    clearRecoveryWatchdog();
+    playbackGenerationRef.current += 1;
+    pendingResumePositionRef.current = Math.max(0, audio.currentTime * 1000);
+    autoPlayRequestedRef.current = true;
+    setStatus("ready");
+    setErrorMessage("");
+    setNetworkRetryRequired(false);
+    recordAudioDiagnostic("manual_recovery");
+    audio.load();
   };
 
   const statusLabel =
@@ -446,12 +574,14 @@ export function StoryListeningExperience({
         <audio
           ref={audioRef}
           src={currentSegment?.audio_url || undefined}
+          onLoadedMetadata={handleLoadedMetadata}
+          onCanPlay={handleCanPlay}
+          onPlaying={handlePlaying}
+          onWaiting={() => scheduleRecoveryWatchdog("waiting")}
+          onStalled={() => scheduleRecoveryWatchdog("stalled")}
           onEnded={handleEnded}
           onTimeUpdate={handleTimeUpdate}
-          onError={() => {
-            setStatus("failed");
-            setErrorMessage("音频加载失败，请重试");
-          }}
+          onError={() => scheduleRecoveryWatchdog("error")}
         />
 
         <div className="w-full max-w-xl">
@@ -519,7 +649,17 @@ export function StoryListeningExperience({
           {errorMessage ? (
             <p role="status" className={cn("mt-4 text-center text-sm", status === "failed" ? "text-[var(--danger-foreground)]" : "text-[var(--text-secondary)]")}>{errorMessage}</p>
           ) : null}
-          {status === "failed" && jobId ? (
+          {networkRetryRequired ? (
+            <Button
+              type="button"
+              variant="narrative"
+              size="touch"
+              className="mx-auto mt-4 flex"
+              onClick={handleNetworkRetry}
+            >
+              网络不稳定，继续朗读
+            </Button>
+          ) : status === "failed" && jobId ? (
             <Button
               type="button"
               variant="narrative"
