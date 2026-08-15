@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense, useCallback, useRef } from "react";
+import { useState, useEffect, Suspense, useCallback, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -479,6 +479,21 @@ export default function PlayPage() {
     requestAssistantAction(action);
   }, [requestAssistantAction, setShowHistory, showHistory]);
 
+  // P2-性能优化（前端 Step 1）：为 memo 化的 PlayReadingFrame 提供稳定回调引用，
+  // 流式期间不再因内联箭头函数导致工具栏每 chunk 重渲染。
+  const handleOpenChat = useCallback(
+    () => handleOpenAssistantSurface("chat"),
+    [handleOpenAssistantSurface],
+  );
+  const handleOpenRewrite = useCallback(
+    () => handleOpenAssistantSurface("rewrite"),
+    [handleOpenAssistantSurface],
+  );
+  const handleOpenSummary = useCallback(
+    () => handleOpenAssistantSurface("summary"),
+    [handleOpenAssistantSurface],
+  );
+
   const handleOpenTools = useCallback(() => {
     closeAssistantAndSound();
     setShowCollection(false);
@@ -500,6 +515,64 @@ export default function PlayPage() {
     closeAssistantAndSound();
     router.push("/");
   }, [closeAssistantAndSound, router]);
+
+  // Keep the memoized reading frame stable while the story stream updates.
+  const toolsProps = useMemo(
+    () => ({
+      isSaving,
+      isStoryBusy: shouldRenderGameplayLoading,
+      isViewingHistory,
+      constraintLevel,
+      narrativeStyleId,
+      narrativeStyles: narrativeStyleOptions,
+      narrativeStylesLoading: styleLoading,
+      rewriteDisabled: storyRewriteDisabled,
+      rewriteDisabledReason: storyRewriteDisabledReason,
+      enableSceneImage,
+      onSave: handleCoordinatedSave,
+      onOpenHistory: handleOpenHistoryPanel,
+      onOpenCollection: handleOpenCollection,
+      onOpenChat: handleOpenChat,
+      onOpenRewrite: handleOpenRewrite,
+      onOpenSummary: handleOpenSummary,
+      onRegenerate: handleCoordinatedRegenerate,
+      onHome: handleHome,
+      onConstraintLevelChange: setConstraintLevel,
+      onNarrativeStyleChange: handleStyleChange,
+      onSceneImageChange: setEnableSceneImage,
+      onRequestNarrativeStyles: loadNarrativeStyles,
+      onOpenTools: handleOpenTools,
+      onToolsOpenChange: setToolsSurfaceOpen,
+      isDailyTimeline,
+    }),
+    [
+      isSaving,
+      shouldRenderGameplayLoading,
+      isViewingHistory,
+      constraintLevel,
+      narrativeStyleId,
+      narrativeStyleOptions,
+      styleLoading,
+      storyRewriteDisabled,
+      storyRewriteDisabledReason,
+      enableSceneImage,
+      handleCoordinatedSave,
+      handleOpenHistoryPanel,
+      handleOpenCollection,
+      handleOpenChat,
+      handleOpenRewrite,
+      handleOpenSummary,
+      handleCoordinatedRegenerate,
+      handleHome,
+      setConstraintLevel,
+      handleStyleChange,
+      setEnableSceneImage,
+      loadNarrativeStyles,
+      handleOpenTools,
+      setToolsSurfaceOpen,
+      isDailyTimeline,
+    ],
+  );
 
   // Don't render until hydrated
   if (!hydrated) {
@@ -712,33 +785,7 @@ export default function PlayPage() {
         playerState={playerState}
         progress={progress}
         isViewingHistory={isViewingHistory}
-        toolsProps={{
-          isSaving,
-          isStoryBusy: shouldRenderGameplayLoading,
-          isViewingHistory,
-          constraintLevel,
-          narrativeStyleId,
-          narrativeStyles: narrativeStyleOptions,
-          narrativeStylesLoading: styleLoading,
-          rewriteDisabled: storyRewriteDisabled,
-          rewriteDisabledReason: storyRewriteDisabledReason,
-          enableSceneImage,
-          onSave: handleCoordinatedSave,
-          onOpenHistory: handleOpenHistoryPanel,
-          onOpenCollection: handleOpenCollection,
-          onOpenChat: () => handleOpenAssistantSurface("chat"),
-          onOpenRewrite: () => handleOpenAssistantSurface("rewrite"),
-          onOpenSummary: () => handleOpenAssistantSurface("summary"),
-          onRegenerate: handleCoordinatedRegenerate,
-          onHome: handleHome,
-          onConstraintLevelChange: setConstraintLevel,
-          onNarrativeStyleChange: handleStyleChange,
-          onSceneImageChange: setEnableSceneImage,
-          onRequestNarrativeStyles: loadNarrativeStyles,
-          onOpenTools: handleOpenTools,
-          onToolsOpenChange: setToolsSurfaceOpen,
-          isDailyTimeline,
-        }}
+        toolsProps={toolsProps}
       >
         {!isViewingHistory && dailyDateTitle && !(isDailyTimeline && phase === "options") && (
           <div className="mb-6 text-center">

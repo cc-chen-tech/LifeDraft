@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -94,7 +94,7 @@ function GameplayLoading({
 }
 
 /** Shared story and phase presentation; business orchestration stays in PlayPage. */
-export function PlayPhaseContent({
+export const PlayPhaseContent = memo(function PlayPhaseContent({
   phase,
   isViewingHistory,
   displayText,
@@ -290,4 +290,4 @@ export function PlayPhaseContent({
       )}
     </>
   );
-}
+});
