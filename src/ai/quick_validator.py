@@ -182,6 +182,43 @@ class QuickValidator:
             "项目",
         }
     )
+    CHINESE_NON_PERSON_SUBJECT_TERMS = frozenset(
+        {
+            "平台",
+            "安全",
+            "服务",
+            "产品",
+            "系统",
+            "模块",
+            "数据",
+            "数据集",
+            "模型",
+            "工具",
+            "流程",
+            "风控",
+            "测试",
+            "接口",
+            "网络",
+            "功能",
+            "业务",
+            "应用",
+            "程序",
+            "代码",
+            "文档",
+            "市场",
+            "运营",
+            "设计",
+            "技术",
+            "算法",
+            "架构",
+            "数据库",
+            "服务器",
+            "客户端",
+            "后端",
+            "前端",
+            "自动化",
+        }
+    )
     CHINESE_NON_PERSON_IDENTITY_LABELS = (
         "产品代号",
         "模块",
@@ -784,7 +821,12 @@ class QuickValidator:
         )
         groups: List[tuple[tuple[str, ...], int]] = []
         for match in pattern.finditer(text):
-            actor_names = tuple(re.split(r"[、与和及]", match.group("names")))
+            actor_names = tuple(
+                re.findall(
+                    rf"{name_token}(?=[、与和及]|$)",
+                    match.group("names"),
+                )
+            )
             if all(
                 self._is_plausible_coordinated_person_name(name)
                 for name in actor_names
@@ -794,7 +836,10 @@ class QuickValidator:
 
     def _is_plausible_coordinated_person_name(self, candidate: str) -> bool:
         """Reject coordinated governance objects before treating the pair as people."""
-        if candidate in self.CHINESE_GOVERNANCE_OBJECT_TERMS:
+        if candidate in self.CHINESE_GOVERNANCE_OBJECT_TERMS or any(
+            candidate == term or candidate.endswith(term)
+            for term in self.CHINESE_NON_PERSON_SUBJECT_TERMS
+        ):
             return False
         if any(
             candidate.startswith(non_person)

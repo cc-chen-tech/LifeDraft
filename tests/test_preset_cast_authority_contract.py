@@ -699,6 +699,26 @@ def test_quick_validator_attributes_enumerated_shared_action_to_all_actors() -> 
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+def test_quick_validator_preserves_conjunctions_inside_given_names() -> None:
+    """Delimiter parsing must operate between complete name-token matches."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起参加项目会议。"
+            "马和平与赵强共同制定方案。"
+            "两名临时顾问完成工作后离开。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
 def test_quick_validator_ignores_coordinated_governance_common_nouns() -> None:
     """Governance objects shaped like names are not coordinated people."""
     from src.ai.quick_validator import quick_validate_story
@@ -708,6 +728,26 @@ def test_quick_validator_ignores_coordinated_governance_common_nouns() -> None:
         story_text=(
             "陆昊然和陈晓雨一起检查自动化流程。"
             "安全与方案共同制定计划，云服务负责执行。"
+            "两人确认流程正常后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+def test_quick_validator_ignores_coordinated_technical_common_nouns() -> None:
+    """Technical compound subjects are not promoted to outside people."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起检查自动化流程。"
+            "平台与安全共同制定方案，云服务批准预算。"
             "两人确认流程正常后结束会议。"
         ),
         character_settings=settings,
