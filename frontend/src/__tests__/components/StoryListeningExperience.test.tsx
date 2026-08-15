@@ -632,6 +632,28 @@ describe("StoryListeningExperience", () => {
     expect(document.querySelector("audio")).toHaveAttribute("src", "/api/voice-reading/audio/second.mp3");
   });
 
+  it("keeps the next paragraph buffered and starts it without waiting for another canplay event", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+
+    const [currentAudio, bufferedNextAudio] = Array.from(document.querySelectorAll("audio"));
+    expect(currentAudio).toHaveAttribute("src", "/api/voice-reading/audio/first.mp3");
+    expect(bufferedNextAudio).toHaveAttribute("src", "/api/voice-reading/audio/second.mp3");
+    expect(bufferedNextAudio).toHaveAttribute("preload", "auto");
+    Object.defineProperty(bufferedNextAudio, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_FUTURE_DATA,
+    });
+    play.mockClear();
+
+    fireEvent.ended(currentAudio);
+
+    await waitFor(() => expect(screen.getByText("第 2 段")).toBeInTheDocument());
+    const activeAudio = document.querySelector('audio[data-active="true"]');
+    expect(activeAudio).toBe(bufferedNextAudio);
+    await waitFor(() => expect(play.mock.instances).toContain(bufferedNextAudio));
+  });
+
   it("cancels a pending recovery when the listener selects a daily choice", async () => {
     jest.useFakeTimers();
     const { onSelectChoice } = renderExperience();

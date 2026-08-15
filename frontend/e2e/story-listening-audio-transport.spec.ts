@@ -237,8 +237,9 @@ async function installFixture(page: Page, options: FixtureOptions = {}): Promise
     }),
   }));
   await page.route('**/api/voice-reading/audio/*.wav', (route) => {
-    const shouldFail = failNextAudioRequest;
-    failNextAudioRequest = false;
+    const path = new URL(route.request().url()).pathname;
+    const shouldFail = failNextAudioRequest && path === FIXTURE_AUDIO_PATH;
+    if (shouldFail) failNextAudioRequest = false;
     return fulfillRangeAudio(route, wav, fixture, shouldFail);
   });
   await page.route(`**/api/games/${GAME_ID}/choice`, (route) => {
@@ -254,7 +255,7 @@ async function installFixture(page: Page, options: FixtureOptions = {}): Promise
 
 async function expectRealPlayback(page: Page): Promise<void> {
   await expect.poll(
-    () => page.locator('audio').evaluate((element) => {
+    () => page.locator('audio[data-active="true"]').evaluate((element) => {
       const audio = element as HTMLAudioElement;
       return !audio.paused && audio.currentTime > 0.05;
     }),
@@ -294,18 +295,23 @@ test.describe('StoryListeningExperience audio transport', () => {
     await expectRealPlayback(page);
     await expect.poll(() => fixture.audioRequests.length).toBeGreaterThan(0);
     await expect.poll(() => fixture.rangeRequests.length).toBeGreaterThan(0);
+    await expect.poll(
+      () => routeRequestsForPath(fixture, '/api/voice-reading/audio/fixture-1.wav').length,
+    ).toBeGreaterThan(0);
   });
 
   test('reloads and resumes after the first real audio request fails', async ({ page }) => {
     const fixture = await installFixture(page, { failFirstAudioRequest: true });
     await page.goto(`/play?gameId=${GAME_ID}`);
 
-    await expect.poll(() => fixture.audioRequests.length).toBe(1);
+    await expect.poll(() => routeRequestsForPath(fixture, FIXTURE_AUDIO_PATH).length).toBe(1);
     const errorDiagnostic = await expectErrorWatchdogArmed(fixture, 0, FIXTURE_AUDIO_PATH);
     await page.waitForTimeout(STALL_WATCHDOG_MS - 500);
-    expect(fixture.audioRequests).toEqual([FIXTURE_AUDIO_PATH]);
-    await expect.poll(() => fixture.audioRequests.length, { timeout: 5_000 }).toBeGreaterThanOrEqual(2);
-    expect(fixture.audioRequests[1]).toBe(FIXTURE_AUDIO_PATH);
+    expect(routeRequestsForPath(fixture, FIXTURE_AUDIO_PATH)).toHaveLength(1);
+    await expect.poll(
+      () => routeRequestsForPath(fixture, FIXTURE_AUDIO_PATH).length,
+      { timeout: 5_000 },
+    ).toBeGreaterThanOrEqual(2);
     const secondSourceRequest = routeRequestsForPath(fixture, FIXTURE_AUDIO_PATH)[1];
     if (!secondSourceRequest) throw new Error('Missing second fixture-0 audio request');
     expect(secondSourceRequest.observedAtMs - errorDiagnostic.observedAtMs).toBeGreaterThanOrEqual(7_950);
@@ -322,7 +328,7 @@ test.describe('StoryListeningExperience audio transport', () => {
     await page.goto(`/play?gameId=${GAME_ID}`);
 
     await expect(page.getByText('第 2 段', { exact: true })).toBeVisible();
-    await expect(page.locator('audio')).toHaveAttribute('src', '/api/voice-reading/audio/fixture-1.wav');
+    await expect(page.locator('audio[data-active="true"]')).toHaveAttribute('src', '/api/voice-reading/audio/fixture-1.wav');
     await expectRealPlayback(page);
     expect(fixture.audioRequests[0]).toBe('/api/voice-reading/audio/fixture-1.wav');
   });
@@ -331,13 +337,13 @@ test.describe('StoryListeningExperience audio transport', () => {
     const fixture = await installFixture(page, { failFirstAudioRequest: true });
     await page.goto(`/play?gameId=${GAME_ID}`);
 
-    await expect.poll(() => fixture.audioRequests.length).toBe(1);
+    await expect.poll(() => routeRequestsForPath(fixture, FIXTURE_AUDIO_PATH).length).toBe(1);
     await expectErrorWatchdogArmed(fixture, 0, FIXTURE_AUDIO_PATH);
     await page.getByRole('button', { name: '拆开信封' }).click();
     await expect.poll(() => fixture.choiceRequests).toBe(1);
     await expect(page.locator('audio')).toHaveCount(0);
     await page.waitForTimeout(STALL_WATCHDOG_MS + 500);
-    expect(fixture.audioRequests).toEqual([FIXTURE_AUDIO_PATH]);
+    expect(routeRequestsForPath(fixture, FIXTURE_AUDIO_PATH)).toHaveLength(1);
     expect(fixture.diagnostics.some((diagnostic) => diagnostic.mediaState === 'automatic_recovery')).toBe(false);
   });
 });

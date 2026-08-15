@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -130,6 +131,12 @@ export function StoryListeningExperience({
 
   const currentSegment = segments.find(
     (segment) => segment.paragraph_index === activeParagraph,
+  );
+  const nextSegment = segments.find(
+    (segment) => segment.paragraph_index === activeParagraph + 1 && segment.audio_url,
+  );
+  const bufferedSegments = [currentSegment, nextSegment].filter(
+    (segment): segment is VoiceReadingSegment => Boolean(segment?.audio_url),
   );
   const activeAudioSource = currentSegment?.audio_url ?? null;
   useLayoutEffect(() => {
@@ -404,12 +411,45 @@ export function StoryListeningExperience({
     });
   };
 
+  const activateBufferedAudio = useEffectEvent((
+    audio: HTMLAudioElement,
+    source: string,
+    paragraphIndex: number,
+  ) => {
+    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      const durationMs = Math.round(audio.duration * 1000);
+      if (Number.isFinite(durationMs) && durationMs > 0) {
+        setMediaDurations((current) => (
+          current[paragraphIndex] === durationMs
+            ? current
+            : { ...current, [paragraphIndex]: durationMs }
+        ));
+      }
+      if (pendingResumePositionRef.current !== null) {
+        const resumeMs = Number.isFinite(durationMs) && durationMs > 0
+          ? Math.min(Math.max(0, pendingResumePositionRef.current), durationMs)
+          : Math.max(0, pendingResumePositionRef.current);
+        audio.currentTime = resumeMs / 1000;
+        setPositionMs(resumeMs);
+        pendingResumePositionRef.current = null;
+      }
+    }
+    if (
+      audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA &&
+      autoPlayRequestedRef.current &&
+      !networkRetryRequired
+    ) {
+      playAudio(audio, source);
+    }
+  });
+
   useEffect(() => {
     const audio = audioRef.current;
     const source = currentSegment?.audio_url;
     if (!audio || !source) return;
     clearRecoveryWatchdog();
     playbackGenerationRef.current += 1;
+    activateBufferedAudio(audio, source, currentSegment.paragraph_index);
     return () => {
       clearRecoveryWatchdog();
       playbackGenerationRef.current += 1;
@@ -727,19 +767,35 @@ export function StoryListeningExperience({
           </div>
         </div>
 
-        <audio
-          key={`${currentSegment?.paragraph_index ?? "pending"}-${currentSegment?.audio_url ?? "none"}`}
-          ref={audioRef}
-          src={currentSegment?.audio_url || undefined}
-          onLoadedMetadata={(event) => handleLoadedMetadata(event.currentTarget, currentSegment?.audio_url ?? "")}
-          onCanPlay={(event) => handleCanPlay(event.currentTarget, currentSegment?.audio_url ?? "")}
-          onPlaying={(event) => handlePlaying(event.currentTarget, currentSegment?.audio_url ?? "")}
-          onWaiting={(event) => scheduleRecoveryWatchdog(event.currentTarget, currentSegment?.audio_url ?? "", "waiting")}
-          onStalled={(event) => scheduleRecoveryWatchdog(event.currentTarget, currentSegment?.audio_url ?? "", "stalled")}
-          onEnded={(event) => handleEnded(event.currentTarget, currentSegment?.audio_url ?? "")}
-          onTimeUpdate={(event) => handleTimeUpdate(event.currentTarget, currentSegment?.audio_url ?? "")}
-          onError={(event) => scheduleRecoveryWatchdog(event.currentTarget, currentSegment?.audio_url ?? "", "error")}
-        />
+        {bufferedSegments.map((segment) => {
+          const source = segment.audio_url as string;
+          const isActive = segment.paragraph_index === activeParagraph;
+          return (
+            <audio
+              key={`${segment.paragraph_index}-${source}`}
+              ref={(node) => {
+                if (!isActive) return;
+                if (node) {
+                  audioRef.current = node;
+                } else if (audioRef.current?.getAttribute("src") === source) {
+                  audioRef.current = null;
+                }
+              }}
+              src={source}
+              preload="auto"
+              aria-hidden="true"
+              data-active={isActive ? "true" : "false"}
+              onLoadedMetadata={isActive ? (event) => handleLoadedMetadata(event.currentTarget, source) : undefined}
+              onCanPlay={isActive ? (event) => handleCanPlay(event.currentTarget, source) : undefined}
+              onPlaying={isActive ? (event) => handlePlaying(event.currentTarget, source) : undefined}
+              onWaiting={isActive ? (event) => scheduleRecoveryWatchdog(event.currentTarget, source, "waiting") : undefined}
+              onStalled={isActive ? (event) => scheduleRecoveryWatchdog(event.currentTarget, source, "stalled") : undefined}
+              onEnded={isActive ? (event) => handleEnded(event.currentTarget, source) : undefined}
+              onTimeUpdate={isActive ? (event) => handleTimeUpdate(event.currentTarget, source) : undefined}
+              onError={isActive ? (event) => scheduleRecoveryWatchdog(event.currentTarget, source, "error") : undefined}
+            />
+          );
+        })}
 
         <div className="w-full max-w-xl">
           <label className="sr-only" htmlFor="chapter-progress">朗读进度</label>
