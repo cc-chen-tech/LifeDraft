@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import struct
 import tarfile
 import tempfile
 import time
@@ -303,6 +304,22 @@ class MiniMaxTTSProvider:
             playback_mode="audio",
         )
 
+    def is_valid_cached_asset(self, storage_path: str) -> bool:
+        """Return whether a stored MiniMax asset is safe to reuse."""
+        try:
+            file_name = Path(urlparse(storage_path).path).name
+            expected_extension = "wav" if self.config.local_audio_enabled else "mp3"
+            if not file_name or not file_name.endswith(f".{expected_extension}"):
+                return False
+            asset_path = (self.config.voice_asset_dir / file_name).resolve()
+            asset_path.relative_to(self.config.voice_asset_dir.resolve())
+            if not asset_path.is_file():
+                return False
+            _validated_audio_duration_ms(asset_path, expected_extension)
+        except (OSError, RuntimeError, ValueError):
+            return False
+        return True
+
 
 def _map_voice_id(voice_id: str) -> str:
     return {
@@ -320,8 +337,7 @@ def _safe_token(value: str) -> str:
 def _normalized_speed_token(speed: float) -> str:
     if speed <= 0:
         raise ValueError("MiniMax TTS speed must be positive")
-    normalized = format(speed, ".3f").rstrip("0").rstrip(".")
-    return normalized.replace(".", "p")
+    return f"float64-{struct.pack('!d', float(speed)).hex()}"
 
 
 def _validated_audio_duration_ms(audio_path: Path, extension: str) -> int:

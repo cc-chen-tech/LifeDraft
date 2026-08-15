@@ -180,6 +180,26 @@ class StoryVoiceReadingRepository:
             .one_or_none()
         )
 
+    def claim_queued_job_for_processing(self, user_id: int, job_id: int) -> bool:
+        """Atomically transition a queued job to processing for one worker."""
+        claimed = (
+            self.db.query(VoiceReadingJob)
+            .filter(
+                VoiceReadingJob.job_id == job_id,
+                VoiceReadingJob.user_id == user_id,
+                VoiceReadingJob.status == "queued",
+            )
+            .update({VoiceReadingJob.status: "processing"}, synchronize_session=False)
+        )
+        self.db.commit()
+        return claimed == 1
+
+    def invalidate_asset(self, asset: GeneratedVoiceAsset, reason: str) -> None:
+        """Retain an unusable v2 asset record but prevent further reuse."""
+        asset.status = "invalid"
+        asset.error_message = reason
+        self.db.flush()
+
     def mark_job_queued_for_retry(self, job: VoiceReadingJob) -> None:
         setattr(job, "status", "queued")
         setattr(job, "error_code", None)

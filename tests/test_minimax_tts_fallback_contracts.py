@@ -81,11 +81,25 @@ def test_local_audio_is_validated_measured_and_atomically_published(tmp_path: Pa
 
     assert client.output_paths[0].parent == asset_dir
     assert client.output_paths[0] != published
-    assert "speed-1p25" in published.name
+    assert "speed-float64-3ff4000000000000" in published.name
     assert "cache-v2" in published.name
     assert published.exists()
     assert list(asset_dir.glob(".*")) == []
     assert speech.duration_ms == 125
+
+
+def test_close_accepted_speeds_use_distinct_v2_cache_tokens(tmp_path: Path) -> None:
+    provider = MiniMaxTTSProvider(
+        config=_config(tmp_path, {"MINIMAX_E2E_LOCAL_AUDIO": "true"})
+    )
+    context = {"text_hash": "close-speed-story", "text": "相近语速不能共享缓存文件。"}
+
+    first = provider.synthesize(context, "warm_female", 1.0001)
+    second = provider.synthesize(context, "warm_female", 1.0002)
+
+    assert first.storage_path != second.storage_path
+    assert "speed-float64-" in str(first.storage_path)
+    assert "speed-float64-" in str(second.storage_path)
 
 
 def test_invalid_minimax_mp3_is_rejected_and_temporary_file_is_removed(tmp_path: Path) -> None:

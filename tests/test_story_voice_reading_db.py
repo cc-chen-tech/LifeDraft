@@ -2,6 +2,8 @@
 
 from uuid import uuid4
 import wave
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 from sqlalchemy import create_engine, inspect, text
 
@@ -15,6 +17,8 @@ from src.database.models import (
     init_db,
 )
 from src.services.story_voice_repository import StoryVoiceReadingRepository
+from src.services.minimax_config import MiniMaxConfig
+from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
 from src.services.story_voice_reading import (
     StoryVoiceReadingService,
     build_deterministic_wav,
@@ -303,6 +307,189 @@ def test_v2_request_deduplication_isolated_from_legacy_jobs() -> None:
 
         assert created.job_id != legacy_job.job_id
         assert created.asset_version == 2
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_process_job_regenerates_missing_or_corrupt_v2_cached_assets(tmp_path) -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice Cached Asset Validation",
+        )
+        session.add(user)
+        session.flush()
+        repository = StoryVoiceReadingRepository(session)
+        provider = MiniMaxTTSProvider(
+            config=MiniMaxConfig.from_env(
+                env={"MINIMAX_E2E_LOCAL_AUDIO": "true"},
+                voice_asset_dir=tmp_path / "voice",
+            )
+        )
+        service = StoryVoiceReadingService(repository, provider=provider)
+
+        for label, corrupt_bytes in (("missing", None), ("corrupt", b"not a wav")):
+            story_text = f"{label} v2 音频缓存必须重新生成。"
+            context = {
+                "source_type": "current_story",
+                "game_id": 913,
+                "week": 1,
+                "round_number": 1,
+                "stage": "event",
+                "attempt_id": label,
+                "text_hash": normalize_text_hash(story_text),
+                "text": story_text,
+            }
+            response = service.request_reading(
+                int(user.user_id), StoryVoiceReadingRequest(context=context)
+            )
+            cached_name = f"{label}-cache-v2.wav"
+            cached_file = tmp_path / "voice" / cached_name
+            if corrupt_bytes is not None:
+                cached_file.parent.mkdir(parents=True, exist_ok=True)
+                cached_file.write_bytes(corrupt_bytes)
+            stale_asset = repository.create_asset(
+                user_id=int(user.user_id),
+                context=context,
+                voice_id="warm_female",
+                speed=1.0,
+                provider="minimax",
+                model="speech-02-turbo",
+                storage_path=f"/api/voice-reading/audio/{cached_name}",
+                duration_ms=1_000,
+                status="ready",
+            )
+            session.commit()
+
+            completed = service.process_job(int(user.user_id), int(response.job_id))
+            replacement = session.query(GeneratedVoiceAsset).filter_by(
+                asset_id=completed.asset_id
+            ).one()
+            stale = session.query(GeneratedVoiceAsset).filter_by(
+                asset_id=stale_asset.asset_id
+            ).one()
+
+            assert replacement.asset_id != stale.asset_id
+            assert replacement.status == "ready"
+            assert stale.status == "invalid"
+            assert stale.asset_id is not None
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_two_sessions_can_claim_a_queued_job_only_once() -> None:
+    init_db()
+    setup_session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice Atomic Claim",
+        )
+        setup_session.add(user)
+        setup_session.flush()
+        context = {
+            "source_type": "current_story",
+            "game_id": 914,
+            "week": 1,
+            "round_number": 1,
+            "stage": "event",
+            "attempt_id": "atomic-claim",
+            "text_hash": normalize_text_hash("并发处理器只能有一个获胜者。"),
+            "text": "并发处理器只能有一个获胜者。",
+        }
+        job = StoryVoiceReadingRepository(setup_session).create_chapter_job(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            dedupe_key=f"claim-{uuid4().hex}",
+            paragraphs=[str(context["text"])],
+        )
+        setup_session.commit()
+        user_id = int(user.user_id)
+        job_id = int(job.job_id)
+    finally:
+        setup_session.close()
+
+    barrier = Barrier(2)
+
+    def claim_from_fresh_session() -> bool:
+        session = SessionLocal()
+        try:
+            barrier.wait()
+            return StoryVoiceReadingRepository(session).claim_queued_job_for_processing(
+                user_id, job_id
+            )
+        finally:
+            session.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(claim_from_fresh_session) for _ in range(2)]
+        claims = [future.result() for future in futures]
+
+    assert sorted(claims) == [False, True]
+
+
+def test_processing_job_loser_exits_without_synthesizing() -> None:
+    class FailIfSynthesizedProvider:
+        provider = "minimax"
+        model = "speech-02-turbo"
+
+        def metadata(self) -> StoryTTSProviderMetadata:
+            return StoryTTSProviderMetadata(
+                provider=self.provider,
+                model=self.model,
+                playback_mode="audio",
+                media_type="audio/mpeg",
+                available=True,
+                backend_audio_enabled=True,
+            )
+
+        def synthesize(self, context, voice_id, speed):
+            raise AssertionError("a losing worker must not synthesize")
+
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice Losing Worker",
+        )
+        session.add(user)
+        session.flush()
+        context = {
+            "source_type": "current_story",
+            "game_id": 915,
+            "week": 1,
+            "round_number": 1,
+            "stage": "event",
+            "attempt_id": "loser-exit",
+            "text_hash": normalize_text_hash("已被抢占的任务不能重复合成。"),
+            "text": "已被抢占的任务不能重复合成。",
+        }
+        job = StoryVoiceReadingRepository(session).create_chapter_job(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            dedupe_key=f"loser-{uuid4().hex}",
+            paragraphs=[str(context["text"])],
+        )
+        job.status = "processing"
+        session.commit()
+
+        response = StoryVoiceReadingService(
+            StoryVoiceReadingRepository(session), provider=FailIfSynthesizedProvider()
+        ).process_job(int(user.user_id), int(job.job_id))
+
+        assert response.status == "processing"
     finally:
         session.rollback()
         session.close()

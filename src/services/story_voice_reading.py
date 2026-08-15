@@ -225,6 +225,12 @@ class StoryVoiceReadingService:
         if str(job.status) == "ready":
             return self.get_job(user_id, job_id)
 
+        if not self.repository.claim_queued_job_for_processing(user_id, job_id):
+            return self.get_job(user_id, job_id)
+        job = self.repository.get_job(job_id, user_id)
+        if job is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
         metadata = self.provider.metadata()
         if not metadata.backend_audio_enabled:
             setattr(job, "status", "failed")
@@ -237,8 +243,6 @@ class StoryVoiceReadingService:
             self.repository.db.flush()
             return self.get_job(user_id, job_id)
 
-        setattr(job, "status", "processing")
-        self.repository.db.commit()
         for segment in job.segments:
             if str(segment.status) == "ready":
                 continue
@@ -255,6 +259,12 @@ class StoryVoiceReadingService:
                 model=metadata.model,
                 user_id=user_id,
             )
+            if ready_asset is not None and not self._is_valid_cached_asset(ready_asset):
+                self.repository.invalidate_asset(
+                    ready_asset,
+                    "Generated MiniMax audio is missing or invalid",
+                )
+                ready_asset = None
             try:
                 if ready_asset is None:
                     speech = self.provider.synthesize(
@@ -305,6 +315,12 @@ class StoryVoiceReadingService:
         setattr(job, "error_message", None)
         self.repository.db.commit()
         return self.get_job(user_id, job_id)
+
+    def _is_valid_cached_asset(self, asset: Any) -> bool:
+        validator = getattr(self.provider, "is_valid_cached_asset", None)
+        if not callable(validator):
+            return True
+        return bool(validator(str(asset.storage_path)))
 
     def get_job(self, user_id: int, job_id: int) -> VoiceReadingJobResponse:
         job = self.repository.get_job(job_id, user_id)
