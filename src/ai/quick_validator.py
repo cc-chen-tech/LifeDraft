@@ -174,13 +174,14 @@ class QuickValidator:
             )
             issues.extend(role_alias_issues)
             required_key_people = self._extract_required_key_people_names(character_settings)
-            cast_drift_issues = self._check_key_people_cast_drift(
+            cast_drift_issues, cast_drift_warnings = self._check_key_people_cast_drift(
                 story_text,
                 available_people,
                 language,
                 required_key_people=required_key_people,
             )
             issues.extend(cast_drift_issues)
+            warnings.extend(cast_drift_warnings)
 
         # 3. 检查人称一致性
         perspective_issues = self._check_perspective_consistency(story_text, language)
@@ -425,8 +426,8 @@ class QuickValidator:
         available_people: List[str],
         language: str,
         required_key_people: Optional[List[str]] = None,
-    ) -> List[str]:
-        """Detect severe drift where key people disappear and a new named cast appears."""
+    ) -> tuple[List[str], List[str]]:
+        """Classify severe cast drift as issues and noisy coverage signals as warnings."""
         allowed_names = [name.strip() for name in available_people if name and name.strip()]
         key_people_names = [
             name.strip()
@@ -434,7 +435,7 @@ class QuickValidator:
             if name and name.strip()
         ]
         if len(key_people_names) < 2:
-            return []
+            return [], []
 
         present_key_people = [
             name for name in key_people_names if self._key_person_has_active_presence(text, name)
@@ -442,10 +443,13 @@ class QuickValidator:
 
         if language != "zh":
             if present_key_people:
-                return []
-            return [
-                "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
-            ]
+                return [], []
+            return (
+                [
+                    "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
+                ],
+                [],
+            )
 
         invented_names = self._extract_likely_chinese_person_names(text, allowed_names)
         if present_key_people:
@@ -457,40 +461,55 @@ class QuickValidator:
                 and len(present_key_people) < required_network_count
                 and self._invented_cast_has_role_transfer_cues(text, invented_names)
             ):
-                return [
-                    "上一版故事预设关键人物使用不足，预设关系网使用不足，"
-                    "名单外关键角色替代预设关系网"
-                    f"（已使用{len(present_key_people)}/{len(key_people_names)}，"
-                    f"名单外关键角色：{ '、'.join(invented_names[:3]) }）；"
-                    "请不要让新人物接管导师、闺蜜、同期、投资人或主线推进功能。"
-                ]
+                return (
+                    [
+                        "上一版故事预设关键人物使用不足，预设关系网使用不足，"
+                        "名单外关键角色替代预设关系网"
+                        f"（已使用{len(present_key_people)}/{len(key_people_names)}，"
+                        f"名单外关键角色：{ '、'.join(invented_names[:3]) }）；"
+                        "请不要让新人物接管导师、闺蜜、同期、投资人或主线推进功能。"
+                    ],
+                    [],
+                )
+            if key_people_ratio < 0.5 and len(invented_names) >= 3:
+                return (
+                    [
+                        "上一版故事预设关键人物使用不足，反而引入了大量名单外人物"
+                        f"（{ '、'.join(invented_names[:5]) }）；请围绕可用人物列表重写。"
+                    ],
+                    [],
+                )
             if (
                 len(key_people_names) >= 3
                 and len(invented_names) >= 3
                 and len(present_key_people) < required_network_count
             ):
-                return [
-                    "上一版故事预设关键人物使用不足，预设关系网使用不足"
-                    f"（已使用{len(present_key_people)}/{len(key_people_names)}，要求多人关系戏至少80%）"
-                    "，反而让名单外人物主导剧情"
-                    f"（{ '、'.join(invented_names[:5]) }）；请围绕预设关键人物关系网重写。"
-                ]
-            if key_people_ratio < 0.5 and len(invented_names) >= 3:
-                return [
-                    "上一版故事预设关键人物使用不足，反而引入了大量名单外人物"
-                    f"（{ '、'.join(invented_names[:5]) }）；请围绕可用人物列表重写。"
-                ]
-            return []
+                return (
+                    [],
+                    [
+                        "上一版故事预设关系网覆盖低于建议值"
+                        f"（已使用{len(present_key_people)}/{len(key_people_names)}，要求多人关系戏至少80%）"
+                        "，检测到可能的名单外人物"
+                        f"（{ '、'.join(invented_names[:5]) }）；保留故事并记录观察。"
+                    ],
+                )
+            return [], []
 
         if len(invented_names) >= 2:
-            return [
-                "上一版故事完全没有使用预设关键人物，反而引入了名单外人物"
-                f"（{ '、'.join(invented_names[:5]) }）；请围绕可用人物列表重写。"
-            ]
+            return (
+                [
+                    "上一版故事完全没有使用预设关键人物，反而引入了名单外人物"
+                    f"（{ '、'.join(invented_names[:5]) }）；请围绕可用人物列表重写。"
+                ],
+                [],
+            )
 
-        return [
-            "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
-        ]
+        return (
+            [
+                "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
+            ],
+            [],
+        )
 
     def _key_person_has_active_presence(self, text: str, name: str) -> bool:
         """Names mentioned only as absent/non-participating do not satisfy cast use."""

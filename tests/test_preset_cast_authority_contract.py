@@ -320,8 +320,8 @@ def test_quick_validator_rejects_unapproved_role_alias_with_single_preset_person
     assert any("名单外命名角色" in issue for issue in result.issues)
 
 
-def test_quick_validator_rejects_partial_cast_when_new_named_network_dominates() -> None:
-    """Two preset names are not enough if the scene is still led by a new cast."""
+def test_quick_validator_warns_for_two_of_three_key_people_with_heuristic_names() -> None:
+    """A majority preset cast must not be rejected by surname-shaped object names."""
     from config.prompts._helpers import _collect_available_people
     from src.ai.quick_validator import quick_validate_story
 
@@ -331,20 +331,22 @@ def test_quick_validator_rejects_partial_cast_when_new_named_network_dominates()
         for person in _collect_available_people(settings)
         if person.get("name")
     ]
+    available_people.append("孙悟空")
 
     result = quick_validate_story(
         story_text=(
-            "陆昊然和陈晓雨刚提醒林清回到需求复盘，方蕾就带着马老板闯进会议室。"
-            "赵子豪翻出苏州贸易公司的旧账，王丽华要求林清立刻替家里签下债务协议。"
-            "接下来的冲突全由这些陌生债主推动，同期协作和产品经理成长线彻底消失。"
+            "陆昊然和陈晓雨同孙悟空核对方案。"
+            "安神香是产品代号，雷火阵是风控模块，云梯果是测试数据集。"
+            "三人查看材料后约定明天继续讨论。"
         ),
         character_settings=settings,
         available_people=available_people,
         language="zh",
     )
 
-    assert not result.passed
-    assert any("预设关系网使用不足" in issue for issue in result.issues)
+    assert result.passed
+    assert result.issues == []
+    assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
 
 
 def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
