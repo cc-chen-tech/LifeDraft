@@ -766,6 +766,7 @@ class ImageService:
             from PIL import Image
 
             img: Image.Image = Image.open(io.BytesIO(image_data))
+            opened_img = img
 
             # 如果图片尺寸超过限制，等比缩放
             width, height = img.size
@@ -781,6 +782,7 @@ class ImageService:
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=quality, optimize=True)
             compressed = buf.getvalue()
+            opened_img.close()
 
             original_kb = len(image_data) / 1024
             compressed_kb = len(compressed) / 1024
