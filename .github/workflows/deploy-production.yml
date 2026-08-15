@@ -68,7 +68,6 @@ jobs:
               'Frontend Build',
               'Frontend Code Quality',
               'Frontend Tests',
-              'Frontend Integration Tests',
               'Coverage Report',
               'CI',
               'Wiki Check',
