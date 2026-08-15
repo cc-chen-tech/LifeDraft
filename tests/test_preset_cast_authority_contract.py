@@ -404,6 +404,49 @@ def test_quick_validator_warns_for_action_bearing_product_labels() -> None:
     assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
 
 
+def test_quick_validator_warns_for_explicit_non_person_governance_actors() -> None:
+    """Explicit product/module/data labels remain non-person actors."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨一起核对产品方案。"
+            "安神香是产品代号，随后安神香制定睡眠方案；"
+            "雷火阵是风控模块，接着雷火阵安排检查任务；"
+            "云梯果是测试数据集。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+    assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
+
+
+def test_quick_validator_rejects_long_governance_action_descriptions() -> None:
+    """Actor scanning must retain the full lookahead allowed by action regexes."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "赵强制定了一个经过多轮讨论审核的完整产品方案，"
+            "方蕾安排了一个经过多轮讨论审核的完整检查任务，"
+            "马涛只负责记录会议结论。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
 def test_quick_validator_rejects_plot_drivers_after_consumed_modifiers() -> None:
     """Greedy name matching must not hide modifiers before core actions."""
     from config.prompts._helpers import _collect_available_people

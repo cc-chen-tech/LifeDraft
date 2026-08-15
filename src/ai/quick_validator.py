@@ -157,6 +157,15 @@ class QuickValidator:
         "亲自",
     )
     CHINESE_NAME_SINGLE_CHARACTER_MODIFIERS = frozenset("又还则便")
+    CHINESE_NON_PERSON_IDENTITY_LABELS = (
+        "产品代号",
+        "模块",
+        "数据集",
+        "系统",
+        "工具",
+        "模型",
+    )
+    CHINESE_GOVERNANCE_ACTION_LOOKAHEAD = 32
 
     def __init__(self):
         self._forbidden_pattern_zh = self._build_forbidden_pattern("zh")
@@ -613,6 +622,8 @@ class QuickValidator:
             "安抚情绪",
         ]
         for name in invented_names:
+            if self._is_explicitly_identified_non_person(text, name):
+                continue
             start = 0
             while True:
                 index = text.find(name, start)
@@ -651,12 +662,17 @@ class QuickValidator:
         )
         active_actors: set[str] = set()
         for name in invented_names:
+            if self._is_explicitly_identified_non_person(text, name):
+                continue
             start = 0
             while True:
                 index = text.find(name, start)
                 if index == -1:
                     break
-                suffix = text[index + len(name): index + len(name) + 16]
+                suffix = text[
+                    index + len(name):
+                    index + len(name) + self.CHINESE_GOVERNANCE_ACTION_LOOKAHEAD
+                ]
                 possible_actors_and_tails = []
                 if len(name) == 3:
                     possible_actors_and_tails.append((name[:-1], name[-1] + suffix))
@@ -687,14 +703,33 @@ class QuickValidator:
         for first_name, second_name, action_start in self._coordinated_name_groups(text):
             if first_name not in invented_name_set or second_name not in invented_name_set:
                 continue
-            action_tail = text[action_start: action_start + 24]
+            action_tail = text[
+                action_start:
+                action_start + self.CHINESE_GOVERNANCE_ACTION_LOOKAHEAD
+            ]
             if any(
                 pattern.match(optional_modifiers.sub("", action_tail))
                 for pattern in governance_action_patterns
             ):
-                active_actors.update((first_name, second_name))
+                active_actors.update(
+                    name
+                    for name in (first_name, second_name)
+                    if not self._is_explicitly_identified_non_person(text, name)
+                )
 
         return len(active_actors) >= 2
+
+    def _is_explicitly_identified_non_person(self, text: str, name: str) -> bool:
+        """Return True when prose explicitly defines a candidate as an object label."""
+        labels = "|".join(
+            re.escape(label) for label in self.CHINESE_NON_PERSON_IDENTITY_LABELS
+        )
+        return bool(
+            re.search(
+                rf"{re.escape(name)}(?:是|为|属于|作为)[^，。；！？]{{0,12}}(?:{labels})",
+                text,
+            )
+        )
 
     def _coordinated_name_groups(self, text: str) -> List[tuple[str, str, int]]:
         """Return coordinated Chinese names and the start of their shared action."""
