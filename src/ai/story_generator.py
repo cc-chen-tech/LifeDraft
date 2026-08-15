@@ -19,7 +19,10 @@ from config.prompts._helpers import (
     _build_style_constraints_text,
     extract_overused_phrases,
 )
-from config.prompts.story_prompts import resolve_protagonist_name
+from config.prompts.story_prompts import (
+    build_daily_story_mode_constraint,
+    resolve_protagonist_name,
+)
 from src.ai.budgets import (
     GenerationBudgetError,
     GenerationCallTracker,
@@ -749,20 +752,10 @@ class StoryGenerator:
             else generation_budget.allow_ai_consistency
         )
         if daily_mode:
-            prior = (player_state.get("day_history") or [])[-1:]
-            prior_context = ""
-            if prior and isinstance(prior[0], dict):
-                prior_context = (
-                    f"昨日完整故事：{prior[0].get('event_description', '')}\n"
-                    f"昨日选择：{prior[0].get('choice', '')}\n"
-                    f"昨日实际结算：{prior[0].get('effects_applied', {})}"
-                )
-            prompt += (
-                "\n\n【每日故事模式 v2】\n"
-                f"今天是 {timeline.get('current_date')}（第{timeline.get('day_number')}天）。\n"
-                f"{prior_context}\n"
-                "生成今天的完整故事，必须承接昨日选择和实际结算；"
-                "故事结尾只形成今天唯一的决策点，选项用于决定明天的承接。"
+            prompt += build_daily_story_mode_constraint(
+                player_state,
+                character_settings,
+                language,
             )
 
         # Step 1: Generate story text (with optional streaming)
@@ -784,6 +777,7 @@ class StoryGenerator:
             temperature = 0.75  # 允许更多创意
             logger.info(f"Dynamic temperature: {temperature} (new event)")
 
+        from src.ai.daily_opening import validate_daily_first_opening
         from src.ai.quick_validator import quick_validate_story
 
         # 最多尝试次数：默认仅保留 QUICK 重试的一次回退；只有启用约束增强时才走 profile 次数重试。
@@ -798,6 +792,25 @@ class StoryGenerator:
         available_people_names = self._validation_people_names(
             player_state, character_settings
         )
+
+        def _quick_validate_round_story(candidate: str):
+            result = quick_validate_story(
+                story_text=candidate,
+                character_settings=character_settings,
+                available_people=available_people_names,
+                language=language,
+            )
+            opening_issues = validate_daily_first_opening(
+                candidate,
+                player_state,
+                character_settings,
+                language,
+            )
+            if opening_issues:
+                result.issues.extend(opening_issues)
+                result.passed = False
+            return result
+
         committed_stories = self._committed_round_stories(
             player_state,
             last_round_full_story,
@@ -925,12 +938,7 @@ class StoryGenerator:
                 logger.info(f"Generated round story with {len(story_text)} characters")
 
                 # Step 1.4: Quick rule-based validation (before AI validation)
-                quick_result = quick_validate_story(
-                    story_text=story_text,
-                    character_settings=character_settings,
-                    available_people=available_people_names,
-                    language=language,
-                )
+                quick_result = _quick_validate_round_story(story_text)
                 quick_retry_used = False
                 locally_usable_story = quick_result.passed
 
@@ -976,12 +984,7 @@ class StoryGenerator:
                         len(story_text),
                     )
 
-                    retry_result = quick_validate_story(
-                        story_text=story_text,
-                        character_settings=character_settings,
-                        available_people=available_people_names,
-                        language=language,
-                    )
+                    retry_result = _quick_validate_round_story(story_text)
 
                     if not retry_result.passed:
                         logger.warning(
@@ -1050,12 +1053,7 @@ class StoryGenerator:
                         len(story_text),
                     )
                     retry_shape_issues = _hard_shape_issues(story_text)
-                    retry_quick_result = quick_validate_story(
-                        story_text=story_text,
-                        character_settings=character_settings,
-                        available_people=available_people_names,
-                        language=language,
-                    )
+                    retry_quick_result = _quick_validate_round_story(story_text)
                     if not retry_quick_result.passed:
                         logger.warning(
                             "Story shape retry still failed: shape=%s quick=%s",
@@ -1128,12 +1126,7 @@ class StoryGenerator:
                             narrative_budget, generation_tracker
                         ),
                     )
-                    repeat_retry_validation = quick_validate_story(
-                        story_text=story_text,
-                        character_settings=character_settings,
-                        available_people=available_people_names,
-                        language=language,
-                    )
+                    repeat_retry_validation = _quick_validate_round_story(story_text)
                     repeat_retry_shape_issues = _hard_shape_issues(story_text)
                     if not repeat_retry_validation.passed:
                         issues = (
@@ -1369,6 +1362,13 @@ class StoryGenerator:
                 story_description=best_valid_story_text,
                 language=language,
                 decision_history=player_state.get("decision_history", []),
+            )
+            from src.game.daily_transition import prepare_daily_option_transitions
+
+            fallback_options = prepare_daily_option_transitions(
+                fallback_options,
+                player_state,
+                language=language,
             )
             return GameEvent(
                 event_description=best_valid_story_text,

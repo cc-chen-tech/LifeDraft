@@ -22,6 +22,7 @@ from config.prompts.story_prompts import (
     _build_protagonist_identity_instruction,
     _build_zh_chapter_constraint,
     _extract_gender_text,
+    build_daily_story_mode_constraint,
     resolve_protagonist_name,
 )
 from src.ai.budgets import (
@@ -43,12 +44,18 @@ from src.game.relationship_authority import (
 logger = logging.getLogger(__name__)
 
 
-def apply_daily_event_metadata(event: GameEvent, player_state: Any) -> GameEvent:
+def apply_daily_event_metadata(
+    event: GameEvent, player_state: Any, *, language: str = "zh"
+) -> GameEvent:
     """Stamp every daily event path, including scheduled-event fast paths."""
     from src.game.daily_timeline import is_daily_timeline
+    from src.game.daily_transition import prepare_daily_option_transitions
 
     if is_daily_timeline(player_state):
         timeline = player_state.timeline
+        event.options = prepare_daily_option_transitions(
+            event.options, player_state, language=language
+        )
         event.event_id = f"day-{timeline['day_index']}-{uuid.uuid4().hex}"
         event.revision = 1
         event.story_date = timeline["current_date"]
@@ -251,6 +258,7 @@ class RoundEventGenerator:
             if existing_story and len(existing_story) > 100:
                 if not self._existing_story_satisfies_quick_constraints(
                     existing_story=existing_story,
+                    player_state=self._prompt_context(player_state),
                     character_settings=player_state.character_settings,
                     language=self.language,
                     resume_source=resume_source or "unknown",
@@ -280,6 +288,9 @@ class RoundEventGenerator:
                     event = GameEvent(
                         event_description=existing_story,
                         options=options,
+                    )
+                    apply_daily_event_metadata(
+                        event, player_state, language=self.language
                     )
 
                     self._current_event = event
@@ -312,6 +323,9 @@ class RoundEventGenerator:
                             existing_story=existing_story,
                             player_state=player_state,
                         )
+                    )
+                    apply_daily_event_metadata(
+                        generated_event, player_state, language=self.language
                     )
 
                     # ★ Cache the generated options
@@ -378,7 +392,7 @@ class RoundEventGenerator:
                 scheduled_events, player_state, stream_callback, status_callback
             )
             if event:
-                apply_daily_event_metadata(event, player_state)
+                apply_daily_event_metadata(event, player_state, language=self.language)
                 self._current_event = event  # type: ignore[assignment]
                 player_state.current_event_data = event.model_dump()
                 # 标记预定事件已触发
@@ -523,7 +537,7 @@ class RoundEventGenerator:
             if not event:
                 raise StoryGenerationFailure("AI generator returned no round event")
 
-            apply_daily_event_metadata(event, player_state)
+            apply_daily_event_metadata(event, player_state, language=self.language)
 
             self._current_event = event
 
@@ -587,6 +601,7 @@ class RoundEventGenerator:
         self,
         *,
         existing_story: str,
+        player_state: dict[str, Any],
         character_settings: dict[str, Any],
         language: str,
         resume_source: str,
@@ -608,6 +623,17 @@ class RoundEventGenerator:
             available_people=available_people_names,
             language=language,
         )
+        from src.ai.daily_opening import validate_daily_first_opening
+
+        daily_issues = validate_daily_first_opening(
+            existing_story,
+            player_state,
+            character_settings,
+            language,
+        )
+        if daily_issues:
+            quick_result.issues.extend(daily_issues)
+            quick_result.passed = False
         if quick_result.passed:
             if quick_result.warnings:
                 logger.info(
@@ -934,12 +960,32 @@ class RoundEventGenerator:
                             language=self.language,
                             decision_history=state_dict.get("decision_history", []),
                         )
+                        from src.game.daily_transition import (
+                            prepare_daily_option_transitions,
+                        )
+
+                        options = prepare_daily_option_transitions(
+                            options,
+                            state_dict,
+                            language=self.language,
+                        )
                         quick_result = quick_validate_story(
                             story_text=event_desc,
                             character_settings=character_settings,
                             available_people=available_people_names,
                             language=self.language,
                         )
+                        from src.ai.daily_opening import validate_daily_first_opening
+
+                        daily_issues = validate_daily_first_opening(
+                            event_desc,
+                            state_dict,
+                            character_settings,
+                            self.language,
+                        )
+                        if daily_issues:
+                            quick_result.issues.extend(daily_issues)
+                            quick_result.passed = False
                         if not quick_result.passed:
                             last_validation_error = "; ".join(quick_result.issues)
                             logger.warning(
@@ -1013,6 +1059,8 @@ class RoundEventGenerator:
         era_constraints = _build_era_anachronism_constraints(
             character_settings, language
         )
+        timeline = player_state.get("timeline")
+        daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
         week = int(player_state.get("week", 0) or 0)
         current_round = int(player_state.get("current_round", 0) or 0)
         rounds_per_week = player_state.get("rounds_per_week", 3) or 3
@@ -1035,10 +1083,15 @@ class RoundEventGenerator:
                 current_round,
                 character_settings,
             )
-            if language == "zh"
+            if language == "zh" and not daily_mode
             else ""
         )
         zh_timeline_title = f"第{week + 1}周·{round_name}" if language == "zh" else ""
+        daily_constraint = build_daily_story_mode_constraint(
+            player_state,
+            character_settings,
+            language,
+        )
         quality_level = str(
             getattr(self.ai_generator, "quality_level", None) or "expert"
         )
@@ -1047,16 +1100,31 @@ class RoundEventGenerator:
         )
 
         if language == "zh":
+            current_time = (
+                "日期由界面统一展示" if daily_mode else f"当前时间：{zh_timeline_title}"
+            )
+            transition_requirement = (
+                "\n7. 每个选项必须包含 transition_text：一句12-28个汉字的含蓄次日转场，"
+                "不得复述选项、显示数值、预言结果或引入新事实"
+                if daily_mode
+                else ""
+            )
+            transition_json = (
+                ', "transition_text": "决定的余韵仍在，时间已悄然走向明日。"'
+                if daily_mode
+                else ""
+            )
             return f"""【强制事件】角色之前做出的承诺必须在本轮兑现。
 
 承诺内容：{combined_description}
 涉及人物：{parties_str}
 事件提示：{combined_hint}
 
-当前时间：{zh_timeline_title}
+{current_time}
 玩家姓名：{player_name}
 
 {zh_chapter_constraint}
+{daily_constraint}
 
 【角色设定硬约束】
 {character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}
@@ -1068,28 +1136,46 @@ class RoundEventGenerator:
 3. 事件开头要自然衔接之前的承诺（如"记得之前答应过..."）
 4. {length_requirement}，生动有深度
 5. 提供恰好3个选项，每个选项目标8-24字、超过40字必须重写，且都要与承诺相关
-6. 选项应呈现真实的权衡取舍
+6. 选项应呈现真实的权衡取舍{transition_requirement}
 
 【输出格式】
 返回JSON格式：
 {{
   "event_description": "事件描述（{length_requirement}）",
   "options": [
-    {{"text": "选项文本（目标8-24字）", "effects": {{"energy": -10, "mood": 5, ...}}}},
+    {{"text": "选项文本（目标8-24字）", "effects": {{"energy": -10, "mood": 5, ...}}{transition_json}}},
     ...
   ]
 }}
 
 只返回JSON，不要其他文本。"""
         else:
+            current_time = (
+                "The interface displays the exact date"
+                if daily_mode
+                else f"Current time: Week {week}, {round_name}"
+            )
+            transition_requirement = (
+                "\n7. Every option must include transition_text: one subtle 5-18 word sentence "
+                "carrying the choice toward tomorrow without stats, predictions, or new facts"
+                if daily_mode
+                else ""
+            )
+            transition_json = (
+                ', "transition_text": "The choice settles quietly as tomorrow draws nearer."'
+                if daily_mode
+                else ""
+            )
             return f"""[MANDATORY EVENT] The character must fulfill their previous commitment this round.
 
 Commitment: {combined_description}
 Characters involved: {parties_str}
 Event hints: {combined_hint}
 
-Current time: Week {week}, {round_name}
+{current_time}
 Player name: {player_name}
+
+{daily_constraint}
 
 [Character Setting Hard Constraints]
 {character_context if character_context else "Standard modern young adult"}{name_instruction}{available_people_str}
@@ -1101,14 +1187,14 @@ Player name: {player_name}
 3. Start naturally by referencing the previous promise (e.g., "Remembering the promise to...")
 4. {length_requirement}, vivid and deep
 5. Provide exactly 3 options, each targeting 3-12 words; rewrite any option over 16 words, and keep each related to the commitment
-6. Options should present real trade-offs
+6. Options should present real trade-offs{transition_requirement}
 
 [Output Format]
 Return JSON:
 {{
   "event_description": "Event description ({length_requirement})",
   "options": [
-    {{"text": "Option text (target 3-12 words)", "effects": {{"energy": -10, "mood": 5, ...}}}},
+    {{"text": "Option text (target 3-12 words)", "effects": {{"energy": -10, "mood": 5, ...}}{transition_json}}},
     ...
   ]
 }}
@@ -1128,16 +1214,66 @@ Return ONLY JSON, no other text."""
         combined_desc = "；".join(descriptions)
 
         language = self.language
+        state_dict = (
+            self._prompt_context(player_state) if player_state is not None else {}
+        )
+        timeline = state_dict.get("timeline")
+        daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
+        first_daily_day = daily_mode and int(timeline.get("day_index") or 0) == 0
 
         if language == "zh":
-            event_desc = f"到了兑现承诺的时候了。{combined_desc}。你需要做出选择。"
+            if first_daily_day:
+                from src.ai.prompt_sanitizer import sanitize_persisted_life_vision
+
+                character_settings = state_dict.get("character_settings", {}) or {}
+                protagonist = (
+                    resolve_protagonist_name(state_dict, character_settings, None)
+                    or "主角"
+                )
+                raw_vision = str(
+                    state_dict.get("life_vision")
+                    or character_settings.get("life_vision")
+                    or "尚待实现的人生方向"
+                )
+                safe_vision = sanitize_persisted_life_vision(raw_vision)
+                vision = " ".join(safe_vision.split())
+                vision = vision.translate(str.maketrans("。！？.!?", "，，，，，，"))
+                vision = vision.strip("，, ")
+                event_desc = (
+                    f"{protagonist}仍把“{vision}”放在心上，却先要面对眼前这份必须兑现的承诺。\n\n"
+                    f"清晨，{protagonist}站在约定的地点，关于{combined_desc}的现实问题已经摆到面前。"
+                )
+            else:
+                event_desc = f"到了兑现承诺的时候了。{combined_desc}。你需要做出选择。"
             options = [
                 EventOption(text="认真兑现承诺", effects={"mood": 10, "energy": -10}),
                 EventOption(text="敷衍了事", effects={"mood": -5}),
                 EventOption(text="找借口推迟", effects={"mood": -15}),
             ]
         else:
-            event_desc = f"It's time to fulfill your commitment. {combined_desc}. You need to make a choice."
+            if first_daily_day:
+                from src.ai.prompt_sanitizer import sanitize_persisted_life_vision
+
+                character_settings = state_dict.get("character_settings", {}) or {}
+                protagonist = (
+                    resolve_protagonist_name(state_dict, character_settings, None)
+                    or "The protagonist"
+                )
+                raw_vision = str(
+                    state_dict.get("life_vision")
+                    or character_settings.get("life_vision")
+                    or "an unrealized direction"
+                )
+                safe_vision = sanitize_persisted_life_vision(raw_vision)
+                vision = " ".join(safe_vision.split())
+                vision = vision.translate(str.maketrans("。！？.!?", ",,,,,,"))
+                vision = vision.strip("，, ")
+                event_desc = (
+                    f'{protagonist} still holds onto "{vision}", yet must first face the commitment waiting in reality.\n\n'
+                    f"That morning, {protagonist} stands at the agreed place as {combined_desc} comes due."
+                )
+            else:
+                event_desc = f"It's time to fulfill your commitment. {combined_desc}. You need to make a choice."
             options = [
                 EventOption(
                     text="Fulfill the commitment seriously",
@@ -1147,7 +1283,15 @@ Return ONLY JSON, no other text."""
                 EventOption(text="Make an excuse to delay", effects={"mood": -15}),
             ]
 
-        return GameEvent(
+        event = GameEvent(
             event_description=event_desc,
             options=options,
         )
+        from src.game.daily_transition import prepare_daily_option_transitions
+
+        event.options = prepare_daily_option_transitions(
+            event.options,
+            state_dict,
+            language=language,
+        )
+        return event

@@ -10,6 +10,7 @@ from config.settings import settings
 from src.ai.models import GameEvent
 from src.game.continuity_ledger import ContinuityLedger
 from src.game.daily_timeline import advance_daily_timeline, normalize_daily_timeline
+from src.game.daily_transition import resolve_daily_transition
 
 
 class DailyChoiceProcessor:
@@ -24,6 +25,7 @@ class DailyChoiceProcessor:
         result_callback: Optional[Callable[[Dict[str, Any], Any], None]] = None,
         postprocess_callback: Optional[Callable[[str], None]] = None,
         settlement_lock: Optional[Any] = None,
+        language_getter: Optional[Callable[[], str]] = None,
     ) -> None:
         self._get_player_state = player_state_getter
         self._get_current_event = current_event_getter
@@ -31,6 +33,7 @@ class DailyChoiceProcessor:
         self.result_callback = result_callback
         self.postprocess_callback = postprocess_callback
         self._settlement_lock = settlement_lock or Lock()
+        self._get_language = language_getter or (lambda: "zh")
 
     def make_choice(
         self,
@@ -84,6 +87,12 @@ class DailyChoiceProcessor:
             raise ValueError("stale_story_date")
 
         option = event.options[option_index]
+        transition_text = resolve_daily_transition(
+            option,
+            state,
+            option_index=option_index,
+            language=self._get_language(),
+        )
         requested = deepcopy(option.effects)
         applied, warnings = self._normalize_effects(state, requested)
         staged = state.model_copy(deep=True)
@@ -119,6 +128,7 @@ class DailyChoiceProcessor:
             "options": [item.model_dump() for item in event.options],
             "choice_option_index": option_index,
             "choice": option.text,
+            "transition_text": transition_text,
             "effects_requested": requested,
             "effects_applied": deepcopy(applied),
             "resource_warnings": warnings,
@@ -128,6 +138,7 @@ class DailyChoiceProcessor:
         result = {
             "story_continuation": "",
             "summary": "",
+            "transition_text": transition_text,
             "effects_applied": deepcopy(applied),
             "effects_requested": requested,
             "resource_warnings": warnings,
@@ -189,11 +200,11 @@ class DailyChoiceProcessor:
             self.postprocess_callback(event_id)
         return result
 
-    @staticmethod
     def _find_duplicate(
-        state: Any, event_id: str, revision: int, option_index: int
+        self, state: Any, event_id: str, revision: int, option_index: int
     ) -> Optional[Dict[str, Any]]:
-        for record in reversed(state.day_history):
+        for record_position in range(len(state.day_history) - 1, -1, -1):
+            record = state.day_history[record_position]
             if record.get("event_id") != event_id:
                 continue
             if (
@@ -202,7 +213,32 @@ class DailyChoiceProcessor:
             ):
                 saved = record.get("choice_result")
                 if isinstance(saved, dict):
-                    return deepcopy(saved)
+                    restored = deepcopy(saved)
+                    if not restored.get("transition_text"):
+                        raw_options = record.get("options")
+                        if isinstance(raw_options, list) and option_index < len(
+                            raw_options
+                        ):
+                            try:
+                                from src.ai.models import EventOption
+
+                                option = EventOption(**raw_options[option_index])
+                                fallback_state = {
+                                    "timeline": {
+                                        "version": 2,
+                                        "day_index": int(record.get("day_index") or 0),
+                                    },
+                                    "day_history": state.day_history[:record_position],
+                                }
+                                restored["transition_text"] = resolve_daily_transition(
+                                    option,
+                                    fallback_state,
+                                    option_index=option_index,
+                                    language=self._get_language(),
+                                )
+                            except (TypeError, ValueError, IndexError):
+                                pass
+                    return restored
             raise ValueError("event_already_settled")
         return None
 
@@ -215,7 +251,12 @@ class DailyChoiceProcessor:
         for key, current, lower, upper in (
             ("energy", state.energy, settings.MIN_RESOURCE, settings.MAX_RESOURCE),
             ("mood", state.mood, settings.MIN_RESOURCE, settings.MAX_RESOURCE),
-            ("knowledge", state.knowledge, settings.MIN_RESOURCE, settings.MAX_RESOURCE),
+            (
+                "knowledge",
+                state.knowledge,
+                settings.MIN_RESOURCE,
+                settings.MAX_RESOURCE,
+            ),
         ):
             if key not in requested:
                 continue
@@ -233,7 +274,9 @@ class DailyChoiceProcessor:
                         "resource": key,
                         "requested_delta": delta,
                         "applied_delta": actual,
-                        "reason": "insufficient_resource" if delta < 0 else "resource_cap",
+                        "reason": (
+                            "insufficient_resource" if delta < 0 else "resource_cap"
+                        ),
                     }
                 )
         relationships = requested.get("relationships")

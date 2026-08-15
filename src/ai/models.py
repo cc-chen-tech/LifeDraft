@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -14,7 +14,10 @@ class EventOption(BaseModel):
 
     text: str = Field(..., max_length=200)  # Increased for longer option text
     effects: Dict[str, Any] = Field(...)
-    likely_choice: bool = Field(default=False)  # Whether this is the character's likely choice
+    likely_choice: bool = Field(
+        default=False
+    )  # Whether this is the character's likely choice
+    transition_text: Optional[str] = Field(default=None, max_length=80)
 
     @field_validator("effects", mode="before")
     @classmethod
@@ -29,7 +32,9 @@ class GameEvent(BaseModel):
     event_id: str = Field(default_factory=lambda: f"evt_{uuid.uuid4().hex}")
     revision: int = Field(default=1, ge=1)
     story_date: str = Field(default="")
-    event_description: str = Field(...)  # Removed max_length limit to support long stories
+    event_description: str = Field(
+        ...
+    )  # Removed max_length limit to support long stories
     options: List[EventOption] = Field(..., min_length=2, max_length=4)
 
     @classmethod

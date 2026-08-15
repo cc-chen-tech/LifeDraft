@@ -21,6 +21,7 @@ import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
 import { StoryListeningExperience } from "@/components/game/StoryListeningExperience";
+import { DailyTransitionLayer } from "@/components/game/DailyTransitionLayer";
 import { getSceneImageDisplayMode } from "@/components/game/sceneImageStagePolicy";
 import {
   FeedbackNotice,
@@ -29,6 +30,7 @@ import {
 import { usePlayGame } from "@/hooks/usePlayGame";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
+import { useDailyTransition } from "@/hooks/game/useDailyTransition";
 import { useGameStore } from "@/stores/useGameStore";
 import { useEventStore } from "@/stores/useEventStore";
 import { useSceneImageStore } from "@/stores/useSceneImageStore";
@@ -78,7 +80,6 @@ export default function PlayPage() {
   const [assistantCommand, setAssistantCommand] = useState<ChatBarCommand | null>(null);
   const [assistantSurfaceOpen, setAssistantSurfaceOpen] = useState(false);
   const [toolsSurfaceOpen, setToolsSurfaceOpen] = useState(false);
-  const [dailySettlement, setDailySettlement] = useState<Record<string, number> | null>(null);
   const [queuedPageFeedback, setQueuedPageFeedback] = useState<PageFeedbackState | null>(null);
   const lastObservedFeedbackKeyRef = useRef<string | null>(null);
   const collectionReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -159,23 +160,15 @@ export default function PlayPage() {
     currentRound,
   } = usePlayGame();
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const showSettlement = (event: Event) => {
-      setDailySettlement((event as CustomEvent<Record<string, number>>).detail);
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => setDailySettlement(null), 1800);
-    };
-    window.addEventListener("story2:daily-settlement", showSettlement);
-    return () => {
-      window.removeEventListener("story2:daily-settlement", showSettlement);
-      if (timer) clearTimeout(timer);
-    };
-  }, []);
-
   const processingMessage = useUIStore((state) => state.processingMessage);
   const resultSceneRound = Math.max(0, currentRound - 1);
   const isDailyTimeline = playerState?.timeline?.version === 2;
+  const dailyTransition = useDailyTransition({
+    isDailyTimeline,
+    phase,
+    storyText,
+    playerState,
+  });
   const dailyDate = isDailyTimeline ? playerState?.timeline?.current_date : null;
   const dailyDateTitle = typeof dailyDate === "string"
     ? `公元 ${dailyDate.slice(0, 4)} 年 ${Number(dailyDate.slice(5, 7))} 月 ${Number(dailyDate.slice(8, 10))} 日`
@@ -251,7 +244,7 @@ export default function PlayPage() {
   ]);
 
   const pageFeedbackBlocked =
-    shouldRenderGameplayLoading || hasCompetingSurfaceOpen;
+    shouldRenderGameplayLoading || hasCompetingSurfaceOpen || Boolean(dailyTransition.active);
   const loadingPageFeedback = regenerateToast?.type === "loading"
     ? {
         key: `loading:${regenerateToast.message}`,
@@ -520,7 +513,7 @@ export default function PlayPage() {
   const toolsProps = useMemo(
     () => ({
       isSaving,
-      isStoryBusy: shouldRenderGameplayLoading,
+      isStoryBusy: shouldRenderGameplayLoading || Boolean(dailyTransition.active),
       isViewingHistory,
       constraintLevel,
       narrativeStyleId,
@@ -548,6 +541,7 @@ export default function PlayPage() {
     [
       isSaving,
       shouldRenderGameplayLoading,
+      dailyTransition.active,
       isViewingHistory,
       constraintLevel,
       narrativeStyleId,
@@ -787,6 +781,15 @@ export default function PlayPage() {
         isViewingHistory={isViewingHistory}
         toolsProps={toolsProps}
       >
+        {dailyTransition.active && !isViewingHistory ? (
+          <DailyTransitionLayer
+            transitionText={dailyTransition.active.transitionText}
+            nextDate={dailyTransition.active.nextDate}
+            failed={dailyTransition.active.failed}
+            onRetry={handleRetryGeneration}
+          />
+        ) : (
+        <>
         {!isViewingHistory && dailyDateTitle && !(isDailyTimeline && phase === "options") && (
           <div className="mb-6 text-center">
             <h1 className="font-serif text-xl font-semibold tracking-wide text-[var(--text-primary)]">
@@ -867,11 +870,13 @@ export default function PlayPage() {
           }}
         />
         )}
+        </>
+        )}
 
       </PlayReadingFrame>
 
       {/* Chat bar */}
-      <ChatBar
+      {!dailyTransition.active && <ChatBar
         gameId={gameId}
         onSave={handleCoordinatedSave}
         onRegenerate={handleCoordinatedRegenerate}
@@ -887,15 +892,7 @@ export default function PlayPage() {
         onSurfaceOpenChange={setAssistantSurfaceOpen}
         isDailyTimeline={isDailyTimeline}
         className="play-chat-surface"
-      />
-      {dailySettlement && (
-        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full border border-[var(--border-default)] bg-[var(--surface-reading)]/95 px-4 py-2 text-sm shadow-lg backdrop-blur">
-          {Object.entries(dailySettlement)
-            .filter(([, value]) => typeof value === "number" && value !== 0)
-            .map(([key, value]) => `${key} ${value > 0 ? "+" : ""}${value}`)
-            .join(" · ") || "今日选择已结算"}
-        </div>
-      )}
+      />}
 
       {/* ★ 历史回顾抽屉 */}
       <RoundHistoryDrawer

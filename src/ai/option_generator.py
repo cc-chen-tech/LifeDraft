@@ -25,6 +25,7 @@ from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
 from src.game.constants import GENERIC_CHARACTER_NAMES, GENERIC_OPTION_TEXTS
+from src.game.daily_transition import prepare_daily_option_transitions
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +191,11 @@ class OptionGenerator:
                         logger.info("Options generated successfully!")
                         return GameEvent(
                             event_description=story_description,
-                            options=retained_options,
+                            options=prepare_daily_option_transitions(
+                                retained_options,
+                                player_state,
+                                language=language,
+                            ),
                         )
 
                 last_error = f"{display_budget.option_count - len(retained_options)} option slots remain invalid"
@@ -214,7 +219,14 @@ class OptionGenerator:
             decision_history=player_state.get("decision_history", []),
             display_budget=display_budget,
         )
-        return GameEvent(event_description=story_description, options=completed_options)
+        return GameEvent(
+            event_description=story_description,
+            options=prepare_daily_option_transitions(
+                completed_options,
+                player_state,
+                language=language,
+            ),
+        )
 
     @staticmethod
     def _parse_candidate_options(raw_options: Any) -> List[EventOption]:

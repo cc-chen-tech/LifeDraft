@@ -169,10 +169,14 @@ export function handleChoiceComplete(
 
   const resourceWarningText = formatResourceWarnings(result);
   const isDaily = Boolean(result.next_timeline);
-  if (isDaily && result.effects_applied && typeof result.effects_applied === "object") {
+  if (isDaily && !result.game_over) {
     window.dispatchEvent(
       new CustomEvent("story2:daily-settlement", {
-        detail: result.effects_applied,
+        detail: {
+          transitionText:
+            typeof result.transition_text === "string" ? result.transition_text : "",
+          nextTimeline: result.next_timeline,
+        },
       })
     );
   }
@@ -209,9 +213,7 @@ export function handleChoiceComplete(
     setStoryText("");
     setPhase("loading");
     void syncPromise.then(() => {
-      window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent("story2:generate-next-day"));
-      }, 350);
+      window.dispatchEvent(new CustomEvent("story2:generate-next-day"));
     });
     return true;
   }

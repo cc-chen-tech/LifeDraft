@@ -28,7 +28,11 @@ def _event(revision: int = 1) -> GameEvent:
         story_date="2026-08-13",
         event_description="这是当天完整故事，结尾留下了唯一的抉择。",
         options=[
-            EventOption(text="接受邀请", effects={"energy": -5, "mood": 4}),
+            EventOption(
+                text="接受邀请",
+                effects={"energy": -5, "mood": 4},
+                transition_text="话音落下，未散的余韵正悄然走向明日。",
+            ),
             EventOption(text="礼貌拒绝", effects={"knowledge": 2}),
         ],
     )
@@ -48,9 +52,7 @@ def test_daily_choice_settles_without_story_model_and_advances_one_day() -> None
     state = _state()
     processor, holder = _processor(state, _event())
 
-    result = processor.make_choice(
-        event_id="day-0-event", revision=1, option_index=0
-    )
+    result = processor.make_choice(event_id="day-0-event", revision=1, option_index=0)
 
     assert result["story_continuation"] == ""
     assert result["need_weekly_summary"] is False
@@ -60,11 +62,20 @@ def test_daily_choice_settles_without_story_model_and_advances_one_day() -> None
     assert state.mood == 54
     assert len(state.day_history) == 1
     assert state.day_history[0]["options"][0]["text"] == "接受邀请"
+    assert result["transition_text"] == "话音落下，未散的余韵正悄然走向明日。"
+    assert state.day_history[0]["transition_text"] == result["transition_text"]
+    assert (
+        state.day_history[0]["choice_result"]["transition_text"]
+        == result["transition_text"]
+    )
     assert state.day_history[0]["postprocessing_status"] == "pending"
     assert state.current_event_data is None
     assert holder["event"] is None
     assert state.continuity_ledger["timeline"][-1]["event_id"] == "day-0-event"
-    assert state.continuity_ledger["timeline"][-1]["date_info"]["story_date"] == "2026-08-13"
+    assert (
+        state.continuity_ledger["timeline"][-1]["date_info"]["story_date"]
+        == "2026-08-13"
+    )
 
 
 def test_daily_choice_rejects_stale_revision_before_mutation() -> None:
@@ -79,9 +90,7 @@ def test_daily_choice_rejects_stale_revision_before_mutation() -> None:
     assert state.day_history == []
 
 
-@pytest.mark.parametrize(
-    ("event_id", "revision"), [("", 1), ("day-0-event", 0)]
-)
+@pytest.mark.parametrize(("event_id", "revision"), [("", 1), ("day-0-event", 0)])
 def test_daily_choice_requires_explicit_event_version(
     event_id: str, revision: int
 ) -> None:
@@ -89,9 +98,7 @@ def test_daily_choice_requires_explicit_event_version(
     processor, _ = _processor(state, _event())
 
     with pytest.raises(ValueError, match="missing_event_version"):
-        processor.make_choice(
-            event_id=event_id, revision=revision, option_index=0
-        )
+        processor.make_choice(event_id=event_id, revision=revision, option_index=0)
 
     assert state.day_history == []
 
@@ -107,6 +114,54 @@ def test_duplicate_daily_choice_is_idempotent() -> None:
     assert state.timeline["day_index"] == 1
     assert state.energy == 45
     assert len(state.day_history) == 1
+    assert second["transition_text"] == "话音落下，未散的余韵正悄然走向明日。"
+
+
+def test_missing_transition_uses_stable_fallback_and_persists_it() -> None:
+    state = _state()
+    event = _event()
+    event.options[1].transition_text = None
+    processor, _ = _processor(state, event)
+
+    first = processor.make_choice(event_id="day-0-event", revision=1, option_index=1)
+    second = processor.make_choice(event_id="day-0-event", revision=1, option_index=1)
+
+    assert first["transition_text"]
+    assert second["transition_text"] == first["transition_text"]
+    assert state.day_history[0]["transition_text"] == first["transition_text"]
+
+
+def test_legacy_duplicate_choice_without_transition_gets_deterministic_fallback() -> (
+    None
+):
+    state = _state(day_index=1)
+    state.day_history = [
+        {
+            "event_id": "legacy-day-0",
+            "revision": 1,
+            "day_index": 0,
+            "story_date": "2026-08-13",
+            "event_description": "旧存档故事",
+            "options": [
+                {"text": "接受邀请", "effects": {"mood": 2}},
+                {"text": "礼貌拒绝", "effects": {}},
+            ],
+            "choice_option_index": 0,
+            "choice": "接受邀请",
+            "choice_result": {
+                "story_continuation": "",
+                "summary": "",
+                "next_timeline": state.timeline,
+            },
+        }
+    ]
+    processor, _ = _processor(state, None)
+
+    first = processor.make_choice(event_id="legacy-day-0", revision=1, option_index=0)
+    second = processor.make_choice(event_id="legacy-day-0", revision=1, option_index=0)
+
+    assert first["transition_text"]
+    assert second["transition_text"] == first["transition_text"]
 
 
 def test_choice_failure_does_not_partially_commit() -> None:
@@ -135,7 +190,8 @@ def test_daily_choice_persistence_failure_does_not_commit_live_state() -> None:
             event_id="day-0-event",
             revision=1,
             option_index=0,
-            persist_callback=lambda candidate: persisted_candidates.append(candidate) or False,
+            persist_callback=lambda candidate: persisted_candidates.append(candidate)
+            or False,
         )
 
     assert len(persisted_candidates) == 1
@@ -153,9 +209,7 @@ def test_seventh_completed_day_applies_deterministic_decay_without_summary() -> 
     event.story_date = "2026-08-19"
     processor, _ = _processor(state, event)
 
-    result = processor.make_choice(
-        event_id="day-6-event", revision=1, option_index=1
-    )
+    result = processor.make_choice(event_id="day-6-event", revision=1, option_index=1)
 
     assert result["need_weekly_summary"] is False
     assert result["weekly_decay_applied"] is True
@@ -174,9 +228,7 @@ def test_summary_milestones_are_queued_without_blocking_choice(
     event.story_date = state.timeline["current_date"]
     processor, _ = _processor(state, event)
 
-    result = processor.make_choice(
-        event_id=event.event_id, revision=1, option_index=1
-    )
+    result = processor.make_choice(event_id=event.event_id, revision=1, option_index=1)
 
     assert result["summary_milestones"] == [expected_kind]
     assert state.day_history[-1]["summary_milestones"] == [expected_kind]
