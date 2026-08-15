@@ -130,6 +130,30 @@ class QuickValidator:
         "此时",
         "紧接着",
     )
+    CHINESE_NAME_CONSUMED_PREFIXES = (
+        "制定",
+        "分配",
+        "批准",
+        "确定",
+        "安排",
+        "拍板",
+        "组织",
+        "带领",
+        "谈判",
+        "签署",
+        "统筹",
+        "立即",
+        "很快",
+        "随后",
+        "独自",
+        "主动",
+        "开始",
+        "最终",
+        "共同",
+        "一起",
+        "分别",
+        "亲自",
+    )
 
     def __init__(self):
         self._forbidden_pattern_zh = self._build_forbidden_pattern("zh")
@@ -843,6 +867,15 @@ class QuickValidator:
                 continue
             if any(candidate in allowed or allowed in candidate for allowed in allowed_names):
                 continue
+            if len(candidate) == 3:
+                reconstructed_suffix = (
+                    candidate[-1] + text[match.end(): match.end() + 8]
+                )
+                if any(
+                    reconstructed_suffix.startswith(prefix)
+                    for prefix in self.CHINESE_NAME_CONSUMED_PREFIXES
+                ):
+                    candidate = candidate[:-1]
             if candidate not in names:
                 names.append(candidate)
         return names

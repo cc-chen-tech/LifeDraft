@@ -449,7 +449,7 @@ def test_quick_validator_deduplicates_one_actor_across_consumed_actions() -> Non
 
     assert result.passed
     assert result.issues == []
-    assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
+    assert result.warnings == []
 
 
 def test_quick_validator_rejects_plot_drivers_after_discourse_markers() -> None:
@@ -490,6 +490,26 @@ def test_quick_validator_rejects_coordinated_outside_plot_drivers() -> None:
 
     assert not result.passed
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
+def test_quick_validator_deduplicates_marker_actor_before_cast_threshold() -> None:
+    """Marker-extracted variants of one omitted protagonist count only once."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然参加了项目会议。"
+            "随后陈越制定了完整方案，接着陈越分配了所有任务，最后陈越批准了预算。"
+            "两人确认安排后结束会议。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
 
 
 def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
