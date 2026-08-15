@@ -6,15 +6,17 @@
  */
 import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { createElement, useRef } from "react";
+import { createElement } from "react";
 
 import { PlayReadingFrame } from "@/components/game/PlayReadingFrame";
 import { PlayPhaseContent } from "@/components/game/PlayPhaseContent";
 
-function Probe({ label }: { label: string }) {
-  const renders = useRef(0);
-  renders.current += 1;
-  return createElement("span", { "data-renders": renders.current }, label);
+function makeProbe(label: string) {
+  let renderCount = 0;
+  return function Probe() {
+    renderCount += 1;
+    return createElement("span", { "data-renders": renderCount }, label);
+  };
 }
 
 function FrameHarness({ children }: { children: ReactElement }) {
@@ -61,7 +63,7 @@ function FrameHarness({ children }: { children: ReactElement }) {
 
 describe("memoized play components", () => {
   it("PlayReadingFrame skips re-render when props are referentially stable", () => {
-    const probe = createElement(Probe, { label: "frame" });
+    const probe = createElement(makeProbe("frame"));
     const first = render(createElement(FrameHarness, {}, probe));
     expect(first.getByText("frame").getAttribute("data-renders")).toBe("1");
     first.rerender(createElement(FrameHarness, {}, probe));
@@ -69,7 +71,7 @@ describe("memoized play components", () => {
   });
 
   it("PlayPhaseContent skips re-render when its props are referentially stable", () => {
-    const probe = createElement(Probe, { label: "content" });
+    const probe = createElement(makeProbe("content"));
     const props = {
       phase: "options" as const,
       isViewingHistory: false,
