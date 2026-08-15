@@ -272,6 +272,8 @@ export interface DayHistoryEntry {
   event_description: string;
   options: EventOption[];
   choice: string;
+  choice_option_index?: number;
+  transition_text?: string;
   effects_requested?: EffectValues;
   effects_applied?: EffectValues;
   resource_warnings?: Array<Record<string, unknown>>;
@@ -399,6 +401,7 @@ export interface GameEvent {
 export interface EventOption {
   text: string;
   effects?: EffectValues;
+  transition_text?: string;
 }
 
 export interface GameStateResponse {

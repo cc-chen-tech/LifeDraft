@@ -121,6 +121,50 @@ describe('choiceUtils', () => {
   });
 
   describe('handleChoiceComplete', () => {
+    it('announces the selected transition and starts next-day generation without a display delay', async () => {
+      const settlement = jest.fn();
+      const generate = jest.fn();
+      window.addEventListener('story2:daily-settlement', settlement);
+      window.addEventListener('story2:generate-next-day', generate);
+      storeSpy.spies.syncPlayerState.mockResolvedValue({});
+
+      handleChoiceComplete({
+        transition_text: '决定的余温仍在，时间却已把故事带向明日。',
+        next_timeline: {
+          version: 2,
+          current_date: '2026-08-14',
+          day_index: 1,
+        },
+        effects_applied: { mood: 2 },
+      }, mockHandlers);
+
+      expect(settlement).toHaveBeenCalledTimes(1);
+      expect((settlement.mock.calls[0][0] as CustomEvent).detail).toEqual({
+        transitionText: '决定的余温仍在，时间却已把故事带向明日。',
+        nextTimeline: expect.objectContaining({ current_date: '2026-08-14' }),
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(generate).toHaveBeenCalledTimes(1);
+
+      window.removeEventListener('story2:daily-settlement', settlement);
+      window.removeEventListener('story2:generate-next-day', generate);
+    });
+
+    it('does not open a next-day transition when the daily story has ended', () => {
+      const settlement = jest.fn();
+      window.addEventListener('story2:daily-settlement', settlement);
+
+      handleChoiceComplete({
+        transition_text: '这一句不应显示。',
+        next_timeline: { version: 2, game_over: true },
+        game_over: true,
+      }, mockHandlers);
+
+      expect(settlement).not.toHaveBeenCalled();
+      window.removeEventListener('story2:daily-settlement', settlement);
+    });
+
     it('sets summary when present', () => {
       handleChoiceComplete({ summary: 'Round summary text' }, mockHandlers);
       expect(mockHandlers.setRoundSummary).toHaveBeenCalledWith('Round summary text');

@@ -461,6 +461,7 @@ export const api = {
         weekly_summary?: string;
         game_over?: boolean;
         next_timeline?: import("./types").DailyTimeline;
+        transition_text?: string;
       }>(`/games/${gameId}/choice-sync`, {
         method: 'POST',
         body: JSON.stringify(data),

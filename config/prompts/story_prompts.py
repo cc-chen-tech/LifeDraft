@@ -4,23 +4,25 @@ import re
 from typing import Any, Dict, Optional
 
 from config.feature_flags import get_feature
-from config.prompts._helpers import (_build_available_people_constraint,
-                                     _build_character_habits_context,
-                                     _build_common_story_constraints,
-                                     _build_continuation_mandate,
-                                     _build_critical_summary,
-                                     _build_era_anachronism_constraints,
-                                     _build_established_facts_context,
-                                     _build_foreshadowing_context,
-                                     _build_full_character_context,
-                                     _build_logic_constraints,
-                                     _build_new_character_intro_context,
-                                     _build_pending_storylines_context,
-                                     _build_time_context,
-                                     _build_world_model_constraints,
-                                     _collect_available_people,
-                                     _format_people_names,
-                                     build_realistic_modern_world_boundary)
+from config.prompts._helpers import (
+    _build_available_people_constraint,
+    _build_character_habits_context,
+    _build_common_story_constraints,
+    _build_continuation_mandate,
+    _build_critical_summary,
+    _build_era_anachronism_constraints,
+    _build_established_facts_context,
+    _build_foreshadowing_context,
+    _build_full_character_context,
+    _build_logic_constraints,
+    _build_new_character_intro_context,
+    _build_pending_storylines_context,
+    _build_time_context,
+    _build_world_model_constraints,
+    _collect_available_people,
+    _format_people_names,
+    build_realistic_modern_world_boundary,
+)
 from src.ai.budgets import NarrativeKind, resolve_prompt_length_requirement
 from src.ai.prompt_sanitizer import sanitize_persisted_player_name, sanitize_user_choice
 from src.game.relationship_authority import build_required_cast_constraints
@@ -29,7 +31,9 @@ _LEGACY_EVENT_PARAGRAPH_ZH = (
     "适时换段，每段控制在200-400字，禁止出现超过600字无换行的超长段落"  # LEGACY_COMPAT
 )
 _LEGACY_EVENT_PARAGRAPH_EN = "Change paragraphs appropriately. Keep each paragraph between 200-400 words. NO paragraphs exceeding 600 words without a break"  # LEGACY_COMPAT
-_LEGACY_EVENT_SCHEMA_ZH = "对情况的生动描述（1500-2000字，包含大量人物对话）"  # LEGACY_COMPAT
+_LEGACY_EVENT_SCHEMA_ZH = (
+    "对情况的生动描述（1500-2000字，包含大量人物对话）"  # LEGACY_COMPAT
+)
 _LEGACY_EVENT_SCHEMA_EN = (
     "A vivid description (1500-2000 words with extensive dialogue)"  # LEGACY_COMPAT
 )
@@ -78,14 +82,18 @@ def _extract_marked_protagonist_name(value: Any) -> str:
     return name if _CHINESE_NAME_RE.match(name) else ""
 
 
-def _extract_settings_protagonist_name(character_settings: Optional[Dict[str, Any]]) -> str:
+def _extract_settings_protagonist_name(
+    character_settings: Optional[Dict[str, Any]],
+) -> str:
     if not character_settings:
         return ""
 
     for section_key in ("identity", "basic", "profile"):
         section = character_settings.get(section_key)
         if isinstance(section, dict):
-            name = _clean_protagonist_name(section.get("name") or section.get("player_name"))
+            name = _clean_protagonist_name(
+                section.get("name") or section.get("player_name")
+            )
             if name:
                 return name
 
@@ -140,8 +148,12 @@ def _build_protagonist_identity_instruction(
                 "禁止编造其他名字，绝对禁止把主角改名为任何其他历史人物、模板人物或新名字。"
             )
         if gender_text:
-            lines.append(f"主角性别是：{gender_text}。叙事代词、称谓和社会身份必须与该性别一致。")
-        lines.append("如果时代背景会联想到知名人物，也只能作为背景参照，不能替换主角身份。")
+            lines.append(
+                f"主角性别是：{gender_text}。叙事代词、称谓和社会身份必须与该性别一致。"
+            )
+        lines.append(
+            "如果时代背景会联想到知名人物，也只能作为背景参照，不能替换主角身份。"
+        )
         return "\n".join(lines)
 
     lines = ["\n[Protagonist Identity - Hard Constraint]"]
@@ -204,10 +216,31 @@ def _is_modern_story_setting(character_settings: Optional[Dict[str, Any]]) -> bo
     text = _settings_text(character_settings)
     if not text:
         return True
-    ancient_cues = ["古代", "唐朝", "宋朝", "元朝", "明朝", "清朝", "江湖", "宫廷", "修仙"]
+    ancient_cues = [
+        "古代",
+        "唐朝",
+        "宋朝",
+        "元朝",
+        "明朝",
+        "清朝",
+        "江湖",
+        "宫廷",
+        "修仙",
+    ]
     if any(cue in text for cue in ancient_cues):
         return False
-    modern_cues = ["现代", "当代", "2020", "2021", "2022", "2023", "2024", "互联网", "职场", "都市"]
+    modern_cues = [
+        "现代",
+        "当代",
+        "2020",
+        "2021",
+        "2022",
+        "2023",
+        "2024",
+        "互联网",
+        "职场",
+        "都市",
+    ]
     if any(cue in text for cue in modern_cues):
         return True
 
@@ -375,13 +408,19 @@ def get_custom_choice_result_prompt(
     """
     import json
 
-    required_cast_context = build_required_cast_constraints(character_settings or {}, language)
+    required_cast_context = build_required_cast_constraints(
+        character_settings or {}, language
+    )
     modern_world_boundary = build_realistic_modern_world_boundary(
         character_settings or {}, language
     )
-    era_constraints = _build_era_anachronism_constraints(character_settings or {}, language)
+    era_constraints = _build_era_anachronism_constraints(
+        character_settings or {}, language
+    )
     authority_context_parts = [
-        part for part in [required_cast_context, modern_world_boundary, era_constraints] if part
+        part
+        for part in [required_cast_context, modern_world_boundary, era_constraints]
+        if part
     ]
     if language == "zh":
         authority_context = (
@@ -579,7 +618,9 @@ def _get_english_prompt(
     knowledge = player_state.get("knowledge", 50)
     relationships = player_state.get("relationships", {})
 
-    rel_str = ", ".join([f"{name}({affinity})" for name, affinity in relationships.items()])
+    rel_str = ", ".join(
+        [f"{name}({affinity})" for name, affinity in relationships.items()]
+    )
     if not rel_str:
         rel_str = "None"
 
@@ -592,9 +633,13 @@ def _get_english_prompt(
     phase_desc = phase_descriptions.get(current_phase, current_phase)
 
     # Build character context and available people
-    character_context, available_people = _build_full_character_context(character_settings, "en")
+    character_context, available_people = _build_full_character_context(
+        character_settings, "en"
+    )
     available_people_str = _build_available_people_constraint(available_people, "en")
-    required_cast_context = build_required_cast_constraints(character_settings or {}, "en")
+    required_cast_context = build_required_cast_constraints(
+        character_settings or {}, "en"
+    )
 
     # Build time context
     time_context = _build_time_context(game_date_info, "en")
@@ -606,7 +651,9 @@ def _get_english_prompt(
     facts_context = _build_established_facts_context(established_facts, "en")
 
     # Build world model constraints
-    world_model_context = _build_world_model_constraints(world_model, "en", established_facts)
+    world_model_context = _build_world_model_constraints(
+        world_model, "en", established_facts
+    )
 
     # Build logic constraints
     logic_constraints = _build_logic_constraints(game_date_info, "en")
@@ -641,10 +688,13 @@ def _get_english_prompt(
     older_history_section_en = ""
     if recent_topics_str:
         older_history_section_en = (
-            "\n\n【Older History Summaries - MUST NOT repeat these plots】\n" + recent_topics_str
+            "\n\n【Older History Summaries - MUST NOT repeat these plots】\n"
+            + recent_topics_str
         )
 
-    length_requirement = resolve_prompt_length_requirement(NarrativeKind.ROUND, quality_level, "en")
+    length_requirement = resolve_prompt_length_requirement(
+        NarrativeKind.ROUND, quality_level, "en"
+    )
     paragraph_rule = (
         "Break the story into coherent paragraphs; do not return one oversized unbroken block"
         if get_feature("unified_narrative_budgets")
@@ -777,7 +827,9 @@ def _get_chinese_prompt(
     total_chapter = week * rounds_per_week + current_round + 1
     relationships = player_state.get("relationships", {})
 
-    rel_str = "，".join([f"{name}({affinity})" for name, affinity in relationships.items()])
+    rel_str = "，".join(
+        [f"{name}({affinity})" for name, affinity in relationships.items()]
+    )
     if not rel_str:
         rel_str = "无"
 
@@ -790,9 +842,13 @@ def _get_chinese_prompt(
     phase_desc = phase_descriptions.get(current_phase, current_phase)
 
     # Build character context and available people
-    character_context, available_people = _build_full_character_context(character_settings, "zh")
+    character_context, available_people = _build_full_character_context(
+        character_settings, "zh"
+    )
     available_people_str = _build_available_people_constraint(available_people, "zh")
-    required_cast_context = build_required_cast_constraints(character_settings or {}, "zh")
+    required_cast_context = build_required_cast_constraints(
+        character_settings or {}, "zh"
+    )
 
     # Build time context
     time_context = _build_time_context(game_date_info, "zh")
@@ -804,7 +860,9 @@ def _get_chinese_prompt(
     facts_context = _build_established_facts_context(established_facts, "zh")
 
     # Build world model constraints
-    world_model_context = _build_world_model_constraints(world_model, "zh", established_facts)
+    world_model_context = _build_world_model_constraints(
+        world_model, "zh", established_facts
+    )
 
     # Build logic constraints
     logic_constraints = _build_logic_constraints(game_date_info, "zh")
@@ -879,7 +937,9 @@ def _get_chinese_prompt(
         character_settings,
     )
 
-    length_requirement = resolve_prompt_length_requirement(NarrativeKind.ROUND, quality_level, "zh")
+    length_requirement = resolve_prompt_length_requirement(
+        NarrativeKind.ROUND, quality_level, "zh"
+    )
     paragraph_rule = (
         "按语义适时换段，禁止返回一整块无换行的超长段落"
         if get_feature("unified_narrative_budgets")
@@ -1030,10 +1090,18 @@ def get_result_generation_prompt(
         full_character_context, available_people = _build_full_character_context(
             character_settings, language
         )
-        available_people_context = _build_available_people_constraint(available_people, language)
-        required_cast_context = build_required_cast_constraints(character_settings, language)
-        modern_world_boundary = build_realistic_modern_world_boundary(character_settings, language)
-        era_constraints = _build_era_anachronism_constraints(character_settings, language)
+        available_people_context = _build_available_people_constraint(
+            available_people, language
+        )
+        required_cast_context = build_required_cast_constraints(
+            character_settings, language
+        )
+        modern_world_boundary = build_realistic_modern_world_boundary(
+            character_settings, language
+        )
+        era_constraints = _build_era_anachronism_constraints(
+            character_settings, language
+        )
         if full_character_context:
             char_context += f"\n{full_character_context}"
         if "identity" in character_settings:
@@ -1158,6 +1226,76 @@ def get_result_generation_prompt(
 Return only the story continuation, no other explanations or headers."""
 
 
+def build_daily_story_mode_constraint(
+    player_state: Dict[str, Any],
+    character_settings: Optional[Dict[str, Any]],
+    language: str,
+) -> str:
+    """Build daily-only continuity and personalized first-opening constraints."""
+    timeline = player_state.get("timeline")
+    if not isinstance(timeline, dict) or timeline.get("version") != 2:
+        return ""
+
+    prior = (player_state.get("day_history") or [])[-1:]
+    prior_context = ""
+    if prior and isinstance(prior[0], dict):
+        if language == "zh":
+            prior_context = (
+                f"昨日完整故事：{prior[0].get('event_description', '')}\n"
+                f"昨日选择：{prior[0].get('choice', '')}\n"
+                f"昨日实际结算：{prior[0].get('effects_applied', {})}"
+            )
+        else:
+            prior_context = (
+                f"Previous full story: {prior[0].get('event_description', '')}\n"
+                f"Previous choice: {prior[0].get('choice', '')}\n"
+                f"Applied effects: {prior[0].get('effects_applied', {})}"
+            )
+
+    day_index = int(timeline.get("day_index") or 0)
+    protagonist = resolve_protagonist_name(player_state, character_settings, None)
+    life_vision = str(
+        player_state.get("life_vision")
+        or (character_settings or {}).get("life_vision")
+        or ""
+    ).strip()
+
+    if language == "zh":
+        first_day = ""
+        if day_index == 0:
+            first_day = f"""
+
+【首日人物开场 - 必须严格遵守】
+- 第一段只能有一句话，独立成段；句中必须出现主角姓名“{protagonist or '主角'}”
+- 这句话必须从人物自身落笔，将其人生愿景“{life_vision or '尚待实现的人生方向'}”与此刻最关键的内在或现实矛盾相扣，形成只属于这个人物的开场
+- 不得写“命运的齿轮”“人生十字路口”“全新旅程”等通用套话，不得使用标题，不得剧透后续情节
+- 第二段再进入今天的具体地点、动作和现场情境
+"""
+        return f"""
+
+【每日故事模式 v2】
+今天是 {timeline.get('current_date')}（第{timeline.get('day_number')}天）。日期由界面统一展示，正文不得添加日期、周数、轮次或章节标题。
+{prior_context}
+生成今天的完整故事，必须承接昨日选择和实际结算；故事结尾只形成今天唯一的决策点，选项用于决定明天的承接。{first_day}"""
+
+    first_day_en = ""
+    if day_index == 0:
+        first_day_en = f"""
+
+[First-Day Character Opening - Mandatory]
+- The first paragraph must be exactly one sentence and must name the protagonist, "{protagonist or 'the protagonist'}"
+- Tie that sentence to the character's life vision, "{life_vision or 'their unrealized direction'}", and the central inner or practical conflict of this moment
+- Do not use generic fate/crossroads/new-journey clichés, headings, dates, or plot spoilers
+- Enter today's concrete location, action, and scene in the second paragraph
+"""
+    return f"""
+
+[Daily Story Mode v2]
+Today is {timeline.get('current_date')} (day {timeline.get('day_number')}). The interface displays the date; do not add date, week, round, or chapter headings to the prose.
+{prior_context}
+Write today's complete story, carrying forward the previous choice and applied effects. End at one decision point whose options determine tomorrow's continuation.{first_day_en}"""
+
+
 def get_options_only_prompt(
     story_description: str,
     player_state: Dict[str, Any],
@@ -1196,6 +1334,17 @@ def get_options_only_prompt(
         if choice and choice not in recent_choice_texts:
             recent_choice_texts.append(choice)
 
+    timeline = player_state.get("timeline")
+    daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
+    recent_transition_texts = []
+    if daily_mode:
+        for entry in player_state.get("day_history", [])[-12:]:
+            if not isinstance(entry, dict):
+                continue
+            transition = str(entry.get("transition_text") or "").strip()
+            if transition and transition not in recent_transition_texts:
+                recent_transition_texts.append(transition)
+
     # Build character context for option generator (era, personality, key background)
     char_context_parts = []
     if character_settings:
@@ -1214,25 +1363,50 @@ def get_options_only_prompt(
             traits_desc = traits.get("traits_description", "")
             if traits_desc:
                 char_context_parts.append(
-                    f"性格：{traits_desc}" if language == "zh" else f"Traits: {traits_desc}"
+                    f"性格：{traits_desc}"
+                    if language == "zh"
+                    else f"Traits: {traits_desc}"
                 )
         if "world" in character_settings:
             world = character_settings["world"]
             world_desc = world.get("world_description", "")
             if world_desc:
                 char_context_parts.append(
-                    f"世界：{world_desc}" if language == "zh" else f"World: {world_desc}"
+                    f"世界：{world_desc}"
+                    if language == "zh"
+                    else f"World: {world_desc}"
                 )
 
     char_context_str = "\n".join(char_context_parts)
 
     if language == "zh":
-        char_section = f"\n\n【角色背景】\n{char_context_str}" if char_context_str else ""
+        char_section = (
+            f"\n\n【角色背景】\n{char_context_str}" if char_context_str else ""
+        )
         recent_choices_section = (
             "\n\n【近期已采用的选择】\n"
             + "\n".join(f"- {choice}" for choice in recent_choice_texts)
             + "\n本轮三项选择禁止逐字或等价重复上述选择；必须针对当前故事结尾提出新的取舍。"
             if recent_choice_texts
+            else ""
+        )
+        recent_transitions_section = (
+            "\n\n【最近已使用的每日转场】\n"
+            + "\n".join(f"- {text}" for text in recent_transition_texts)
+            + "\n新转场规范化后不得与上述任一句完全重复。"
+            if recent_transition_texts
+            else ""
+        )
+        daily_transition_requirement = (
+            "\n7. 每个选项必须同时给出隐藏字段 transition_text：一句话、约12-28个汉字；"
+            "含蓄承接该决定及其余韵，再把时间带向次日。不得复述选项，不显示任何数值，"
+            "不预言未发生的结果，也不得引入故事中没有的新事实"
+            if daily_mode
+            else ""
+        )
+        daily_transition_json = (
+            ',\n      "transition_text": "决定的余韵仍在，时间已悄然走向明日。"'
+            if daily_mode
             else ""
         )
         return f"""你是一个人生模拟游戏的选项生成器。基于以下故事描述，生成恰好3个用户可以选择的选项。
@@ -1241,7 +1415,7 @@ def get_options_only_prompt(
 {story_description}
 
 【可用人物列表】
-{people_list}{char_section}{recent_choices_section}
+{people_list}{char_section}{recent_choices_section}{recent_transitions_section}
 
 【核心要求 - 必须严格遵守】
 
@@ -1264,7 +1438,7 @@ def get_options_only_prompt(
 3. 每个选项明确列出对【精力(energy)、情绪(mood)、学识(knowledge)】的影响值
 4. 选项应呈现真实的权衡取舍，不应有明显最优选项
 5. **关系影响必须指定为"relationships": {{"姓名": +/-数值}}，姓名必须严格来自可用人物列表，禁止使用列表中不存在的名字！**
-6. 标注"likely_choice": true/false表示角色最可能做出的选择
+6. 标注"likely_choice": true/false表示角色最可能做出的选择{daily_transition_requirement}
 
 【输出格式】
 仅返回有效的JSON格式：
@@ -1278,7 +1452,7 @@ def get_options_only_prompt(
         "knowledge": 0,
         "relationships": {{}}
       }},
-      "likely_choice": true
+      "likely_choice": true{daily_transition_json}
     }},
     {{
       "text": "选项B描述（目标8-24字）",
@@ -1287,7 +1461,7 @@ def get_options_only_prompt(
         "mood": -5,
         "knowledge": 5
       }},
-      "likely_choice": false
+      "likely_choice": false{daily_transition_json}
     }}
   ]
 }}
@@ -1295,7 +1469,9 @@ def get_options_only_prompt(
 仅返回JSON，不要其他内容。"""
     else:
         char_section_en = (
-            f"\n\n[Character Background]\n{char_context_str}" if char_context_str else ""
+            f"\n\n[Character Background]\n{char_context_str}"
+            if char_context_str
+            else ""
         )
         recent_choices_section_en = (
             "\n\n[Recently Chosen Actions]\n"
@@ -1304,13 +1480,32 @@ def get_options_only_prompt(
             if recent_choice_texts
             else ""
         )
+        recent_transitions_section_en = (
+            "\n\n[Recently Used Daily Transitions]\n"
+            + "\n".join(f"- {text}" for text in recent_transition_texts)
+            + "\nNo new transition may exactly match these after normalization."
+            if recent_transition_texts
+            else ""
+        )
+        daily_transition_requirement_en = (
+            "\n8. Every option must include a hidden transition_text: one subtle sentence "
+            "that carries the choice's emotional residue into the next day. Do not restate "
+            "the option, show stats, predict unearned outcomes, or add new facts"
+            if daily_mode
+            else ""
+        )
+        daily_transition_json_en = (
+            ',\n      "transition_text": "The choice settles quietly as tomorrow draws nearer."'
+            if daily_mode
+            else ""
+        )
         return f"""You are an options generator for a life simulation game. Based on the following story description, generate exactly 3 options for the user to choose from.
 
 [Story Description]
 {story_description}
 
 [Available People]
-{people_list}{char_section_en}{recent_choices_section_en}
+{people_list}{char_section_en}{recent_choices_section_en}{recent_transitions_section_en}
 
 [Requirements]
 1. **Options MUST precisely respond to the decision point at the END of the story**:
@@ -1326,7 +1521,7 @@ def get_options_only_prompt(
 4. Each option clearly lists effects on [energy, mood, knowledge]
 5. Options should present real trade-offs - no option should be clearly superior
 6. Relationship effects should be specified as "relationships": {{"name": +/-value}}, name must come from Available People List
-7. Mark "likely_choice": true/false to indicate what the character would most likely choose
+7. Mark "likely_choice": true/false to indicate what the character would most likely choose{daily_transition_requirement_en}
 
 [Output Format]
 Return ONLY valid JSON:
@@ -1340,7 +1535,7 @@ Return ONLY valid JSON:
         "knowledge": 0,
         "relationships": {{}}
       }},
-      "likely_choice": true
+      "likely_choice": true{daily_transition_json_en}
     }},
     {{
       "text": "Option B description (target 3-12 words)",
@@ -1349,7 +1544,7 @@ Return ONLY valid JSON:
         "mood": -5,
         "knowledge": 5
       }},
-      "likely_choice": false
+      "likely_choice": false{daily_transition_json_en}
     }}
   ]
 }}
@@ -1418,14 +1613,22 @@ def get_story_only_prompt(
     current_round = player_state.get("current_round", 0)
     rounds_per_week = player_state.get("rounds_per_week", 3)
     total_chapter = raw_week * rounds_per_week + current_round + 1
-    chapter_constraint = _build_zh_chapter_constraint(
-        total_chapter,
-        raw_week,
-        current_round,
-        character_settings,
+    timeline = player_state.get("timeline")
+    daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
+    chapter_constraint = (
+        ""
+        if daily_mode
+        else _build_zh_chapter_constraint(
+            total_chapter,
+            raw_week,
+            current_round,
+            character_settings,
+        )
     )
     relationships = player_state.get("relationships", {})
-    protagonist_name = _resolve_protagonist_name(player_state, character_settings, player_name)
+    protagonist_name = _resolve_protagonist_name(
+        player_state, character_settings, player_name
+    )
     protagonist_gender = _extract_gender_text(character_settings)
 
     rel_str = (
@@ -1503,8 +1706,12 @@ def get_story_only_prompt(
 
     # Build available people constraint string
     available_people_str = _build_available_people_constraint(available_people, "zh")
-    required_cast_context = build_required_cast_constraints(character_settings or {}, language)
-    modern_world_boundary = build_realistic_modern_world_boundary(character_settings, language)
+    required_cast_context = build_required_cast_constraints(
+        character_settings or {}, language
+    )
+    modern_world_boundary = build_realistic_modern_world_boundary(
+        character_settings, language
+    )
 
     # Build time context
     time_context = _build_time_context(game_date_info, language)
@@ -1516,7 +1723,9 @@ def get_story_only_prompt(
     facts_context = _build_established_facts_context(established_facts, language)
 
     # Build world model constraints
-    world_model_context = _build_world_model_constraints(world_model, language, established_facts)
+    world_model_context = _build_world_model_constraints(
+        world_model, language, established_facts
+    )
 
     # Build continuation mandate (if previous event not concluded)
     continuation_mandate = _build_continuation_mandate(
@@ -1524,7 +1733,9 @@ def get_story_only_prompt(
     )
 
     # Build foreshadowing echo context (if a seed was activated)
-    foreshadowing_context = _build_foreshadowing_context(activated_foreshadowing, language)
+    foreshadowing_context = _build_foreshadowing_context(
+        activated_foreshadowing, language
+    )
 
     # Build character habits context
     habits_context = _build_character_habits_context(character_habits, language)
@@ -1548,7 +1759,9 @@ def get_story_only_prompt(
     # ★ 节奏干预指令（最高优先级，MUST 级别）
     if pacing_intervention:
         _enhancement_parts_zh.append(f"\n[MUST] 【节奏干预】{pacing_intervention}")
-        _enhancement_parts_en.append(f"\n[MUST] [Pacing Intervention] {pacing_intervention}")
+        _enhancement_parts_en.append(
+            f"\n[MUST] [Pacing Intervention] {pacing_intervention}"
+        )
     if style_constraints:
         _enhancement_parts_zh.append(f"\n【风格约束】\n{style_constraints}")
         _enhancement_parts_en.append(f"\n[Style Constraints]\n{style_constraints}")
@@ -1560,7 +1773,9 @@ def get_story_only_prompt(
         _enhancement_parts_en.append(f"\n[Conflict Directive] {conflict_directive}")
     if world_event_context:
         _enhancement_parts_zh.append(f"\n【世界背景事件】\n{world_event_context}")
-        _enhancement_parts_en.append(f"\n[World Background Events]\n{world_event_context}")
+        _enhancement_parts_en.append(
+            f"\n[World Background Events]\n{world_event_context}"
+        )
     if fate_echo_hint:
         _enhancement_parts_zh.append(f"\n【宿命回响】{fate_echo_hint}")
         _enhancement_parts_en.append(f"\n[Fate Echo] {fate_echo_hint}")
@@ -1569,11 +1784,15 @@ def get_story_only_prompt(
         _enhancement_parts_en.append(f"\n[SHOULD] [Preference Hint] {preference_hint}")
     if foreshadowing_technique_hint:
         _enhancement_parts_zh.append(f"\n【伏笔技法】{foreshadowing_technique_hint}")
-        _enhancement_parts_en.append(f"\n[Foreshadowing Technique] {foreshadowing_technique_hint}")
+        _enhancement_parts_en.append(
+            f"\n[Foreshadowing Technique] {foreshadowing_technique_hint}"
+        )
     # ★ 章节结构约束（中观层）
     if three_act_hint:
         _enhancement_parts_zh.append(f"\n[SHOULD] 【三幕结构】{three_act_hint}")
-        _enhancement_parts_en.append(f"\n[SHOULD] [Three-Act Structure] {three_act_hint}")
+        _enhancement_parts_en.append(
+            f"\n[SHOULD] [Three-Act Structure] {three_act_hint}"
+        )
     if chapter_opening:
         _enhancement_parts_zh.append(f"\n[SHOULD] 【章节开头约束】{chapter_opening}")
         _enhancement_parts_en.append(f"\n[SHOULD] [Chapter Opening] {chapter_opening}")
@@ -1695,7 +1914,9 @@ def get_relationship_event_context(events: list, era: str, language: str) -> str
             lines.append(f"- **{event['character_name']}**: {event['era_name']}")
             lines.append(f"  {event['description']}")
         lines.append("")
-        lines.append("请将以上关系事件自然地融入本轮故事中，使其感觉是故事发展的自然结果。")
+        lines.append(
+            "请将以上关系事件自然地融入本轮故事中，使其感觉是故事发展的自然结果。"
+        )
         lines.append("事件表达方式应符合时代背景，避免突兀。")
     else:
         lines = ["\n[IMPORTANT RELATIONSHIP EVENT - MUST INTEGRATE INTO STORY]"]
@@ -1703,7 +1924,9 @@ def get_relationship_event_context(events: list, era: str, language: str) -> str
             lines.append(f"- **{event['character_name']}**: {event['era_name']}")
             lines.append(f"  {event['description']}")
         lines.append("")
-        lines.append("Naturally integrate the above relationship events into this round's story.")
+        lines.append(
+            "Naturally integrate the above relationship events into this round's story."
+        )
         lines.append("Events should feel like natural story developments, not forced.")
 
     return "\n".join(lines)
@@ -1772,14 +1995,22 @@ def get_round_event_prompt(
     current_round = player_state.get("current_round", 0)
     rounds_per_week = player_state.get("rounds_per_week", 3)
     total_chapter = raw_week * rounds_per_week + current_round + 1
-    chapter_constraint = _build_zh_chapter_constraint(
-        total_chapter,
-        raw_week,
-        current_round,
-        character_settings,
+    timeline = player_state.get("timeline")
+    daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
+    chapter_constraint = (
+        ""
+        if daily_mode
+        else _build_zh_chapter_constraint(
+            total_chapter,
+            raw_week,
+            current_round,
+            character_settings,
+        )
     )
     relationships = player_state.get("relationships", {})
-    protagonist_name = _resolve_protagonist_name(player_state, character_settings, player_name)
+    protagonist_name = _resolve_protagonist_name(
+        player_state, character_settings, player_name
+    )
     protagonist_gender = _extract_gender_text(character_settings)
 
     rel_str = (
@@ -1792,8 +2023,12 @@ def get_round_event_prompt(
     available_people = _collect_available_people(character_settings)
     character_context = ""
     available_people_str = ""
-    required_cast_context = build_required_cast_constraints(character_settings or {}, language)
-    modern_world_boundary = build_realistic_modern_world_boundary(character_settings, language)
+    required_cast_context = build_required_cast_constraints(
+        character_settings or {}, language
+    )
+    modern_world_boundary = build_realistic_modern_world_boundary(
+        character_settings, language
+    )
 
     if character_settings:
         char_parts = []
@@ -1854,8 +2089,42 @@ def get_round_event_prompt(
     round_names_zh = ["周一", "周中", "周末"]
     round_names_en = ["Monday", "Midweek", "Weekend"]
 
-    round_name = round_names_zh[round_number] if round_number < 3 else f"第{round_number+1}轮"
-    round_name_en = round_names_en[round_number] if round_number < 3 else f"Round {round_number+1}"
+    round_name = (
+        round_names_zh[round_number] if round_number < 3 else f"第{round_number+1}轮"
+    )
+    round_name_en = (
+        round_names_en[round_number] if round_number < 3 else f"Round {round_number+1}"
+    )
+    prompt_intro_zh = (
+        "你是一位才华横溢的小说家。请为当前日期写一段生动的故事。"
+        if daily_mode
+        else f"你是一位才华横溢的小说家。请为第{week}周的{round_name}写一段生动的故事。"
+    )
+    state_time_zh = (
+        "日期由界面统一展示，正文不使用周数、轮次或章节标题"
+        if daily_mode
+        else f"第{week}周 - {round_name}"
+    )
+    prompt_close_zh = (
+        "现在请开始写今天的故事："
+        if daily_mode
+        else f"现在请开始写{round_name}的故事："
+    )
+    prompt_intro_en = (
+        "You are a talented novelist. Write a vivid story for the current date."
+        if daily_mode
+        else f"You are a talented novelist. Write a vivid story for {round_name_en} of Week {week}."
+    )
+    state_time_en = (
+        "The interface displays the date; prose uses no week, round, or chapter heading"
+        if daily_mode
+        else f"Week {week} - {round_name_en}"
+    )
+    prompt_close_en = (
+        "Now write today's story:"
+        if daily_mode
+        else f"Now write the {round_name_en} story:"
+    )
 
     # ★ 构建公共叙事约束（根据质量级别）
     common_constraints = _build_common_story_constraints(language, quality_level)
@@ -1909,7 +2178,9 @@ def get_round_event_prompt(
                 if character_settings
                 else ""
             )
-            rel_events_context = get_relationship_event_context(relationship_events, era, language)
+            rel_events_context = get_relationship_event_context(
+                relationship_events, era, language
+            )
 
         # Build historical memory context (as flashback/reminiscence)
         memory_context = ""
@@ -1919,12 +2190,16 @@ def get_round_event_prompt(
                 memory_parts.append(f"「往年回忆」{historical_yearly_summary}")
             if historical_weekly_summary:
                 memory_parts.append(f"「近期回忆」{historical_weekly_summary}")
-            memory_parts.append("提示：当人物回忆过去或谈论往事时，可以自然引用以上内容。")
+            memory_parts.append(
+                "提示：当人物回忆过去或谈论往事时，可以自然引用以上内容。"
+            )
             memory_context = "\n".join(memory_parts)
 
         # Build time and storyline contexts
         time_context = _build_time_context(game_date_info, language)
-        storylines_context = _build_pending_storylines_context(pending_storylines, language)
+        storylines_context = _build_pending_storylines_context(
+            pending_storylines, language
+        )
         facts_context = _build_established_facts_context(established_facts, language)
 
         # Build world model constraints
@@ -1938,7 +2213,9 @@ def get_round_event_prompt(
         )
 
         # Build foreshadowing echo context
-        foreshadowing_context = _build_foreshadowing_context(activated_foreshadowing, language)
+        foreshadowing_context = _build_foreshadowing_context(
+            activated_foreshadowing, language
+        )
 
         # Build character habits context
         habits_context = _build_character_habits_context(character_habits, language)
@@ -1965,7 +2242,7 @@ def get_round_event_prompt(
         critical_open_zh = f"\n{critical_summary_zh}\n" if critical_summary_zh else ""
         critical_close_zh = f"\n{critical_summary_zh}\n" if critical_summary_zh else ""
 
-        prompt = f"""你是一位才华横溢的小说家。请为第{week}周的{round_name}写一段生动的故事。
+        prompt = f"""{prompt_intro_zh}
 
 {chapter_constraint}
 {critical_open_zh}
@@ -1975,7 +2252,7 @@ def get_round_event_prompt(
 {required_cast_context}{modern_world_boundary}{time_context}
 
 【当前状态】
-年龄：{age}岁 | 第{week}周 - {round_name}
+年龄：{age}岁 | {state_time_zh}
 精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
 关系：{rel_str}{context_section}{rel_events_context}{memory_context}
 
@@ -2003,7 +2280,7 @@ def get_round_event_prompt(
 6. **反重复红线**：禁止套路开头/万能道具/重复登场方式/回收氛围。结构和冲突类型必须变化
 {overused_phrases}
 {critical_close_zh}
-现在请开始写{round_name}的故事："""
+{prompt_close_zh}"""
     else:
         context_section = ""
         if round_context:
@@ -2032,7 +2309,9 @@ Continue the story based on the above, maintaining continuity."""
         if preference_hint:
             _re_parts_en.append(f"\n[SHOULD] [Preference Hint] {preference_hint}")
         if foreshadowing_technique_hint:
-            _re_parts_en.append(f"\n[Foreshadowing Technique] {foreshadowing_technique_hint}")
+            _re_parts_en.append(
+                f"\n[Foreshadowing Technique] {foreshadowing_technique_hint}"
+            )
         # ★ 章节结构约束（中观层）
         if three_act_hint:
             _re_parts_en.append(f"\n[SHOULD] [Three-Act Structure] {three_act_hint}")
@@ -2051,7 +2330,9 @@ Continue the story based on the above, maintaining continuity."""
                 if character_settings
                 else ""
             )
-            rel_events_context = get_relationship_event_context(relationship_events, era, language)
+            rel_events_context = get_relationship_event_context(
+                relationship_events, era, language
+            )
 
         # Build historical memory context (as flashback/reminiscence)
         memory_context = ""
@@ -2070,7 +2351,9 @@ Continue the story based on the above, maintaining continuity."""
 
         # Build time and storyline contexts
         time_context = _build_time_context(game_date_info, language)
-        storylines_context = _build_pending_storylines_context(pending_storylines, language)
+        storylines_context = _build_pending_storylines_context(
+            pending_storylines, language
+        )
         facts_context = _build_established_facts_context(established_facts, language)
 
         # Build world model constraints
@@ -2084,13 +2367,17 @@ Continue the story based on the above, maintaining continuity."""
         )
 
         # Build foreshadowing echo context
-        foreshadowing_context_en = _build_foreshadowing_context(activated_foreshadowing, language)
+        foreshadowing_context_en = _build_foreshadowing_context(
+            activated_foreshadowing, language
+        )
 
         # Build character habits context
         habits_context_en = _build_character_habits_context(character_habits, language)
 
         # Build new character introduction context
-        new_char_context_en = _build_new_character_intro_context(new_character, language)
+        new_char_context_en = _build_new_character_intro_context(
+            new_character, language
+        )
 
         # ★ 向量检索上下文
         vector_context_section_en = ""
@@ -2111,7 +2398,7 @@ Usage tip: Use as character memories, dialogue references, or background context
         critical_open_en = f"\n{critical_summary_en}\n" if critical_summary_en else ""
         critical_close_en = f"\n{critical_summary_en}\n" if critical_summary_en else ""
 
-        prompt = f"""You are a talented novelist. Write a vivid story for {round_name_en} of Week {week}.
+        prompt = f"""{prompt_intro_en}
 {critical_open_en}
 
 [Character Settings]
@@ -2119,7 +2406,7 @@ Usage tip: Use as character memories, dialogue references, or background context
 {required_cast_context}{time_context}
 
 [Current State]
-Age: {age} | Week {week} - {round_name_en}
+Age: {age} | {state_time_en}
 Energy: {energy}/100 | Mood: {mood}/100 | Knowledge: {knowledge}/100
 Relationships: {rel_str}{context_section}{rel_events_context}{memory_context}
 
@@ -2147,6 +2434,6 @@ Relationships: {rel_str}{context_section}{rel_events_context}{memory_context}
 6. **Anti-repetition red lines**: No cliché openings/recycled props/repeated entrances/recycled atmosphere. Vary structure and conflict types
 
 {critical_close_en}
-Now write the {round_name_en} story:"""
+{prompt_close_en}"""
 
     return prompt

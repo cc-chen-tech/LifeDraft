@@ -50,7 +50,7 @@ test('daily choice settles once and automatically opens the next calendar day', 
     event_id: 'daily-0',
     revision: 1,
     story_date: '2026-08-13',
-    event_description: '第一天，林舟在雨后的书铺里发现了一封没有署名的信。\n\n窗外的雨声渐渐停了。',
+    event_description: '林舟把追索失落往事的愿望，压进无名信带来的迟疑里。\n\n雨后的书铺里，他发现了一封没有署名的信，窗外的雨声渐渐停了。',
     options: [
       { text: '拆开信封', effects: { knowledge: 2 } },
       { text: '先询问掌柜', effects: { mood: 1 } },
@@ -58,6 +58,7 @@ test('daily choice settles once and automatically opens the next calendar day', 
   };
   let choiceCalls = 0;
   let narrationCalls = 0;
+  const narratedTexts: string[] = [];
   let musicCalls = 0;
   page.on('request', (request) => {
     if (new URL(request.url()).pathname.startsWith('/api/music/')) {
@@ -124,6 +125,7 @@ test('daily choice settles once and automatically opens the next calendar day', 
         `event: complete\ndata: ${JSON.stringify({
           effects_applied: { knowledge: 2 },
           story_continuation: '',
+          transition_text: '信封尚未拆尽沉默，时间已携着余韵走向明日。',
           need_weekly_summary: false,
           next_timeline: timeline(),
           game_over: false,
@@ -190,6 +192,7 @@ test('daily choice settles once and automatically opens the next calendar day', 
   await page.route('**/api/voice-reading/read', async (route) => {
     narrationCalls += 1;
     const request = route.request().postDataJSON();
+    narratedTexts.push(String(request.context.text));
     const paragraphs = String(request.context.text).split(/\n\s*\n/);
     await route.fulfill({
       status: 200,
@@ -232,18 +235,25 @@ test('daily choice settles once and automatically opens the next calendar day', 
   await expect.poll(() => page.evaluate(() => (window as unknown as { __storyAudioEvents: { play: number } }).__storyAudioEvents.play)).toBeGreaterThan(0);
 
   await page.getByRole('button', { name: '查看正文' }).first().click();
+  await expect(page.getByText('林舟把追索失落往事的愿望，压进无名信带来的迟疑里。')).toBeVisible();
   await page.getByRole('button', { name: '从第 2 段开始朗读' }).click();
   const pausesBeforeChoice = await page.evaluate(() => (window as unknown as { __storyAudioEvents: { pause: number } }).__storyAudioEvents.pause);
+  const transitionStartedAt = Date.now();
   await page.getByRole('button', { name: '拆开信封' }).click();
 
+  await expect(page.getByText('信封尚未拆尽沉默，时间已携着余韵走向明日。')).toBeVisible();
   await expect(page.getByText('公元 2026 年 8 月 14 日')).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(narrationCalls).toBe(1);
   await expect(page.getByRole('heading', { name: '听故事' })).toBeVisible();
   await expect(page.getByRole('button', { name: '进入仓库' })).toBeVisible();
+  expect(Date.now() - transitionStartedAt).toBeGreaterThanOrEqual(900);
   await expect(page.getByRole('button', { name: /进入周中|进入周末|确认并继续/ })).toHaveCount(0);
   await expect.poll(() => narrationCalls).toBe(2);
   await expect.poll(() => page.evaluate(() => (window as unknown as { __storyAudioEvents: { pause: number } }).__storyAudioEvents.pause)).toBeGreaterThan(pausesBeforeChoice);
   expect(choiceCalls).toBe(1);
   expect(musicCalls).toBe(0);
+  expect(narratedTexts).not.toContain('信封尚未拆尽沉默，时间已携着余韵走向明日。');
 });
 
 test('migrated save resumes on its mapped calendar date without legacy controls', async ({ page }) => {
@@ -329,6 +339,7 @@ test('refresh after a saved choice safely retries generation on the advanced day
         story_date: '2026-08-13',
         event_description: '第一天已结算',
         choice: '继续',
+        transition_text: '今日的回声渐远，明日已从静处缓缓靠近。',
         postprocessing_status: 'pending',
       }],
       character_settings: { era: { year: 2026 } },
@@ -369,6 +380,7 @@ test('refresh after a saved choice safely retries generation on the advanced day
   );
 
   await page.goto(`/play?gameId=${gameId}`);
+  await expect(page.getByText('今日的回声渐远，明日已从静处缓缓靠近。')).toBeVisible();
   await expect(page.getByText('公元 2026 年 8 月 14 日')).toBeVisible();
   await page.getByRole('button', { name: '查看正文' }).first().click();
   await expect(page.getByText('刷新后，第二天故事在正确日期重新生成。')).toBeVisible();

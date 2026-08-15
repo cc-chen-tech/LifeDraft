@@ -102,10 +102,9 @@ class RoundSystemMixin:
                 self._event_generator_service, "current_event", e
             ),
             result_callback=getattr(self, "result_callback", None),
-            postprocess_callback=getattr(
-                self, "_queue_daily_postprocessing", None
-            ),
+            postprocess_callback=getattr(self, "_queue_daily_postprocessing", None),
             settlement_lock=getattr(self, "_daily_mutation_lock", None),
+            language_getter=lambda: self.language,
         )
 
         # Finalizer service
@@ -152,7 +151,9 @@ class RoundSystemMixin:
 
     # ==================== Character Introduction ====================
 
-    def _maybe_generate_new_character(self, probability: float = 0.08) -> Optional[Dict[str, Any]]:
+    def _maybe_generate_new_character(
+        self, probability: float = 0.08
+    ) -> Optional[Dict[str, Any]]:
         """Generate new character with probability. Delegates to CharacterIntroductionService."""
         if not hasattr(self, "_char_intro_service"):
             self._init_round_services()
@@ -302,7 +303,9 @@ class RoundSystemMixin:
         """Generate custom choice result. Delegates to choice processor."""
         if not hasattr(self, "_choice_processor"):
             self._init_round_services()
-        return self._choice_processor._generate_custom_choice_result(event_description, custom_text)
+        return self._choice_processor._generate_custom_choice_result(
+            event_description, custom_text
+        )
 
     def _generate_story_continuation(
         self,
