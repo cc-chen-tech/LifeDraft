@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Sequence
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from src.database.models import (
@@ -14,6 +16,8 @@ from src.database.models import (
     VoiceReadingSegment,
     VoiceReadingSetting,
 )
+
+PROCESSING_LEASE_DURATION = timedelta(minutes=10)
 
 
 class StoryVoiceReadingRepository:
@@ -182,6 +186,7 @@ class StoryVoiceReadingRepository:
 
     def claim_queued_job_for_processing(self, user_id: int, job_id: int) -> bool:
         """Atomically transition a queued job to processing for one worker."""
+        now = datetime.utcnow()
         claimed = (
             self.db.query(VoiceReadingJob)
             .filter(
@@ -189,10 +194,60 @@ class StoryVoiceReadingRepository:
                 VoiceReadingJob.user_id == user_id,
                 VoiceReadingJob.status == "queued",
             )
-            .update({VoiceReadingJob.status: "processing"}, synchronize_session=False)
+            .update(
+                {
+                    VoiceReadingJob.status: "processing",
+                    VoiceReadingJob.updated_at: now,
+                },
+                synchronize_session=False,
+            )
         )
         self.db.commit()
         return claimed == 1
+
+    def requeue_stale_processing_job(
+        self,
+        user_id: int,
+        job_id: int,
+        *,
+        now: Optional[datetime] = None,
+    ) -> bool:
+        """Atomically recover a processing job whose worker lease expired."""
+        current_time = now or datetime.utcnow()
+        stale_before = current_time - PROCESSING_LEASE_DURATION
+        recovered = (
+            self.db.query(VoiceReadingJob)
+            .filter(
+                VoiceReadingJob.job_id == job_id,
+                VoiceReadingJob.user_id == user_id,
+                VoiceReadingJob.status == "processing",
+                or_(
+                    VoiceReadingJob.updated_at.is_(None),
+                    VoiceReadingJob.updated_at < stale_before,
+                ),
+            )
+            .update(
+                {
+                    VoiceReadingJob.status: "queued",
+                    VoiceReadingJob.error_code: None,
+                    VoiceReadingJob.error_message: None,
+                    VoiceReadingJob.updated_at: current_time,
+                },
+                synchronize_session="fetch",
+            )
+        )
+        self.db.flush()
+        return recovered == 1
+
+    def refresh_processing_lease(
+        self,
+        job: VoiceReadingJob,
+        *,
+        now: Optional[datetime] = None,
+    ) -> None:
+        """Advance a claimed worker's lease at a safe processing boundary."""
+        job.updated_at = now or datetime.utcnow()
+        self.db.flush()
 
     def invalidate_asset(self, asset: GeneratedVoiceAsset, reason: str) -> None:
         """Retain an unusable v2 asset record but prevent further reuse."""

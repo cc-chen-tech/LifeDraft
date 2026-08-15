@@ -203,6 +203,11 @@ class StoryVoiceReadingService:
                     raise
         elif str(job.status) == "failed":
             self.repository.mark_job_queued_for_retry(job)
+        elif str(job.status) == "processing":
+            self.repository.requeue_stale_processing_job(user_id, int(job.job_id))
+            job = self.repository.get_job(int(job.job_id), user_id)
+            if job is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
         if not provider_metadata.backend_audio_enabled:
             setattr(job, "status", "failed")
             setattr(job, "error_code", "tts_provider_unavailable")
@@ -247,7 +252,8 @@ class StoryVoiceReadingService:
             if str(segment.status) == "ready":
                 continue
             segment.status = "processing"
-            self.repository.db.flush()
+            self.repository.refresh_processing_lease(job)
+            self.repository.db.commit()
             segment_context = dict(job.context_json)
             segment_context["text"] = str(segment.text_content)
             segment_context["text_hash"] = str(segment.text_hash)
@@ -295,6 +301,7 @@ class StoryVoiceReadingService:
                     job.asset = ready_asset
                 # Make each ready paragraph visible immediately so the client can
                 # begin playback while later paragraphs continue generating.
+                self.repository.refresh_processing_lease(job)
                 self.repository.db.commit()
             except Exception as error:
                 segment.status = "failed"

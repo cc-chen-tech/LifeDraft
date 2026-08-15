@@ -3,6 +3,7 @@
 from uuid import uuid4
 import wave
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from threading import Barrier
 
 from sqlalchemy import create_engine, inspect, text
@@ -490,6 +491,137 @@ def test_processing_job_loser_exits_without_synthesizing() -> None:
         ).process_job(int(user.user_id), int(job.job_id))
 
         assert response.status == "processing"
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_repeated_read_requeues_a_stale_processing_job() -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice Stale Lease",
+        )
+        session.add(user)
+        session.flush()
+        service = StoryVoiceReadingService(
+            StoryVoiceReadingRepository(session), provider=DeterministicTTSProvider()
+        )
+        request = StoryVoiceReadingRequest(
+            context={
+                "source_type": "current_story",
+                "game_id": 916,
+                "week": 1,
+                "round_number": 1,
+                "stage": "event",
+                "attempt_id": "stale-lease",
+                "text_hash": normalize_text_hash("过期的处理租约应能重试。"),
+                "text": "过期的处理租约应能重试。",
+            }
+        )
+        queued = service.request_reading(int(user.user_id), request)
+        job = session.query(VoiceReadingJob).filter_by(job_id=queued.job_id).one()
+        job.status = "processing"
+        job.updated_at = datetime.utcnow() - timedelta(minutes=10, seconds=1)
+        session.commit()
+
+        repeated = service.request_reading(int(user.user_id), request)
+
+        assert repeated.job_id == queued.job_id
+        assert repeated.status == "queued"
+        assert session.query(VoiceReadingJob).filter_by(job_id=queued.job_id).one().status == "queued"
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_repeated_read_does_not_reclaim_a_fresh_processing_job() -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice Fresh Lease",
+        )
+        session.add(user)
+        session.flush()
+        service = StoryVoiceReadingService(
+            StoryVoiceReadingRepository(session), provider=DeterministicTTSProvider()
+        )
+        request = StoryVoiceReadingRequest(
+            context={
+                "source_type": "current_story",
+                "game_id": 917,
+                "week": 1,
+                "round_number": 1,
+                "stage": "event",
+                "attempt_id": "fresh-lease",
+                "text_hash": normalize_text_hash("活动租约不能被重复请求抢占。"),
+                "text": "活动租约不能被重复请求抢占。",
+            }
+        )
+        queued = service.request_reading(int(user.user_id), request)
+        job = session.query(VoiceReadingJob).filter_by(job_id=queued.job_id).one()
+        job.status = "processing"
+        job.updated_at = datetime.utcnow()
+        session.commit()
+
+        repeated = service.request_reading(int(user.user_id), request)
+
+        assert repeated.job_id == queued.job_id
+        assert repeated.status == "processing"
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_lease_heartbeat_prevents_stale_recovery() -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice Lease Heartbeat",
+        )
+        session.add(user)
+        session.flush()
+        context = {
+            "source_type": "current_story",
+            "game_id": 918,
+            "week": 1,
+            "round_number": 1,
+            "stage": "event",
+            "attempt_id": "heartbeat",
+            "text_hash": normalize_text_hash("分段提交必须续租处理任务。"),
+            "text": "分段提交必须续租处理任务。",
+        }
+        repository = StoryVoiceReadingRepository(session)
+        job = repository.create_chapter_job(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            dedupe_key=f"heartbeat-{uuid4().hex}",
+            paragraphs=[str(context["text"])],
+        )
+        stale_at = datetime.utcnow() - timedelta(minutes=11)
+        job.status = "processing"
+        job.updated_at = stale_at
+        session.commit()
+
+        repository.refresh_processing_lease(job)
+        recovered = repository.requeue_stale_processing_job(
+            int(user.user_id), int(job.job_id), now=datetime.utcnow()
+        )
+
+        assert job.updated_at is not None and job.updated_at > stale_at
+        assert recovered is False
+        assert job.status == "processing"
     finally:
         session.rollback()
         session.close()
