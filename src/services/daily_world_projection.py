@@ -43,6 +43,10 @@ DEFAULT_TIME_ZONE = "Asia/Shanghai"
 LOCK_RETRY_ATTEMPTS = 3
 
 
+class GenerationCancelled(RuntimeError):
+    """A guarded post-provider transaction lost the lifecycle race to stop()."""
+
+
 class DailyWorldProjectionService:
     """Claim due rows and publish extraction results through repository fences."""
 
@@ -64,6 +68,7 @@ class DailyWorldProjectionService:
         heartbeat_interval: float = 60.0,
         time_zone: Optional[str] = None,
         lock_retry_wait: Optional[Callable[[int], None]] = None,
+        after_final_publish_commit: Optional[Callable[[], None]] = None,
     ) -> None:
         self.session_factory = session_factory
         self.repository_factory = repository_factory
@@ -78,6 +83,7 @@ class DailyWorldProjectionService:
         self.lock_retry_wait = lock_retry_wait or (
             lambda attempt: time.sleep(0.01 * (attempt + 1))
         )
+        self.after_final_publish_commit = after_final_publish_commit
         zone_name = time_zone or os.getenv(
             "WORLD_PROJECTION_TIME_ZONE", DEFAULT_TIME_ZONE
         )
@@ -207,16 +213,36 @@ class DailyWorldProjectionService:
     def wake(self) -> None:
         self.wake_event.set()
 
-    def _transaction(self, callback: Callable[[Any, Any], Any]) -> Any:
-        """Commit one DB transition, rolling back/closing on every failure."""
+    def _transaction(
+        self,
+        callback: Callable[[Any, Any], Any],
+        *,
+        cancel_guard: Optional[Any] = None,
+        after_commit: Optional[Callable[[], None]] = None,
+    ) -> Any:
+        """Commit one DB transition, optionally linearized against stop()."""
 
         last_error: Optional[OperationalError] = None
         for attempt in range(LOCK_RETRY_ATTEMPTS):
             session = self.session_factory()
             try:
                 result = callback(session, self.repository_factory(session))
-                session.commit()
+                if cancel_guard is None:
+                    session.commit()
+                else:
+                    # stop() sets its generation cancel event under this same
+                    # lifecycle lock.  This makes "cancel check + commit" one
+                    # linearizable decision rather than a check-then-commit race.
+                    with self._lock:
+                        if cancel_guard.is_set():
+                            raise GenerationCancelled()
+                        session.commit()
+                if after_commit is not None:
+                    after_commit()
                 return result
+            except GenerationCancelled:
+                session.rollback()
+                raise
             except OperationalError as exc:
                 session.rollback()
                 last_error = exc
@@ -390,8 +416,11 @@ class DailyWorldProjectionService:
         source_hash: str,
         now: datetime,
         cancel: Optional[Any] = None,
+        guard_commit: bool = False,
     ) -> bool:
         if cancel is not None and cancel.is_set():
+            if guard_commit:
+                raise GenerationCancelled()
             return False
         db_now = self._as_utc_naive(now)
         return bool(
@@ -406,7 +435,8 @@ class DailyWorldProjectionService:
                         db_now + LEASE_DURATION,
                         source_hash=source_hash,
                     )
-                )
+                ),
+                cancel_guard=cancel if guard_commit else None,
             )
         )
 
@@ -438,9 +468,16 @@ class DailyWorldProjectionService:
         }
 
     def _retry(
-        self, row: Any, now: datetime, error_code: str, cancel: Optional[Any] = None
+        self,
+        row: Any,
+        now: datetime,
+        error_code: str,
+        cancel: Optional[Any] = None,
+        guard_commit: bool = False,
     ) -> bool:
         if cancel is not None and cancel.is_set():
+            if guard_commit:
+                raise GenerationCancelled()
             return False
         return bool(
             self._transaction(
@@ -454,7 +491,8 @@ class DailyWorldProjectionService:
                         self._next_retry_at(row.attempt_count, now),
                         source_hash=row.source_hash,
                     )
-                )
+                ),
+                cancel_guard=cancel if guard_commit else None,
             )
         )
 
@@ -609,7 +647,11 @@ class DailyWorldProjectionService:
                 outcome, error_code = "cancelled", "cancelled"
                 return
             if not self._renew_lease(
-                projection_id, row.source_hash, self.now_fn(), cancel
+                projection_id,
+                row.source_hash,
+                self.now_fn(),
+                cancel,
+                guard_commit=True,
             ):
                 outcome, error_code = "lease_lost", "lease_lost"
                 return
@@ -619,7 +661,7 @@ class DailyWorldProjectionService:
             latest_source, source_error = self._validated_canonical_source(row)
             if latest_source is None:
                 assert source_error is not None
-                self._retry(row, now, source_error, cancel)
+                self._retry(row, now, source_error, cancel, guard_commit=True)
                 outcome, error_code = source_error, source_error
                 return
             if cancel is not None and cancel.is_set():
@@ -629,28 +671,31 @@ class DailyWorldProjectionService:
                 detect_world_change_signals(story, options, source.get("tracked_state"))
             )
             published = self._transaction(
-                lambda _session, repo: (
-                    False
-                    if cancel is not None and cancel.is_set()
-                    else repo.mark_ready(
-                        row.projection_id,
-                        self.worker_id,
-                        row.source_hash,
-                        payload,
-                        bool(getattr(payload, "no_change", False)),
-                        coverage=coverage,
-                    )
-                )
+                lambda _session, repo: repo.mark_ready(
+                    row.projection_id,
+                    self.worker_id,
+                    row.source_hash,
+                    payload,
+                    bool(getattr(payload, "no_change", False)),
+                    coverage=coverage,
+                ),
+                cancel_guard=cancel,
+                after_commit=self.after_final_publish_commit,
             )
             outcome, error_code = (
                 ("success", None) if published else ("lease_lost", "lease_lost")
             )
+        except GenerationCancelled:
+            if provider_called:
+                outcome, error_code = "cancelled", "cancelled"
+            else:
+                raise
         except WorldProjectionExtractionError as exc:
             error_code = exc.code
             if cancel is not None and cancel.is_set() and provider_called:
                 outcome, error_code = "cancelled", "cancelled"
             else:
-                self._retry(row, now, error_code, cancel)
+                self._retry(row, now, error_code, cancel, guard_commit=provider_called)
                 outcome = "extraction_error"
         except Exception:
             logger.exception(
@@ -660,7 +705,13 @@ class DailyWorldProjectionService:
             if cancel is not None and cancel.is_set() and provider_called:
                 outcome, error_code = "cancelled", "cancelled"
             else:
-                self._retry(row, now, "unexpected_error", cancel)
+                self._retry(
+                    row,
+                    now,
+                    "unexpected_error",
+                    cancel,
+                    guard_commit=provider_called,
+                )
         finally:
             done.set()
             if heartbeat is not None:
@@ -670,12 +721,8 @@ class DailyWorldProjectionService:
             if attempt_id is not None:
                 self._finish_attempt(
                     attempt_id,
-                    "cancelled" if cancel is not None and cancel.is_set() else outcome,
-                    (
-                        "cancelled"
-                        if cancel is not None and cancel.is_set()
-                        else error_code
-                    ),
+                    outcome,
+                    error_code,
                     self.now_fn(),
                 )
 
