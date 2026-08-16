@@ -3,19 +3,24 @@
 from __future__ import annotations
 
 import re
+import threading
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Any, Mapping, Sequence
 
 _SENTENCE_BOUNDARY = re.compile(r"[。！？!?；;]+")
 _CLAUSE_BOUNDARY = re.compile(r"[，,]+")
-_POS_MODIFIER_TAGS = frozenset({"c", "d", "e", "f", "o", "t", "u", "y"})
-_POS_NOMINAL_TAG_PREFIX = "n"
+_POS_PREFIX_FUNCTION_TAGS = frozenset({"c", "d", "e", "f", "o", "t", "u", "y"})
 
 try:
-    import thulac as _thulac
+    from jieba import Tokenizer as _JiebaTokenizer
+    from jieba.posseg import POSTokenizer as _JiebaPOSTokenizer
 except ImportError:  # The detector must fail closed when the local model is absent.
-    _thulac = None
+    _JiebaTokenizer = None
+    _JiebaPOSTokenizer = None
+
+_POS_LOCK = threading.RLock()
+_pos_tokenizer: Any | None = None
+_pos_tagger: Any | None = None
 _LOCATION_TERMS = (
     "抵达",
     "到达",
@@ -101,33 +106,44 @@ def _has_tracked_entity(clause: str, tracked_names: Sequence[str]) -> bool:
     return any(name in clause for name in tracked_names)
 
 
-@lru_cache(maxsize=1)
-def _pos_tagger() -> Any | None:
-    if _thulac is None:
-        return None
-    try:
-        return _thulac.thulac(seg_only=False, filt=False)
-    except Exception:
-        return None
+def _get_pos_tagger() -> Any | None:
+    """Build the package-bundled jieba tokenizer once, without network access."""
+    global _pos_tagger, _pos_tokenizer
+    with _POS_LOCK:
+        if _pos_tagger is not None:
+            return _pos_tagger
+        if _JiebaTokenizer is None or _JiebaPOSTokenizer is None:
+            return None
+        try:
+            tokenizer = _JiebaTokenizer()
+            tagger = _JiebaPOSTokenizer(tokenizer=tokenizer)
+        except Exception:
+            return None
+        _pos_tokenizer = tokenizer
+        _pos_tagger = tagger
+        return _pos_tagger
 
 
 def _pos_tokens(candidate: str) -> tuple[tuple[str, str], ...]:
-    """Return bundled offline POS tokens, or no tokens when unavailable."""
-    if _thulac is None:
-        return ()
-    tagger = _pos_tagger()
-    if tagger is None:
-        return ()
-    try:
-        return tuple((str(word), str(tag)) for word, tag in tagger.cut(candidate))
-    except Exception:
-        return ()
+    """Return local POS tokens while serializing non-reentrant jieba access."""
+    with _POS_LOCK:
+        tagger = _get_pos_tagger()
+        if tagger is None:
+            return ()
+        try:
+            return tuple(
+                (str(token.word), str(token.flag)) for token in tagger.cut(candidate)
+            )
+        except Exception:
+            return ()
 
 
 def _content_tokens(
     tokens: Sequence[tuple[str, str]],
 ) -> tuple[tuple[str, str], ...]:
-    return tuple((word, tag) for word, tag in tokens if tag not in _POS_MODIFIER_TAGS)
+    return tuple(
+        (word, tag) for word, tag in tokens if tag not in _POS_PREFIX_FUNCTION_TAGS
+    )
 
 
 def _leading_tracked_name(candidate: str, tracked_names: Sequence[str]) -> str | None:
@@ -148,14 +164,26 @@ def _leading_tracked_name(candidate: str, tracked_names: Sequence[str]) -> str |
 
 
 def _is_safe_subjectless_continuation(candidate: str) -> bool:
-    """Allow carry-over only when local POS finds a non-nominal predicate start."""
-    content = _content_tokens(_pos_tokens(candidate))
+    """Permit only complete-token function prefixes before an action/location."""
+    tokens = _pos_tokens(candidate)
+    if not tokens:
+        return False
+    location_index = next(
+        (index for index, (word, _) in enumerate(tokens) if word in _LOCATION_TERMS),
+        None,
+    )
+    if location_index is not None:
+        return all(
+            tag in _POS_PREFIX_FUNCTION_TAGS or tag == "p"
+            for _, tag in tokens[:location_index]
+        )
+    content = _content_tokens(tokens)
     if not content:
         return False
     _, leading_tag = content[0]
-    if leading_tag.startswith(_POS_NOMINAL_TAG_PREFIX):
-        return False
-    return leading_tag == "p" or leading_tag.startswith("v")
+    if leading_tag == "p":
+        return True
+    return leading_tag.startswith("v") and len(content) >= 2 and content[1][1] == "p"
 
 
 def _known_record_terms(

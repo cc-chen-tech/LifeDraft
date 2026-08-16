@@ -1,3 +1,8 @@
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
+
 import pytest
 
 import src.game.world_projection_coverage as world_projection_coverage
@@ -246,7 +251,16 @@ def test_pos_subjectless_clauses_preserve_a_carried_location_subject(
 def test_missing_pos_dependency_fails_closed_without_inheriting_subject(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(world_projection_coverage, "_thulac", None)
+    monkeypatch.setattr(
+        world_projection_coverage, "_JiebaTokenizer", None, raising=False
+    )
+    monkeypatch.setattr(
+        world_projection_coverage, "_JiebaPOSTokenizer", None, raising=False
+    )
+    monkeypatch.setattr(
+        world_projection_coverage, "_pos_tokenizer", None, raising=False
+    )
+    monkeypatch.setattr(world_projection_coverage, "_pos_tagger", None, raising=False)
 
     signals = detect_world_change_signals(
         "黑袍人收拾行囊，抵达东海。",
@@ -255,3 +269,80 @@ def test_missing_pos_dependency_fails_closed_without_inheriting_subject(
     )
 
     assert "location_updates" not in signals.categories
+
+
+def test_jieba_token_sequence_distinguishes_noun_like_prefixes_from_prepositions() -> (
+    None
+):
+    noun_signals = detect_world_change_signals(
+        "黑袍人收拾行囊，向导决定留守，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+    preposition_signals = detect_world_change_signals(
+        "黑袍人收拾行囊，向朋友道别，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" not in noun_signals.categories
+    assert "location_updates" in preposition_signals.categories
+
+
+def test_jieba_pos_singleton_initializes_once_and_serializes_concurrent_cuts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initialized = 0
+    active_cuts = 0
+    max_active_cuts = 0
+    counter_lock = threading.Lock()
+
+    class FakeTokenizer:
+        def __init__(self) -> None:
+            nonlocal initialized
+            with counter_lock:
+                initialized += 1
+            time.sleep(0.01)
+
+    class FakePOSTokenizer:
+        def __init__(self, tokenizer: FakeTokenizer) -> None:
+            del tokenizer
+
+        def cut(self, _text: str):  # type: ignore[no-untyped-def]
+            nonlocal active_cuts, max_active_cuts
+            with counter_lock:
+                active_cuts += 1
+                max_active_cuts = max(max_active_cuts, active_cuts)
+            time.sleep(0.01)
+            with counter_lock:
+                active_cuts -= 1
+            return [
+                SimpleNamespace(word="抵达", flag="v"),
+                SimpleNamespace(word="东海", flag="ns"),
+            ]
+
+    monkeypatch.setattr(
+        world_projection_coverage, "_JiebaTokenizer", FakeTokenizer, raising=False
+    )
+    monkeypatch.setattr(
+        world_projection_coverage,
+        "_JiebaPOSTokenizer",
+        FakePOSTokenizer,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        world_projection_coverage, "_pos_tokenizer", None, raising=False
+    )
+    monkeypatch.setattr(world_projection_coverage, "_pos_tagger", None, raising=False)
+
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        results = list(
+            executor.map(world_projection_coverage._pos_tokens, ["抵达东海"] * 12)
+        )
+
+    expected = (("抵达", "v"), ("东海", "ns"))
+    serial_result = world_projection_coverage._pos_tokens("抵达东海")
+    assert serial_result == expected
+    assert results == [serial_result] * 12
+    assert initialized == 1
+    assert max_active_cuts == 1
