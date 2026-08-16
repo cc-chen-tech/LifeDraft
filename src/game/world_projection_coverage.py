@@ -6,7 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-_CLAUSE_BOUNDARY = re.compile(r"[。！？!?；;，,]+")
+_SENTENCE_BOUNDARY = re.compile(r"[。！？!?；;]+")
+_CLAUSE_BOUNDARY = re.compile(r"[，,]+")
 _LOCATION_TERMS = (
     "抵达",
     "到达",
@@ -56,17 +57,25 @@ def _tracked_character_names(tracked_state: Any) -> tuple[str, ...]:
     return tuple(str(name) for name in locations if str(name).strip())
 
 
-def _clauses(story: str, options: Sequence[Any]) -> tuple[str, ...]:
+def _clause_contexts(story: str, options: Sequence[Any]) -> tuple[tuple[str, str], ...]:
     source_texts = [str(story or "")]
     source_texts.extend(
         str(option.get("text") if isinstance(option, Mapping) else option or "")
         for option in options
     )
     return tuple(
-        clause.strip()
+        (clause, f"{previous_clause} {clause}".strip())
         for text in source_texts
-        for clause in _CLAUSE_BOUNDARY.split(text)
-        if clause.strip()
+        for sentence in _SENTENCE_BOUNDARY.split(text)
+        for clauses in [
+            tuple(
+                clause.strip()
+                for clause in _CLAUSE_BOUNDARY.split(sentence)
+                if clause.strip()
+            )
+        ]
+        for position, clause in enumerate(clauses)
+        for previous_clause in [clauses[position - 1] if position else ""]
     )
 
 
@@ -74,27 +83,38 @@ def _has_tracked_entity(clause: str, tracked_names: Sequence[str]) -> bool:
     return any(name in clause for name in tracked_names)
 
 
-def _known_record_terms(tracked_state: Any, keys: Sequence[str]) -> tuple[str, ...]:
+def _known_record_terms(
+    tracked_state: Any,
+    keys: Sequence[str],
+    content_fields: Sequence[str],
+) -> tuple[str, ...]:
     if not isinstance(tracked_state, Mapping):
         return ()
     terms: list[str] = []
+
+    def add_value(value: Any) -> None:
+        if isinstance(value, str) and len(value.strip()) >= 2:
+            terms.append(value.strip())
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                add_value(item)
+
     for key in keys:
         records = tracked_state.get(key)
         if isinstance(records, Mapping):
-            records = list(records.values())
+            records = (
+                (records,)
+                if any(field in records for field in content_fields)
+                else tuple(records.values())
+            )
         if not isinstance(records, (list, tuple)):
             continue
         for record in records:
-            values = record.values() if isinstance(record, Mapping) else (record,)
-            for value in values:
-                if isinstance(value, str) and len(value.strip()) >= 2:
-                    terms.append(value.strip())
-                elif isinstance(value, (list, tuple)):
-                    terms.extend(
-                        item.strip()
-                        for item in value
-                        if isinstance(item, str) and len(item.strip()) >= 2
-                    )
+            if isinstance(record, Mapping):
+                for field in content_fields:
+                    add_value(record.get(field))
+            else:
+                add_value(record)
     return tuple(dict.fromkeys(terms))
 
 
@@ -110,9 +130,22 @@ def detect_world_change_signals(
     """Return correlated evidence only; this detector never constructs a patch."""
     tracked_names = _tracked_character_names(tracked_state)
     known_commitment_terms = _known_record_terms(
-        tracked_state, ("commitments", "active_commitments")
+        tracked_state,
+        ("commitments", "active_commitments"),
+        ("description", "commitment", "task", "content", "details", "terms"),
     )
-    known_causal_terms = _known_record_terms(tracked_state, ("causal_chains",))
+    known_causal_terms = _known_record_terms(
+        tracked_state,
+        ("causal_chains",),
+        (
+            "cause",
+            "expected_consequence",
+            "consequence",
+            "description",
+            "resolution",
+            "details",
+        ),
+    )
     categories: list[str] = []
     matches: list[str] = []
 
@@ -125,10 +158,11 @@ def detect_world_change_signals(
             if term not in matches:
                 matches.append(term)
 
-    for clause in _clauses(story, options):
+    for clause, location_context in _clause_contexts(story, options):
         has_tracked_entity = _has_tracked_entity(clause, tracked_names)
-        if has_tracked_entity:
+        if _has_tracked_entity(location_context, tracked_names):
             record("location_updates", _matching_terms(clause, _LOCATION_TERMS))
+        if has_tracked_entity:
             record("fact_updates", _matching_terms(clause, _FACT_TERMS))
             record("career_updates", _matching_terms(clause, _CAREER_TERMS))
             record("habit_updates", _matching_terms(clause, _HABIT_TERMS))
