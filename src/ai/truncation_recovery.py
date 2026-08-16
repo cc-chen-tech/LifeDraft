@@ -114,7 +114,9 @@ class TruncationRecovery:
                 kwargs = {k: v for k, v in call_kwargs.items() if k != "stream_callback"}
                 kwargs["_allow_truncation_recovery"] = False
                 if generation_tracker is not None:
-                    kwargs["request_timeout"] = max(0.001, generation_tracker.remaining_seconds)
+                    kwargs["request_timeout"] = generation_tracker.cap_timeout(
+                        kwargs.get("request_timeout")
+                    )
                 continuation_text: str = client_call(
                     system_prompt=system_prompt,
                     user_prompt=continuation_prompt,

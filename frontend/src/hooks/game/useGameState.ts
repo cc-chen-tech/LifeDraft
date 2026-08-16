@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useGameStore } from "@/stores/useGameStore";
 import { useSceneImageStore } from "@/stores/useSceneImageStore";
-import { streamRegenerate } from "@/lib/sse";
+import { streamRegenerate, type GenerationFailurePayload } from "@/lib/sse";
 import api from "@/lib/api";
 import type { EventOption } from "@/lib/types";
 import type { Phase } from "./usePhaseManager";
@@ -62,16 +62,18 @@ export function useGameState({
 
   // Regenerate toast state
   const [regenerateToast, setRegenerateToast] = useState<ToastState | null>(null);
+  const [regenerationFailure, setRegenerationFailure] = useState<GenerationFailurePayload | null>(null);
 
   // Summary state
   const [summaryText, setSummaryText] = useState("");
   const [roundSummary, setRoundSummary] = useState<string | null>(null);
 
   // Ending data
-  const [endingData, setEndingData] = useState<Record<string, unknown> | null>(null);
+  const [endingData] = useState<Record<string, unknown> | null>(null);
 
   // Regenerate abort controller
   const regenerateAbortRef = useRef<AbortController | null>(null);
+  const regenerateLastEventIdRef = useRef<number | null>(null);
 
   const startGenerationAfterSync = useCallback(async () => {
     if (!gameId) return;
@@ -147,6 +149,25 @@ export function useGameState({
 
     // Show loading toast
     setRegenerateToast({ type: "loading", message: "正在重新生成..." });
+    setRegenerationFailure(null);
+
+    const previousStory = useGameStore.getState().storyText;
+    const previousEvent = useGameStore.getState().currentEvent;
+    const cursorStorageKey = `story101:regenerate-cursor:${gameId}`;
+    const activeStorageKey = `story101:regenerate-active:${gameId}`;
+    const resumeRequested = window.sessionStorage.getItem(activeStorageKey) === "1";
+    if (regenerateLastEventIdRef.current === null) {
+      const stored = window.sessionStorage.getItem(cursorStorageKey);
+      const parsed = stored === null ? Number.NaN : Number.parseInt(stored, 10);
+      regenerateLastEventIdRef.current = Number.isFinite(parsed) ? parsed : null;
+    }
+
+    const clearRegenerationCursor = () => {
+      regenerateLastEventIdRef.current = null;
+      window.sessionStorage.removeItem(cursorStorageKey);
+      window.sessionStorage.removeItem(activeStorageKey);
+    };
+    window.sessionStorage.setItem(activeStorageKey, "1");
 
     // Cancel ongoing prefetch
     if (prefetchingRef.current) {
@@ -168,10 +189,6 @@ export function useGameState({
     setPhase("generating");
     setProcessing(true, "regenerating");
 
-    // ★ 清除当前轮次的场景图片状态，确保重新生成后显示新图片
-    useSceneImageStore.getState().clearCurrentRoundImages();
-    console.log("[handleRegenerate] Cleared current round scene images");
-
     // ★ 定义重试逻辑
     const attemptRegenerate = async (isRetry: boolean = false) => {
       return new Promise<void>((resolve, reject) => {
@@ -181,8 +198,17 @@ export function useGameState({
             onStory: (text) => {
               appendStoryText(text);
             },
+            onEventId: (eventId) => {
+              regenerateLastEventIdRef.current = eventId;
+              window.sessionStorage.setItem(cursorStorageKey, String(eventId));
+            },
             onStatus: (status) => {
-              setProcessing(true, status.phase);
+              const progressPhase = status.phase === "retry"
+                && typeof status.attempt === "number"
+                && typeof status.max_attempts === "number"
+                ? `retry:${status.attempt}/${status.max_attempts}`
+                : status.phase;
+              setProcessing(true, progressPhase);
               // ★ 当后端因一致性校验失败触发 retry 时，清空已累积的故事文本
               // 否则旧故事和新故事会被拼接在一起
               if (status.phase === 'retry') {
@@ -219,6 +245,7 @@ export function useGameState({
                   console.error("[handleRegenerate] Complete event contained options but no story text");
                   setPhase("error");
                   setRegenerateToast({ type: "error", message: "生成失败，请重试" });
+                  clearRegenerationCursor();
                   reject(new Error("No story text in complete event"));
                   return;
                 }
@@ -234,6 +261,10 @@ export function useGameState({
                 });
                 setPhase("options");
                 setRoundSummary(null);
+                setRegenerationFailure(null);
+                clearRegenerationCursor();
+                // 后端只会在原子替换成功后删除旧配图；此时再刷新前端图片状态。
+                useSceneImageStore.getState().clearCurrentRoundImages();
                 console.log("[handleRegenerate] Regeneration complete!");
                 
                 // Show success toast (auto-hide after 2s)
@@ -243,6 +274,7 @@ export function useGameState({
               } else {
                 console.error("[handleRegenerate] No options in complete event");
                 setRegenerateToast({ type: "error", message: "生成失败，请重试" });
+                clearRegenerationCursor();
                 reject(new Error("No options in complete event"));
               }
             },
@@ -259,6 +291,7 @@ export function useGameState({
                 try {
                   // 尝试恢复 session
                   await syncPlayerState();
+                  clearRegenerationCursor();
                   console.log("[handleRegenerate] Session restored, retrying regeneration...");
                   
                   // 递归重试
@@ -274,22 +307,70 @@ export function useGameState({
                 }
                 return;
               }
+
+              const recoverableTransport = err instanceof Error && (
+                errorMsg.includes("Stream ended")
+                || errorMsg.toLowerCase().includes("network")
+                || errorMsg.toLowerCase().includes("failed to fetch")
+                || errorMsg.toLowerCase().includes("terminated")
+              );
+              if (recoverableTransport && !isRetry) {
+                await attemptRegenerate(true);
+                resolve();
+                return;
+              }
               
               setProcessing(false);
               generatingRef.current = false;
-              setPhase("error");
+
+              const structuredFailure = !(err instanceof Error) && err.code
+                ? err as GenerationFailurePayload
+                : null;
+              if (structuredFailure) {
+                setRegenerationFailure(structuredFailure);
+              }
+              clearRegenerationCursor();
+
+              // 后端事务失败时旧故事仍然有效。先从服务端同步；若同步失败，
+              // 仍用操作开始前的本地快照恢复阅读，避免玩家面对空白页。
+              try {
+                await useGameStore.getState().syncState({ gameId: gameId! });
+              } catch (syncErr) {
+                console.warn("[handleRegenerate] Failed to refresh preserved story:", syncErr);
+              }
+              const refreshed = useGameStore.getState();
+              const restoredEvent = refreshed.currentEvent || previousEvent;
+              const restoredStory = restoredEvent?.story || refreshed.storyText || previousStory;
+              const restoredOptions = restoredEvent?.options || previousEvent?.options || [];
+              if (restoredStory && restoredOptions.length > 0) {
+                setStoryText(restoredStory);
+                setOptions(restoredOptions);
+                setCurrentEvent({
+                  ...(restoredEvent || {}),
+                  story: restoredStory,
+                  options: restoredOptions,
+                });
+                setPhase("options");
+              } else {
+                setPhase("error");
+              }
               
               // 显示简化的错误消息
-              const displayMsg = errorMsg.includes("404") 
+              const displayMsg = structuredFailure?.summary || (errorMsg.includes("404")
                 ? "会话已过期，请刷新页面" 
                 : errorMsg.length > 50 
                   ? "重新生成失败，请重试"
-                  : errorMsg;
+                  : errorMsg);
               setRegenerateToast({ type: "error", message: displayMsg });
               reject(new Error(errorMsg));
             },
           },
-          { signal: regenerateAbortRef.current?.signal }
+          {
+            signal: regenerateAbortRef.current?.signal,
+            ...(regenerateLastEventIdRef.current === null
+              ? ((isRetry || resumeRequested) ? { lastEventId: -1 } : {})
+              : { lastEventId: regenerateLastEventIdRef.current }),
+          }
         ).catch((err) => {
           if (err?.name !== "AbortError") {
             console.error("[handleRegenerate] Failed:", err);
@@ -306,7 +387,7 @@ export function useGameState({
     // 执行重新生成
     try {
       await attemptRegenerate();
-    } catch (err) {
+    } catch {
       // 错误已在 attemptRegenerate 中处理
     }
   }, [gameId, prefetchingRef, prefetchAbortRef, prefetchResultRef, setIsPrefetching, setStoryText, appendStoryText, setOptions, setCurrentEvent, setPhase, setProcessing, generatingRef, setRoundSummary, syncPlayerState]);
@@ -319,6 +400,7 @@ export function useGameState({
     isSaving,
     saveToast,
     regenerateToast,
+    regenerationFailure,
     summaryText,
     roundSummary,
     endingData,
@@ -326,6 +408,7 @@ export function useGameState({
     setSummaryText,
     setRoundSummary,
     setRegenerateToast,
+    setRegenerationFailure,
     // Handlers
     handleSave,
     handleContinueAfterSummary,

@@ -6,6 +6,7 @@ into the story world.
 
 import logging
 import random
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -36,10 +37,23 @@ class CharacterIntroductionService:
         self._get_player_state = player_state_getter
         self.character_creator = character_creator
         self._set_character_settings = character_settings_setter
+        self._player_state_override: Optional[Any] = None
 
     @property
     def player_state(self):
+        if self._player_state_override is not None:
+            return self._player_state_override
         return self._get_player_state()
+
+    @contextmanager
+    def use_player_state(self, player_state: Any):
+        """Temporarily route all introduction work to a staged state."""
+        previous = self._player_state_override
+        self._player_state_override = player_state
+        try:
+            yield
+        finally:
+            self._player_state_override = previous
 
     def maybe_generate_new_character(self, probability: float = 0.08) -> Optional[Dict[str, Any]]:
         """

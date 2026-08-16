@@ -613,7 +613,7 @@ def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_ne
             return (
                 "陆昊然把产品评审文档推到林见微面前，陈晓雨提醒她先确认用户反馈，"
                 "林一凡则把远程会议链接发进群里。"
-            )
+            ) * 20
 
     class RecordingOptionGenerator:
         def __init__(self):
@@ -664,7 +664,7 @@ def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_ne
 
     assert len(client.calls) == 2
     retry_prompt = client.calls[1]["user_prompt"]
-    assert "上一版故事完全没有使用预设关键人物" in retry_prompt
+    assert "名单外命名角色" in retry_prompt
     assert option_generator.generate_options_only_kwargs is not None
     story_for_options = option_generator.generate_options_only_kwargs["story_description"]
     assert "陆昊然" in story_for_options
@@ -684,7 +684,8 @@ def test_quick_validator_flags_key_people_dilution_with_invented_cast() -> None:
     )
 
     assert not result.passed
-    assert any("预设关键人物使用不足" in issue for issue in result.issues)
+    assert any("名单外命名角色" in issue for issue in result.issues)
+    assert any("覆盖低于建议值" in warning for warning in result.warnings)
 
 
 def test_event_generation_retries_when_story_dilutes_key_people_with_invented_cast() -> None:
@@ -760,7 +761,7 @@ def test_event_generation_retries_when_story_dilutes_key_people_with_invented_ca
 
     assert len(client.calls) == 2
     retry_prompt = client.calls[1]["user_prompt"]
-    assert "预设关键人物使用不足" in retry_prompt
+    assert "名单外命名角色" in retry_prompt
     assert option_generator.generate_options_only_kwargs is not None
     story_for_options = option_generator.generate_options_only_kwargs["story_description"]
     assert "陈晓雨" in story_for_options
@@ -779,7 +780,7 @@ def test_round_event_retries_when_modern_story_drifts_into_cyberpunk_ip_world() 
                     "夜之城的霓虹灯照在张若虚脸上，荒坂集团的安全员追着V穿过Viktor的诊所，"
                     "义体医生让他准备植入新的神经接口。"
                 )
-            return "张若虚在上海办公室复盘用户反馈，决定先和研发同事确认需求边界。"
+            return "张若虚在上海办公室复盘用户反馈，决定先和研发同事确认需求边界。" * 30
 
     class RecordingOptionGenerator:
         def __init__(self):

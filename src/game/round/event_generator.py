@@ -7,6 +7,7 @@ import logging
 import threading
 import time
 import uuid
+from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Any, Callable, Dict, Optional
 
@@ -108,6 +109,7 @@ class RoundEventGenerator:
         self._GENERATION_TIMEOUT: float = 120.0  # seconds
         self._OPTIONS_ONLY_TIMEOUT: float = 75.0  # seconds
         self._current_event: Optional[GameEvent] = None
+        self._player_state_override: Optional[Any] = None
 
     @staticmethod
     def _persist_long_context_snapshots(
@@ -128,6 +130,8 @@ class RoundEventGenerator:
 
     @property
     def player_state(self):
+        if self._player_state_override is not None:
+            return self._player_state_override
         return self._get_player_state()
 
     @property
@@ -153,6 +157,126 @@ class RoundEventGenerator:
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
         session: Optional[Any] = None,
+        force_regenerate: bool = False,
+        operation_id: Optional[str] = None,
+    ) -> Optional[GameEvent]:
+        """Generate one event, isolating all daily candidate side effects."""
+        live_state = self.player_state
+        from src.game.daily_timeline import is_daily_timeline
+
+        if not is_daily_timeline(live_state) or not callable(
+            getattr(live_state, "model_copy", None)
+        ):
+            return self._generate_round_event_impl(
+                stream_callback=stream_callback,
+                status_callback=status_callback,
+                session=session,
+                operation_id=operation_id,
+            )
+
+        operation_id = operation_id or uuid.uuid4().hex
+        original_state = live_state.model_copy(deep=True)
+        staged_state = original_state.model_copy(deep=True)
+        original_event = (
+            self._current_event.model_copy(deep=True)
+            if self._current_event is not None
+            else None
+        )
+        original_timeline = deepcopy(getattr(live_state, "timeline", None))
+        original_callback = self.event_callback
+        before_people = self._relationship_people_names(live_state)
+
+        if force_regenerate:
+            staged_state.current_event_data = None
+            self._current_event = None
+
+        logger.info(
+            "Daily generation transaction started operation_id=%s game_id=%s day_index=%s",
+            operation_id,
+            getattr(staged_state, "game_id", None),
+            (getattr(staged_state, "timeline", {}) or {}).get("day_index"),
+        )
+        self._player_state_override = staged_state
+        self.event_callback = None
+        live_commit_started = False
+        try:
+            with self.character_introduction_service.use_player_state(staged_state):
+                event = self._generate_round_event_impl(
+                    stream_callback=stream_callback,
+                    status_callback=status_callback,
+                    session=session,
+                    operation_id=operation_id,
+                )
+            if event is None:
+                raise StoryGenerationFailure("AI generator returned no round event")
+
+            introduced_people = self._relationship_people_names(staged_state) - before_people
+            missing_people = sorted(
+                name
+                for name in introduced_people
+                if name and name not in event.event_description
+            )
+            if missing_people:
+                raise StoryGenerationFailure(
+                    "introduced character missing from accepted story: "
+                    + ", ".join(missing_people)
+                )
+
+            if getattr(live_state, "timeline", None) != original_timeline:
+                raise StoryGenerationFailure("stale daily generation transaction")
+
+            live_commit_started = True
+            self._replace_player_state(live_state, staged_state)
+            self._current_event = event.model_copy(deep=True)
+            if original_callback:
+                original_callback(self._current_event, live_state)
+            logger.info(
+                "Daily generation transaction committed operation_id=%s game_id=%s "
+                "event_id=%s revision=%s introduced=%s",
+                operation_id,
+                getattr(live_state, "game_id", None),
+                getattr(self._current_event, "event_id", None),
+                getattr(self._current_event, "revision", None),
+                sorted(introduced_people),
+            )
+            return self._current_event
+        except Exception:
+            if live_commit_started:
+                self._replace_player_state(live_state, original_state)
+            self._current_event = original_event
+            logger.info(
+                "Daily generation transaction rolled back operation_id=%s game_id=%s",
+                operation_id,
+                getattr(live_state, "game_id", None),
+            )
+            raise
+        finally:
+            self.event_callback = original_callback
+            self._player_state_override = None
+
+    @staticmethod
+    def _replace_player_state(target: Any, source: Any) -> None:
+        """Commit a staged Pydantic state while preserving live object identity."""
+        for field_name in type(target).model_fields:
+            setattr(target, field_name, deepcopy(getattr(source, field_name)))
+
+    @staticmethod
+    def _relationship_people_names(player_state: Any) -> set[str]:
+        settings = getattr(player_state, "character_settings", {}) or {}
+        relationships = settings.get("relationships") or {}
+        people = relationships.get("key_people") or []
+        return {
+            str(person.get("name") or "").strip()
+            for person in people
+            if isinstance(person, dict) and str(person.get("name") or "").strip()
+        }
+
+    def _generate_round_event_impl(
+        self,
+        stream_callback: Optional[Callable[[str], None]] = None,
+        status_callback: Optional[Callable[[str], None]] = None,
+        session: Optional[Any] = None,
+        operation_id: Optional[str] = None,
     ) -> Optional[GameEvent]:
         """
         Generate an event for the current round within the week.
@@ -516,6 +640,7 @@ class RoundEventGenerator:
                 world_model=world_model,
                 new_character=new_character,
                 status_callback=status_callback,
+                operation_id=operation_id,
             )
             self._persist_long_context_snapshots(player_state, state_dict)
 
@@ -819,6 +944,11 @@ class RoundEventGenerator:
         if status_callback:
             status_callback("generating_scheduled_event")
 
+        from src.game.daily_timeline import is_daily_timeline
+
+        daily_mode = is_daily_timeline(player_state)
+        attempts_used = 0
+
         # 合并多个预定事件的信息（如果有多个）
         descriptions = []
         all_parties = set()
@@ -873,9 +1003,10 @@ class RoundEventGenerator:
                 if p.get("name")
             ]
             last_validation_error = ""
-            quality_level = str(
-                getattr(self.ai_generator, "quality_level", None) or "expert"
-            )
+            last_rejected_story = ""
+            last_validation_findings = []
+            raw_quality_level = getattr(self.ai_generator, "quality_level", None) or "expert"
+            quality_level = str(getattr(raw_quality_level, "value", raw_quality_level))
             narrative_budget = (
                 resolve_narrative_budget(
                     NarrativeKind.ROUND,
@@ -883,7 +1014,8 @@ class RoundEventGenerator:
                     quality_level,
                     self.language,
                 )
-                if get_feature("unified_narrative_budgets")
+                if is_daily_timeline(player_state)
+                or get_feature("unified_narrative_budgets")
                 else None
             )
             generation_tracker = (
@@ -891,22 +1023,21 @@ class RoundEventGenerator:
                 if narrative_budget is not None
                 else None
             )
-            max_attempts = min(
-                2,
-                (
-                    narrative_budget.prose_call_limit
-                    if narrative_budget is not None
-                    else 2
-                ),
+            max_attempts = (
+                narrative_budget.prose_call_limit
+                if narrative_budget is not None
+                else 2
             )
 
             for attempt in range(max_attempts):
+                attempts_used = attempt + 1
                 prompt_for_attempt = prompt
                 if attempt > 0 and last_validation_error:
                     if self.language == "zh":
                         prompt_for_attempt += (
                             "\n\n【快速一致性修正 - 必须重写】\n"
                             f"{last_validation_error}\n"
+                            f"【上一稿全文】\n{last_rejected_story}\n【上一稿结束】\n"
                             "请重新生成这个预定事件，严格使用可用人物列表、预设关键人物和既有人设。"
                         )
                     else:
@@ -916,7 +1047,14 @@ class RoundEventGenerator:
                             "Regenerate this scheduled event using the available people, preset cast, and existing setting."
                         )
                     if status_callback:
-                        status_callback("retry")
+                        status_callback(
+                            {
+                                "phase": "retry",
+                                "attempt": attempt + 1,
+                                "max_attempts": max_attempts,
+                                "quality_level": quality_level,
+                            }
+                        )
 
                 if generation_tracker is not None:
                     generation_tracker.consume("prose")
@@ -929,10 +1067,10 @@ class RoundEventGenerator:
                         if narrative_budget is not None
                         else get_generation_budget(quality_level).max_tokens
                     ),
-                    stream_callback=stream_callback if attempt == 0 else None,
+                    stream_callback=stream_callback,
                     thinking=False,
                     request_timeout=(
-                        max(0.001, generation_tracker.remaining_seconds)
+                        generation_tracker.cap_timeout()
                         if generation_tracker is not None
                         else None
                     ),
@@ -973,6 +1111,7 @@ class RoundEventGenerator:
                             story_text=event_desc,
                             character_settings=character_settings,
                             available_people=available_people_names,
+                            required_people=sorted(all_parties),
                             language=self.language,
                         )
                         from src.ai.daily_opening import validate_daily_first_opening
@@ -988,6 +1127,8 @@ class RoundEventGenerator:
                             quick_result.passed = False
                         if not quick_result.passed:
                             last_validation_error = "; ".join(quick_result.issues)
+                            last_rejected_story = event_desc
+                            last_validation_findings = list(quick_result.hard_findings)
                             logger.warning(
                                 "Scheduled event quick validation failed: %s",
                                 quick_result.issues,
@@ -1001,12 +1142,26 @@ class RoundEventGenerator:
                         logger.info(f"成功生成预定事件: {event_desc[:60]}...")
                         return event
 
-            # 如果解析失败，生成一个简单的事件
+            if daily_mode:
+                raise StoryGenerationFailure(
+                    "scheduled event candidates exhausted required validation",
+                    findings=last_validation_findings,
+                    attempts_used=attempts_used,
+                )
+
+            # Legacy weekly rounds keep their deterministic compatibility fallback.
             logger.warning("解析预定事件响应失败，使用简化版本")
             return self._generate_simple_scheduled_event(scheduled_events, player_state)
 
+        except StoryGenerationFailure:
+            raise
         except Exception as e:
             logger.error(f"生成预定事件失败: {e}")
+            if daily_mode:
+                raise StoryGenerationFailure(
+                    f"scheduled event generation failed: {type(e).__name__}",
+                    attempts_used=attempts_used,
+                ) from e
             return self._generate_simple_scheduled_event(scheduled_events, player_state)
 
     def _build_scheduled_event_prompt(

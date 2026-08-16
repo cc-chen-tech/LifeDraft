@@ -336,6 +336,7 @@ class EventGenerator:
         world_model=None,
         new_character: Optional[Dict[str, Any]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        operation_id: Optional[str] = None,
     ) -> GameEvent:
         """Generate a single round's story and options."""
         return self.story_gen.generate_round_event(
@@ -359,6 +360,7 @@ class EventGenerator:
             option_generator=self.option_gen,
             new_character=new_character,
             status_callback=status_callback,
+            operation_id=operation_id,
         )
 
     def generate_options_only(

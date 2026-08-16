@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Optional
 from config.feature_flags import get_feature
 from config.settings import settings
 from src.ai.generator import EventGenerator
+from src.ai.harness.quality_level import QualityLevel
 from src.ai.models import EventOption, GameEvent
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.character_creation import CharacterCreator
@@ -102,6 +103,42 @@ class GameLoop(RoundSystemMixin):
         # Choice settlement and current-day replacement share one commit lock so
         # a slow rewrite/regeneration cannot resurrect an already-settled day.
         self._daily_mutation_lock = RLock()
+
+    def set_quality_level(
+        self,
+        quality_level: Any,
+        *,
+        ai_generator: Optional[EventGenerator] = None,
+    ) -> None:
+        """Apply one quality tier to every live service immediately."""
+        normalized = QualityLevel(quality_level or QualityLevel.EXPERT).value
+        current_event = (
+            self.current_event.model_copy(deep=True)
+            if self.current_event is not None
+            else None
+        )
+        self.quality_level = normalized
+        self.ai_generator = ai_generator or EventGenerator(quality_level=normalized)
+        self.yearly_summary_gen = YearlySummaryGenerator(
+            self.ai_generator, self.language
+        )
+        self.character_creator = CharacterCreator(
+            ai_generator=self.ai_generator,
+            language=self.language,
+        )
+        self.story_service = StoryService(self.ai_generator, self.language)
+
+        if any(
+            hasattr(self, name)
+            for name in (
+                "_event_generator_service",
+                "_choice_processor",
+                "_finalizer",
+            )
+        ):
+            self._current_event = current_event
+            self._init_round_services()
+            self.current_event = current_event
 
     def start_new_game(self, initial_state: Optional[Dict[str, Any]] = None) -> PlayerState:
         """

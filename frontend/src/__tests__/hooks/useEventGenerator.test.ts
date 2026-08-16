@@ -44,6 +44,7 @@ describe('useEventGenerator', () => {
     setCurrentEvent: jest.fn(),
     setGameOver: jest.fn(),
     setRoundSummary: jest.fn(),
+    setRegenerationFailure: jest.fn(),
     setIsPrefetching: jest.fn(),
   };
 
@@ -63,6 +64,7 @@ describe('useEventGenerator', () => {
     setCurrentEvent: mockSetters.setCurrentEvent,
     setGameOver: mockSetters.setGameOver,
     setRoundSummary: mockSetters.setRoundSummary,
+    setRegenerationFailure: mockSetters.setRegenerationFailure,
     isGameOver: false,
     setIsPrefetching: mockSetters.setIsPrefetching,
     runTokenRef: mockRunTokenRef,
@@ -92,6 +94,25 @@ describe('useEventGenerator', () => {
   });
 
   describe('generateEvent', () => {
+    it('preserves structured failure details for the player retry panel', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(
+        createSSEMockResponse([
+          'event: error\ndata: {"error":"角色一致性失败","code":"REQUIRED_CAST_MISSING","summary":"角色一致性失败","detail":"陈晓雨没有登场。","retryable":true,"attempts_used":3,"quality_level":"expert","operation_id":"op-live"}\n\n',
+        ])
+      );
+      const { result } = renderHook(() => useEventGenerator(defaultParams));
+
+      await act(async () => { await result.current.generateEvent(); });
+
+      expect(mockSetters.setRegenerationFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'REQUIRED_CAST_MISSING',
+          detail: '陈晓雨没有登场。',
+          operation_id: 'op-live',
+        })
+      );
+    });
+
     it('does nothing when gameId is null', async () => {
       const { result } = renderHook(() =>
         useEventGenerator({ ...defaultParams, gameId: null })

@@ -1,5 +1,6 @@
 import type { PlayerState, GameProgress, RoundInfo } from "@/lib/types";
 import {
+  resolveRecoveredGenerationFailure,
   resolveRecoveredStoryMeta,
   resolveRecoveredStoryText,
   resolveRecoveredView,
@@ -20,6 +21,36 @@ const basePlayerState: PlayerState = {
 };
 
 describe("sessionRecovery", () => {
+  it("restores a persisted structured generation failure after refresh", () => {
+    const playerState = {
+      ...basePlayerState,
+      resume_view: {
+        phase: "failed" as const,
+        error: "角色一致性失败",
+        failure: {
+          code: "REQUIRED_CAST_MISSING",
+          summary: "角色一致性失败",
+          detail: "陈晓雨没有登场。",
+          retryable: true,
+          attempts_used: 3,
+          quality_level: "expert",
+          operation_id: "op-persisted",
+        },
+      },
+    };
+
+    expect(resolveRecoveredGenerationFailure(playerState)).toEqual({
+      message: "角色一致性失败",
+      code: "REQUIRED_CAST_MISSING",
+      summary: "角色一致性失败",
+      detail: "陈晓雨没有登场。",
+      retryable: true,
+      attempts_used: 3,
+      quality_level: "expert",
+      operation_id: "op-persisted",
+    });
+  });
+
   it("restores a saved result view without treating the advanced round as a new event", () => {
     const playerState: PlayerState = {
       ...basePlayerState,

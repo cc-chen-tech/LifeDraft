@@ -72,7 +72,25 @@ def test_regenerate_replaces_story_options_and_revision_but_keeps_day() -> None:
     assert event.options[0].text == "新选项一"
     assert loop.player_state.timeline["day_index"] == 0
     assert loop.player_state.day_history == []
-    assert loop.player_state.pending_storylines == []
+    assert loop.player_state.pending_storylines == [
+        {"description": "candidate side effect"}
+    ]
+
+
+def test_regenerate_passes_operation_id_into_candidate_pipeline() -> None:
+    loop = FakeLoop()
+    captured = {}
+    original_generate = loop.generate_round_event
+
+    def capture(**kwargs):
+        captured.update(kwargs)
+        return original_generate(**kwargs)
+
+    loop.generate_round_event = capture
+
+    regenerate_daily_event_atomically(loop, operation_id="sse-operation-456")
+
+    assert captured["operation_id"] == "sse-operation-456"
 
 
 def test_failed_regenerate_preserves_old_event() -> None:
@@ -86,6 +104,25 @@ def test_failed_regenerate_preserves_old_event() -> None:
     assert loop.current_event.model_dump() == original
     assert loop.player_state.current_event_data == original
     assert loop.player_state.pending_storylines == []
+
+
+def test_regenerate_rejects_a_stale_operation_id_and_restores_old_event() -> None:
+    loop = FakeLoop()
+    original = loop.current_event.model_dump()
+    generate = loop.generate_round_event
+
+    def tampered_generation(**kwargs):
+        candidate = generate(**kwargs)
+        loop._active_daily_replacement_operation_id = "another-operation"
+        return candidate
+
+    loop.generate_round_event = tampered_generation
+
+    with pytest.raises(ValueError, match="replacement_operation"):
+        regenerate_daily_event_atomically(loop, operation_id="expected-operation")
+
+    assert loop.current_event.model_dump() == original
+    assert loop.player_state.current_event_data == original
 
 
 def test_rewrite_regenerates_options_and_commits_atomically() -> None:

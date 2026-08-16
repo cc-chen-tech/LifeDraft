@@ -1222,7 +1222,7 @@ class CharacterCreator:
                 thinking=False,
                 generation_tracker=generation_tracker,
                 request_timeout=(
-                    max(0.001, generation_tracker.remaining_seconds)
+                    generation_tracker.cap_timeout()
                     if generation_tracker is not None
                     else None
                 ),

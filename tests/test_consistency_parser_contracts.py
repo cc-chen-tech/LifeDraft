@@ -53,9 +53,10 @@ def test_explicit_should_retry_false_keeps_warning_nonblocking():
     assert result.fix_instructions == ""
 
 
-def test_invalid_json_degrades_to_passing_empty_result():
+def test_invalid_json_is_a_hard_validation_failure():
     result = ConsistencyValidator(None)._parse_validation_response("not json", "en")
 
-    assert result.passed is True
-    assert result.issues == []
-    assert result.fix_instructions == ""
+    assert result.passed is False
+    assert result.has_critical_issues is True
+    assert result.issues[0].dimension == "validation_response"
+    assert "INVALID CONSISTENCY RESPONSE" in result.fix_instructions

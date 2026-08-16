@@ -24,6 +24,8 @@ const mockUsePlayGame = {
   roundSummary: null,
   isSaving: false,
   saveToast: null,
+  regenerateToast: null,
+  regenerationFailure: null,
   endingData: null,
   transport: 'active' as const,
   loadingOperation: 'event' as const,
@@ -911,6 +913,30 @@ describe('PlayPage', () => {
       
       render(<PlayPage />);
       expect(screen.getByText('重新生成失败')).toBeInTheDocument();
+    });
+
+    it('shows a persistent retryable failure with expandable details', () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        regenerationFailure: {
+          message: '故事角色一致性检查连续未通过',
+          code: 'REQUIRED_CAST_MISSING',
+          summary: '故事角色一致性检查连续未通过',
+          detail: '当天需要登场的人物没有出现。失败稿没有保存。',
+          retryable: true,
+          attempts_used: 3,
+          quality_level: 'expert',
+          operation_id: 'op-123',
+        },
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByText('故事角色一致性检查连续未通过')).toBeInTheDocument();
+      expect(screen.getByText('查看失败详情')).toBeInTheDocument();
+      expect(screen.getByText(/REQUIRED_CAST_MISSING/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '再次生成' })).toBeInTheDocument();
     });
   });
 

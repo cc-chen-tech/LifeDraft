@@ -9,6 +9,7 @@ import copy
 import json
 import logging
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from threading import RLock
@@ -17,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional
 from weakref import WeakValueDictionary
 
 from config.settings import settings
+from src.ai.story_exceptions import build_generation_failure
 from src.api.deps import get_db
 from src.api.services.event_generation_operation import (
     EventGenerationConflict,
@@ -554,11 +556,20 @@ def _set_generation_resume_view(
     game_id: int,
     phase: str,
     error: str = "",
+    failure: Optional[dict[str, Any]] = None,
 ) -> None:
     """Persist a recoverable visible phase around the durable worker."""
     player_state = getattr(game_loop, "player_state", None)
     if player_state is None:
         return
+    previous_view = (
+        player_state.resume_view
+        if isinstance(getattr(player_state, "resume_view", None), dict)
+        else {}
+    )
+    previous_failure = previous_view.get("failure") or previous_view.get(
+        "previous_failure"
+    )
     if phase == "options":
         player_state.resume_view = None
     else:
@@ -571,6 +582,10 @@ def _set_generation_resume_view(
             "completed_week": int(player_state.week),
             "completed_round": int(player_state.current_round),
         }
+        if failure:
+            player_state.resume_view["failure"] = failure
+        elif phase == "generating" and previous_failure:
+            player_state.resume_view["previous_failure"] = previous_failure
     _persist_generated_event_state(game_loop, game_id)
 
 
@@ -617,6 +632,7 @@ def _run_event_generation_operation(operation, game_loop, game_id: int, session)
                 stream_callback=operation.publish_story,
                 status_callback=operation.publish_phase,
                 session=session,
+                operation_id=operation.operation_id,
             )
             if event is None:
                 raise RuntimeError("No event returned from event generation")
@@ -628,8 +644,20 @@ def _run_event_generation_operation(operation, game_loop, game_id: int, session)
                 logger.exception("Failed to trigger round illustration: %s", exc)
     except Exception as exc:
         logger.exception("Event generation operation failed: %s", exc)
-        _set_generation_resume_view(game_loop, game_id, "failed", str(exc))
-        operation.fail(str(exc))
+        quality_level = getattr(game_loop, "quality_level", None) or "expert"
+        failure = build_generation_failure(
+            exc,
+            quality_level=getattr(quality_level, "value", quality_level),
+            operation_id=operation.operation_id,
+        ).to_dict()
+        _set_generation_resume_view(
+            game_loop,
+            game_id,
+            "failed",
+            failure["summary"],
+            failure=failure,
+        )
+        operation.fail(failure["summary"], failure=failure)
 
 
 def get_or_start_round_event_generation(game_loop, game_id: int, session):
@@ -676,7 +704,8 @@ async def stream_round_event(
         return
 
     cursor = -1 if last_event_id is None else last_event_id
-    last_phase = ""
+    last_phase_payload: Optional[dict[str, Any]] = None
+    last_retry_version = 0
     last_heartbeat = asyncio.get_running_loop().time()
     yield make_sse_event(
         "status", {"phase": "preparing" if should_start else "resuming"}
@@ -684,9 +713,17 @@ async def stream_round_event(
 
     while True:
         snapshot = operation.snapshot_after(cursor)
-        if snapshot.phase != last_phase:
-            last_phase = snapshot.phase
-            yield make_sse_event("status", {"phase": snapshot.phase})
+        if snapshot.retry_version > last_retry_version:
+            last_retry_version = snapshot.retry_version
+            last_phase_payload = snapshot.retry_payload
+            # A reconnect cursor at or beyond the current candidate boundary
+            # proves that client already received the reset and some repaired
+            # prose. Re-emitting retry would erase that retained prefix.
+            if cursor < snapshot.retry_start_event_id:
+                yield make_sse_event("status", snapshot.retry_payload)
+        if snapshot.phase_payload != last_phase_payload:
+            last_phase_payload = snapshot.phase_payload
+            yield make_sse_event("status", snapshot.phase_payload)
         for event_id, chunk in snapshot.chunks:
             cursor = event_id
             yield make_sse_event("story", chunk, event_id=event_id)
@@ -695,8 +732,11 @@ async def stream_round_event(
             yield make_sse_event("complete", snapshot.result.model_dump())
             return
         if snapshot.status == "failed":
+            payload = {"error": snapshot.error or "Event generation failed"}
+            if snapshot.failure:
+                payload.update(snapshot.failure)
             yield make_sse_event(
-                "error", {"error": snapshot.error or "Event generation failed"}
+                "error", payload
             )
             return
 
@@ -898,6 +938,154 @@ async def replay_cached_then_complete(session, last_event_id: int, event):
     yield make_sse_event("complete", event.model_dump())
 
 
+def _build_daily_regeneration_key(game_id: int, game_loop) -> EventGenerationKey:
+    from src.game.daily_timeline import normalize_daily_timeline
+
+    timeline = normalize_daily_timeline(game_loop.player_state.timeline)
+    current_event = getattr(game_loop, "current_event", None)
+    event_id = str(getattr(current_event, "event_id", "") or "unknown")
+    revision = int(getattr(current_event, "revision", 0) or 0)
+    return EventGenerationKey(
+        game_id=game_id,
+        week=int(timeline["week_number"] - 1),
+        round_number=int(timeline["day_index"]),
+        stage=f"regenerate:{event_id}:{revision}",
+    )
+
+
+def _run_daily_regeneration_operation(
+    operation, game_loop, game_id: int, session
+) -> None:
+    """Run one atomic daily replacement independently of its SSE subscriber."""
+    try:
+        from src.game.daily_event_revision import regenerate_daily_event_atomically
+
+        with _get_game_state_lock(game_id):
+            db = get_db()
+            event = regenerate_daily_event_atomically(
+                game_loop,
+                operation_id=operation.operation_id,
+                persist_callback=lambda candidate: db.save_game_progress(
+                    game_id, candidate
+                ),
+                stream_callback=operation.publish_story,
+                status_callback=operation.publish_phase,
+                session=session,
+            )
+            try:
+                invalidate_daily_media_after_event_replacement(game_loop, game_id)
+            except Exception:
+                logger.exception(
+                    "Daily regeneration committed but old scene media invalidation failed"
+                )
+            operation.complete(event)
+    except Exception as exc:
+        logger.exception("Daily regeneration operation failed: %s", exc)
+        quality_level = getattr(game_loop, "quality_level", None) or "expert"
+        failure = build_generation_failure(
+            exc,
+            quality_level=getattr(quality_level, "value", quality_level),
+            operation_id=operation.operation_id,
+        ).to_dict()
+        try:
+            _set_generation_resume_view(
+                game_loop,
+                game_id,
+                "failed",
+                failure["summary"],
+                failure=failure,
+            )
+        except Exception:
+            logger.exception("Failed to persist safe daily regeneration failure")
+        operation.fail(failure["summary"], failure=failure)
+
+
+def _get_or_start_daily_regeneration(game_loop, game_id: int, session, last_event_id):
+    key = _build_daily_regeneration_key(game_id, game_loop)
+    current = session.event_generation.current()
+    if (
+        last_event_id is not None
+        and current is not None
+        and current.key.game_id == key.game_id
+        and current.key.week == key.week
+        and current.key.round_number == key.round_number
+        and current.key.stage.startswith("regenerate:")
+    ):
+        return current, False
+
+    operation, should_start = session.event_generation.get_or_create(
+        key,
+        restart_completed=last_event_id is None,
+    )
+    if should_start:
+        _set_generation_resume_view(game_loop, game_id, "generating")
+        _get_sse_thread_pool().submit(
+            _run_daily_regeneration_operation,
+            operation,
+            game_loop,
+            game_id,
+            session,
+        )
+    return operation, should_start
+
+
+async def _stream_daily_regeneration_operation(
+    game_loop,
+    game_id: int,
+    session,
+    *,
+    last_event_id: Optional[int],
+):
+    """Subscribe or reconnect to one durable daily replacement transaction."""
+    try:
+        operation, should_start = _get_or_start_daily_regeneration(
+            game_loop, game_id, session, last_event_id
+        )
+    except EventGenerationConflict as exc:
+        yield make_sse_event("error", {"error": str(exc)})
+        return
+
+    cursor = -1 if last_event_id is None else last_event_id
+    last_phase_payload: Optional[dict[str, Any]] = None
+    last_retry_version = 0
+    last_heartbeat = asyncio.get_running_loop().time()
+    yield make_sse_event(
+        "status", {"phase": "regenerating" if should_start else "resuming"}
+    )
+
+    while True:
+        snapshot = operation.snapshot_after(cursor)
+        if snapshot.retry_version > last_retry_version:
+            last_retry_version = snapshot.retry_version
+            last_phase_payload = snapshot.retry_payload
+            if cursor < snapshot.retry_start_event_id:
+                yield make_sse_event("status", snapshot.retry_payload)
+        if snapshot.phase_payload != last_phase_payload:
+            last_phase_payload = snapshot.phase_payload
+            yield make_sse_event("status", snapshot.phase_payload)
+        for event_id, chunk in snapshot.chunks:
+            cursor = event_id
+            yield make_sse_event("story", chunk, event_id=event_id)
+
+        if snapshot.status == "completed":
+            yield make_sse_event("complete", snapshot.result.model_dump())
+            return
+        if snapshot.status == "failed":
+            payload = {"error": snapshot.error or "Daily regeneration failed"}
+            if snapshot.failure:
+                payload.update(snapshot.failure)
+            yield make_sse_event("error", payload)
+            return
+
+        now = asyncio.get_running_loop().time()
+        if now - last_heartbeat >= HEARTBEAT_INTERVAL:
+            last_heartbeat = now
+            yield make_sse_event(
+                "status", {"phase": snapshot.phase, "heartbeat": True}
+            )
+        await asyncio.sleep(0.1)
+
+
 async def stream_regenerate(
     game_loop, game_id: int, session=None, last_event_id: Optional[int] = None
 ):
@@ -910,25 +1098,17 @@ async def stream_regenerate(
     Yields SSE events: status, story (chunks), complete (final event).
     """
     from src.game.daily_timeline import is_daily_timeline
-
-    if is_daily_timeline(game_loop.player_state):
-        from src.game.daily_event_revision import regenerate_daily_event_atomically
-
-        try:
-            yield make_sse_event("status", {"phase": "regenerating"})
-            db = get_db()
-            event = await asyncio.to_thread(
-                regenerate_daily_event_atomically,
-                game_loop,
-                persist_callback=lambda candidate: db.save_game_progress(
-                    game_id, candidate
-                ),
-            )
-            invalidate_daily_media_after_event_replacement(game_loop, game_id)
-            yield make_sse_event("complete", event.model_dump())
-        except Exception as exc:
-            yield make_sse_event("error", {"error": str(exc)})
+    daily_mode = is_daily_timeline(game_loop.player_state)
+    if daily_mode and session is not None:
+        async for frame in _stream_daily_regeneration_operation(
+            game_loop,
+            game_id,
+            session,
+            last_event_id=last_event_id,
+        ):
+            yield frame
         return
+
     loop = asyncio.get_running_loop()
     q: asyncio.Queue = asyncio.Queue()
 
@@ -947,15 +1127,39 @@ async def stream_regenerate(
         if closed[0] or loop.is_closed():
             return
         try:
-            loop.call_soon_threadsafe(q.put_nowait, ("status", {"phase": status}))
+            payload = status if isinstance(status, dict) else {"phase": status}
+            loop.call_soon_threadsafe(q.put_nowait, ("status", payload))
         except RuntimeError:
             closed[0] = True
 
     result_holder = [None]
     error_holder = [None]
+    operation_id = uuid.uuid4().hex
 
     def _run_locked():
         try:
+            if daily_mode:
+                from src.game.daily_event_revision import regenerate_daily_event_atomically
+
+                db = get_db()
+                new_event = regenerate_daily_event_atomically(
+                    game_loop,
+                    persist_callback=lambda candidate: db.save_game_progress(
+                        game_id, candidate
+                    ),
+                    stream_callback=stream_cb,
+                    status_callback=status_cb,
+                    session=session,
+                )
+                invalidate_daily_media_after_event_replacement(game_loop, game_id)
+                result_holder[0] = new_event
+                logger.info(
+                    "Daily regeneration complete: %d chars, %d options",
+                    len(new_event.event_description),
+                    len(new_event.options),
+                )
+                return
+
             # ★ 使用完整的 generate_round_event 流程
             # 这确保了一致性校验、关系事件、世界模型等都正常工作
 
@@ -1105,8 +1309,16 @@ async def stream_regenerate(
         except asyncio.TimeoutError:
             elapsed = asyncio.get_event_loop().time() - last_event_time
             if elapsed > SSE_STREAM_TIMEOUT:
-                yield make_sse_event("error", {"error": "Timeout during regeneration"})
-                break
+                quality_level = getattr(game_loop, "quality_level", None) or "expert"
+                failure = build_generation_failure(
+                    TimeoutError("regeneration stream timeout"),
+                    quality_level=getattr(quality_level, "value", quality_level),
+                    operation_id=operation_id,
+                ).to_dict()
+                yield make_sse_event(
+                    "error", {"error": failure["summary"], **failure}
+                )
+                return
             yield make_sse_event("status", {"phase": "processing", "heartbeat": True})
             continue
 
@@ -1126,7 +1338,16 @@ async def stream_regenerate(
             yield make_sse_event(event_type, data)
 
     if error_holder[0] is not None:
-        yield make_sse_event("error", {"error": str(error_holder[0])})
+        quality_level = getattr(game_loop, "quality_level", None) or "expert"
+        failure = build_generation_failure(
+            error_holder[0],
+            quality_level=getattr(quality_level, "value", quality_level),
+            operation_id=operation_id,
+        ).to_dict()
+        yield make_sse_event(
+            "error",
+            {"error": failure["summary"], **failure},
+        )
         if session is not None:
             session.clear_sse_cache()
         return

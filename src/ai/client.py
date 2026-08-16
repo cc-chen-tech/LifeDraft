@@ -322,11 +322,12 @@ class AIClient:
                 if generation_tracker is not None:
                     generation_tracker.assert_before_provider_call()
                     remaining = generation_tracker.remaining_seconds
-                    effective_request_timeout = (
-                        min(request_timeout, remaining)
-                        if request_timeout is not None
-                        else remaining
-                    )
+                    if remaining is not None:
+                        effective_request_timeout = (
+                            min(request_timeout, remaining)
+                            if request_timeout is not None
+                            else remaining
+                        )
                 client = self.require_openai_client()
                 if stream_callback:
                     logger.info(

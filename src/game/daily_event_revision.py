@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from copy import deepcopy
 from threading import RLock
 from typing import Any
@@ -60,30 +61,61 @@ def _commit_candidate(
 
 
 def regenerate_daily_event_atomically(
-    loop: Any, *, persist_callback: Any = None, **generation_kwargs: Any
+    loop: Any,
+    *,
+    persist_callback: Any = None,
+    operation_id: str | None = None,
+    **generation_kwargs: Any,
 ) -> GameEvent:
     """Generate a full candidate while keeping the current event recoverable."""
     with _mutation_lock(loop):
         original = _require_current(loop).model_copy(deep=True)
         original_state = loop.player_state.model_copy(deep=True)
+        replacement_operation_id = operation_id or uuid.uuid4().hex
+        loop._active_daily_replacement_operation_id = replacement_operation_id
         try:
-            # Existing generators cache the current event, so isolate that mutation
-            # and restore on every failure.
-            loop.current_event = None
-            loop.player_state.current_event_data = None
-            candidate = loop.generate_round_event(**generation_kwargs)
+            candidate = loop.generate_round_event(
+                force_regenerate=True,
+                operation_id=replacement_operation_id,
+                **generation_kwargs,
+            )
             if candidate is None:
                 raise ValueError("invalid_daily_event_candidate")
-            # Full generation has legacy side effects (character introduction,
-            # scheduled-event flags, relationship markers). Candidate creation
-            # must not publish any of them; only the validated event is mutable.
-            _restore_state(loop, original_state, original)
-            return _commit_candidate(
-                loop, original, candidate, persist_callback=persist_callback
-            )
+            if not candidate.event_description or len(candidate.options) < 2:
+                raise ValueError("invalid_daily_event_candidate")
+            if loop.player_state.timeline != original_state.timeline:
+                raise ValueError("stale_daily_event_replacement")
+            if (
+                getattr(loop, "_active_daily_replacement_operation_id", None)
+                != replacement_operation_id
+            ):
+                raise ValueError("stale_daily_event_replacement_operation")
+            original_event_data = original_state.current_event_data or {}
+            if (
+                original_event_data.get("event_id") != original.event_id
+                or int(original_event_data.get("revision") or 0) != original.revision
+            ):
+                raise ValueError("stale_daily_event_replacement_version")
+
+            committed = candidate.model_copy(deep=True)
+            committed.event_id = original.event_id
+            committed.revision = original.revision + 1
+            committed.story_date = original.story_date
+            loop.current_event = committed
+            loop.player_state.current_event_data = committed.model_dump()
+            loop.player_state.resume_view = None
+            if persist_callback is not None and not persist_callback(loop.player_state):
+                raise RuntimeError("daily_event_persistence_failed")
+            return committed
         except Exception:
             _restore_state(loop, original_state, original)
             raise
+        finally:
+            if (
+                getattr(loop, "_active_daily_replacement_operation_id", None)
+                == replacement_operation_id
+            ):
+                loop._active_daily_replacement_operation_id = None
 
 
 def rewrite_daily_event_atomically(
