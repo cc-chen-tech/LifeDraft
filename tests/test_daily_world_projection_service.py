@@ -78,6 +78,15 @@ class FakeRepository:
             return self.state.renew_results.pop(0)
         return True
 
+    def release_lease(self, *args: Any, **kwargs: Any) -> bool:
+        self.state.release_calls.append((args, kwargs))
+        if self.state.release_results:
+            result = self.state.release_results.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return bool(result)
+        return True
+
     def mark_ready(self, *args: Any, **kwargs: Any) -> bool:
         self.state.ready_calls.append((args, kwargs))
         return self.state.ready_result
@@ -97,10 +106,12 @@ class WorkerState:
         self.started_attempts: list[Any] = []
         self.finished_attempts: list[Any] = []
         self.renewals: list[Any] = []
+        self.release_calls: list[Any] = []
         self.ready_calls: list[Any] = []
         self.retry_calls: list[Any] = []
         self.ensured: list[Any] = []
         self.renew_results: list[bool] = []
+        self.release_results: list[Any] = []
         self.ready_result = True
         self.retry_result = True
         self.closed_sessions = 0
@@ -1238,6 +1249,173 @@ def test_generation_owner_fits_persisted_lease_owner_and_is_unique(
         assert len(owner.encode("utf-8")) <= 96
         assert owner.startswith(service.worker_id[:8])
     assert first_owner != second_owner
+
+
+@pytest.mark.parametrize(
+    ("worker_id", "expected_owner"),
+    [
+        ("worker-a", "worker-a"),
+        ("诊断-worker-" + "用户" * 160, None),
+    ],
+)
+def test_direct_run_once_claims_with_a_stable_bounded_base_owner(
+    worker_id: str, expected_owner: Optional[str]
+) -> None:
+    """Direct callers persist the same bounded owner they later fence/renew."""
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    state = WorkerState(_row(now))
+    service = DailyWorldProjectionService(
+        session_factory=lambda: FakeSession(state),
+        repository_factory=lambda _session: FakeRepository(state),
+        worker_id=worker_id,
+    )
+
+    assert service.run_once(now) == 0
+    [(claim_now, claimed_owner, _limit)] = state.claim_calls
+    assert claim_now == now
+    assert claimed_owner == service._owner_for()
+    assert service._owner_for() == claimed_owner
+    assert len(claimed_owner) <= 96
+    assert len(claimed_owner.encode("utf-8")) <= 96
+    if expected_owner is not None:
+        assert claimed_owner == expected_owner
+    else:
+        assert claimed_owner.startswith(worker_id[:8])
+
+    state.rows[7].lease_owner = claimed_owner
+    assert service._claimed_snapshot(7, claimed_owner) is not None
+    assert service._renew_lease(7, state.rows[7].source_hash, now, claimed_owner)
+    assert state.renewals[-1][0][1] == claimed_owner
+
+
+def test_heartbeat_contains_exhausted_release_lock_failures() -> None:
+    """A stopped heartbeat must not leak a daemon exception after lock retries."""
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    state = WorkerState(_row(now))
+    locked = OperationalError("UPDATE projection", {}, Exception("database is locked"))
+    state.release_results = [locked, locked, locked]
+    waits: list[int] = []
+    service = DailyWorldProjectionService(
+        session_factory=lambda: FakeSession(state),
+        repository_factory=lambda _session: FakeRepository(state),
+        now_fn=lambda: now,
+        worker_id="worker-a",
+        lock_retry_wait=waits.append,
+    )
+    cancel = threading.Event()
+    cancel.set()
+    done = threading.Event()
+    done.set()
+    errors: list[Exception] = []
+
+    def run_heartbeat() -> None:
+        try:
+            service._lease_heartbeat(
+                7, state.rows[7].source_hash, done, "worker-a", cancel
+            )
+        except Exception as exc:  # pragma: no cover - assertion below is the contract
+            errors.append(exc)
+
+    heartbeat = threading.Thread(target=run_heartbeat)
+    heartbeat.start()
+    heartbeat.join(1)
+
+    assert not heartbeat.is_alive()
+    assert errors == []
+    assert len(state.release_calls) == 3
+    assert waits == [0, 1]
+    assert state.finished_attempts == []
+
+
+def test_stop_heartbeat_retries_locked_release_then_allows_reclaim(tmp_path) -> None:
+    """One bounded release retry compensates a stopped old-generation lease."""
+    from src.services.daily_world_projection import DailyWorldProjectionService
+    from src.services.daily_world_projection_repository import (
+        DailyWorldProjectionRepository,
+        ProjectionIdentity,
+    )
+
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'heartbeat-release-retry.sqlite'}",
+        connect_args={"check_same_thread": False, "timeout": 1},
+    )
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    with sessions() as session:
+        session.add(Game(game_id=9, initial_state={}))
+        row = DailyWorldProjectionRepository(session).ensure_projection(
+            ProjectionIdentity(game_id=9, event_id="event-1", revision=1, day_index=0),
+            compute_projection_source_hash("故事", ["选项"]),
+        )
+        row.status = "running"
+        row.lease_expires_at = now + timedelta(minutes=5)
+        row_id, source_hash = row.projection_id, row.source_hash
+        session.commit()
+
+    class FlakyReleaseRepository:
+        release_attempts = 0
+
+        def __init__(self, session: Any) -> None:
+            self.delegate = DailyWorldProjectionRepository(session)
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self.delegate, name)
+
+        def release_lease(self, *args: Any, **kwargs: Any) -> bool:
+            type(self).release_attempts += 1
+            if type(self).release_attempts == 1:
+                raise OperationalError(
+                    "UPDATE daily_world_projections",
+                    {},
+                    Exception("database is locked"),
+                )
+            return self.delegate.release_lease(*args, **kwargs)
+
+    retry_attempts: list[int] = []
+    service = DailyWorldProjectionService(
+        session_factory=sessions,
+        repository_factory=FlakyReleaseRepository,
+        now_fn=lambda: now,
+        worker_id="worker-a",
+        claim_limit=0,
+        lock_retry_wait=retry_attempts.append,
+    )
+    service.start()
+    cancel = service._cancel_event
+    assert cancel is not None
+    owner = service._owner_for(cancel)
+    with sessions() as session:
+        session.get(DailyWorldProjection, row_id).lease_owner = owner
+        session.commit()
+
+    done = threading.Event()
+    with service._lock:
+        service._heartbeat_done.add(done)
+    heartbeat = threading.Thread(
+        target=service._lease_heartbeat,
+        args=(row_id, source_hash, done, owner, cancel),
+    )
+    heartbeat.start()
+    import time
+
+    started = time.monotonic()
+    service.stop(wait=False)
+    assert time.monotonic() - started < 0.2
+    heartbeat.join(1)
+    assert not heartbeat.is_alive()
+    assert FlakyReleaseRepository.release_attempts == 2
+    assert retry_attempts == [0]
+
+    with sessions() as session:
+        [claimed] = DailyWorldProjectionRepository(session).claim_due(
+            now, "new-worker", 1
+        )
+        assert claimed.lease_owner == "new-worker"
 
 
 def test_stop_before_heartbeat_releases_pre_provider_reservation_lease(

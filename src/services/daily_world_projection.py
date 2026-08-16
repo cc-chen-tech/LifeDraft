@@ -44,6 +44,7 @@ DEFAULT_TIME_ZONE = "Asia/Shanghai"
 LOCK_RETRY_ATTEMPTS = 3
 MAX_LEASE_OWNER_BYTES = 96
 _GENERATION_OWNER_SUFFIX_BYTES = 43
+_BASE_OWNER_SUFFIX_BYTES = 18
 
 
 class GenerationCancelled(RuntimeError):
@@ -80,7 +81,9 @@ class DailyWorldProjectionService:
         self.extractor = extractor
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.wake_event = wake_event or threading.Event()
-        self.worker_id = worker_id or f"daily-world-projection-{uuid.uuid4()}"
+        self.worker_id = self._base_owner(
+            worker_id or f"daily-world-projection-{uuid.uuid4()}"
+        )
         self.scan_seconds = scan_seconds
         self.claim_limit = claim_limit
         self.extraction_workers = extraction_workers
@@ -176,6 +179,21 @@ class DailyWorldProjectionService:
         with self._lock:
             return self._generation_owners.get(id(cancel), self.worker_id)
 
+    @staticmethod
+    def _utf8_prefix(value: str, byte_limit: int) -> str:
+        return value.encode("utf-8")[:byte_limit].decode("utf-8", errors="ignore")
+
+    @classmethod
+    def _base_owner(cls, worker_id: str) -> str:
+        """Normalize direct-run owners to the persisted lease-owner limit."""
+
+        encoded = worker_id.encode("utf-8")
+        if len(encoded) <= MAX_LEASE_OWNER_BYTES:
+            return worker_id
+        suffix = f":b{hashlib.blake2s(encoded, digest_size=8).hexdigest()}"
+        assert len(suffix.encode("utf-8")) == _BASE_OWNER_SUFFIX_BYTES
+        return f"{cls._utf8_prefix(worker_id, MAX_LEASE_OWNER_BYTES - len(suffix))}{suffix}"
+
     def _generation_owner(self, generation: int) -> str:
         """Return a unique, diagnosable owner token that fits lease_owner."""
 
@@ -185,9 +203,7 @@ class DailyWorldProjectionService:
         suffix = f":g{generation_digest}:{uuid.uuid4().hex}"
         assert len(suffix.encode("utf-8")) == _GENERATION_OWNER_SUFFIX_BYTES
         prefix_budget = MAX_LEASE_OWNER_BYTES - _GENERATION_OWNER_SUFFIX_BYTES
-        prefix = self.worker_id.encode("utf-8")[:prefix_budget].decode(
-            "utf-8", errors="ignore"
-        )
+        prefix = self._utf8_prefix(self.worker_id, prefix_budget)
         return f"{prefix}{suffix}"
 
     def start(self) -> None:
@@ -501,12 +517,22 @@ class DailyWorldProjectionService:
                     return
         finally:
             if cancel is not None and cancel.is_set():
-                self._release_lease(
-                    projection_id,
-                    source_hash,
-                    owner or self._owner_for(cancel),
-                    self.now_fn(),
-                )
+                try:
+                    self._release_lease(
+                        projection_id,
+                        source_hash,
+                        owner or self._owner_for(cancel),
+                        self.now_fn(),
+                    )
+                except Exception:
+                    # _transaction already gives lock errors a bounded retry;
+                    # a final failure must not leak out of this daemon thread.
+                    logger.exception(
+                        "daily_world_projection_lease_release_failed "
+                        "projection_id=%s source_hash=%s; lease will expire naturally",
+                        projection_id,
+                        source_hash,
+                    )
             with self._lock:
                 self._heartbeat_done.discard(done)
 
