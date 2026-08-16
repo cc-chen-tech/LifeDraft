@@ -334,6 +334,92 @@ class TestStoryGeneratorBestStoryFallback:
 
         assert streamed_chunks == []
 
+    def test_fast_rejects_harness_critical_with_default_length_flags(self):
+        """FAST 也不能因 enforce_validation=false 放过 Harness critical。"""
+        gen, client = self._make_generator(QualityLevel.FAST)
+        story = (
+            "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
+            "同事随后与你确认下一步安排，你决定先验证关键假设，再继续推进合作。"
+        ) * 12
+        client.call.return_value = story
+        gen._soft_narrative_lengths = False
+        gen._harness_enabled = True
+        gen._validation_pipeline = MagicMock()
+        gen._validation_pipeline.validate.return_value = SimpleNamespace(
+            passed=False,
+            score=10.0,
+            critical_failures=[
+                SimpleNamespace(
+                    constraint_type="decision_point_ending",
+                    evidence="结尾缺少有效决策点",
+                )
+            ],
+            high_warnings=[],
+            medium_notes=[],
+            low_notes=[],
+        )
+        gen._retry_controller = MagicMock()
+        gen._retry_controller.should_retry.return_value = (False, None)
+        gen._diagnostics = MagicMock()
+        gen._diagnostics.generate_report.return_value = {}
+
+        with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
+            mock_quick.return_value = SimpleNamespace(passed=True, issues=[], warnings=[])
+            with pytest.raises(StoryGenerationFailure):
+                gen.generate_round_event(
+                    player_state={"game_id": 1, "current_week": 1},
+                    language="zh",
+                    round_number=0,
+                    round_context="",
+                    option_generator=MagicMock(),
+                )
+
+    def test_master_uses_total_budget_after_soft_candidate_and_failed_hard_repairs(self):
+        """内部两次修复不能让 MASTER 在 10 次总预算尚未用完时提前退出。"""
+        gen, client = self._make_generator(QualityLevel.MASTER)
+        soft_story = (
+            "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
+            "同事随后与你确认下一步安排，你决定先验证关键假设，再继续推进合作。"
+        ) * 24
+        hard_stories = [soft_story.replace("同事", f"名单外人物{i}", 1) for i in range(1, 10)]
+        client.call.side_effect = [soft_story, *hard_stories]
+        gen._soft_narrative_lengths = True
+        gen._harness_enabled = True
+        gen._validation_pipeline = MagicMock()
+        gen._validation_pipeline.validate.return_value = SimpleNamespace(
+            passed=True,
+            score=88.0,
+            critical_failures=[],
+            high_warnings=[SimpleNamespace(constraint_type="pacing")],
+            medium_notes=[],
+            low_notes=[],
+        )
+        gen._diagnostics = MagicMock()
+        gen._diagnostics.generate_report.return_value = {}
+
+        quick_results = [SimpleNamespace(passed=True, issues=[], warnings=[])]
+        quick_results.extend(
+            SimpleNamespace(
+                passed=False,
+                issues=[f"名单外命名角色：名单外人物{i}"],
+                warnings=[],
+            )
+            for i in range(1, 10)
+        )
+        with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
+            mock_quick.side_effect = quick_results
+            event = gen.generate_round_event(
+                player_state={"game_id": 1, "current_week": 1},
+                language="zh",
+                round_number=0,
+                round_context="",
+                option_generator=MagicMock(),
+            )
+
+        assert client.call.call_count == 10
+        assert event.event_description == soft_story
+        assert event.delivery_notice is not None
+
     def test_consistency_repair_is_rechecked_by_quick_validator(self):
         """一致性修订改变文本后，新的硬 quick finding 必须阻止交付。"""
         gen, client = self._make_generator(QualityLevel.EXPERT)

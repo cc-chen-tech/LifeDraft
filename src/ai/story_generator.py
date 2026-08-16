@@ -4,6 +4,8 @@ Handles the core story text generation (Step 1 of the two-stage pipeline),
 consistency validation with retry, and life-phase determination.
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
@@ -12,7 +14,7 @@ import re
 import uuid
 from difflib import SequenceMatcher
 from types import SimpleNamespace
-from typing import Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, cast
 
 from pydantic import ValidationError
 
@@ -57,6 +59,11 @@ from src.ai.story_validation import (
 )
 from src.ai.system_prompts import get_system_prompt
 from src.ai.text_quality import normalize_generated_story, validate_narrative_quality
+
+if TYPE_CHECKING:
+    from src.ai.cache import EventCache
+    from src.ai.quick_validator import QuickValidationResult
+    from src.game.world_model import WorldModel
 
 logger = logging.getLogger(__name__)
 
@@ -135,13 +142,13 @@ class StoryGenerator:
             "ENABLE_UNIFIED_NARRATIVE_BUDGETS"
         )
         self._narrative_systems_initialized = False
-        self._validation_pipeline = None
-        self._retry_controller = None
-        self._diagnostics = None
-        self._harness_metrics = None
-        self._style_manifest = None
-        self._prompt_builder = None
-        self._style_validator = None
+        self._validation_pipeline: Optional[ValidationPipeline] = None
+        self._retry_controller: Optional[RetryController] = None
+        self._diagnostics: Optional[ConstraintViolationDiagnostic] = None
+        self._harness_metrics: Optional[Any] = None
+        self._style_manifest: Optional[Any] = None
+        self._prompt_builder: Optional[Any] = None
+        self._style_validator: Optional[Any] = None
         self._initialized_style_id: Optional[str] = None
 
     @staticmethod
@@ -377,15 +384,15 @@ class StoryGenerator:
         opening_story: Optional[str] = None,
         last_event_description: Optional[str] = None,
         game_date_info: Optional[Dict[str, Any]] = None,
-        pending_storylines: Optional[list] = None,
-        established_facts: Optional[list] = None,
+        pending_storylines: Optional[list[Any]] = None,
+        established_facts: Optional[list[Any]] = None,
         last_event_concluded: bool = True,
         last_round_full_story: str = "",
         activated_foreshadowing: Optional[Dict[str, Any]] = None,
-        character_habits: Optional[list] = None,
-        option_generator=None,
-        cache=None,
-        status_callback: Optional[Callable[[str], None]] = None,
+        character_habits: Optional[list[Any]] = None,
+        option_generator: Optional[OptionGenerator] = None,
+        cache: Optional[EventCache] = None,
+        status_callback: Optional[Callable[[Any], None]] = None,
         narrative_budget: Optional[NarrativeBudget] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> GameEvent:
@@ -604,7 +611,7 @@ class StoryGenerator:
                 logger.info(
                     f"Successfully generated event with {len(event.options)} options"
                 )
-                return event  # type: ignore[no-any-return]
+                return event
 
             except (ValueError, ValidationError, json.JSONDecodeError) as e:
                 last_error = str(e)
@@ -632,20 +639,20 @@ class StoryGenerator:
         round_context: str,
         character_settings: Optional[Dict[str, Any]] = None,
         stream_callback: Optional[Callable[[str], None]] = None,
-        relationship_events: Optional[list] = None,
+        relationship_events: Optional[list[Any]] = None,
         historical_weekly_summary: Optional[str] = None,
         historical_yearly_summary: Optional[str] = None,
         game_date_info: Optional[Dict[str, Any]] = None,
-        pending_storylines: Optional[list] = None,
-        established_facts: Optional[list] = None,
+        pending_storylines: Optional[list[Any]] = None,
+        established_facts: Optional[list[Any]] = None,
         last_event_concluded: bool = True,
         last_round_full_story: str = "",
         activated_foreshadowing: Optional[Dict[str, Any]] = None,
-        character_habits: Optional[list] = None,
-        world_model=None,
-        option_generator=None,
+        character_habits: Optional[list[Any]] = None,
+        world_model: Optional[Any] = None,
+        option_generator: Optional[OptionGenerator] = None,
         new_character: Optional[Dict[str, Any]] = None,
-        status_callback: Optional[Callable[[str], None]] = None,
+        status_callback: Optional[Callable[[Any], None]] = None,
         narrative_budget: Optional[NarrativeBudget] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
         operation_id: Optional[str] = None,
@@ -854,7 +861,7 @@ class StoryGenerator:
             if required_name and required_name not in required_people_names:
                 required_people_names.append(required_name)
 
-        def _quick_validate_round_story(candidate: str):
+        def _quick_validate_round_story(candidate: str) -> QuickValidationResult:
             result = quick_validate_story(
                 story_text=candidate,
                 character_settings=character_settings,
@@ -915,10 +922,9 @@ class StoryGenerator:
                     }
                 )
             # Candidate prose stays private until every hard gate and option
-            # construction has succeeded. Provider callbacks are deliberately
-            # buffered so a rejected draft can never flash in the reader.
-            buffered_chunks: list[str] = []
-            kwargs["stream_callback"] = buffered_chunks.append
+            # construction has succeeded. Suppress provider streaming so a
+            # rejected draft can never flash in the reader.
+            kwargs["stream_callback"] = None
             candidate = self._call_required_round_story(**kwargs)
             candidate_hash = hashlib.sha256(candidate.encode("utf-8")).hexdigest()[:12]
             logger.info(
@@ -1091,7 +1097,6 @@ class StoryGenerator:
 
         for attempt in range(max_attempts):
             best_story_before_attempt = best_valid_story_text
-            requests_before_attempt = provider_requests_used
             story_text = None
             candidate_validation_score = 100.0
             harness_soft_warning_count = 0
@@ -1149,13 +1154,7 @@ class StoryGenerator:
                         "Story validation circuit breaker: repeated hard fingerprint(s)=%s",
                         sorted(repeated_from_previous_candidate),
                     )
-                    if len(best_valid_story_text) <= 20:
-                        break
-                    story_text = best_valid_story_text
-                    last_findings = []
-                    locally_usable_story = True
-                    quick_circuit_broken = True
-                    previous_hard_fingerprints = set()
+                    break
                 elif first_hard_fingerprints:
                     previous_hard_fingerprints = first_hard_fingerprints
                 else:
@@ -1217,9 +1216,7 @@ class StoryGenerator:
                                 "Story validation circuit breaker: repeated hard fingerprint(s)=%s",
                                 sorted(repeated_hard_fingerprints),
                             )
-                            if len(best_valid_story_text) <= 20:
-                                break
-                            story_text = best_valid_story_text
+                            break
                         elif provider_requests_used < max_story_requests:
                             previous_hard_fingerprints = {
                                 finding.fingerprint
@@ -1230,10 +1227,8 @@ class StoryGenerator:
                                 "Hard validation findings changed; trying a fresh candidate within budget"
                             )
                             continue
-                        elif len(best_valid_story_text) <= 20:
-                            break
                         else:
-                            story_text = best_valid_story_text
+                            break
                     else:
                         locally_usable_story = True
                         previous_hard_fingerprints = set()
@@ -1548,12 +1543,9 @@ class StoryGenerator:
                             ],
                         )
 
-                    if (
+                    if hard_validation_failures or (
                         terminal_validation_failed
-                        and (
-                            self._soft_narrative_lengths
-                            or self._quality_profile.enforce_validation_on_all_attempts
-                        )
+                        and self._quality_profile.enforce_validation_on_all_attempts
                     ):
                         raise ValueError(
                             "Story harness validation failed after final attempt"
@@ -1679,10 +1671,8 @@ class StoryGenerator:
                 last_generation_error = e
 
             # Internal repair calls share the same provider budget as outer
-            # attempts. Once it is spent, stop without masking the concrete
-            # rejection reason with a synthetic budget-exhausted attempt.
-            if provider_requests_used - requests_before_attempt > 1:
-                break
+            # attempts. Keep trying fresh candidates until that total budget
+            # is actually spent.
             if provider_requests_used >= max_story_requests:
                 break
 
@@ -1959,7 +1949,7 @@ class StoryGenerator:
     def _validate_and_retry_story(
         self,
         story_text: str,
-        world_model,
+        world_model: Any,
         player_state: Dict[str, Any],
         character_settings: Dict[str, Any],
         language: str,
@@ -1994,7 +1984,7 @@ class StoryGenerator:
                 logger.info("★ 发送 validating 状态提示")
                 status_callback("validating")
 
-            validator = ConsistencyValidator(self.client)
+            validator = ConsistencyValidator(self.client)  # type: ignore[no-untyped-call]
             validation = validator.validate_story(
                 story_text=story_text,
                 world_model=world_model,
@@ -2194,7 +2184,9 @@ class StoryGenerator:
             return "consolidation"
 
     @staticmethod
-    def _build_world_model_from_state_dict(player_state: Dict[str, Any]):
+    def _build_world_model_from_state_dict(
+        player_state: Dict[str, Any],
+    ) -> Optional[WorldModel]:
         """Build world-model constraints for dict-based generation entrypoints."""
         if not player_state:
             return None
@@ -2240,7 +2232,7 @@ class StoryGenerator:
             else:
                 world_model = WorldModel.from_player_state(state_obj)
             world_model.continuity_source_state = player_state
-            return world_model
+            return cast("WorldModel", world_model)
         except Exception as exc:
             logger.warning(f"Failed to build world model from player_state dict: {exc}")
             return None
