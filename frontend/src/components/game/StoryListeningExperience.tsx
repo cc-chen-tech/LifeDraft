@@ -488,13 +488,15 @@ export function StoryListeningExperience({
 
   const chooseParagraph = (index: number) => {
     const targetSegment = segments.find((segment) => segment.paragraph_index === index);
-    const targetPositionMs = targetSegment?.start_ms ?? 0;
+    const targetPositionMs = targetSegment?.start_ms;
     cancelActivePlayback();
     setActiveParagraph(index);
     activeParagraphRef.current = index;
     setPositionMs(0);
-    pendingSavedProgressRef.current = null;
-    pendingResumePositionRef.current = targetPositionMs;
+    pendingSavedProgressRef.current = targetPositionMs == null
+      ? { paragraphIndex: index, positionMs: 0 }
+      : null;
+    pendingResumePositionRef.current = targetPositionMs ?? null;
     autoPlayRequestedRef.current = true;
     finalSegmentEndedRef.current = false;
     setNetworkRetryRequired(false);
@@ -504,6 +506,7 @@ export function StoryListeningExperience({
     if (
       audio &&
       activeAudioSource &&
+      targetPositionMs != null &&
       audio.readyState >= HTMLMediaElement.HAVE_METADATA
     ) {
       audio.currentTime = targetPositionMs / 1000;
