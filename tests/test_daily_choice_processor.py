@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Optional
 
 import pytest
@@ -7,6 +8,7 @@ from src.game.daily_timeline import build_daily_timeline
 from src.game.game_loop import GameLoop
 from src.game.round.daily_choice_processor import DailyChoiceProcessor
 from src.game.state import PlayerState
+from src.game.world_projection_schema import compute_projection_source_hash
 
 
 def _state(day_index: int = 0) -> PlayerState:
@@ -38,14 +40,147 @@ def _event(revision: int = 1) -> GameEvent:
     )
 
 
-def _processor(state: PlayerState, event: Optional[GameEvent]):
+def _processor(
+    state: PlayerState,
+    event: Optional[GameEvent],
+    *,
+    projection_lookup=None,
+):
     holder = {"event": event}
     processor = DailyChoiceProcessor(
         player_state_getter=lambda: state,
         current_event_getter=lambda: holder["event"],
         current_event_setter=lambda value: holder.__setitem__("event", value),
+        projection_lookup=projection_lookup,
     )
     return processor, holder
+
+
+def _projection(status: str = "pending") -> SimpleNamespace:
+    event = _event()
+    return SimpleNamespace(
+        projection_id=11,
+        game_id=156,
+        event_id="day-0-event",
+        revision=1,
+        day_index=0,
+        source_hash=compute_projection_source_hash(
+            event.event_description, event.options
+        ),
+        status=status,
+        story_patch_json={
+            "fact_updates": [
+                {
+                    "action": "new",
+                    "subject": "邀请",
+                    "category": "commitment",
+                    "fact": "主角收到邀请",
+                }
+            ]
+        },
+        option_patches_json={
+            "0": {"habit_updates": []},
+            "1": {"habit_updates": []},
+        },
+    )
+
+
+def test_pending_projection_does_not_delay_choice_and_records_full_identity() -> None:
+    state = _state()
+    lookups = []
+    processor, _ = _processor(
+        state,
+        _event(),
+        projection_lookup=lambda **identity: lookups.append(identity)
+        or _projection("failed_retryable"),
+    )
+
+    result = processor.make_choice(event_id="day-0-event", revision=1, option_index=1)
+
+    assert result["next_timeline"]["day_index"] == 1
+    assert lookups == [
+        {
+            "event_id": "day-0-event",
+            "revision": 1,
+            "day_index": 0,
+            "source_hash": lookups[0]["source_hash"],
+        }
+    ]
+    record = state.day_history[-1]
+    assert record["world_projection_id"] == 11
+    assert record["world_projection_status"] == "pending"
+    assert record["world_projection_identity"] == {
+        "event_id": "day-0-event",
+        "revision": 1,
+        "day_index": 0,
+        "source_hash": compute_projection_source_hash(
+            _event().event_description, _event().options
+        ),
+    }
+    assert record["choice_option_index"] == 1
+
+
+def test_ready_projection_is_applied_inside_staged_choice_and_rolls_back_on_save_failure() -> (
+    None
+):
+    state = _state()
+    state.world_projection_state["applied_through_day_index"] = -1
+    event = _event()
+    processor, holder = _processor(
+        state, event, projection_lookup=lambda **_identity: _projection("ready")
+    )
+    saved = []
+
+    with pytest.raises(RuntimeError, match="daily_choice_persistence_failed"):
+        processor.make_choice(
+            event_id="day-0-event",
+            revision=1,
+            option_index=0,
+            persist_callback=lambda candidate: saved.append(
+                candidate.model_copy(deep=True)
+            )
+            or False,
+        )
+
+    assert saved[0].world_projection_state["applied_through_day_index"] == 0
+    assert saved[0].day_history[-1]["world_projection_status"] == "applied"
+    assert state.world_projection_state["applied_through_day_index"] == -1
+    assert state.world_projection_state["world"]["fact_updates"] == []
+    assert state.day_history == []
+    assert holder["event"] is event
+
+
+def test_duplicate_choice_does_not_lookup_or_reapply_projection() -> None:
+    state = _state()
+    calls = []
+    processor, _ = _processor(
+        state,
+        _event(),
+        projection_lookup=lambda **_identity: calls.append(True)
+        or _projection("ready"),
+    )
+
+    first = processor.make_choice(event_id="day-0-event", revision=1, option_index=0)
+    second = processor.make_choice(event_id="day-0-event", revision=1, option_index=0)
+
+    assert second == first
+    assert calls == [True]
+    assert len(state.world_projection_state["applied_sources"]) == 1
+
+
+def test_repository_applied_projection_repairs_stale_choice_candidate() -> None:
+    state = _state()
+    processor, _ = _processor(
+        state,
+        _event(),
+        projection_lookup=lambda **_identity: _projection("applied"),
+    )
+
+    processor.make_choice(event_id="day-0-event", revision=1, option_index=0)
+
+    assert state.world_projection_state["applied_through_day_index"] == 0
+    assert state.day_history[-1]["world_projection_status"] == "applied"
+    assert len(state.world_projection_state["world"]["fact_updates"]) == 1
 
 
 def test_daily_choice_settles_without_story_model_and_advances_one_day() -> None:

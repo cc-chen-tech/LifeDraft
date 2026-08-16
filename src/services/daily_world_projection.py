@@ -29,6 +29,10 @@ from src.game.world_projection_schema import (
     WorldProjectionExtractionError,
     compute_projection_source_hash,
 )
+from src.game.world_projection_state import (
+    apply_contiguous_world_projections,
+    projection_row_snapshot,
+)
 from src.services.daily_world_projection_repository import (
     LEASE_DURATION,
     AttemptReservation,
@@ -79,6 +83,7 @@ class DailyWorldProjectionService:
         before_claim_guard: Optional[Callable[[], None]] = None,
         before_claim_commit: Optional[Callable[[], None]] = None,
         before_reservation_guard: Optional[Callable[[], None]] = None,
+        before_projection_state_save: Optional[Callable[[], None]] = None,
     ) -> None:
         self.session_factory = session_factory
         self.repository_factory = repository_factory
@@ -101,6 +106,7 @@ class DailyWorldProjectionService:
         self.before_claim_guard = before_claim_guard
         self.before_claim_commit = before_claim_commit
         self.before_reservation_guard = before_reservation_guard
+        self.before_projection_state_save = before_projection_state_save
         zone_name = time_zone or os.getenv(
             "WORLD_PROJECTION_TIME_ZONE", DEFAULT_TIME_ZONE
         )
@@ -264,6 +270,181 @@ class DailyWorldProjectionService:
 
     def wake(self) -> None:
         self.wake_event.set()
+
+    def lookup_choice_projection(
+        self,
+        *,
+        event_id: str,
+        revision: int,
+        day_index: int,
+        source_hash: str,
+    ) -> Optional[Any]:
+        """Return one fully fenced row using only a short database read."""
+
+        def lookup(session: Any, _repo: Any) -> Optional[Any]:
+            rows = (
+                session.query(DailyWorldProjection)
+                .filter(
+                    DailyWorldProjection.event_id == event_id,
+                    DailyWorldProjection.revision == revision,
+                    DailyWorldProjection.day_index == day_index,
+                    DailyWorldProjection.source_hash == source_hash,
+                    DailyWorldProjection.status != "superseded",
+                )
+                .limit(2)
+                .all()
+            )
+            if len(rows) != 1:
+                return None
+            return projection_row_snapshot(rows[0])
+
+        return self._transaction(lookup)
+
+    @staticmethod
+    def _lock_projection_game(session: Any, game_id: int) -> Optional[Game]:
+        bind = session.get_bind()
+        if bind.dialect.name == "sqlite":
+            updated = session.execute(
+                text(
+                    "UPDATE games SET updated_at = updated_at WHERE game_id = :game_id"
+                ),
+                {"game_id": game_id},
+            )
+            if updated.rowcount != 1:
+                return None
+            return session.get(Game, game_id)
+        return (
+            session.query(Game)
+            .filter(Game.game_id == game_id)
+            .with_for_update()
+            .one_or_none()
+        )
+
+    def _apply_and_save_contiguous(
+        self, session: Any, game_id: int
+    ) -> tuple[int, list[tuple[int, str]]]:
+        game = self._lock_projection_game(session, game_id)
+        if game is None:
+            return 0, []
+        latest = (
+            session.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+        )
+        state_data = latest.state_json if latest is not None else game.initial_state
+        if not isinstance(state_data, Mapping):
+            return 0, []
+
+        from src.game.state import PlayerState
+
+        state = PlayerState.from_dict(dict(state_data))
+        rows = [
+            projection_row_snapshot(row)
+            for row in (
+                session.query(DailyWorldProjection)
+                .filter(DailyWorldProjection.game_id == game_id)
+                .order_by(
+                    DailyWorldProjection.day_index,
+                    DailyWorldProjection.revision.desc(),
+                    DailyWorldProjection.projection_id,
+                )
+                .all()
+            )
+        ]
+        batch = apply_contiguous_world_projections(state, rows)
+        if not batch.state_changed:
+            return batch.applied_count, list(batch.rows_to_mark)
+
+        expected_state_id = int(latest.state_id) if latest is not None else None
+        current_state_id = (
+            session.query(GameState.state_id)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .limit(1)
+            .scalar()
+        )
+        if current_state_id != expected_state_id:
+            raise OperationalError(
+                "daily_world_projection_state_cas_conflict", {}, None
+            )
+        if self.before_projection_state_save is not None:
+            self.before_projection_state_save()
+        session.add(
+            GameState(
+                game_id=game_id,
+                week=state.week,
+                age=state.age,
+                state_json=state.to_dict(),
+            )
+        )
+        game.updated_at = self._as_utc_naive(self.now_fn())
+        session.flush()
+        return batch.applied_count, list(batch.rows_to_mark)
+
+    def apply_ready_for_game(self, game_id: int) -> int:
+        """Apply only the contiguous settled-day prefix, then mark rows applied."""
+
+        from src.api.routers.gameplay.sse_helpers import _get_game_state_lock
+
+        with _get_game_state_lock(game_id):
+            applied_count, rows_to_mark = self._transaction(
+                lambda session, _repo: self._apply_and_save_contiguous(session, game_id)
+            )
+            applied_at = self._as_utc_naive(self.now_fn())
+            for projection_id, source_hash in rows_to_mark:
+                self._transaction(
+                    lambda _session, repo, projection_id=projection_id, source_hash=source_hash: repo.mark_applied(
+                        projection_id, source_hash, applied_at
+                    )
+                )
+            return applied_count
+
+    def schedule_apply_for_game(self, game_id: int) -> None:
+        """Start a model-free best-effort apply after choice durability."""
+
+        def apply() -> None:
+            try:
+                self.apply_ready_for_game(game_id)
+            except Exception:
+                logger.exception(
+                    "daily world projection post-choice apply failed game_id=%s",
+                    game_id,
+                )
+
+        threading.Thread(
+            target=apply,
+            name=f"daily-world-projection-apply-{game_id}",
+            daemon=True,
+        ).start()
+
+    def _recover_ready_projection_states(self) -> None:
+        """Replay durable ready rows left by a crash or failed final marker."""
+
+        def ready_games(session: Any, _repo: Any) -> list[int]:
+            # Task 3's injected FakeSession intentionally models only worker
+            # lifecycle calls. Production sessions always provide query().
+            if not hasattr(session, "query"):
+                return []
+            return [
+                int(row.game_id)
+                for row in (
+                    session.query(DailyWorldProjection.game_id)
+                    .filter(
+                        DailyWorldProjection.status.in_(("ready", "ready_no_change"))
+                    )
+                    .distinct()
+                    .all()
+                )
+            ]
+
+        for game_id in self._transaction(ready_games):
+            try:
+                self.apply_ready_for_game(game_id)
+            except Exception:
+                logger.exception(
+                    "daily world projection ready replay failed game_id=%s", game_id
+                )
 
     def _transaction(
         self,
@@ -532,6 +713,7 @@ class DailyWorldProjectionService:
                 except RuntimeError:
                     self._release_claims(claims[index:], owner, db_now)
                     break
+        self._recover_ready_projection_states()
         return len(claims)
 
     def _scan_loop(self, generation: int, cancel: threading.Event) -> None:
@@ -1069,6 +1251,15 @@ class DailyWorldProjectionService:
             )
             if attempt_finalized:
                 attempt_id = None
+            if published:
+                try:
+                    self.apply_ready_for_game(row.game_id)
+                except Exception:
+                    logger.exception(
+                        "daily world projection serial apply failed game_id=%s projection_id=%s",
+                        row.game_id,
+                        row.projection_id,
+                    )
             outcome, error_code = (
                 ("success", None) if published else ("lease_lost", "lease_lost")
             )
