@@ -128,3 +128,15 @@ def test_tts_chapter_alignment_rejects_subtitles_that_do_not_match_story_order()
 
     with pytest.raises(ValueError, match="align MiniMax subtitles"):
         _align_paragraph_cues(["原始故事段落。"], subtitles, audio_duration_ms=1_200)
+
+
+def test_tts_subtitle_parser_rejects_overlapping_cues() -> None:
+    from src.services.minimax_story_tts_provider import _parse_srt_cues
+
+    subtitles = (
+        "1\n00:00:00,000 --> 00:00:02,000\n第一句。\n\n"
+        "2\n00:00:01,500 --> 00:00:03,000\n第二句。\n"
+    )
+
+    with pytest.raises(ValueError, match="invalid timestamps"):
+        _parse_srt_cues(subtitles)

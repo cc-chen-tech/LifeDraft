@@ -547,7 +547,7 @@ export function StoryListeningExperience({
     }
     if (restartDeadline) clearRecoveryWatchdog();
     if (recoveryTimerRef.current !== null) return;
-    const paragraphIndex = activeParagraph;
+    const paragraphIndex = activeParagraphRef.current;
     const playbackGeneration = playbackGenerationRef.current;
     const resumePositionMs = pendingResumePositionRef.current
       ?? Math.max(0, audio.currentTime * 1000);

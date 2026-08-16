@@ -332,6 +332,7 @@ def cleanup_expired_daily_recommended_prefetch(
                             file_path = generated_voice_file_path(file_name)
                             if file_path is not None:
                                 files_to_remove.add(file_path)
+                                files_to_remove.add(file_path.with_suffix(".srt"))
                             db.delete(asset)
             db.delete(task)
             removed += 1
