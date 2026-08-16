@@ -420,6 +420,155 @@ class TestStoryGeneratorBestStoryFallback:
         assert event.event_description == soft_story
         assert event.delivery_notice is not None
 
+    def test_soft_length_diagnostics_use_full_budget_and_show_notice(self):
+        """纯长度偏差也是软告警，必须三稿择优并附带用户提示。"""
+        gen, client = self._make_generator(QualityLevel.EXPERT)
+        paragraph = (
+            "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
+            "同事随后与你确认下一步安排，你决定先验证关键假设，再继续推进合作。"
+        )
+        stories = [paragraph * 10, paragraph * 11, paragraph * 12]
+        client.call.side_effect = stories
+        gen._soft_narrative_lengths = True
+        gen._harness_enabled = False
+
+        with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
+            mock_quick.return_value = SimpleNamespace(
+                passed=True,
+                issues=[],
+                warnings=[],
+            )
+            event = gen.generate_round_event(
+                player_state={"game_id": 1, "current_week": 1},
+                language="zh",
+                round_number=0,
+                round_context="",
+                option_generator=MagicMock(),
+            )
+
+        assert client.call.call_count == 3
+        assert event.event_description == stories[-1]
+        assert event.delivery_notice is not None
+        assert event.delivery_notice.attempts_used == 3
+
+    def test_consistency_rewrite_length_diagnostics_stay_soft_and_ranked(self):
+        """一致性改写造成的长度偏差必须进入同一个软告警候选池。"""
+        gen, client = self._make_generator(QualityLevel.EXPERT)
+        paragraph = (
+            "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
+            "同事随后与你确认下一步安排，你决定先验证关键假设，再继续推进合作。"
+        )
+        valid_stories = [
+            paragraph * 13,
+            (paragraph * 13).replace("今天", "当日", 1),
+            (paragraph * 13).replace("今天", "此刻", 1),
+        ]
+        rewritten_stories = [paragraph * 10, paragraph * 11, paragraph * 12]
+        client.call.side_effect = valid_stories
+        gen._soft_narrative_lengths = True
+        gen._harness_enabled = False
+        gen._validate_and_retry_story = MagicMock(side_effect=rewritten_stories)
+
+        with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
+            mock_quick.return_value = SimpleNamespace(
+                passed=True,
+                issues=[],
+                warnings=[],
+            )
+            event = gen.generate_round_event(
+                player_state={"game_id": 1, "current_week": 1},
+                language="zh",
+                round_number=0,
+                round_context="",
+                world_model=object(),
+                option_generator=MagicMock(),
+            )
+
+        assert client.call.call_count == 3
+        assert event.event_description == rewritten_stories[-1]
+        assert event.delivery_notice is not None
+
+    def test_structural_shape_diagnostics_remain_hard_with_soft_lengths(self):
+        """软化篇幅边界不能软化段落结构等不可交付问题。"""
+        gen, client = self._make_generator(QualityLevel.EXPERT)
+        story = (
+            "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
+            "同事随后与你确认下一步安排，你决定先验证关键假设，再继续推进合作。"
+        ) * 13
+        client.call.return_value = story
+        gen._soft_narrative_lengths = True
+        gen._harness_enabled = False
+        option_generator = MagicMock()
+
+        with (
+            patch("src.ai.quick_validator.quick_validate_story") as mock_quick,
+            patch(
+                "src.ai.story_generator._localized_story_shape_issues",
+                return_value=["over_fragmented_paragraphs"],
+            ),
+        ):
+            mock_quick.return_value = SimpleNamespace(
+                passed=True,
+                issues=[],
+                warnings=[],
+            )
+            with pytest.raises(StoryGenerationFailure):
+                gen.generate_round_event(
+                    player_state={"game_id": 1, "current_week": 1},
+                    language="zh",
+                    round_number=0,
+                    round_context="",
+                    option_generator=option_generator,
+                )
+
+        option_generator.generate_options_only.assert_not_called()
+
+    def test_master_soft_candidate_survives_repeated_hard_fingerprint_to_budget(self):
+        """重复硬错误只终止当前修复链，已有软稿时仍应继续寻找至总预算。"""
+        gen, client = self._make_generator(QualityLevel.MASTER)
+        soft_story = (
+            "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
+            "同事随后与你确认下一步安排，你决定先验证关键假设，再继续推进合作。"
+        ) * 24
+        hard_story = soft_story.replace("同事", "名单外人物", 1)
+        client.call.side_effect = [soft_story, *([hard_story] * 9)]
+        gen._soft_narrative_lengths = True
+        gen._harness_enabled = True
+        gen._validation_pipeline = MagicMock()
+        gen._validation_pipeline.validate.return_value = SimpleNamespace(
+            passed=True,
+            score=88.0,
+            critical_failures=[],
+            high_warnings=[SimpleNamespace(constraint_type="pacing")],
+            medium_notes=[],
+            low_notes=[],
+        )
+        gen._diagnostics = MagicMock()
+        gen._diagnostics.generate_report.return_value = {}
+
+        quick_results = [SimpleNamespace(passed=True, issues=[], warnings=[])]
+        quick_results.extend(
+            SimpleNamespace(
+                passed=False,
+                issues=["名单外命名角色：名单外人物"],
+                warnings=[],
+            )
+            for _ in range(9)
+        )
+        with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
+            mock_quick.side_effect = quick_results
+            event = gen.generate_round_event(
+                player_state={"game_id": 1, "current_week": 1},
+                language="zh",
+                round_number=0,
+                round_context="",
+                option_generator=MagicMock(),
+            )
+
+        assert client.call.call_count == 10
+        assert event.event_description == soft_story
+        assert event.delivery_notice is not None
+
     def test_consistency_repair_is_rechecked_by_quick_validator(self):
         """一致性修订改变文本后，新的硬 quick finding 必须阻止交付。"""
         gen, client = self._make_generator(QualityLevel.EXPERT)

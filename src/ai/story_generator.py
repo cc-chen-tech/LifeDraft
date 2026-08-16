@@ -1100,6 +1100,8 @@ class StoryGenerator:
             story_text = None
             candidate_validation_score = 100.0
             harness_soft_warning_count = 0
+            soft_length_warning_count = 0
+            final_shape_issues: list[str] = []
             try:
                 attempt_prompt = prompt
                 if retry_hint:
@@ -1154,6 +1156,18 @@ class StoryGenerator:
                         "Story validation circuit breaker: repeated hard fingerprint(s)=%s",
                         sorted(repeated_from_previous_candidate),
                     )
+                    if (
+                        len(best_soft_story_text) > 20
+                        and provider_requests_used < max_story_requests
+                        and attempt < max_attempts - 1
+                    ):
+                        previous_hard_fingerprints = set()
+                        retry_hint = "\n".join(quick_result.issues[:8])
+                        logger.info(
+                            "Hard validation circuit ended the current repair chain; "
+                            "trying a fresh candidate because a soft fallback is retained"
+                        )
+                        continue
                     break
                 elif first_hard_fingerprints:
                     previous_hard_fingerprints = first_hard_fingerprints
@@ -1216,6 +1230,18 @@ class StoryGenerator:
                                 "Story validation circuit breaker: repeated hard fingerprint(s)=%s",
                                 sorted(repeated_hard_fingerprints),
                             )
+                            if (
+                                len(best_soft_story_text) > 20
+                                and provider_requests_used < max_story_requests
+                                and attempt < max_attempts - 1
+                            ):
+                                previous_hard_fingerprints = set()
+                                retry_hint = "\n".join(retry_result.issues[:8])
+                                logger.info(
+                                    "Hard validation circuit ended the current repair chain; "
+                                    "trying a fresh candidate because a soft fallback is retained"
+                                )
+                                continue
                             break
                         elif provider_requests_used < max_story_requests:
                             previous_hard_fingerprints = {
@@ -1251,6 +1277,7 @@ class StoryGenerator:
                     logger.info(f"Quick validation warnings: {quick_result.warnings}")
 
                 hard_shape_issues = _hard_shape_issues(story_text)
+                final_shape_issues = hard_shape_issues
                 requires_shape_retry = (
                     not quick_retry_used or "story_too_long" in hard_shape_issues
                 )
@@ -1285,6 +1312,7 @@ class StoryGenerator:
                         len(story_text),
                     )
                     retry_shape_issues = _hard_shape_issues(story_text)
+                    final_shape_issues = retry_shape_issues
                     retry_quick_result = _quick_validate_round_story(story_text)
                     if not retry_quick_result.passed:
                         logger.warning(
@@ -1292,18 +1320,12 @@ class StoryGenerator:
                             retry_shape_issues,
                             retry_quick_result.issues,
                         )
-                        if (
-                            self._soft_narrative_lengths
-                            and len(best_valid_story_text) > 20
-                        ):
-                            story_text = best_valid_story_text
-                        else:
-                            raise ValueError(
-                                "Story shape validation failed: "
-                                + "; ".join(
-                                    retry_shape_issues + retry_quick_result.issues
-                                )
+                        raise ValueError(
+                            "Story shape validation failed: "
+                            + "; ".join(
+                                retry_shape_issues + retry_quick_result.issues
                             )
+                        )
                     elif retry_shape_issues:
                         logger.warning(
                             "Story shape retry completed with diagnostics: %s",
@@ -1363,6 +1385,7 @@ class StoryGenerator:
                     )
                     repeat_retry_validation = _quick_validate_round_story(story_text)
                     repeat_retry_shape_issues = _hard_shape_issues(story_text)
+                    final_shape_issues = repeat_retry_shape_issues
                     if not repeat_retry_validation.passed:
                         issues = (
                             repeat_retry_validation.issues + repeat_retry_shape_issues
@@ -1420,6 +1443,7 @@ class StoryGenerator:
                             + "; ".join(post_validation_quick_result.issues)
                         )
                     post_validation_shape_issues = _hard_shape_issues(story_text)
+                    final_shape_issues = post_validation_shape_issues
                     if post_validation_shape_issues:
                         logger.warning(
                             "Story consistency retry shape diagnostics: %s",
@@ -1431,6 +1455,29 @@ class StoryGenerator:
                                 "Story consistency retry failed shape validation: "
                                 + "; ".join(post_validation_shape_issues)
                             )
+
+                structural_shape_issues = [
+                    issue
+                    for issue in final_shape_issues
+                    if issue not in {"story_too_short", "story_too_long"}
+                ]
+                if structural_shape_issues:
+                    raise ValueError(
+                        "Story structural validation failed: "
+                        + "; ".join(structural_shape_issues)
+                    )
+                final_length_issues = [
+                    issue
+                    for issue in final_shape_issues
+                    if issue in {"story_too_short", "story_too_long"}
+                ]
+                if final_length_issues:
+                    if not self._soft_narrative_lengths:
+                        raise ValueError(
+                            "Story shape validation failed: "
+                            + "; ".join(final_length_issues)
+                        )
+                    soft_length_warning_count = len(set(final_length_issues))
 
                 # Harness 检查（仅在开启时执行），支持在无效内容上继续 retry
                 if self._harness_enabled and self._validation_pipeline:
@@ -1555,10 +1602,14 @@ class StoryGenerator:
                 # consistency, and Harness hard gates. Only now may it become
                 # a historical or soft-warning fallback candidate.
                 _set_best_story(story_text)
-                soft_warning_count = harness_soft_warning_count + sum(
-                    1
-                    for finding in last_findings
-                    if finding.severity is FindingSeverity.WARNING
+                soft_warning_count = (
+                    harness_soft_warning_count
+                    + soft_length_warning_count
+                    + sum(
+                        1
+                        for finding in last_findings
+                        if finding.severity is FindingSeverity.WARNING
+                    )
                 )
                 if soft_warning_count:
                     _remember_soft_story(
