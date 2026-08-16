@@ -466,7 +466,8 @@ class DailyWorldProjectionService:
                     projection_id: int = projection_id,
                     source_hash: str = source_hash,
                 ) -> bool:
-                    return repo.mark_applied(projection_id, source_hash, applied_at)
+                    mark = repo.mark_applied
+                    return mark(projection_id, source_hash, applied_at)
 
                 self._transaction(mark_applied)
             return applied_count
