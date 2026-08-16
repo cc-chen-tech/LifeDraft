@@ -119,7 +119,7 @@ class QuickValidator:
         "的地得了着过是在和与及或把被将让给向从到可也"
     )
     CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES = frozenset(
-        "走脱抬站接翻沉推穿拿刷靠打说合转收坦放问伸盘带"
+        "走脱抬站接翻沉推穿拿刷靠打说合转收坦放问伸"
     )
     CHINESE_NAME_DISCOURSE_BOUNDARIES = (
         "随后",
@@ -829,14 +829,46 @@ class QuickValidator:
                     match.group("names"),
                 )
             )
+            has_person_context = self._coordinated_group_has_person_context(
+                text,
+                match.end(),
+            )
             if all(
-                self._is_plausible_coordinated_person_name(name)
+                self._is_plausible_coordinated_person_name(
+                    name,
+                    allow_ambiguous_particle=has_person_context,
+                )
                 for name in actor_names
             ):
                 groups.append((actor_names, match.end()))
         return groups
 
-    def _is_plausible_coordinated_person_name(self, candidate: str) -> bool:
+    def _coordinated_group_has_person_context(
+        self,
+        text: str,
+        action_start: int,
+    ) -> bool:
+        """Return whether following prose explicitly identifies a human group."""
+        following_text = text[
+            action_start:
+            action_start + self.CHINESE_GOVERNANCE_ACTION_LOOKAHEAD * 3
+        ]
+        return bool(
+            re.search(
+                r"(?:他们|她们|二人|两人|三人|"
+                r"(?:这|那)?(?:两|二|三|四|五|六|七|八|九|几)"
+                r"(?:名|位|个)?[\u4e00-\u9fff]{0,4}"
+                r"(?:人|顾问|同事|伙伴|朋友|成员|导师|投资人))",
+                following_text,
+            )
+        )
+
+    def _is_plausible_coordinated_person_name(
+        self,
+        candidate: str,
+        *,
+        allow_ambiguous_particle: bool = False,
+    ) -> bool:
         """Reject coordinated governance objects before treating the pair as people."""
         if candidate in self.CHINESE_GOVERNANCE_OBJECT_TERMS or any(
             candidate == term or candidate.endswith(term)
@@ -850,9 +882,10 @@ class QuickValidator:
             return False
         # Coordination delimiters are parsed between complete name tokens, so
         # 和/与/及 can be a one-character given name or appear inside a longer
-        # given name. Other particle-shaped characters are only plausible in
-        # the middle of a three-character name; this still rejects prose such
-        # as 何时与何地 while preserving names such as 陈可欣 and 陈向东.
+        # given name. Other particle-shaped characters need both the shape of
+        # a three-character name and explicit following human-group context.
+        # This keeps names such as 陈可欣 while rejecting open-ended object
+        # compounds such as 方向键 without maintaining an object suffix list.
         non_conjunction_particles = self.CHINESE_NAME_GRAMMATICAL_PARTICLES - set(
             "和与及"
         )
@@ -862,7 +895,9 @@ class QuickValidator:
             if char in non_conjunction_particles
         ]
         if particle_indexes and not (
-            len(candidate) == 3 and particle_indexes == [1]
+            allow_ambiguous_particle
+            and len(candidate) == 3
+            and particle_indexes == [1]
         ):
             return False
         return not (
