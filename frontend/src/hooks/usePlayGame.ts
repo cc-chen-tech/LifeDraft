@@ -7,7 +7,7 @@ import { useEventStore } from "@/stores/useEventStore";
 import { useSessionStore } from "@/stores/useSessionStore";
 import { useHydration } from "@/hooks/useHydration";
 import { games } from "@/lib/api";
-import type { EventOption } from "@/lib/types";
+import type { CurrentEventData, EventOption } from "@/lib/types";
 import {
   resolveRecoveredGenerationFailure,
   resolveRecoveredStoryText,
@@ -321,6 +321,9 @@ export function usePlayGame() {
                   ...(typeof rawEvent.event_id === "string" ? { event_id: rawEvent.event_id } : {}),
                   ...(typeof rawEvent.revision === "number" ? { revision: rawEvent.revision } : {}),
                   ...(typeof rawEvent.story_date === "string" ? { story_date: rawEvent.story_date } : {}),
+                  ...(rawEvent.delivery_notice && typeof rawEvent.delivery_notice === "object"
+                    ? { delivery_notice: rawEvent.delivery_notice as NonNullable<CurrentEventData["delivery_notice"]> }
+                    : {}),
                 }
               : null;
 

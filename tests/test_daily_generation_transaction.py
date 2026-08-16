@@ -83,10 +83,12 @@ def test_daily_generation_rejects_an_introduced_character_missing_from_final_sto
     generator = _round_generator(state, ai_generator)
     monkeypatch.setattr("src.game.round.character_introduction.random.random", lambda: 1.0)
 
+    streamed = []
     with pytest.raises(StoryGenerationFailure, match="introduced character"):
-        generator.generate_round_event()
+        generator.generate_round_event(stream_callback=streamed.append)
 
     assert state.model_dump() == before
+    assert streamed == []
 
 
 def test_successful_daily_generation_commits_staged_character_once(
@@ -105,13 +107,23 @@ def test_successful_daily_generation_commits_staged_character_once(
     generator = _round_generator(state, ai_generator)
     monkeypatch.setattr("src.game.round.character_introduction.random.random", lambda: 1.0)
 
-    event = generator.generate_round_event()
+    streamed = []
+
+    def record_committed_story(text: str) -> None:
+        names = [
+            person["name"]
+            for person in state.character_settings["relationships"]["key_people"]
+        ]
+        streamed.append((text, names))
+
+    event = generator.generate_round_event(stream_callback=record_committed_story)
 
     people = state.character_settings["relationships"]["key_people"]
     assert [person["name"] for person in people] == ["玄奘"]
     assert state.pending_character_introductions == []
     assert state.relationships["玄奘"] == 60
     assert state.current_event_data == event.model_dump()
+    assert streamed == [(event.event_description, ["玄奘"])]
 
 
 def test_commit_callback_failure_restores_live_state(

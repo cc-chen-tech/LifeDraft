@@ -205,6 +205,56 @@ describe('eventUtils', () => {
       expect(mockHandlers.setRoundSummary).toHaveBeenCalledWith(null);
     });
 
+    it('preserves a soft fallback delivery notice on the completed event', () => {
+      setupDefaultState({ storyText: '', currentEvent: null });
+      const deliveryNotice = {
+        code: 'SOFT_VALIDATION_FALLBACK' as const,
+        summary: '已展示自动尝试中较好的一稿',
+        reason: '这版故事通过了必要检查，但仍有非关键质量提示。',
+        retryable: true,
+        attempts_used: 3,
+      };
+
+      handleEventComplete({
+        event_description: '这是三次尝试后选出的故事。',
+        options: [{ text: '继续' }, { text: '重新考虑' }],
+        delivery_notice: deliveryNotice,
+      } as Record<string, unknown>, mockHandlers);
+
+      expect(mockHandlers.setCurrentEvent).toHaveBeenCalledWith({
+        story: '这是三次尝试后选出的故事。',
+        options: [{ text: '继续' }, { text: '重新考虑' }],
+        delivery_notice: deliveryNotice,
+      });
+    });
+
+    it('clears a stale soft fallback notice on a metadata-only clean completion', () => {
+      setupDefaultState({
+        storyText: 'Same story',
+        currentEvent: {
+          story: 'Same story',
+          options: [{ text: 'Continue' }],
+          delivery_notice: {
+            code: 'SOFT_VALIDATION_FALLBACK',
+            summary: 'Old notice',
+            reason: 'Old reason',
+            retryable: true,
+            attempts_used: 3,
+          },
+        },
+      });
+
+      handleEventComplete({
+        event_description: 'Same story',
+        options: [{ text: 'Continue' }],
+      }, mockHandlers);
+
+      expect(mockHandlers.setCurrentEvent).toHaveBeenCalledWith({
+        story: 'Same story',
+        options: [{ text: 'Continue' }],
+      });
+    });
+
     it('clears processing state', () => {
       setupDefaultState({ storyText: '', currentEvent: null });
       handleEventComplete({ event_description: 'Story', options: [{ text: 'Option' }] } as Record<string, unknown>, mockHandlers);

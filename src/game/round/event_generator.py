@@ -3,13 +3,15 @@
 Handles the generation of events for each round in the game.
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 import time
 import uuid
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, cast
 
 from config.feature_flags import get_feature
 from config.prompts._helpers import (
@@ -33,7 +35,7 @@ from src.ai.budgets import (
     resolve_narrative_budget,
 )
 from src.ai.generation_budget import get_generation_budget
-from src.ai.models import GameEvent
+from src.ai.models import EventOption, GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.narrative_manager import NarrativeManager
@@ -80,7 +82,7 @@ class RoundEventGenerator:
         character_introduction_service: Any,
         summary_selector: Any,
         relationship_service: Any,
-        event_callback: Optional[Callable] = None,
+        event_callback: Optional[Callable[[GameEvent, Any], None]] = None,
     ):
         """
         Args:
@@ -125,25 +127,25 @@ class RoundEventGenerator:
         """Use the projected state when available, preserving legacy state adapters."""
         prompt_context = getattr(player_state, "to_prompt_context", None)
         if callable(prompt_context):
-            return prompt_context()
-        return player_state.to_dict()
+            return cast(Dict[str, Any], prompt_context())
+        return cast(Dict[str, Any], player_state.to_dict())
 
     @property
-    def player_state(self):
+    def player_state(self) -> Any:
         if self._player_state_override is not None:
             return self._player_state_override
         return self._get_player_state()
 
     @property
-    def language(self):
+    def language(self) -> str:
         return self._get_language()
 
     @property
-    def current_event(self):
+    def current_event(self) -> Optional[GameEvent]:
         return self._current_event
 
     @current_event.setter
-    def current_event(self, value):
+    def current_event(self, value: Optional[GameEvent]) -> None:
         self._current_event = value
 
     def _clear_generating_flag(self) -> None:
@@ -155,7 +157,7 @@ class RoundEventGenerator:
     def generate_round_event(
         self,
         stream_callback: Optional[Callable[[str], None]] = None,
-        status_callback: Optional[Callable[[str], None]] = None,
+        status_callback: Optional[Callable[[Any], None]] = None,
         session: Optional[Any] = None,
         force_regenerate: bool = False,
         operation_id: Optional[str] = None,
@@ -164,15 +166,21 @@ class RoundEventGenerator:
         live_state = self.player_state
         from src.game.daily_timeline import is_daily_timeline
 
+        def discard_candidate_chunk(_chunk: str) -> None:
+            """Keep generator output private until the returned event is accepted."""
+
         if not is_daily_timeline(live_state) or not callable(
             getattr(live_state, "model_copy", None)
         ):
-            return self._generate_round_event_impl(
-                stream_callback=stream_callback,
+            event = self._generate_round_event_impl(
+                stream_callback=discard_candidate_chunk,
                 status_callback=status_callback,
                 session=session,
                 operation_id=operation_id,
             )
+            if event is not None and stream_callback is not None:
+                stream_callback(event.event_description)
+            return event
 
         operation_id = operation_id or uuid.uuid4().hex
         original_state = live_state.model_copy(deep=True)
@@ -202,7 +210,7 @@ class RoundEventGenerator:
         try:
             with self.character_introduction_service.use_player_state(staged_state):
                 event = self._generate_round_event_impl(
-                    stream_callback=stream_callback,
+                    stream_callback=discard_candidate_chunk,
                     status_callback=status_callback,
                     session=session,
                     operation_id=operation_id,
@@ -239,6 +247,8 @@ class RoundEventGenerator:
                 getattr(self._current_event, "revision", None),
                 sorted(introduced_people),
             )
+            if stream_callback is not None:
+                stream_callback(self._current_event.event_description)
             return self._current_event
         except Exception:
             if live_commit_started:
@@ -274,7 +284,7 @@ class RoundEventGenerator:
     def _generate_round_event_impl(
         self,
         stream_callback: Optional[Callable[[str], None]] = None,
-        status_callback: Optional[Callable[[str], None]] = None,
+        status_callback: Optional[Callable[[Any], None]] = None,
         session: Optional[Any] = None,
         operation_id: Optional[str] = None,
     ) -> Optional[GameEvent]:
@@ -406,8 +416,6 @@ class RoundEventGenerator:
                     )
 
                     # Create event with cached options
-                    from src.ai.models import EventOption, GameEvent
-
                     options = [EventOption(**opt) for opt in cached_options]
                     event = GameEvent(
                         event_description=existing_story,
@@ -513,22 +521,22 @@ class RoundEventGenerator:
         if scheduled_events:
             logger.info(f"检测到 {len(scheduled_events)} 个预定事件需要触发")
             try:
-                event = self._generate_scheduled_event(  # type: ignore[assignment]
+                scheduled_event = self._generate_scheduled_event(
                     scheduled_events, player_state, stream_callback, status_callback
                 )
-                if event:
+                if scheduled_event:
                     apply_daily_event_metadata(
-                        event, player_state, language=self.language
+                        scheduled_event, player_state, language=self.language
                     )
-                    self._current_event = event  # type: ignore[assignment]
-                    player_state.current_event_data = event.model_dump()
+                    self._current_event = scheduled_event
+                    player_state.current_event_data = scheduled_event.model_dump()
                     # 标记预定事件已触发
                     for se in scheduled_events:
                         player_state.mark_scheduled_event_triggered(se.get("event_id"))
                     if self.event_callback:
-                        self.event_callback(event, player_state)
+                        self.event_callback(scheduled_event, player_state)
                     self._clear_generating_flag()
-                    return event
+                    return scheduled_event
             except Exception:
                 # This branch precedes the normal generation cleanup scope.
                 # Always release the direct-call guard on terminal failure.
@@ -650,38 +658,41 @@ class RoundEventGenerator:
             if status_callback:
                 status_callback("generating_story")
 
-            event = self.ai_generator.generate_round_event(
-                player_state=state_dict,
-                language=self.language,
-                round_number=current_round,
-                round_context=round_context,
-                character_settings=character_settings,
-                stream_callback=stream_callback,
-                relationship_events=relationship_events,
-                historical_weekly_summary=historical_weekly,
-                historical_yearly_summary=historical_yearly,
-                game_date_info=player_state.get_game_date_info(),
-                pending_storylines=player_state.pending_storylines,
-                established_facts=getattr(
-                    world_model,
-                    "hard_established_facts",
-                    player_state.established_facts,
+            ai_event = cast(
+                Optional[GameEvent],
+                self.ai_generator.generate_round_event(
+                    player_state=state_dict,
+                    language=self.language,
+                    round_number=current_round,
+                    round_context=round_context,
+                    character_settings=character_settings,
+                    stream_callback=stream_callback,
+                    relationship_events=relationship_events,
+                    historical_weekly_summary=historical_weekly,
+                    historical_yearly_summary=historical_yearly,
+                    game_date_info=player_state.get_game_date_info(),
+                    pending_storylines=player_state.pending_storylines,
+                    established_facts=getattr(
+                        world_model,
+                        "hard_established_facts",
+                        player_state.established_facts,
+                    ),
+                    last_event_concluded=player_state.last_event_concluded,
+                    last_round_full_story=player_state.last_round_full_story,
+                    activated_foreshadowing=NarrativeManager.select_foreshadowing_seed(
+                        player_state
+                    ),
+                    character_habits=player_state.character_habits,
+                    world_model=world_model,
+                    new_character=new_character,
+                    status_callback=status_callback,
+                    operation_id=operation_id,
                 ),
-                last_event_concluded=player_state.last_event_concluded,
-                last_round_full_story=player_state.last_round_full_story,
-                activated_foreshadowing=NarrativeManager.select_foreshadowing_seed(
-                    player_state
-                ),
-                character_habits=player_state.character_habits,
-                world_model=world_model,
-                new_character=new_character,
-                status_callback=status_callback,
-                operation_id=operation_id,
             )
             self._persist_long_context_snapshots(player_state, state_dict)
 
             # 如果有关系事件被触发，标记为已触发
-            if relationship_events and event:
+            if relationship_events and ai_event:
                 for rel_event in relationship_events:
                     try:
                         self.relationship_service.mark_event_triggered(
@@ -695,24 +706,24 @@ class RoundEventGenerator:
                     except Exception as e:
                         logger.warning(f"标记事件触发失败: {e}")
 
-            if not event:
+            if not ai_event:
                 raise StoryGenerationFailure("AI generator returned no round event")
 
-            apply_daily_event_metadata(event, player_state, language=self.language)
+            apply_daily_event_metadata(ai_event, player_state, language=self.language)
 
-            self._current_event = event
+            self._current_event = ai_event
 
             # Save current event to player state for persistence
-            player_state.current_event_data = event.model_dump()
+            player_state.current_event_data = ai_event.model_dump()
 
             if self.event_callback:
-                self.event_callback(event, player_state)
+                self.event_callback(ai_event, player_state)
 
             logger.info(
                 f"Successfully generated round event for 第{current_week + 1}周, round {current_round}"
             )
             self._clear_generating_flag()
-            return event
+            return ai_event
 
         except StoryGenerationFailure:
             self._clear_generating_flag()
@@ -731,12 +742,12 @@ class RoundEventGenerator:
         """Bound resume-only option generation so recovery never strands the player."""
 
         def call_options_generator() -> GameEvent:
-            return self.ai_generator.generate_options_only(
+            return cast(GameEvent, self.ai_generator.generate_options_only(
                 story_description=existing_story,
                 player_state=self._prompt_context(player_state),
                 character_settings=player_state.character_settings,
                 language=self.language,
-            )
+            ))
 
         executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="options-resume"
@@ -958,10 +969,10 @@ class RoundEventGenerator:
 
     def _generate_scheduled_event(
         self,
-        scheduled_events: list,
-        player_state,
+        scheduled_events: list[Dict[str, Any]],
+        player_state: Any,
         stream_callback: Optional[Callable[[str], None]] = None,
-        status_callback: Optional[Callable[[str], None]] = None,
+        status_callback: Optional[Callable[[Any], None]] = None,
     ) -> Optional[GameEvent]:
         """根据预定事件生成强制事件。
 
@@ -996,7 +1007,7 @@ class RoundEventGenerator:
             descriptions.append(se.get("description", ""))
             all_parties.update(se.get("parties", []))
             if se.get("event_hint"):
-                event_hints.append(se.get("event_hint"))
+                event_hints.append(str(se.get("event_hint")))
             # 取最高重要程度
             se_importance = se.get("importance", "normal")
             if IMPORTANCE_ORDER.get(se_importance, 2) < IMPORTANCE_ORDER.get(
@@ -1116,8 +1127,6 @@ class RoundEventGenerator:
                 data = extract_json(response)
 
                 if data:
-                    from src.ai.models import GameEvent
-
                     raw_event_desc = data.get("event_description", "")
                     event_desc = (
                         raw_event_desc.strip()
@@ -1202,9 +1211,9 @@ class RoundEventGenerator:
 
     def _build_scheduled_event_prompt(
         self,
-        scheduled_events: list,
-        player_state: dict,
-        character_settings: dict,
+        scheduled_events: list[Dict[str, Any]],
+        player_state: Dict[str, Any],
+        character_settings: Dict[str, Any],
         language: str,
     ) -> str:
         """构建预定事件的提示词。"""
@@ -1218,7 +1227,7 @@ class RoundEventGenerator:
             descriptions.append(se.get("description", ""))
             all_parties.update(se.get("parties", []))
             if se.get("event_hint"):
-                event_hints.append(se.get("event_hint"))
+                event_hints.append(str(se.get("event_hint")))
 
         combined_description = "；".join(descriptions)
         combined_hint = "；".join(event_hints) if event_hints else ""
@@ -1394,12 +1403,10 @@ Return ONLY JSON, no other text."""
 
     def _generate_simple_scheduled_event(
         self,
-        scheduled_events: list,
-        player_state,
+        scheduled_events: list[Dict[str, Any]],
+        player_state: Any,
     ) -> GameEvent:
         """生成一个简单的预定事件（当AI生成失败时的后备方案）。"""
-        from src.ai.models import EventOption, GameEvent
-
         # 合并描述
         descriptions = [se.get("description", "") for se in scheduled_events]
         combined_desc = "；".join(descriptions)
@@ -1410,7 +1417,9 @@ Return ONLY JSON, no other text."""
         )
         timeline = state_dict.get("timeline")
         daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
-        first_daily_day = daily_mode and int(timeline.get("day_index") or 0) == 0
+        first_daily_day = (
+            isinstance(timeline, dict) and int(timeline.get("day_index") or 0) == 0
+        )
 
         if language == "zh":
             if first_daily_day:

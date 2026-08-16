@@ -4,12 +4,14 @@ import type {
   GameProgress,
   PlayerState,
   RoundInfo,
+  StoryDeliveryNotice,
 } from "@/lib/types";
 
 export interface PersistedEventSnapshot {
   story: string;
   options: EventOption[];
   gameOver: boolean;
+  delivery_notice?: StoryDeliveryNotice;
 }
 
 export interface GameplayStateSnapshot {
@@ -85,6 +87,7 @@ export async function fetchGameplayStateSnapshot(
         story_text?: unknown;
         story?: unknown;
         options?: unknown;
+        delivery_notice?: unknown;
       } | null;
       player_state?: unknown;
       progress?: { week?: unknown; total_weeks?: unknown } | null;
@@ -118,8 +121,16 @@ export async function fetchGameplayStateSnapshot(
       (value): value is string => typeof value === "string" && value.trim().length > 0,
     )?.trim() ?? "";
     const options = Array.isArray(event.options) ? event.options as EventOption[] : [];
+    const deliveryNotice = event.delivery_notice && typeof event.delivery_notice === "object"
+      ? event.delivery_notice as StoryDeliveryNotice
+      : undefined;
     return {
-      event: { story, options, gameOver },
+      event: {
+        story,
+        options,
+        gameOver,
+        ...(deliveryNotice ? { delivery_notice: deliveryNotice } : {}),
+      },
       playerState,
       progress,
       roundInfo,

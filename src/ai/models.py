@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -26,6 +26,16 @@ class EventOption(BaseModel):
         return normalize_gameplay_effects(value)
 
 
+class StoryDeliveryNotice(BaseModel):
+    """Sanitized player-facing explanation for a deliverable degraded story."""
+
+    code: Literal["SOFT_VALIDATION_FALLBACK"] = "SOFT_VALIDATION_FALLBACK"
+    summary: str
+    reason: str
+    retryable: bool = True
+    attempts_used: int = Field(..., ge=1)
+
+
 class GameEvent(BaseModel):
     """Represents a complete game event."""
 
@@ -36,6 +46,7 @@ class GameEvent(BaseModel):
         ...
     )  # Removed max_length limit to support long stories
     options: List[EventOption] = Field(..., min_length=2, max_length=4)
+    delivery_notice: Optional[StoryDeliveryNotice] = None
 
     @classmethod
     def from_json(cls, json_str: str) -> "GameEvent":
