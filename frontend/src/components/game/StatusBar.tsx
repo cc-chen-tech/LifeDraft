@@ -22,6 +22,41 @@ function getNonNegativeInteger(value: unknown, fallback = 0): number {
     : fallback;
 }
 
+function getDailyProgressLabel(playerState: Record<string, unknown>): string | null {
+  const timeline = playerState.timeline;
+  if (!timeline || typeof timeline !== "object") return null;
+
+  const dailyTimeline = timeline as Record<string, unknown>;
+  if (dailyTimeline.version !== 2) return null;
+
+  const dayNumber = Number(dailyTimeline.day_number);
+  const age = Number(playerState.age);
+  const progressParts: string[] = [];
+  const currentDate = dailyTimeline.current_date;
+  const dateMatch = typeof currentDate === "string"
+    ? /^(\d{1,4})-(\d{2})-(\d{2})$/.exec(currentDate)
+    : null;
+
+  if (dateMatch) {
+    const [, yearText, monthText, dayText] = dateMatch;
+    const year = Number(yearText);
+    const month = Number(monthText);
+    const day = Number(dayText);
+    if (year > 0 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      progressParts.push(`公元 ${year} 年 ${month} 月 ${day} 日`);
+    }
+  }
+
+  if (Number.isInteger(dayNumber) && dayNumber > 0) {
+    progressParts.push(`第 ${dayNumber} 天`);
+  }
+  if (Number.isInteger(age) && age >= 0) {
+    progressParts.push(`${age} 岁`);
+  }
+
+  return progressParts.join(" · ");
+}
+
 function getCompletedViewPosition(playerState: Record<string, unknown>) {
   const resumeView = playerState.resume_view;
   if (!resumeView || typeof resumeView !== "object") return null;
@@ -56,6 +91,21 @@ export const StatusBar = memo(function StatusBar({
   appearance = "badges",
 }: StatusBarProps) {
   if (!playerState) return null;
+
+  const dailyProgressLabel = getDailyProgressLabel(playerState);
+  if (dailyProgressLabel !== null) {
+    return (
+      <div
+        data-testid="status-bar"
+        data-timeline="daily"
+        className={cn("flex min-w-0 flex-wrap items-baseline", className)}
+      >
+        <p className="text-sm font-medium text-[var(--text-primary)]">
+          {dailyProgressLabel}
+        </p>
+      </div>
+    );
+  }
 
   const age = getNonNegativeInteger(playerState.age);
   const completedViewPosition = getCompletedViewPosition(playerState);

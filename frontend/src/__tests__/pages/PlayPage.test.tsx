@@ -114,6 +114,10 @@ describe('PlayPage', () => {
         displayText: '当天第一段。\n\n当天第二段。',
         playerState: {
           ...mockUsePlayGame.playerState,
+          age: 28,
+          week: 0,
+          current_round: 0,
+          rounds_per_week: 3,
           timeline: {
             version: 2,
             start_date: '2026-08-08',
@@ -162,7 +166,39 @@ describe('PlayPage', () => {
       render(<PlayPage />);
 
       expect(await screen.findByRole('heading', { name: '听故事' })).toBeInTheDocument();
+      expect(screen.getAllByText('公元 2026 年 8 月 15 日 · 第 8 天 · 28 岁')).toHaveLength(1);
+      expect(screen.queryByText(/第1周|周一|第1轮\/3|共 365 天/)).not.toBeInTheDocument();
+      expect(screen.queryByText('story101 · 人生草稿本')).not.toBeInTheDocument();
+      expect(screen.queryByText('当前人生')).not.toBeInTheDocument();
       expect(screen.queryByText('已完成并带选项的故事。')).not.toBeInTheDocument();
+    });
+
+    it('keeps the same single daily progress line on the result phase', () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'result',
+        roundSummary: '当天选择已经产生结果。',
+        playerState: {
+          ...mockUsePlayGame.playerState,
+          age: 28,
+          week: 0,
+          current_round: 0,
+          rounds_per_week: 3,
+          timeline: {
+            version: 2,
+            current_date: '2026-08-15',
+            day_index: 7,
+            day_number: 8,
+            total_days: 365,
+          },
+        },
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getAllByText('公元 2026 年 8 月 15 日 · 第 8 天 · 28 岁')).toHaveLength(1);
+      expect(screen.queryByText(/第1周|周一|第1轮\/3|共 365 天/)).not.toBeInTheDocument();
     });
 
   });
@@ -1273,7 +1309,7 @@ describe('PlayPage', () => {
   });
 
   describe('History mode interactions', () => {
-    it('shows history mode banner when viewing history', () => {
+    it('shows one consolidated read-only history heading without current progress', () => {
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
@@ -1282,7 +1318,11 @@ describe('PlayPage', () => {
       });
       
       render(<PlayPage />);
-      expect(screen.getByText(/正在查看历史轮次/)).toBeInTheDocument();
+      expect(screen.getAllByText(/历史回顾/)).toHaveLength(1);
+      expect(screen.getByText('历史回顾 · 只读')).toBeInTheDocument();
+      expect(screen.queryByText(/正在查看历史轮次/)).not.toBeInTheDocument();
+      expect(screen.queryByTestId('status-bar')).not.toBeInTheDocument();
+      expect(screen.queryByText('当前人生')).not.toBeInTheDocument();
     });
 
     it('has return to current button in history mode', () => {

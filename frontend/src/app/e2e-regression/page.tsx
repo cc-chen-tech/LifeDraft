@@ -83,7 +83,12 @@ export default async function E2ERegressionPage({
   }
 
   if (playExperienceFixtureState) {
-    return <PlayExperienceFixture initialState={playExperienceFixtureState} />;
+    return (
+      <PlayExperienceFixture
+        initialState={playExperienceFixtureState}
+        dailyTimeline={resolvedSearchParams.timeline === "daily"}
+      />
+    );
   }
 
   if (visualFoundationFixture) {

@@ -51,6 +51,17 @@ const FIXTURE_PLAYER_STATE = {
   rounds_per_week: 3,
 };
 
+const DAILY_FIXTURE_PLAYER_STATE = {
+  ...FIXTURE_PLAYER_STATE,
+  timeline: {
+    version: 2,
+    current_date: "0640-08-17",
+    day_index: 4,
+    day_number: 5,
+    total_days: 100,
+  },
+};
+
 function storyForState(state: PlayExperienceFixtureState) {
   switch (state) {
     case "options":
@@ -97,8 +108,10 @@ function recoveryAction(state: PlayExperienceFixtureState) {
 
 export function PlayExperienceFixture({
   initialState,
+  dailyTimeline = false,
 }: {
   initialState: PlayExperienceFixtureState;
+  dailyTimeline?: boolean;
 }) {
   const [actionCount, setActionCount] = useState(0);
   const [lastAction, setLastAction] = useState("none");
@@ -132,7 +145,8 @@ export function PlayExperienceFixture({
       aria-label="游戏阅读体验回归夹具"
       data-play-state={initialState}
       data-testid="play-experience-fixture"
-      playerState={FIXTURE_PLAYER_STATE}
+      data-timeline-mode={dailyTimeline ? "daily" : "legacy"}
+      playerState={dailyTimeline ? DAILY_FIXTURE_PLAYER_STATE : FIXTURE_PLAYER_STATE}
       progress={null}
       isViewingHistory={isViewingHistory}
       toolsProps={{
@@ -201,6 +215,7 @@ export function PlayExperienceFixture({
         }
         onSelectChoice={(index) => recordAction(`choice:${index}`)}
         onCustomChoice={() => recordAction("custom-choice")}
+        isDailyTimeline={dailyTimeline}
         result={{
           currentRound: 1,
           roundsPerWeek: 3,

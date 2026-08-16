@@ -25,6 +25,10 @@ const VISUAL_VIEWPORTS = [
   { label: "1440x900", width: 1440, height: 900 },
   { label: "390x844", width: 390, height: 844 },
 ] as const;
+const DAILY_PROGRESS_VIEWPORTS = [
+  { label: "1280x900", width: 1280, height: 900 },
+  { label: "390x844", width: 390, height: 844 },
+] as const;
 const OVERFLOW_WIDTHS = [320, 375] as const;
 
 const CURRENT_STORY =
@@ -517,10 +521,12 @@ async function expectStateSemantics(page: Page, state: PlayFixtureState) {
       break;
     case "history":
       await expect(story).toContainText(HISTORY_STORY);
-      await expect(root.getByText("历史回顾", { exact: true })).toBeVisible();
+      await expect(
+        root.getByText("历史回顾 · 只读", { exact: true }),
+      ).toBeVisible();
       await expect(
         root.getByText("正在查看历史轮次（只读模式）", { exact: true }),
-      ).toBeVisible();
+      ).toHaveCount(0);
       await expect(
         root.getByRole("button", { name: "返回当前" }),
       ).toBeVisible();
@@ -572,6 +578,31 @@ async function captureScreenshot(
 }
 
 test.describe("story101 play experience deterministic acceptance", () => {
+  for (const viewport of DAILY_PROGRESS_VIEWPORTS) {
+    test(`daily progress stays singular at ${viewport.label}`, async ({ page }, testInfo) => {
+      await page.setViewportSize(viewport);
+      await page.goto("/e2e-regression?playState=options&timeline=daily");
+      const root = fixture(page);
+
+      await expect(root).toBeVisible();
+      await expect(
+        root.getByText("公元 640 年 8 月 17 日 · 第 5 天 · 29 岁", { exact: true }),
+      ).toHaveCount(1);
+      await expect(root.getByText(/第3周|周中|第2轮\/3/)).toHaveCount(0);
+      await expect(root.getByText("story101 · 人生草稿本", { exact: true })).toHaveCount(0);
+      await expect(root.getByText("当前人生", { exact: true })).toHaveCount(0);
+      await expectNoHorizontalOverflow(page);
+      await captureScreenshot(page, testInfo, "options", `daily-${viewport.label}`);
+
+      await page.goto("/e2e-regression?playState=history&timeline=daily");
+      await expect(root.getByText("历史回顾 · 只读", { exact: true })).toHaveCount(1);
+      await expect(root.getByTestId("status-bar")).toHaveCount(0);
+      await expect(root.getByRole("button", { name: "返回当前" })).toBeVisible();
+      await expectNoHorizontalOverflow(page);
+      await captureScreenshot(page, testInfo, "history", `daily-${viewport.label}`);
+    });
+  }
+
   test("server allowlists every dedicated play fixture without rendering legacy content", async ({
     request,
   }) => {

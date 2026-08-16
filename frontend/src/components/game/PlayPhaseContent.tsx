@@ -120,12 +120,6 @@ export const PlayPhaseContent = memo(function PlayPhaseContent({
 
   return (
     <>
-      {isViewingHistory && (
-        <p className="mb-6 border-l-2 border-[var(--border-interactive)] pl-3 text-sm text-[var(--text-secondary)]">
-          正在查看历史轮次（只读模式）
-        </p>
-      )}
-
       {!isViewingHistory && loading.visible && !displayText && (
         <GameplayLoading layout="section" loading={loading} />
       )}
@@ -140,7 +134,7 @@ export const PlayPhaseContent = memo(function PlayPhaseContent({
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs text-[var(--text-secondary)]">
-                  历史回顾
+                  历史回顾 · 只读
                 </p>
                 <h2 className="text-base font-medium text-[var(--text-primary)]">
                   第 {(historyPosition?.week ?? 0) + 1} 周 · 第{

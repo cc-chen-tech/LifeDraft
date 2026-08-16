@@ -38,6 +38,55 @@ describe("StatusBar", () => {
       expect(screen.getByText("25岁 第10周")).toBeInTheDocument();
     });
 
+    it.each([
+      ["0640-08-13", 1, "公元 640 年 8 月 13 日 · 第 1 天 · 28 岁"],
+      ["0640-08-17", 5, "公元 640 年 8 月 17 日 · 第 5 天 · 28 岁"],
+      ["0640-08-20", 8, "公元 640 年 8 月 20 日 · 第 8 天 · 28 岁"],
+    ])(
+      "uses the authoritative daily timeline for %s",
+      (currentDate, dayNumber, expectedLabel) => {
+        render(
+          <StatusBar
+            playerState={{
+              age: 28,
+              week: 0,
+              current_round: 0,
+              rounds_per_week: 3,
+              timeline: {
+                version: 2,
+                current_date: currentDate,
+                day_number: dayNumber,
+              },
+            }}
+            progress={{ week: 0, current_round: 0, rounds_per_week: 3 }}
+            appearance="narrative"
+          />,
+        );
+
+        expect(screen.getByText(expectedLabel)).toBeInTheDocument();
+        expect(screen.queryByText(/第1周|周一|第1轮\/3/)).not.toBeInTheDocument();
+      },
+    );
+
+    it("keeps daily progress authoritative when its date is malformed", () => {
+      render(
+        <StatusBar
+          playerState={{
+            age: 28,
+            week: 0,
+            current_round: 0,
+            rounds_per_week: 3,
+            timeline: { version: 2, current_date: "not-a-date", day_number: 5 },
+          }}
+          progress={{ week: 0, current_round: 0, rounds_per_week: 3 }}
+          appearance="narrative"
+        />,
+      );
+
+      expect(screen.getByText("第 5 天 · 28 岁")).toBeInTheDocument();
+      expect(screen.queryByText(/第1周|周一|第1轮\/3/)).not.toBeInTheDocument();
+    });
+
     it("displays the human-readable current round from player state", () => {
       render(
         <StatusBar

@@ -13,7 +13,6 @@ import {
 } from "react";
 import {
   BookOpenText,
-  ChevronDown,
   ChevronUp,
   Loader2,
   Pause,
@@ -46,9 +45,6 @@ type ListeningStatus =
 interface StoryListeningExperienceProps {
   context: ReadingContext;
   storyText: string;
-  dateTitle?: string | null;
-  dayNumber?: number | null;
-  totalDays?: number | null;
   options: EventOption[];
   onSelectChoice: (index: number) => void | Promise<void>;
   media?: ReactNode;
@@ -78,9 +74,6 @@ function delay(milliseconds: number): Promise<void> {
 export function StoryListeningExperience({
   context,
   storyText,
-  dateTitle,
-  dayNumber,
-  totalDays,
   options,
   onSelectChoice,
   media,
@@ -717,16 +710,16 @@ export function StoryListeningExperience({
 
   const statusLabel =
     status === "preparing"
-      ? "正在准备这一章"
+      ? "准备中"
       : status === "playing"
-        ? `正在朗读第 ${activeParagraph + 1} 段`
+        ? "朗读中"
         : status === "paused"
-          ? "朗读已暂停"
+          ? "已暂停"
           : status === "failed"
             ? "这一章暂时无法朗读"
             : readySegments.length > 0
-              ? "语音已准备好"
-              : "等待高质量语音";
+              ? "已就绪"
+              : "准备中";
 
   return (
     <section
@@ -735,17 +728,9 @@ export function StoryListeningExperience({
     >
       <div className="mx-auto flex w-full max-w-3xl flex-col items-center">
         <header className="w-full text-center">
-          <p className="font-mono text-[11px] tracking-[0.24em] text-[var(--text-secondary)]">
-            {dateTitle || "今日故事"}
-          </p>
-          <h1 className="mt-3 font-serif text-3xl font-semibold tracking-[0.12em] text-[var(--text-primary)] sm:text-4xl">
+          <h1 className="font-serif text-3xl font-semibold tracking-[0.12em] text-[var(--text-primary)] sm:text-4xl">
             听故事
           </h1>
-          {dayNumber && totalDays ? (
-            <p className="mt-2 text-xs text-[var(--text-secondary)]">
-              第 {dayNumber} 天 · 共 {totalDays} 天
-            </p>
-          ) : null}
         </header>
 
         <div
@@ -829,15 +814,17 @@ export function StoryListeningExperience({
                 <Play className="ml-0.5 h-6 w-6" />
               )}
             </Button>
-            <Button
-              type="button"
-              variant="quiet"
-              size="icon-touch"
-              onClick={() => setTranscriptOpen((open) => !open)}
-              aria-label={transcriptOpen ? "收起正文" : "查看正文"}
-            >
-              <BookOpenText className="h-4 w-4" />
-            </Button>
+            {!transcriptOpen ? (
+              <Button
+                type="button"
+                variant="quiet"
+                size="touch"
+                onClick={() => setTranscriptOpen(true)}
+              >
+                <BookOpenText className="mr-2 h-4 w-4" />
+                查看正文
+              </Button>
+            ) : null}
           </div>
 
           <div className="mt-7 grid grid-cols-2 gap-3 border-y border-[var(--border-default)] py-4 sm:grid-cols-3">
@@ -890,7 +877,7 @@ export function StoryListeningExperience({
             <div className="mb-5 flex items-center justify-between">
               <h2 className="font-serif text-lg text-[var(--text-primary)]">故事正文</h2>
               <Button type="button" variant="quiet" size="sm" onClick={() => setTranscriptOpen(false)}>
-                收起 <ChevronUp className="ml-1 h-4 w-4" />
+                收起正文 <ChevronUp className="ml-1 h-4 w-4" />
               </Button>
             </div>
             <div className="space-y-1">
@@ -913,11 +900,7 @@ export function StoryListeningExperience({
               ))}
             </div>
           </section>
-        ) : (
-          <Button type="button" variant="quiet" size="touch" className="mt-8" onClick={() => setTranscriptOpen(true)}>
-            查看正文 <ChevronDown className="ml-1 h-4 w-4" />
-          </Button>
-        )}
+        ) : null}
 
         {media ? <div className="mt-8 w-full">{media}</div> : null}
 
