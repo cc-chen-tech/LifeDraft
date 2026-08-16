@@ -459,11 +459,16 @@ class DailyWorldProjectionService:
                 self._publish_projection_state(loops, state_data)
             applied_at = self._as_utc_naive(self.now_fn())
             for projection_id, source_hash in rows_to_mark:
-                self._transaction(
-                    lambda _session, repo, projection_id=projection_id, source_hash=source_hash: repo.mark_applied(
-                        projection_id, source_hash, applied_at
-                    )
-                )
+
+                def mark_applied(
+                    _session: Any,
+                    repo: Any,
+                    projection_id: int = projection_id,
+                    source_hash: str = source_hash,
+                ) -> bool:
+                    return repo.mark_applied(projection_id, source_hash, applied_at)
+
+                self._transaction(mark_applied)
             return applied_count
 
     def schedule_apply_for_game(self, game_id: int) -> None:
