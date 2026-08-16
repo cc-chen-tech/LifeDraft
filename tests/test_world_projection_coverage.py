@@ -114,3 +114,24 @@ def test_known_record_people_metadata_is_not_commitment_or_causal_evidence() -> 
 
     assert "commitment_updates" not in commitment_signals.categories
     assert "causal_updates" not in causal_signals.categories
+
+
+def test_tracked_subject_stays_bound_across_short_same_sentence_clauses() -> None:
+    signals = detect_world_change_signals(
+        "黑袍人收拾行囊，向朋友道别，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" in signals.categories
+    assert "抵达" in signals.matched_spans
+
+
+def test_explicit_new_subject_resets_same_sentence_location_binding() -> None:
+    signals = detect_world_change_signals(
+        "黑袍人收拾行囊，孙悟空向朋友道别，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" not in signals.categories

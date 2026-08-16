@@ -11,6 +11,16 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from src.utils.financial_narrative import sanitize_authoritative_fact_records
 
+_DAILY_WORLD_PATCH_EXAMPLE = (
+    '{"fact_updates": [], "foreshadowing_seeds": [], "habit_updates": [], '
+    '"location_updates": [], "career_updates": [], "commitment_updates": [], '
+    '"causal_updates": []}'
+)
+
+
+def _daily_option_patches_example(options: Sequence[Any]) -> str:
+    return "{}" if not options else f'{{"0": {_DAILY_WORLD_PATCH_EXAMPLE}}}'
+
 
 def get_daily_world_projection_prompt(
     story: str,
@@ -21,6 +31,7 @@ def get_daily_world_projection_prompt(
     """Request a typed story patch and one conditional patch per daily option."""
     options_json = json.dumps(list(options), ensure_ascii=False, default=str)
     tracked_json = json.dumps(tracked_state or {}, ensure_ascii=False, default=str)
+    option_patches_example = _daily_option_patches_example(options)
     if language == "zh":
         return f"""从已接受的每日故事中提取派生世界变化。故事正文已发生的变化放入 story_patch；每个选项只在该选项被玩家选择后才发生的变化放入 option_patches 对应索引。不得猜测，也不得把选择后的变化写入 story_patch。
 
@@ -36,8 +47,8 @@ def get_daily_world_projection_prompt(
 只返回 JSON：
 {{
   "schema_version": 1,
-  "story_patch": {{"fact_updates": [], "foreshadowing_seeds": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": []}},
-  "option_patches": {{"0": {{"fact_updates": [], "foreshadowing_seeds": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": []}}}}
+  "story_patch": {_DAILY_WORLD_PATCH_EXAMPLE},
+  "option_patches": {option_patches_example}
 }}
 
 每个字段必须是数组；option_patches 不得包含不存在的选项索引；无变化时使用空数组。"""
@@ -55,8 +66,8 @@ Tracked derived state (recognition reference only):
 Return JSON only:
 {{
   "schema_version": 1,
-  "story_patch": {{"fact_updates": [], "foreshadowing_seeds": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": []}},
-  "option_patches": {{"0": {{"fact_updates": [], "foreshadowing_seeds": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": []}}}}
+  "story_patch": {_DAILY_WORLD_PATCH_EXAMPLE},
+  "option_patches": {option_patches_example}
 }}
 
 Every category must be an array. Do not include unknown option indexes. Use empty arrays for no change."""

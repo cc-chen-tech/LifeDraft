@@ -1,11 +1,15 @@
 """Contracts for daily option transitions and first-day narrative framing."""
 
+import json
+
+from config.prompts.world_prompts import get_daily_world_projection_prompt
 from config.prompts.story_prompts import (
     build_daily_story_mode_constraint,
     get_options_only_prompt,
     get_round_event_prompt,
 )
 from src.ai.daily_opening import validate_daily_first_opening
+from src.game.world_projection_schema import validate_projection_payload
 
 
 def _daily_state(day_index: int = 0) -> dict:
@@ -52,6 +56,20 @@ def test_daily_option_prompt_requests_hidden_transition_for_every_option() -> No
     assert "12-28个汉字" in prompt
     assert "那份迟疑没有散去" not in prompt
     assert "不预言未发生的结果" in prompt
+
+
+def test_empty_option_projection_prompt_example_round_trips_through_validator() -> None:
+    prompt = get_daily_world_projection_prompt(
+        "两人在院中闲谈天气。", [], "zh", tracked_state={}
+    )
+    example = prompt.split("只返回 JSON：\n", 1)[1].split("\n\n每个字段", 1)[0]
+    payload = json.loads(example)
+
+    assert payload["option_patches"] == {}
+    assert (
+        validate_projection_payload(payload, "两人在院中闲谈天气。", [], {}).no_change
+        is True
+    )
 
 
 def test_legacy_option_prompt_keeps_old_schema() -> None:

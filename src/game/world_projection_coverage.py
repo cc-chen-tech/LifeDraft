@@ -8,6 +8,9 @@ from typing import Any, Mapping, Sequence
 
 _SENTENCE_BOUNDARY = re.compile(r"[。！？!?；;]+")
 _CLAUSE_BOUNDARY = re.compile(r"[，,]+")
+_EXPLICIT_SUBJECT_PREFIX = re.compile(
+    r"^[\u4e00-\u9fff]{2,4}(?=(?:向|在|正|将|把|对|已|开始|收拾|抵达|到达|前往|来到|离开|返回|回到|赶往|进入|现身|身处|位于|落脚|驻留))"
+)
 _LOCATION_TERMS = (
     "抵达",
     "到达",
@@ -57,26 +60,28 @@ def _tracked_character_names(tracked_state: Any) -> tuple[str, ...]:
     return tuple(str(name) for name in locations if str(name).strip())
 
 
-def _clause_contexts(story: str, options: Sequence[Any]) -> tuple[tuple[str, str], ...]:
+def _clause_contexts(
+    story: str, options: Sequence[Any], tracked_names: Sequence[str]
+) -> tuple[tuple[str, bool], ...]:
     source_texts = [str(story or "")]
     source_texts.extend(
         str(option.get("text") if isinstance(option, Mapping) else option or "")
         for option in options
     )
-    return tuple(
-        (clause, f"{previous_clause} {clause}".strip())
-        for text in source_texts
-        for sentence in _SENTENCE_BOUNDARY.split(text)
-        for clauses in [
-            tuple(
-                clause.strip()
-                for clause in _CLAUSE_BOUNDARY.split(sentence)
-                if clause.strip()
-            )
-        ]
-        for position, clause in enumerate(clauses)
-        for previous_clause in [clauses[position - 1] if position else ""]
-    )
+    contexts: list[tuple[str, bool]] = []
+    for text in source_texts:
+        for sentence in _SENTENCE_BOUNDARY.split(text):
+            active_tracked_subject = False
+            for clause in _CLAUSE_BOUNDARY.split(sentence):
+                clause = clause.strip()
+                if not clause:
+                    continue
+                if _has_tracked_entity(clause, tracked_names):
+                    active_tracked_subject = True
+                elif _EXPLICIT_SUBJECT_PREFIX.match(clause):
+                    active_tracked_subject = False
+                contexts.append((clause, active_tracked_subject))
+    return tuple(contexts)
 
 
 def _has_tracked_entity(clause: str, tracked_names: Sequence[str]) -> bool:
@@ -158,9 +163,9 @@ def detect_world_change_signals(
             if term not in matches:
                 matches.append(term)
 
-    for clause, location_context in _clause_contexts(story, options):
+    for clause, has_location_subject in _clause_contexts(story, options, tracked_names):
         has_tracked_entity = _has_tracked_entity(clause, tracked_names)
-        if _has_tracked_entity(location_context, tracked_names):
+        if has_location_subject:
             record("location_updates", _matching_terms(clause, _LOCATION_TERMS))
         if has_tracked_entity:
             record("fact_updates", _matching_terms(clause, _FACT_TERMS))
