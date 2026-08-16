@@ -131,7 +131,51 @@ def test_explicit_new_subject_resets_same_sentence_location_binding() -> None:
     signals = detect_world_change_signals(
         "黑袍人收拾行囊，孙悟空向朋友道别，抵达东海。",
         [],
+        {
+            "character_locations": {"黑袍人": {"location": "花果山"}},
+            "commitments": [{"description": "明日在东海会面", "parties": ["孙悟空"]}],
+        },
+    )
+
+    assert "location_updates" not in signals.categories
+
+
+@pytest.mark.parametrize(
+    "new_subject_clause", ["孙悟空决定留守花果山", "孙悟空说自己不走"]
+)
+def test_known_person_boundaries_reset_subject_without_a_verb_whitelist(
+    new_subject_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{new_subject_clause}，抵达东海。",
+        [],
+        {
+            "character_locations": {"黑袍人": {"location": "花果山"}},
+            "commitments": [{"description": "明日在东海会面", "parties": ["孙悟空"]}],
+        },
+    )
+
+    assert "location_updates" not in signals.categories
+
+
+def test_time_connector_does_not_displace_the_carried_tracked_subject() -> None:
+    signals = detect_world_change_signals(
+        "黑袍人收拾行囊，随后向朋友道别，抵达东海。",
+        [],
         {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" in signals.categories
+
+
+def test_time_connector_before_known_person_resets_the_carried_subject() -> None:
+    signals = detect_world_change_signals(
+        "黑袍人收拾行囊，此时孙悟空向朋友道别，抵达东海。",
+        [],
+        {
+            "character_locations": {"黑袍人": {"location": "花果山"}},
+            "commitments": [{"description": "明日在东海会面", "parties": ["孙悟空"]}],
+        },
     )
 
     assert "location_updates" not in signals.categories
