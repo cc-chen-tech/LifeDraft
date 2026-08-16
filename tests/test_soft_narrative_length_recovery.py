@@ -337,7 +337,7 @@ def test_expert_consistency_rewrite_inherits_expert_token_budget(
     assert repair_calls[0]["max_tokens"] == 4096
 
 
-def test_presentation_only_harness_failure_does_not_deny_story(
+def test_every_harness_critical_failure_denies_story(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
@@ -349,17 +349,18 @@ def test_presentation_only_harness_failure_does_not_deny_story(
     )
     generator._validation_pipeline = SingleFailurePipeline("decision_point_ending")
 
-    event = generator.generate_round_event(
-        player_state={"game_id": 10, "week": 4, "current_round": 0},
-        language="zh",
-        round_number=0,
-        round_context="",
-        character_settings={},
-        option_generator=ThreeOptionGenerator(),
-    )
-
-    assert event.event_description == story
-    assert len(event.options) == 3
+    with pytest.raises(
+        StoryGenerationFailure,
+        match="Story harness validation failed after final attempt",
+    ):
+        generator.generate_round_event(
+            player_state={"game_id": 10, "week": 4, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings={},
+            option_generator=ThreeOptionGenerator(),
+        )
 
 
 def test_severe_continuity_harness_failure_remains_terminal(

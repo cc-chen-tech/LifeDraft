@@ -500,6 +500,13 @@ describe('PlayPage', () => {
         currentEvent: {
           story: originalStory,
           options: [{ text: '继续', brief_result: '继续推进' }],
+          delivery_notice: {
+            code: 'SOFT_VALIDATION_FALLBACK',
+            summary: '旧提示',
+            reason: '旧原因',
+            retryable: true,
+            attempts_used: 3,
+          },
         },
         storyText: originalStory,
       });
@@ -512,7 +519,7 @@ describe('PlayPage', () => {
         }
         if (url.includes('/rewrite-stream')) {
           return Promise.resolve(createSSEMockResponse([
-            `event: complete\ndata: {"new_story":"${rewrittenStory}","rewritten_story":"${rewrittenStory}"}\n\n`,
+            `event: complete\ndata: {"new_story":"${rewrittenStory}","rewritten_story":"${rewrittenStory}","event":{"options":[{"text":"继续","brief_result":"继续推进"}],"delivery_notice":null}}\n\n`,
           ]));
         }
         return Promise.resolve(jsonResponse({}));
@@ -533,6 +540,7 @@ describe('PlayPage', () => {
       await waitFor(() => {
         expect(useGameStore.getState().currentEvent?.story).toBe(rewrittenStory);
       });
+      expect(useGameStore.getState().currentEvent?.delivery_notice).toBeUndefined();
     });
   });
 

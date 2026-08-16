@@ -37,7 +37,7 @@ import { useEventStore } from "@/stores/useEventStore";
 import { useSceneImageStore } from "@/stores/useSceneImageStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { api } from "@/lib/api";
-import type { EventOption } from "@/lib/types";
+import type { EventOption, GameEvent, StoryDeliveryNotice } from "@/lib/types";
 import { isWithinInputLimit } from "@/lib/inputLimits";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import {
@@ -438,6 +438,7 @@ export default function PlayPage() {
     revision?: number;
     story_date?: string;
     options?: EventOption[];
+    delivery_notice?: StoryDeliveryNotice | null;
   }) => {
     useSceneImageStore.getState().clearCurrentRoundImages();
     setStoryText(newStory);
@@ -446,11 +447,21 @@ export default function PlayPage() {
       // EventStore preserves its existing storyText when setting an event, so
       // update both stores before synchronizing the compatibility facade.
       useEventStore.setState({ storyText: newStory });
-      const replacementEvent = {
-        ...currentEvent,
-        ...replacement,
+      const { delivery_notice: _oldNotice, ...currentWithoutNotice } = currentEvent;
+      const {
+        delivery_notice: replacementNotice,
+        ...replacementWithoutNotice
+      } = replacement || {};
+      const replacementEvent: GameEvent = {
+        ...currentWithoutNotice,
+        ...replacementWithoutNotice,
         story: newStory,
         options: replacement?.options || currentEvent.options,
+        ...(replacementNotice
+          ? { delivery_notice: replacementNotice }
+          : !replacement && _oldNotice
+            ? { delivery_notice: _oldNotice }
+            : {}),
       };
       useEventStore.setState({ currentEvent: replacementEvent });
       useGameStore.setState((state) => ({
@@ -460,10 +471,15 @@ export default function PlayPage() {
       }));
       if (replacement?.options?.length) setOptions(replacement.options);
     } else {
-      const fallbackEvent = {
+      const {
+        delivery_notice: replacementNotice,
+        ...replacementWithoutNotice
+      } = replacement || {};
+      const fallbackEvent: GameEvent = {
         story: newStory,
         options: replacement?.options || options,
-        ...replacement,
+        ...replacementWithoutNotice,
+        ...(replacementNotice ? { delivery_notice: replacementNotice } : {}),
       };
       useEventStore.setState({ currentEvent: fallbackEvent, storyText: newStory });
       useGameStore.setState({ currentEvent: fallbackEvent, storyText: newStory });

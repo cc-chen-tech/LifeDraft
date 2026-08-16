@@ -228,6 +228,33 @@ describe('eventUtils', () => {
       });
     });
 
+    it('clears a stale soft fallback notice on a metadata-only clean completion', () => {
+      setupDefaultState({
+        storyText: 'Same story',
+        currentEvent: {
+          story: 'Same story',
+          options: [{ text: 'Continue' }],
+          delivery_notice: {
+            code: 'SOFT_VALIDATION_FALLBACK',
+            summary: 'Old notice',
+            reason: 'Old reason',
+            retryable: true,
+            attempts_used: 3,
+          },
+        },
+      });
+
+      handleEventComplete({
+        event_description: 'Same story',
+        options: [{ text: 'Continue' }],
+      }, mockHandlers);
+
+      expect(mockHandlers.setCurrentEvent).toHaveBeenCalledWith({
+        story: 'Same story',
+        options: [{ text: 'Continue' }],
+      });
+    });
+
     it('clears processing state', () => {
       setupDefaultState({ storyText: '', currentEvent: null });
       handleEventComplete({ event_description: 'Story', options: [{ text: 'Option' }] } as Record<string, unknown>, mockHandlers);

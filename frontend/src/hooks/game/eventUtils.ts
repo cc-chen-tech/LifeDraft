@@ -262,9 +262,10 @@ export function handleEventComplete(
 
   if (optionsChanged) setOptions(receivedOptions);
   if (storyChanged) setStoryText(result.finalStory);
-  if (optionsChanged || storyChanged) {
-    setCurrentEvent(buildCurrentEvent(eventData, result.finalStory, receivedOptions));
-  }
+  // Completion metadata is replacement-based: even if text/options are
+  // unchanged, a clean event must clear an earlier fallback notice and a
+  // degraded event must attach its new notice.
+  setCurrentEvent(buildCurrentEvent(eventData, result.finalStory, receivedOptions));
   // 延迟切换到 options 阶段，让用户看到完整故事后再选择
   setTimeout(() => {
     if (!isCurrentRun()) {

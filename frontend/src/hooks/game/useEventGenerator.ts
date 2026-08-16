@@ -12,7 +12,11 @@ import type {
 } from "@/components/narrative-loading/NarrativeLoadingState";
 import { handleEventComplete, handleStatusUpdate, type EventHandlers } from "./eventUtils";
 import { parseSSEError } from "./choiceUtils";
-import { fetchGameplayStateSnapshot, fetchPersistedEventSnapshot } from "./eventRecovery";
+import {
+  fetchGameplayStateSnapshot,
+  fetchPersistedEventSnapshot,
+  type PersistedEventSnapshot,
+} from "./eventRecovery";
 import {
   abortableSleep,
   beginGameplayRun,
@@ -244,13 +248,23 @@ export function useEventGenerator({
       }));
     };
 
-    const commitPersistedCompletion = (story: string, persistedOptions: EventOption[]) => {
+    const commitPersistedCompletion = (
+      snapshot: PersistedEventSnapshot,
+      completedStory?: string,
+    ) => {
       if (!isLive()) return;
+      const story = completedStory || snapshot.story;
       terminal = true;
       clearWatchdog();
       if (story.trim()) setStoryText(story);
-      setOptions(persistedOptions);
-      setCurrentEvent({ story, options: persistedOptions });
+      setOptions(snapshot.options);
+      setCurrentEvent({
+        story,
+        options: snapshot.options,
+        ...(snapshot.delivery_notice
+          ? { delivery_notice: snapshot.delivery_notice }
+          : {}),
+      });
       setProcessing(false);
       setConnectionStatus(null);
       setReconnectAttempt(null);
@@ -319,7 +333,7 @@ export function useEventGenerator({
               ? snapshot.story
               : recoveredPartialStory || useGameStore.getState().storyText;
             if (completedStory.trim()) {
-              commitPersistedCompletion(completedStory, snapshot.options);
+              commitPersistedCompletion(snapshot, completedStory);
               return;
             }
           }
@@ -327,7 +341,13 @@ export function useEventGenerator({
           if (snapshot?.story.trim()) {
             recoveredPartialStory = snapshot.story;
             setStoryText(snapshot.story);
-            setCurrentEvent({ story: snapshot.story, options: [] });
+            setCurrentEvent({
+              story: snapshot.story,
+              options: [],
+              ...(snapshot.delivery_notice
+                ? { delivery_notice: snapshot.delivery_notice }
+                : {}),
+            });
           }
         } catch (pollError) {
           if (!isLive() || isAbortError(pollError)) return;
@@ -399,7 +419,7 @@ export function useEventGenerator({
         if (snapshot?.options.length) {
           const completedStory = snapshot.story || useGameStore.getState().storyText;
           if (completedStory.trim()) {
-            commitPersistedCompletion(completedStory, snapshot.options);
+            commitPersistedCompletion(snapshot, completedStory);
             return;
           }
         }

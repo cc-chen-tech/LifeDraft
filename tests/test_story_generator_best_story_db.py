@@ -173,7 +173,16 @@ class TestStoryGeneratorBestStoryFallback:
         ) * 6
         story_b = story_a.replace("清晨", "上午", 1)
         story_c = story_a.replace("清晨", "午后", 1)
-        client.call.side_effect = [story_a, story_b, story_c]
+        stories = iter([story_a, story_b, story_c])
+
+        def stream_candidate(**kwargs):
+            story = next(stories)
+            callback = kwargs.get("stream_callback")
+            if callback:
+                callback(story)
+            return story
+
+        client.call.side_effect = stream_candidate
 
         gen._harness_enabled = True
         gen._validation_pipeline = MagicMock()
@@ -220,6 +229,7 @@ class TestStoryGeneratorBestStoryFallback:
             ],
         )
 
+        streamed_chunks = []
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
             mock_quick.return_value = SimpleNamespace(
                 passed=True,
@@ -233,6 +243,7 @@ class TestStoryGeneratorBestStoryFallback:
                 round_number=0,
                 round_context="",
                 option_generator=option_generator,
+                stream_callback=streamed_chunks.append,
             )
 
         assert client.call.call_count == 3
@@ -241,6 +252,7 @@ class TestStoryGeneratorBestStoryFallback:
         assert event.delivery_notice.code == "SOFT_VALIDATION_FALLBACK"
         assert event.delivery_notice.attempts_used == 3
         assert "内部" not in event.delivery_notice.reason
+        assert streamed_chunks == [story_b]
         option_generator.generate_options_only.assert_not_called()
 
     def test_hard_rejected_candidates_never_enter_soft_fallback_pool(self):
@@ -250,10 +262,17 @@ class TestStoryGeneratorBestStoryFallback:
             "你在会议室里见到一个与既有设定冲突的人物，对方要求你立刻放弃已经确认的计划。"
             "你没有接受这个要求，而是重新核对关系记录、时间线和当天必须完成的事项。"
         ) * 10
-        client.call.side_effect = [rejected_story, rejected_story, rejected_story]
+        def stream_rejected(**kwargs):
+            callback = kwargs.get("stream_callback")
+            if callback:
+                callback(rejected_story)
+            return rejected_story
+
+        client.call.side_effect = stream_rejected
         gen._harness_enabled = False
         option_generator = MagicMock()
 
+        streamed_chunks = []
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
             mock_quick.return_value = SimpleNamespace(
                 passed=False,
@@ -268,6 +287,85 @@ class TestStoryGeneratorBestStoryFallback:
                     round_number=0,
                     round_context="",
                     option_generator=option_generator,
+                    stream_callback=streamed_chunks.append,
                 )
 
+        assert streamed_chunks == []
         option_generator.generate_options_only.assert_not_called()
+
+    def test_every_harness_critical_failure_is_hard(self):
+        """任何 Harness critical 类别都不能作为干净或软告警稿交付。"""
+        gen, client = self._make_generator(QualityLevel.EXPERT)
+        story = (
+            "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
+            "同事随后与你确认下一步安排，你决定先验证关键假设，再继续推进合作。"
+        ) * 10
+        client.call.side_effect = [story, story, story]
+        gen._soft_narrative_lengths = True
+        gen._harness_enabled = True
+        gen._validation_pipeline = MagicMock()
+        critical = SimpleNamespace(
+            constraint_type="third_person",
+            evidence="叙事视角不符合要求",
+        )
+        gen._validation_pipeline.validate.return_value = SimpleNamespace(
+            passed=False,
+            score=20.0,
+            critical_failures=[critical],
+            high_warnings=[],
+            medium_notes=[],
+            low_notes=[],
+        )
+        gen._diagnostics = MagicMock()
+        gen._diagnostics.generate_report.return_value = {}
+        streamed_chunks = []
+
+        with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
+            mock_quick.return_value = SimpleNamespace(passed=True, issues=[], warnings=[])
+            with pytest.raises(StoryGenerationFailure):
+                gen.generate_round_event(
+                    player_state={"game_id": 1, "current_week": 1},
+                    language="zh",
+                    round_number=0,
+                    round_context="",
+                    option_generator=MagicMock(),
+                    stream_callback=streamed_chunks.append,
+                )
+
+        assert streamed_chunks == []
+
+    def test_consistency_repair_is_rechecked_by_quick_validator(self):
+        """一致性修订改变文本后，新的硬 quick finding 必须阻止交付。"""
+        gen, client = self._make_generator(QualityLevel.EXPERT)
+        initial_story = (
+            "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
+            "同事随后与你确认下一步安排，你决定先验证关键假设，再继续推进合作。"
+        ) * 10
+        repaired_but_hard_invalid = initial_story.replace("同事", "名单外人物", 1)
+        client.call.return_value = initial_story
+        gen._soft_narrative_lengths = True
+        gen._harness_enabled = False
+        gen._validate_and_retry_story = MagicMock(return_value=repaired_but_hard_invalid)
+        streamed_chunks = []
+
+        with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
+            mock_quick.side_effect = [
+                SimpleNamespace(passed=True, issues=[], warnings=[]),
+                SimpleNamespace(
+                    passed=False,
+                    issues=["名单外命名角色：名单外人物"],
+                    warnings=[],
+                ),
+            ] * 3
+            with pytest.raises(StoryGenerationFailure):
+                gen.generate_round_event(
+                    player_state={"game_id": 1, "current_week": 1},
+                    language="zh",
+                    round_number=0,
+                    round_context="",
+                    world_model=object(),
+                    option_generator=MagicMock(),
+                    stream_callback=streamed_chunks.append,
+                )
+
+        assert streamed_chunks == []
