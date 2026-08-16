@@ -12,6 +12,12 @@ _CLAUSE_BOUNDARY = re.compile(r"[，,]+")
 _POS_PREFIX_FUNCTION_TAGS = frozenset({"c", "d", "e", "f", "o", "t", "u", "y"})
 _POS_DETERMINER_TAGS = frozenset({"r"})
 _STRUCTURAL_PARTICLE_TAGS = frozenset({"uj"})
+_HUMAN_PRONOUNS = frozenset({"他", "她", "它", "他们", "她们", "本人"})
+_HUMAN_ROLE_TERMS = frozenset(
+    {"向导", "对手", "朋友", "客人", "店主", "老板", "船夫", "守卫", "士兵"}
+)
+_SUBJECT_PREDICATE_TERMS = frozenset({"决定", "说", "打算", "选择", "准备"})
+_MOVEMENT_PREDICATE_TERMS = frozenset({"前进"})
 
 try:
     from jieba import Tokenizer as _JiebaTokenizer
@@ -186,19 +192,41 @@ def _leading_tracked_name(candidate: str, tracked_names: Sequence[str]) -> str |
     )
 
 
-def _starts_relative_person_subject(
-    tokens: Sequence[tuple[str, str]], tracked_names: Sequence[str]
-) -> bool:
+def _relative_subject_tokens(
+    tokens: Sequence[tuple[str, str]],
+) -> tuple[tuple[str, str], ...]:
     for index, (word, tag) in enumerate(tokens):
         if word != "的" and tag not in _STRUCTURAL_PARTICLE_TAGS:
             continue
-        subject_tokens = _initial_subject_tokens(tokens[index + 1 :])
-        if not subject_tokens:
-            continue
-        if _joined_known_name(subject_tokens, tracked_names) is not None:
-            return True
-        return subject_tokens[0][1].startswith(("n", "r"))
-    return False
+        return _initial_subject_tokens(tokens[index + 1 :])
+    return ()
+
+
+def _is_high_confidence_person(
+    subject_tokens: Sequence[tuple[str, str]], tracked_names: Sequence[str]
+) -> bool:
+    if not subject_tokens:
+        return False
+    if _joined_known_name(subject_tokens, tracked_names) is not None:
+        return True
+    word, tag = subject_tokens[0]
+    return (
+        tag == "nr"
+        or word in _HUMAN_PRONOUNS
+        or word in _HUMAN_ROLE_TERMS
+        or word.endswith("人")
+    )
+
+
+def _has_subject_predicate(tokens: Sequence[tuple[str, str]]) -> bool:
+    return any(word in _SUBJECT_PREDICATE_TERMS for word, _ in tokens)
+
+
+def _has_location_or_movement_predicate(tokens: Sequence[tuple[str, str]]) -> bool:
+    return any(
+        word in _LOCATION_TERMS or word in _MOVEMENT_PREDICATE_TERMS
+        for word, _ in tokens
+    )
 
 
 def _valid_prepositional_prefix(tokens: Sequence[tuple[str, str]]) -> bool:
@@ -215,8 +243,14 @@ def _is_safe_subjectless_continuation(
     tokens = _pos_tokens(candidate)
     if not tokens:
         return False
-    if _starts_relative_person_subject(tokens, tracked_names):
-        return False
+    relative_subject = _relative_subject_tokens(tokens)
+    if relative_subject:
+        if _is_high_confidence_person(relative_subject, tracked_names):
+            return False
+        if _has_subject_predicate(relative_subject):
+            return False
+        if not _has_location_or_movement_predicate(relative_subject):
+            return False
     location_index = next(
         (index for index, (word, _) in enumerate(tokens) if word in _LOCATION_TERMS),
         None,

@@ -389,3 +389,35 @@ def test_determiner_prefixed_token_spans_bind_only_exact_known_names(
         world_projection_coverage._leading_tracked_name(candidate, tracked_names)
         == expected_subject
     )
+
+
+@pytest.mark.parametrize(
+    "relative_location_clause",
+    ["向朋友的住所前进", "在东海的街道前进", "在码头的客栈落脚"],
+)
+def test_relative_location_or_object_phrases_keep_a_subjectless_movement(
+    relative_location_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{relative_location_clause}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" in signals.categories
+
+
+@pytest.mark.parametrize(
+    "relative_person_clause",
+    ["在东海的路人决定留守", "在东海的路人抵达东海"],
+)
+def test_relative_person_subjects_reset_before_subject_or_movement_predicates(
+    relative_person_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{relative_person_clause}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" not in signals.categories
