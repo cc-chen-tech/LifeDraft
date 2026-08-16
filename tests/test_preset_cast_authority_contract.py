@@ -919,6 +919,25 @@ def test_quick_validator_does_not_borrow_person_context_from_later_sentence() ->
     assert result.issues == []
 
 
+def test_quick_validator_does_not_treat_human_object_as_subject_context() -> None:
+    """An indefinite human object does not identify coordinated subjects."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然与同事复盘项目，"
+            "方向键与安全阀共同确定三名顾问的权限。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
 def test_quick_validator_ignores_coordinated_governance_common_nouns() -> None:
     """Governance objects shaped like names are not coordinated people."""
     from src.ai.quick_validator import quick_validate_story
