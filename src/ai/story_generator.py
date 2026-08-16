@@ -221,7 +221,10 @@ class StoryGenerator:
                 get_generation_budget(self.quality_level.value).expected_seconds + 30
             )
             return float(generation_tracker.cap_timeout(fallback) or fallback)
-        if narrative_budget is not None and narrative_budget.total_deadline_seconds is not None:
+        if (
+            narrative_budget is not None
+            and narrative_budget.total_deadline_seconds is not None
+        ):
             return float(narrative_budget.total_deadline_seconds)
         budget = get_generation_budget(self.quality_level.value)
         return float(budget.expected_seconds + 30)
@@ -467,6 +470,28 @@ class StoryGenerator:
                 "hard_established_facts",
                 established_facts,
             )
+            character_habits = getattr(
+                world_model,
+                "hard_character_habits",
+                character_habits,
+            )
+            resolved_prompt_context = "\n\n".join(
+                value
+                for value in (
+                    getattr(world_model, "canonical_tail", ""),
+                    getattr(world_model, "soft_context", ""),
+                )
+                if value
+            )
+            if resolved_prompt_context:
+                last_event_description = "\n\n".join(
+                    value
+                    for value in (
+                        last_event_description,
+                        "【已解析世界上下文】\n" + resolved_prompt_context,
+                    )
+                    if value
+                )
 
         story_prompt = get_story_only_prompt(
             player_state,
@@ -678,7 +703,11 @@ class StoryGenerator:
         """
         timeline = player_state.get("timeline")
         daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
-        if daily_mode or self._unified_narrative_budgets or narrative_budget is not None:
+        if (
+            daily_mode
+            or self._unified_narrative_budgets
+            or narrative_budget is not None
+        ):
             narrative_budget = narrative_budget or resolve_narrative_budget(
                 NarrativeKind.ROUND,
                 GenerationOperation.GENERATE,
@@ -941,12 +970,10 @@ class StoryGenerator:
                     finding.fingerprint,
                 )
 
-        def _hard_findings(findings: list[ValidationFinding]) -> list[ValidationFinding]:
-            return [
-                finding
-                for finding in findings
-                if finding.severity.value == "hard"
-            ]
+        def _hard_findings(
+            findings: list[ValidationFinding],
+        ) -> list[ValidationFinding]:
+            return [finding for finding in findings if finding.severity.value == "hard"]
 
         def _set_best_story(candidate: Optional[str]) -> None:
             if not candidate:
@@ -1104,10 +1131,8 @@ class StoryGenerator:
                 }
                 quick_retry_used = False
                 locally_usable_story = quick_result.passed
-                repeated_from_previous_candidate = (
-                    first_hard_fingerprints.intersection(
-                        previous_hard_fingerprints
-                    )
+                repeated_from_previous_candidate = first_hard_fingerprints.intersection(
+                    previous_hard_fingerprints
                 )
                 quick_circuit_broken = False
                 if repeated_from_previous_candidate:
@@ -1174,9 +1199,11 @@ class StoryGenerator:
                             retry_result.issues,
                         )
                         locally_usable_story = False
-                        repeated_hard_fingerprints = first_hard_fingerprints.intersection(
-                            finding.fingerprint
-                            for finding in _hard_findings(last_findings)
+                        repeated_hard_fingerprints = (
+                            first_hard_fingerprints.intersection(
+                                finding.fingerprint
+                                for finding in _hard_findings(last_findings)
+                            )
                         )
                         if repeated_hard_fingerprints:
                             logger.warning(
@@ -1639,11 +1666,7 @@ class StoryGenerator:
             player_state.get("game_id"),
             self.quality_level.value,
             attempts_used,
-            sum(
-                1
-                for finding in last_findings
-                if finding.severity.value == "hard"
-            ),
+            sum(1 for finding in last_findings if finding.severity.value == "hard"),
         )
         raise StoryGenerationFailure(
             message,
@@ -1959,7 +1982,10 @@ class StoryGenerator:
                         else get_generation_budget(self.quality_level.value).max_tokens
                     ),
                 )
-                if repaired_validation.passed or not repaired_validation.has_critical_issues:
+                if (
+                    repaired_validation.passed
+                    or not repaired_validation.has_critical_issues
+                ):
                     return retry_story
 
                 def _fingerprints(result: Any) -> set[str]:
@@ -1968,7 +1994,9 @@ class StoryGenerator:
                             (
                                 str(issue.dimension).strip().lower()
                                 + "|"
-                                + re.sub(r"\s+", " ", str(issue.description)).strip().lower()
+                                + re.sub(r"\s+", " ", str(issue.description))
+                                .strip()
+                                .lower()
                             ).encode("utf-8")
                         ).hexdigest()[:16]
                         for issue in result.critical_issues
@@ -2006,7 +2034,11 @@ class StoryGenerator:
 
             return story_text
 
-        except (_EmptyStoryProviderOutput, GenerationBudgetError, StoryGenerationFailure):
+        except (
+            _EmptyStoryProviderOutput,
+            GenerationBudgetError,
+            StoryGenerationFailure,
+        ):
             raise
         except Exception as e:
             logger.error(f"Story validation/retry failed: {e}")
@@ -2048,8 +2080,14 @@ class StoryGenerator:
         if not player_state:
             return None
 
+        from config.feature_flags import get_feature
+
         has_world_context = bool(
             player_state.get("world_model_data")
+            or (
+                get_feature("daily_world_projection_v1")
+                and player_state.get("world_projection_state")
+            )
             or player_state.get("established_facts")
             or player_state.get("character_settings")
         )
@@ -2075,6 +2113,9 @@ class StoryGenerator:
                 timeline=player_state.get("timeline"),
                 timeline_version=player_state.get("timeline_version"),
                 day_history=player_state.get("day_history", []),
+                current_event_data=player_state.get("current_event_data"),
+                character_habits=player_state.get("character_habits", []),
+                world_projection_state=player_state.get("world_projection_state", {}),
             )
             timeline = player_state.get("timeline")
             if isinstance(timeline, dict) and timeline.get("version") == 2:

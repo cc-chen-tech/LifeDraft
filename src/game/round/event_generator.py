@@ -210,7 +210,9 @@ class RoundEventGenerator:
             if event is None:
                 raise StoryGenerationFailure("AI generator returned no round event")
 
-            introduced_people = self._relationship_people_names(staged_state) - before_people
+            introduced_people = (
+                self._relationship_people_names(staged_state) - before_people
+            )
             missing_people = sorted(
                 name
                 for name in introduced_people
@@ -617,12 +619,26 @@ class RoundEventGenerator:
 
                     validation_view = build_validation_world_model(player_state)
                     world_model = validation_view.world_model
-                    if validation_view.soft_context:
+                    resolved_prompt_context = "\n\n".join(
+                        value
+                        for value in (
+                            getattr(world_model, "canonical_tail", ""),
+                            validation_view.soft_context,
+                        )
+                        if value
+                    )
+                    if resolved_prompt_context:
                         round_context = (
-                            f"{round_context}\n\n{validation_view.soft_context}"
+                            f"{round_context}\n\n{resolved_prompt_context}"
                         ).strip()
                     if not validation_view.freshness.world_derivations_are_fresh:
-                        for category in ("location", "commitment", "causal"):
+                        for category in (
+                            "location",
+                            "commitment",
+                            "causal",
+                            "career",
+                            "habit",
+                        ):
                             logger.warning(
                                 "stale_world_constraint_downgraded "
                                 "game_id=%s day_index=%s category=%s reason=%s",
@@ -672,7 +688,11 @@ class RoundEventGenerator:
                 activated_foreshadowing=NarrativeManager.select_foreshadowing_seed(
                     player_state
                 ),
-                character_habits=player_state.character_habits,
+                character_habits=getattr(
+                    world_model,
+                    "hard_character_habits",
+                    player_state.character_habits,
+                ),
                 world_model=world_model,
                 new_character=new_character,
                 status_callback=status_callback,
@@ -1041,7 +1061,9 @@ class RoundEventGenerator:
             last_validation_error = ""
             last_rejected_story = ""
             last_validation_findings = []
-            raw_quality_level = getattr(self.ai_generator, "quality_level", None) or "expert"
+            raw_quality_level = (
+                getattr(self.ai_generator, "quality_level", None) or "expert"
+            )
             quality_level = str(getattr(raw_quality_level, "value", raw_quality_level))
             narrative_budget = (
                 resolve_narrative_budget(
@@ -1060,9 +1082,7 @@ class RoundEventGenerator:
                 else None
             )
             max_attempts = (
-                narrative_budget.prose_call_limit
-                if narrative_budget is not None
-                else 2
+                narrative_budget.prose_call_limit if narrative_budget is not None else 2
             )
 
             for attempt in range(max_attempts):
