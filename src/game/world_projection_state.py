@@ -108,6 +108,22 @@ def _valid_materialized_record(category: str, value: Any) -> bool:
     return True
 
 
+def _sanitize_materialized_world(
+    world: Mapping[str, Any],
+) -> dict[str, list[dict[str, Any]]]:
+    sanitized: dict[str, list[dict[str, Any]]] = {}
+    for category in _WORLD_FIELDS:
+        records = world.get(category)
+        if not isinstance(records, (list, tuple)):
+            records = []
+        sanitized[category] = [
+            deepcopy(dict(record))
+            for record in records
+            if _valid_materialized_record(category, record)
+        ]
+    return sanitized
+
+
 def _attach_provenance(
     current: Sequence[Mapping[str, Any]],
     previous: Sequence[Mapping[str, Any]],
@@ -249,19 +265,11 @@ def apply_world_projection_patch(
         raise ValueError("world_projection_option_missing")
     option_patch = WorldPatch.model_validate(raw_option_patch)
 
-    previous = deepcopy(layer["world"])
+    previous = _sanitize_materialized_world(layer["world"])
     adapter = _ProjectionStateAdapter(previous, int(getattr(state, "week", 0)))
     _apply_patch(adapter, story_patch)
     _apply_patch(adapter, option_patch)
-    candidate_world = adapter.materialized_world()
-    candidate_world = {
-        category: [
-            record
-            for record in candidate_world.get(category, [])
-            if _valid_materialized_record(category, record)
-        ]
-        for category in _WORLD_FIELDS
-    }
+    candidate_world = _sanitize_materialized_world(adapter.materialized_world())
     layer["world"] = {
         category: _attach_provenance(
             candidate_world.get(category, []),

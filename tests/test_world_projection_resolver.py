@@ -576,3 +576,83 @@ def test_projection_career_beats_initial_occupation_and_legacy_ledger_role() -> 
         assert "弼马温" in resolved.soft_context
     finally:
         reset_features()
+
+
+def test_projection_career_drops_legacy_mutable_ledger_from_hard_authority() -> None:
+    _enable_projection()
+    try:
+        state = _daily_state(
+            player_name="林岚",
+            continuity_ledger={
+                "immutable_identities": {
+                    "林岚": {
+                        "roles": [],
+                        "relationships": ["主角"],
+                        "life_status": "alive",
+                    }
+                },
+                "timeline": [],
+                "completed_events": {},
+                "mutable_states": {
+                    "health": {
+                        "林岚": {
+                            "subject": "林岚",
+                            "fact": "旧伤未愈",
+                            "source_event_id": "legacy-0",
+                        }
+                    },
+                    "relationships": {
+                        "林岚": {
+                            "subject": "林岚",
+                            "fact": "仍与旧同事合作",
+                            "source_event_id": "legacy-0",
+                        }
+                    },
+                    "facts": {
+                        "career:林岚": {
+                            "subject": "林岚",
+                            "category": "career",
+                            "fact": "记者",
+                            "source_event_id": "legacy-0",
+                        }
+                    },
+                },
+            },
+        )
+        state.world_projection_state["applied_through_day_index"] = 0
+        state.world_projection_state["world"]["career_updates"] = [
+            {
+                "character": "林岚",
+                "current_job": "产品经理",
+                "employer": "星桥科技",
+                "source": {"event_id": "event-0", "revision": 1, "day_index": 0},
+            }
+        ]
+
+        from src.game.world_projection_resolver import resolve_world_context
+
+        resolved = resolve_world_context(state)
+        ledger = resolved.hard_world_model.continuity_ledger
+        constraints = resolved.hard_world_model.build_constraints_text("zh")
+        validation = ledger.validate_story(
+            "林岚是产品经理，正在梳理新版本需求。",
+            date_info={},
+            week=0,
+            round_number=0,
+        )
+
+        assert validation.passed
+        assert not any(
+            issue.code == "identity_role_conflict" for issue in validation.issues
+        )
+        assert ledger.mutable_states == {
+            "health": {},
+            "relationships": {},
+            "facts": {},
+        }
+        assert "产品经理" in constraints
+        for legacy_text in ("记者", "旧伤未愈", "仍与旧同事合作"):
+            assert legacy_text not in constraints
+            assert legacy_text in resolved.soft_context
+    finally:
+        reset_features()

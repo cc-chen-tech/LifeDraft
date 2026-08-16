@@ -108,6 +108,46 @@ def test_projection_materialization_skips_malformed_commitment_parties() -> None
     assert state.world_projection_state["world"]["commitment_updates"] == []
 
 
+def test_next_day_apply_sanitizes_malformed_stored_world_before_fulfillment() -> None:
+    state = PlayerState(week=1)
+    state.world_projection_state["applied_through_day_index"] = 0
+    state.world_projection_state["projected_through_day_index"] = 0
+    state.world_projection_state["world"]["commitment_updates"] = [
+        {
+            "description": "向编辑承诺提交专题",
+            "parties": None,
+            "status": "pending",
+            "source": {"event_id": "event-0", "revision": 1, "day_index": 0},
+        }
+    ]
+    projection = SimpleNamespace(
+        projection_id=2,
+        game_id=156,
+        event_id="event-1",
+        revision=1,
+        day_index=1,
+        source_hash="source-1",
+        status="ready",
+        created_at=None,
+        story_patch_json={
+            "commitment_updates": [
+                {
+                    "action": "fulfilled",
+                    "description": "完成采访并交稿",
+                    "parties": ["林岚", "编辑"],
+                }
+            ]
+        },
+        option_patches_json={"0": {}},
+    )
+
+    assert apply_world_projection_patch(state, projection, option_index=0) is True
+
+    assert state.world_projection_state["world"]["commitment_updates"] == []
+    assert state.world_projection_state["applied_through_day_index"] == 1
+    assert state.world_projection_state["applied_sources"][-1]["day_index"] == 1
+
+
 def test_recompute_watermarks_stops_at_first_non_ready_gap() -> None:
     state = PlayerState()
     state.world_projection_state["applied_through_day_index"] = 4

@@ -278,6 +278,11 @@ def _hard_world_model(
     continuity_ledger = deepcopy(
         dict(_mapping(getattr(player_state, "continuity_ledger", None)))
     )
+    continuity_ledger["mutable_states"] = {
+        "health": {},
+        "relationships": {},
+        "facts": {},
+    }
     identities = _mapping(continuity_ledger.get("immutable_identities"))
     player_name = str(getattr(player_state, "player_name", "") or "")
     player_identity = identities.get(player_name)
@@ -332,6 +337,8 @@ def _soft_context(
     }
     character_settings = _mapping(getattr(player_state, "character_settings", None))
     legacy_occupation = _mapping(character_settings.get("occupation"))
+    legacy_ledger = _mapping(getattr(player_state, "continuity_ledger", None))
+    legacy_mutable_states = _mapping(legacy_ledger.get("mutable_states"))
     payload = {
         "world_model_data": derived_world,
         "established_facts": legacy_facts,
@@ -339,6 +346,7 @@ def _soft_context(
             _sequence(getattr(player_state, "character_habits", None))
         ),
         "initial_occupation": dict(legacy_occupation),
+        "continuity_ledger_mutable_states": deepcopy(dict(legacy_mutable_states)),
         "stale_or_invalid_projection_world": dict(projection_soft_world),
     }
     if not any(payload.values()):
