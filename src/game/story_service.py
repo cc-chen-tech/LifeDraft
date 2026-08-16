@@ -490,6 +490,17 @@ class StoryService:
             story, choice, self.language, established_facts, character_habits
         )
 
+    def extract_daily_world_projection(
+        self,
+        story: str,
+        options: List[Any],
+        tracked_state: Any = None,
+    ) -> Any:
+        """Extract the typed daily projection without invoking weekly extraction."""
+        return self.ai_generator.extract_daily_world_projection(
+            story, options, tracked_state, language=self.language
+        )
+
     def compress_and_extract(
         self,
         story: str,

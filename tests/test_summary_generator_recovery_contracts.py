@@ -2,7 +2,10 @@
 
 import json
 
+import pytest
+
 from src.ai.summary_generator import SummaryGenerator
+from src.game.world_projection_schema import WorldProjectionExtractionError
 
 
 class _DeterministicSummaryClient:
@@ -11,6 +14,11 @@ class _DeterministicSummaryClient:
 
     def call(self, **_kwargs: object) -> str:
         return self.responses.pop(0)
+
+
+class _TimedOutProjectionClient:
+    def call(self, **_kwargs: object) -> str:
+        raise TimeoutError("provider timeout")
 
 
 def test_story_compression_keeps_structured_updates_and_cleans_summary_artifacts() -> None:
@@ -187,3 +195,17 @@ def test_combined_postprocess_prompt_embeds_story_once_with_both_schemas() -> No
     assert '"fact_updates"' in prompt
     assert '"causal_updates"' in prompt
     assert "只返回JSON" in prompt
+
+
+def test_daily_projection_provider_timeout_raises_instead_of_returning_empty() -> None:
+    generator = SummaryGenerator(_TimedOutProjectionClient())
+
+    with pytest.raises(WorldProjectionExtractionError) as caught:
+        generator.extract_daily_world_projection(
+            "黑袍人抵达东海。",
+            [{"text": "进入龙宫"}],
+            {"character_locations": {"黑袍人": {"location": "花果山"}}},
+            language="zh",
+        )
+
+    assert caught.value.code == "provider_timeout"

@@ -440,6 +440,63 @@ class SummaryGenerator:
         )
         return dict(_empty_result)
 
+    def extract_daily_world_projection(
+        self,
+        story: str,
+        options: list[Any],
+        tracked_state: Any = None,
+        *,
+        language: str = "zh",
+    ) -> "WorldProjectionPayload":
+        """Extract a typed daily projection without converting failures to empty data."""
+        from config.prompts import get_daily_world_projection_prompt
+        from src.game.world_projection_schema import (
+            WorldProjectionExtractionError,
+            WorldProjectionPayload,
+            validate_projection_payload,
+        )
+
+        prompt = get_daily_world_projection_prompt(
+            story, options, language, tracked_state
+        )
+        system_prompt = get_system_prompt("story_compressor", language)
+        last_error: Optional[WorldProjectionExtractionError] = None
+        for attempt in range(2):
+            try:
+                content = self.client.call(
+                    system_prompt=system_prompt,
+                    user_prompt=prompt,
+                    temperature=0.5,
+                    max_tokens=4096,
+                )
+                data = extract_json(content)
+                if not isinstance(data, dict):
+                    raise WorldProjectionExtractionError(
+                        f"Daily world projection response was {type(data).__name__}, not a JSON object",
+                        code="invalid_json",
+                    )
+                return validate_projection_payload(data, story, options, tracked_state)
+            except WorldProjectionExtractionError as exc:
+                last_error = exc
+            except TimeoutError as exc:
+                last_error = WorldProjectionExtractionError(
+                    f"Daily world projection provider timed out: {exc}",
+                    code="provider_timeout",
+                )
+            except Exception as exc:
+                last_error = WorldProjectionExtractionError(
+                    f"Daily world projection provider failed: {exc}",
+                    code="provider_error",
+                )
+            logger.warning(
+                "[DailyWorldProjection] attempt %s/2 failed: %s",
+                attempt + 1,
+                last_error,
+            )
+
+        assert last_error is not None
+        raise last_error
+
     def compress_and_extract(
         self,
         story: str,

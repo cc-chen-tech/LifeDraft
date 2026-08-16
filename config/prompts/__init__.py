@@ -73,7 +73,11 @@ from config.prompts.validation_prompts import (
 )
 
 # World state and ending prompts
-from config.prompts.world_prompts import get_ending_prompt, get_world_extraction_prompt
+from config.prompts.world_prompts import (
+    get_daily_world_projection_prompt,
+    get_ending_prompt,
+    get_world_extraction_prompt,
+)
 
 __all__ = [
     # Story prompts
@@ -92,6 +96,7 @@ __all__ = [
     "get_weekly_summary_prompt",
     # World prompts
     "get_ending_prompt",
+    "get_daily_world_projection_prompt",
     "get_world_extraction_prompt",
     # Validation prompts
     "get_story_analysis_prompt",

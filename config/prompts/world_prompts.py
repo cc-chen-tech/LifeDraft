@@ -6,9 +6,60 @@ Contains:
 - get_world_extraction_prompt: World state extraction from stories
 """
 
-from typing import Any, Dict, List, Optional
+import json
+from typing import Any, Dict, List, Optional, Sequence
 
 from src.utils.financial_narrative import sanitize_authoritative_fact_records
+
+
+def get_daily_world_projection_prompt(
+    story: str,
+    options: Sequence[Any],
+    language: str,
+    tracked_state: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Request a typed story patch and one conditional patch per daily option."""
+    options_json = json.dumps(list(options), ensure_ascii=False, default=str)
+    tracked_json = json.dumps(tracked_state or {}, ensure_ascii=False, default=str)
+    if language == "zh":
+        return f"""从已接受的每日故事中提取派生世界变化。故事正文已发生的变化放入 story_patch；每个选项只在该选项被玩家选择后才发生的变化放入 option_patches 对应索引。不得猜测，也不得把选择后的变化写入 story_patch。
+
+故事原文：
+{story}
+
+选项（JSON 数组，索引从 0 开始）：
+{options_json}
+
+已跟踪的派生状态（仅作识别参考）：
+{tracked_json}
+
+只返回 JSON：
+{{
+  "schema_version": 1,
+  "story_patch": {{"fact_updates": [], "foreshadowing_seeds": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": []}},
+  "option_patches": {{"0": {{"fact_updates": [], "foreshadowing_seeds": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": []}}}}
+}}
+
+每个字段必须是数组；option_patches 不得包含不存在的选项索引；无变化时使用空数组。"""
+    return f"""Extract derived world changes from this accepted daily story. Put changes already true in story_patch. Put changes that become true only if the player chooses an option in option_patches at that option's zero-based index. Do not infer facts or place option outcomes in story_patch.
+
+Story:
+{story}
+
+Options (JSON array, zero-based indexes):
+{options_json}
+
+Tracked derived state (recognition reference only):
+{tracked_json}
+
+Return JSON only:
+{{
+  "schema_version": 1,
+  "story_patch": {{"fact_updates": [], "foreshadowing_seeds": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": []}},
+  "option_patches": {{"0": {{"fact_updates": [], "foreshadowing_seeds": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": []}}}}
+}}
+
+Every category must be an array. Do not include unknown option indexes. Use empty arrays for no change."""
 
 
 def get_ending_prompt(
