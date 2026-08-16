@@ -590,7 +590,7 @@ def _parse_srt_cues(subtitle_text: str) -> list[SubtitleCue]:
             continue
         start_ms = _srt_timestamp_ms(match, "start")
         end_ms = _srt_timestamp_ms(match, "end")
-        if end_ms <= start_ms or (cues and start_ms < cues[-1].start_ms):
+        if end_ms <= start_ms or (cues and start_ms < cues[-1].end_ms):
             raise ValueError("MiniMax subtitles contain invalid timestamps")
         cues.append(
             SubtitleCue(

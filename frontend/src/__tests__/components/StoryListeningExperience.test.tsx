@@ -930,6 +930,30 @@ describe("StoryListeningExperience", () => {
     expect(load).not.toHaveBeenCalled();
   });
 
+  it("keeps the silent-stall watchdog armed after crossing into the next paragraph cue", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 1,
+    });
+    fireEvent.playing(audio);
+    fireEvent.timeUpdate(audio);
+
+    audio.currentTime = 4.1;
+    fireEvent.timeUpdate(audio);
+    expect(await screen.findByText("第 2 段")).toBeInTheDocument();
+
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
   it("cancels a pending recovery when the listener selects a daily choice", async () => {
     jest.useFakeTimers();
     const { onSelectChoice } = renderExperience();

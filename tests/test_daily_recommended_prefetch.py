@@ -11,7 +11,12 @@ import pytest
 from src.ai.models import EventOption, GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.api.schemas import ReadingContext
-from src.database.models import DailyRecommendedPrefetch, VoiceReadingJob
+from src.database.models import (
+    DailyRecommendedPrefetch,
+    GeneratedVoiceAsset,
+    VoiceReadingJob,
+    VoiceReadingSegment,
+)
 from src.game.daily_recommendation import prepare_daily_option_recommendation
 from src.game.daily_timeline import build_daily_timeline
 from src.game.round.daily_choice_processor import project_daily_choice
@@ -470,6 +475,80 @@ def test_terminal_prefetch_cleanup_keeps_recent_rows_for_seven_days(
         assert observer.get(DailyRecommendedPrefetch, recent_id) is not None
     finally:
         observer.close()
+
+
+def test_expired_prefetch_cleanup_removes_audio_and_subtitle_sidecar(
+    db_engine, monkeypatch, tmp_path
+) -> None:
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=db_engine)
+    asset_dir = tmp_path / "voice-assets"
+    asset_dir.mkdir()
+    audio_path = asset_dir / "prefetched-chapter.mp3"
+    subtitle_path = asset_dir / "prefetched-chapter.srt"
+    audio_path.write_bytes(b"ID3-prefetched-audio")
+    subtitle_path.write_text("1\n00:00:00,000 --> 00:00:01,000\n故事。\n")
+    monkeypatch.setenv("STORY_TTS_ASSET_DIR", str(asset_dir))
+
+    setup = Session()
+    task = DailyRecommendedPrefetchRepository(setup).enqueue(
+        game_id=55,
+        user_id=9,
+        event_id="expired-ready",
+        revision=1,
+        day_index=0,
+        option_index=1,
+        state_fingerprint="expired-ready",
+    )
+    task.status = "ready"
+    asset = GeneratedVoiceAsset(
+        user_id=9,
+        source_type="recommended_prefetch",
+        context_json={"text_hash": "prefetched-text"},
+        text_hash="prefetched-text",
+        voice_id="warm_female",
+        speed=1.0,
+        provider="minimax",
+        model="speech-02-turbo",
+        storage_path="/api/voice-reading/audio/prefetched-chapter.mp3",
+        duration_ms=1_000,
+        status="ready",
+    )
+    setup.add(asset)
+    setup.flush()
+    job = VoiceReadingJob(
+        user_id=9,
+        asset_id=asset.asset_id,
+        context_json={"text_hash": "prefetched-text"},
+        text_hash="prefetched-text",
+        voice_id="warm_female",
+        speed=1.0,
+        status="ready",
+    )
+    setup.add(job)
+    setup.flush()
+    setup.add(
+        VoiceReadingSegment(
+            job_id=job.job_id,
+            asset_id=asset.asset_id,
+            paragraph_index=0,
+            text_hash="paragraph-text",
+            text_content="故事。",
+            status="ready",
+        )
+    )
+    task.tts_job_id = job.job_id
+    task.updated_at = datetime.utcnow() - timedelta(days=8)
+    setup.commit()
+    setup.close()
+    monkeypatch.setattr("src.database.models.SessionLocal", Session)
+
+    removed = cleanup_expired_daily_recommended_prefetch(now=datetime.utcnow())
+
+    assert removed == 1
+    assert not audio_path.exists()
+    assert not subtitle_path.exists()
 
 
 def test_ready_prefetch_is_promoted_inside_atomic_daily_settlement() -> None:
