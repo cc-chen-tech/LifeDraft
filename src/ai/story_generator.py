@@ -46,7 +46,7 @@ from src.ai.long_story_context import (
     prepend_history_prefix,
 )
 from src.ai.generation_budget import get_daily_generation_budget, get_generation_budget
-from src.ai.models import GameEvent
+from src.ai.models import GameEvent, StoryDeliveryNotice
 from src.ai.option_generator import OptionGenerator
 from src.ai.prompt_sanitizer import sanitize_persisted_player_name
 from src.ai.story_exceptions import StoryGenerationFailure
@@ -887,6 +887,8 @@ class StoryGenerator:
             committed_stories.append(opening_story)
 
         best_valid_story_text = ""
+        best_soft_story_text = ""
+        best_soft_story_rank: Optional[tuple[int, float, int, int]] = None
         last_generation_error: Optional[Exception] = None
         last_findings: list[ValidationFinding] = []
         provider_requests_used = 0
@@ -956,6 +958,23 @@ class StoryGenerator:
                 best_valid_story_text = candidate
             elif len(candidate) > len(best_valid_story_text):
                 best_valid_story_text = candidate
+
+        def _remember_soft_story(
+            candidate: str,
+            *,
+            warning_count: int,
+            validation_score: float,
+        ) -> None:
+            nonlocal best_soft_story_text, best_soft_story_rank
+            rank = (
+                max(1, int(warning_count)),
+                -float(validation_score),
+                -len(candidate),
+                provider_requests_used,
+            )
+            if best_soft_story_rank is None or rank < best_soft_story_rank:
+                best_soft_story_text = candidate
+                best_soft_story_rank = rank
 
         def _hard_shape_issues(candidate: str) -> list[str]:
             shape_issues = _localized_story_shape_issues(
@@ -1061,6 +1080,8 @@ class StoryGenerator:
         for attempt in range(max_attempts):
             best_story_before_attempt = best_valid_story_text
             story_text = None
+            candidate_validation_score = 100.0
+            harness_soft_warning_count = 0
             try:
                 attempt_prompt = prompt
                 if retry_hint:
@@ -1289,6 +1310,7 @@ class StoryGenerator:
                                 + "; ".join(retry_shape_issues)
                             )
                     if self._soft_narrative_lengths and retry_quick_result.passed:
+                        last_findings = list(retry_quick_result.findings)
                         _set_best_story(story_text)
                 elif hard_shape_issues:
                     logger.warning(
@@ -1412,6 +1434,11 @@ class StoryGenerator:
                         context=diagnostic_context,
                         profile=self._quality_profile,
                     )
+                    candidate_validation_score = float(validation_result.score)
+                    harness_soft_warning_count = sum(
+                        len(getattr(validation_result, field_name, []) or [])
+                        for field_name in ("high_warnings", "medium_notes", "low_notes")
+                    )
 
                     validation_failures = (
                         validation_result.critical_failures
@@ -1500,6 +1527,27 @@ class StoryGenerator:
                         raise ValueError(
                             "Story harness validation failed after final attempt"
                         )
+
+                soft_warning_count = harness_soft_warning_count + sum(
+                    1
+                    for finding in last_findings
+                    if finding.severity is FindingSeverity.WARNING
+                )
+                if soft_warning_count:
+                    _remember_soft_story(
+                        story_text,
+                        warning_count=soft_warning_count,
+                        validation_score=candidate_validation_score,
+                    )
+                    if provider_requests_used < max_story_requests:
+                        retry_hint = (
+                            "Improve non-blocking story quality warnings while preserving all established facts."
+                        )
+                        logger.info(
+                            "Soft-warning candidate retained; trying another candidate within budget"
+                        )
+                        continue
+                    break
 
                 # Step 2: Generate options based on the story
                 if option_generator is None:
@@ -1592,6 +1640,54 @@ class StoryGenerator:
                 continue
 
             break
+
+        if len(best_soft_story_text) > 20:
+            logger.info(
+                "Using best soft-warning story (%d chars) after all round attempts",
+                len(best_soft_story_text),
+            )
+            fallback_options = OptionGenerator.complete_new_event_options(
+                [],
+                story_description=best_soft_story_text,
+                language=language,
+                decision_history=player_state.get("decision_history", []),
+            )
+            from src.game.daily_transition import prepare_daily_option_transitions
+
+            fallback_options = prepare_daily_option_transitions(
+                fallback_options,
+                player_state,
+                language=language,
+            )
+            if language == "zh":
+                notice_summary = "已展示自动尝试中较好的一稿"
+                notice_reason = (
+                    "这版故事通过了必要检查，但仍有非关键质量提示。"
+                    "你可以继续阅读，也可以重新生成。"
+                )
+            else:
+                notice_summary = "Showing the best available draft"
+                notice_reason = (
+                    "This story passed all required checks but still has non-blocking quality warnings. "
+                    "You can keep reading or regenerate it."
+                )
+            logger.info(
+                "story_generation_outcome operation_id=%s game_id=%s quality=%s "
+                "attempts=%d committed=true fallback=soft_warning",
+                generation_operation_id,
+                player_state.get("game_id"),
+                self.quality_level.value,
+                provider_requests_used,
+            )
+            return GameEvent(
+                event_description=best_soft_story_text,
+                options=fallback_options,
+                delivery_notice=StoryDeliveryNotice(
+                    summary=notice_summary,
+                    reason=notice_reason,
+                    attempts_used=max(1, provider_requests_used),
+                ),
+            )
 
         if len(best_valid_story_text) > 20:
             logger.info(

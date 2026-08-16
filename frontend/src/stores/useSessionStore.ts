@@ -117,6 +117,7 @@ type RecoveredCurrentEvent = {
   event_id?: string;
   revision?: number;
   story_date?: string;
+  delivery_notice?: CurrentEventData["delivery_notice"];
 };
 
 function recoverCurrentEvent(rawEvent: CurrentEventData | null): RecoveredCurrentEvent | null {
@@ -127,6 +128,7 @@ function recoverCurrentEvent(rawEvent: CurrentEventData | null): RecoveredCurren
     ...(rawEvent.event_id ? { event_id: rawEvent.event_id } : {}),
     ...(typeof rawEvent.revision === "number" ? { revision: rawEvent.revision } : {}),
     ...(rawEvent.story_date ? { story_date: rawEvent.story_date } : {}),
+    ...(rawEvent.delivery_notice ? { delivery_notice: rawEvent.delivery_notice } : {}),
   };
 }
 

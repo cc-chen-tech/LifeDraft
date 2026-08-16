@@ -5,6 +5,8 @@ import { renderHook, act } from '@testing-library/react';
 import { usePlayGame } from '@/hooks/usePlayGame';
 import { useGameStore } from '@/stores/useGameStore';
 import { useUIStore } from '@/stores/useUIStore';
+import { useEventStore } from '@/stores/useEventStore';
+import { useSessionStore } from '@/stores/useSessionStore';
 import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 
 import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
@@ -14,6 +16,13 @@ function makeRegenerateResponse() {
   return createSSEMockResponse([
     'event: story\ndata: New regenerated story\n\n',
     'event: complete\ndata: {"event_description":"New regenerated story","options":[{"text":"Option 1"},{"text":"Option 2"}]}\n\n',
+  ]);
+}
+
+function makeSoftFallbackRegenerateResponse() {
+  return createSSEMockResponse([
+    'event: story\ndata: Soft fallback story\n\n',
+    'event: complete\ndata: {"event_description":"Soft fallback story","options":[{"text":"Option 1"},{"text":"Option 2"}],"delivery_notice":{"code":"SOFT_VALIDATION_FALLBACK","summary":"已展示自动尝试中较好的一稿","reason":"这版故事仍有非关键质量提示。","retryable":true,"attempts_used":3}}\n\n',
   ]);
 }
 
@@ -82,6 +91,49 @@ describe('handleRegenerate', () => {
       const { result } = renderHook(() => usePlayGame());
       await act(async () => { result.current.handleRegenerate(); });
       expect(true).toBe(true);
+    });
+
+    it('重新生成成功后保留软告警交付说明', async () => {
+      const completeEvent = {
+        story: 'Original story',
+        options: [{ text: 'Option 1' }, { text: 'Option 2' }],
+        event_id: 'evt-original',
+        revision: 1,
+      };
+      useEventStore.setState({
+        storyText: 'Original story',
+        currentEvent: completeEvent,
+      });
+      useSessionStore.setState({ gameId: 1 });
+      useGameStore.setState({
+        currentEvent: {
+          ...completeEvent,
+        },
+      } as never);
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/regenerate-stream')) {
+          return Promise.resolve(makeSoftFallbackRegenerateResponse());
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({}),
+          text: () => Promise.resolve('{}'),
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as Response);
+      });
+
+      const { result } = renderHook(() => usePlayGame());
+      await act(async () => { await result.current.handleRegenerate(); });
+
+      expect(gameSpy.spies.setCurrentEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          delivery_notice: expect.objectContaining({
+            code: 'SOFT_VALIDATION_FALLBACK',
+            attempts_used: 3,
+          }),
+        }),
+      );
     });
 
     it('应该暴露所有必要的 handler 函数', () => {

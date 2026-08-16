@@ -36,6 +36,7 @@ const mockUsePlayGame = {
   roundInfo: { current_round: 1, rounds_per_week: 3 },
   roundHistory: [],
   storyText: 'This is the current story text.',
+  currentEvent: null,
   isGameOver: false,
   storyContainerRef: { current: null },
   setPhase: jest.fn(),
@@ -1009,6 +1010,31 @@ describe('PlayPage', () => {
       expect(screen.getByText('查看失败详情')).toBeInTheDocument();
       expect(screen.getByText(/REQUIRED_CAST_MISSING/)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '再次生成' })).toBeInTheDocument();
+    });
+
+    it('shows a subdued notice and regeneration action for a soft fallback story', () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        currentEvent: {
+          story: '三次尝试后选出的故事。',
+          options: mockUsePlayGame.options,
+          delivery_notice: {
+            code: 'SOFT_VALIDATION_FALLBACK',
+            summary: '已展示自动尝试中较好的一稿',
+            reason: '这版故事通过了必要检查，但仍有非关键质量提示。你可以继续阅读，也可以重新生成。',
+            retryable: true,
+            attempts_used: 3,
+          },
+        },
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByText('已展示自动尝试中较好的一稿')).toBeInTheDocument();
+      expect(screen.getByText(/仍有非关键质量提示/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '重新生成' })).toBeInTheDocument();
+      expect(screen.queryByText('失败稿没有保存，也没有改动人物关系；你仍可阅读旧故事。')).not.toBeInTheDocument();
     });
   });
 

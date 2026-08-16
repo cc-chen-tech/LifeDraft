@@ -6,11 +6,13 @@
 Layer 4: DB 集成测试 — 生成链路完整性。
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.ai.harness.quality_level import QualityLevel
+from src.ai.models import EventOption, GameEvent
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.ai.story_generator import StoryGenerator
 
@@ -158,3 +160,114 @@ class TestStoryGeneratorBestStoryFallback:
         # 应使用最长文本（第二次的结果）
         assert event.event_description == long_story
         assert len(event.event_description) > len(medium_story)
+
+    def test_expert_uses_all_three_attempts_and_delivers_best_soft_candidate(self):
+        """仅有软告警时应耗尽专家档三次预算，再按告警数和分数择优。"""
+        gen, client = self._make_generator(QualityLevel.EXPERT)
+
+        story_a = (
+            "你在清晨的图书馆整理实验记录，窗外的雨声提醒你即将到来的合作评审。"
+            "你把协议中的风险条款逐条标记，并联系林一凡确认技术接口、预算节奏和联调日期。"
+            "午后，团队针对数据权限和样本交接展开讨论，你提出先完成小范围验证，再把结果带回项目会上复盘。"
+            "傍晚离开实验室前，你写下明天要跟进的三项事项，也决定把尚未解决的顾虑坦诚告诉合作方。"
+        ) * 6
+        story_b = story_a.replace("清晨", "上午", 1)
+        story_c = story_a.replace("清晨", "午后", 1)
+        client.call.side_effect = [story_a, story_b, story_c]
+
+        gen._harness_enabled = True
+        gen._validation_pipeline = MagicMock()
+        gen._validation_pipeline.validate.side_effect = [
+            SimpleNamespace(
+                passed=True,
+                score=99.0,
+                critical_failures=[],
+                high_warnings=[
+                    SimpleNamespace(constraint_type="pacing"),
+                    SimpleNamespace(constraint_type="style"),
+                ],
+                medium_notes=[],
+                low_notes=[],
+            ),
+            SimpleNamespace(
+                passed=True,
+                score=91.0,
+                critical_failures=[],
+                high_warnings=[SimpleNamespace(constraint_type="pacing")],
+                medium_notes=[],
+                low_notes=[],
+            ),
+            SimpleNamespace(
+                passed=True,
+                score=83.0,
+                critical_failures=[],
+                high_warnings=[SimpleNamespace(constraint_type="pacing")],
+                medium_notes=[],
+                low_notes=[],
+            ),
+        ]
+        gen._retry_controller = MagicMock()
+        gen._diagnostics = MagicMock()
+        gen._diagnostics.generate_report.return_value = {}
+        gen._harness_metrics = MagicMock()
+
+        option_generator = MagicMock()
+        option_generator.generate_options_only.return_value = GameEvent(
+            event_description="unused",
+            options=[
+                EventOption(text="继续核对", effects={}),
+                EventOption(text="联系伙伴", effects={}),
+            ],
+        )
+
+        with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
+            mock_quick.return_value = SimpleNamespace(
+                passed=True,
+                issues=[],
+                warnings=[],
+            )
+
+            event = gen.generate_round_event(
+                player_state={"game_id": 1, "current_week": 1},
+                language="zh",
+                round_number=0,
+                round_context="",
+                option_generator=option_generator,
+            )
+
+        assert client.call.call_count == 3
+        assert event.event_description == story_b
+        assert event.delivery_notice is not None
+        assert event.delivery_notice.code == "SOFT_VALIDATION_FALLBACK"
+        assert event.delivery_notice.attempts_used == 3
+        assert "内部" not in event.delivery_notice.reason
+        option_generator.generate_options_only.assert_not_called()
+
+    def test_hard_rejected_candidates_never_enter_soft_fallback_pool(self):
+        """所有候选均有硬错误时仍须失败，且不能为拒绝稿生成选项。"""
+        gen, client = self._make_generator(QualityLevel.EXPERT)
+        rejected_story = (
+            "你在会议室里见到一个与既有设定冲突的人物，对方要求你立刻放弃已经确认的计划。"
+            "你没有接受这个要求，而是重新核对关系记录、时间线和当天必须完成的事项。"
+        ) * 10
+        client.call.side_effect = [rejected_story, rejected_story, rejected_story]
+        gen._harness_enabled = False
+        option_generator = MagicMock()
+
+        with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
+            mock_quick.return_value = SimpleNamespace(
+                passed=False,
+                issues=["名单外命名角色：冲突人物"],
+                warnings=[],
+            )
+
+            with pytest.raises(StoryGenerationFailure):
+                gen.generate_round_event(
+                    player_state={"game_id": 1, "current_week": 1},
+                    language="zh",
+                    round_number=0,
+                    round_context="",
+                    option_generator=option_generator,
+                )
+
+        option_generator.generate_options_only.assert_not_called()

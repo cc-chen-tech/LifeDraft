@@ -108,6 +108,7 @@ export default function PlayPage() {
     progress,
     roundInfo,
     storyText,
+    currentEvent,
 
     // Refs
     storyContainerRef,
@@ -909,6 +910,29 @@ export default function PlayPage() {
             onRetry: handleRetryGeneration,
           }}
         />
+        )}
+
+        {currentEvent?.delivery_notice && phase === "options" && !isViewingHistory && (
+          <aside
+            aria-live="polite"
+            className="mt-5 border-t border-[var(--border-default)] pt-3 text-xs leading-5 text-[var(--text-secondary)]"
+          >
+            <p className="font-medium text-[var(--text-primary)]">
+              {currentEvent.delivery_notice.summary}
+            </p>
+            <p>{currentEvent.delivery_notice.reason}</p>
+            {currentEvent.delivery_notice.retryable && (
+              <Button
+                type="button"
+                variant="quiet"
+                size="sm"
+                className="mt-1 h-auto min-h-0 px-0 py-1 text-xs"
+                onClick={handleCoordinatedRegenerate}
+              >
+                重新生成
+              </Button>
+            )}
+          </aside>
         )}
         </>
         )}

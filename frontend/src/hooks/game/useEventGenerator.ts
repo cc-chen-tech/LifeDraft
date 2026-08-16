@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useGameStore } from "@/stores/useGameStore";
 import { streamGameEvent } from "@/lib/sse";
 import type { GenerationFailurePayload, StreamActivityKind } from "@/lib/sse";
-import type { EventOption } from "@/lib/types";
+import type { EventOption, StoryDeliveryNotice } from "@/lib/types";
 import type { Phase, ConnectionStatus } from "./usePhaseManager";
 import type {
   NarrativeLoadingOperation,
@@ -38,7 +38,7 @@ interface UseEventGeneratorParams {
   setOptions: (options: EventOption[]) => void;
   setStoryText: (text: string) => void;
   appendStoryText: (text: string) => void;
-  setCurrentEvent: (event: { story: string; options: EventOption[]; event_id?: string; revision?: number; story_date?: string } | null) => void;
+  setCurrentEvent: (event: { story: string; options: EventOption[]; event_id?: string; revision?: number; story_date?: string; delivery_notice?: StoryDeliveryNotice } | null) => void;
   setGameOver: (gameOver: boolean) => void;
   setRoundSummary: (summary: string | null) => void;
   setRegenerationFailure?: (failure: GenerationFailurePayload | null) => void;
