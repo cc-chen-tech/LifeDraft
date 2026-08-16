@@ -170,7 +170,9 @@ class TestCustomChoicePersistence:
         assert (
             custom_record.get("is_custom") is True
         ), "加载后的自定义选择记录必须保留 is_custom=True"
-        assert custom_record.get("effects", {}).get("wealth") == -100
+        effects = custom_record.get("effects", {})
+        assert effects.get("mood") == 15
+        assert "wealth" not in effects
 
         patcher1.stop()
         patcher2.stop()
