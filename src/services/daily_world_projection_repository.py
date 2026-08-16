@@ -213,6 +213,34 @@ class DailyWorldProjectionRepository:
         )
         return self._finish_fenced_update("renew_lease", projection_id, updated)
 
+    def release_lease(
+        self,
+        projection_id: int,
+        worker_id: str,
+        now: datetime,
+        *,
+        source_hash: str,
+    ) -> bool:
+        """Make one generation's running lease immediately reclaimable."""
+
+        updated = (
+            self.db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.projection_id == projection_id,
+                DailyWorldProjection.status == "running",
+                DailyWorldProjection.lease_owner == worker_id,
+                DailyWorldProjection.source_hash == source_hash,
+            )
+            .update(
+                {
+                    DailyWorldProjection.lease_expires_at: now,
+                    DailyWorldProjection.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
+        return self._finish_fenced_update("release_lease", projection_id, updated)
+
     def mark_ready(
         self,
         projection_id: int,

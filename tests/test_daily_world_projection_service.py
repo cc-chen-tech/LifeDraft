@@ -930,6 +930,7 @@ def test_stop_restart_cancels_old_generation_after_blocked_provider_returns(
     service.start()
     old_cancel = service._cancel_event
     assert old_cancel is not None
+    service._generation_owners[id(old_cancel)] = "worker-a"
     worker = threading.Thread(
         target=service._process_claim, args=(row_id, now, old_cancel)
     )
@@ -1048,6 +1049,7 @@ def test_stop_before_final_publish_commit_rolls_back_ready_and_cancels_attempt(
     service.start()
     cancel = service._cancel_event
     assert cancel is not None
+    service._generation_owners[id(cancel)] = "worker-a"
     worker = threading.Thread(target=service._process_claim, args=(row_id, now, cancel))
     worker.start()
     assert flushed.wait(1)
@@ -1109,6 +1111,7 @@ def test_final_publish_commit_before_stop_keeps_ready_and_success(tmp_path) -> N
     service.start()
     cancel = service._cancel_event
     assert cancel is not None
+    service._generation_owners[id(cancel)] = "worker-a"
     worker = threading.Thread(target=service._process_claim, args=(row_id, now, cancel))
     worker.start()
     assert committed.wait(1)
@@ -1121,3 +1124,80 @@ def test_final_publish_commit_before_stop_keeps_ready_and_success(tmp_path) -> N
         attempt = session.query(DailyWorldProjectionAttempt).one()
         assert stored.status == "ready_no_change"
         assert (attempt.outcome, attempt.error_code) == ("success", None)
+
+
+def test_stop_during_heartbeat_commit_is_nonblocking_and_releases_old_lease(
+    tmp_path,
+) -> None:
+    """A stopped generation cannot leave a post-stop heartbeat lease extension."""
+    from src.services.daily_world_projection import DailyWorldProjectionService
+    from src.services.daily_world_projection_repository import (
+        DailyWorldProjectionRepository,
+        ProjectionIdentity,
+    )
+
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'heartbeat-stop.sqlite'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    with sessions() as session:
+        session.add(Game(game_id=9, initial_state={}))
+        row = DailyWorldProjectionRepository(session).ensure_projection(
+            ProjectionIdentity(game_id=9, event_id="event-1", revision=1, day_index=0),
+            compute_projection_source_hash("故事", ["选项"]),
+        )
+        row.status = "running"
+        row.lease_expires_at = now + timedelta(minutes=5)
+        row_id, source_hash = row.projection_id, row.source_hash
+        session.commit()
+
+    commit_started, release_commit = threading.Event(), threading.Event()
+    service = DailyWorldProjectionService(
+        session_factory=sessions,
+        worker_id="worker-a",
+        claim_limit=0,
+        now_fn=lambda: now + timedelta(minutes=4),
+        before_lease_commit=lambda: (commit_started.set(), release_commit.wait()),
+    )
+    service.start()
+    cancel = service._cancel_event
+    assert cancel is not None
+    owner = service._owner_for(cancel)
+    with sessions() as session:
+        stored = session.get(DailyWorldProjection, row_id)
+        stored.lease_owner = owner
+        session.commit()
+
+    class Done:
+        calls = 0
+
+        def wait(self, _timeout: float) -> bool:
+            self.calls += 1
+            return self.calls > 1
+
+    heartbeat = threading.Thread(
+        target=service._lease_heartbeat,
+        args=(row_id, source_hash, Done(), owner, cancel),
+    )
+    heartbeat.start()
+    assert commit_started.wait(1)
+    import time
+
+    started = time.monotonic()
+    service.stop(wait=False)
+    assert time.monotonic() - started < 0.2
+    release_commit.set()
+    heartbeat.join()
+
+    with sessions() as session:
+        stored = session.get(DailyWorldProjection, row_id)
+        assert stored.lease_expires_at == now + timedelta(minutes=4)
+        assert (
+            DailyWorldProjectionRepository(session)
+            .claim_due(now + timedelta(minutes=4), "new-worker", 1)[0]
+            .lease_owner
+            == "new-worker"
+        )
