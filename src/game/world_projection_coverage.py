@@ -8,7 +8,7 @@ from typing import Any, Mapping, Sequence
 
 _SENTENCE_BOUNDARY = re.compile(r"[。！？!?；;]+")
 _CLAUSE_BOUNDARY = re.compile(r"[，,]+")
-_SUBJECT_CONNECTOR_PREFIXES = (
+_CONTINUATION_ADVERBS = (
     "此时",
     "这时",
     "这时候",
@@ -18,6 +18,7 @@ _SUBJECT_CONNECTOR_PREFIXES = (
     "而后",
     "与此同时",
 )
+_SUBJECTLESS_DIRECTION_PREFIXES = ("向", "对", "把", "在", "从", "往")
 _LOCATION_TERMS = (
     "抵达",
     "到达",
@@ -71,7 +72,6 @@ def _clause_contexts(
     story: str,
     options: Sequence[Any],
     tracked_names: Sequence[str],
-    boundary_names: Sequence[str],
 ) -> tuple[tuple[str, bool], ...]:
     source_texts = [str(story or "")]
     source_texts.extend(
@@ -86,11 +86,16 @@ def _clause_contexts(
                 clause = clause.strip()
                 if not clause:
                     continue
-                boundary_name = _leading_boundary_name(clause, boundary_names)
-                if boundary_name is not None:
-                    active_tracked_subject = (
-                        boundary_name if boundary_name in tracked_names else None
-                    )
+                candidate = _normalized_clause_start(clause)
+                tracked_subject = _leading_tracked_name(candidate, tracked_names)
+                if tracked_subject is not None:
+                    active_tracked_subject = tracked_subject
+                elif active_tracked_subject and _is_safe_subjectless_continuation(
+                    candidate
+                ):
+                    pass
+                else:
+                    active_tracked_subject = None
                 contexts.append((clause, active_tracked_subject is not None))
     return tuple(contexts)
 
@@ -99,53 +104,32 @@ def _has_tracked_entity(clause: str, tracked_names: Sequence[str]) -> bool:
     return any(name in clause for name in tracked_names)
 
 
-def _boundary_names(
-    tracked_state: Any, tracked_names: Sequence[str]
-) -> tuple[str, ...]:
-    names = list(tracked_names)
-    if not isinstance(tracked_state, Mapping):
-        return tuple(names)
-    for key in ("commitments", "active_commitments", "causal_chains"):
-        records = tracked_state.get(key)
-        if isinstance(records, Mapping):
-            records = (
-                (records,)
-                if "parties" in records or "characters" in records
-                else tuple(records.values())
-            )
-        if not isinstance(records, (list, tuple)):
-            continue
-        for record in records:
-            if not isinstance(record, Mapping):
-                continue
-            for field in ("parties", "characters"):
-                people = record.get(field)
-                if isinstance(people, str) and people.strip():
-                    names.append(people.strip())
-                elif isinstance(people, (list, tuple)):
-                    names.extend(
-                        person.strip()
-                        for person in people
-                        if isinstance(person, str) and person.strip()
-                    )
-    return tuple(sorted(set(names), key=len, reverse=True))
-
-
-def _leading_boundary_name(clause: str, boundary_names: Sequence[str]) -> str | None:
-    candidate = clause.lstrip()
+def _normalized_clause_start(clause: str) -> str:
+    candidate = clause.lstrip(" \t、，,；;：:—-")
     while True:
         connector = next(
             (
                 prefix
-                for prefix in _SUBJECT_CONNECTOR_PREFIXES
+                for prefix in _CONTINUATION_ADVERBS
                 if candidate.startswith(prefix)
             ),
             None,
         )
         if connector is None:
             break
-        candidate = candidate[len(connector) :].lstrip()
-    return next((name for name in boundary_names if candidate.startswith(name)), None)
+        candidate = candidate[len(connector) :].lstrip(" \t、，,；;：:—-")
+    return candidate
+
+
+def _leading_tracked_name(candidate: str, tracked_names: Sequence[str]) -> str | None:
+    return next((name for name in tracked_names if candidate.startswith(name)), None)
+
+
+def _is_safe_subjectless_continuation(candidate: str) -> bool:
+    """Allow carry-over only for grammar that explicitly omits a subject."""
+    return candidate.startswith(_SUBJECTLESS_DIRECTION_PREFIXES) or any(
+        candidate.startswith(term) for term in _LOCATION_TERMS
+    )
 
 
 def _known_record_terms(
@@ -194,7 +178,6 @@ def detect_world_change_signals(
 ) -> WorldChangeSignals:
     """Return correlated evidence only; this detector never constructs a patch."""
     tracked_names = _tracked_character_names(tracked_state)
-    boundary_names = _boundary_names(tracked_state, tracked_names)
     known_commitment_terms = _known_record_terms(
         tracked_state,
         ("commitments", "active_commitments"),
@@ -224,9 +207,7 @@ def detect_world_change_signals(
             if term not in matches:
                 matches.append(term)
 
-    for clause, has_location_subject in _clause_contexts(
-        story, options, tracked_names, boundary_names
-    ):
+    for clause, has_location_subject in _clause_contexts(story, options, tracked_names):
         has_tracked_entity = _has_tracked_entity(clause, tracked_names)
         if has_location_subject:
             record("location_updates", _matching_terms(clause, _LOCATION_TERMS))

@@ -179,3 +179,19 @@ def test_time_connector_before_known_person_resets_the_carried_subject() -> None
     )
 
     assert "location_updates" not in signals.categories
+
+
+@pytest.mark.parametrize(
+    "noun_prefixed_clause",
+    ["但孙悟空决定留守", "然而猪八戒说自己不走", "路人决定继续赶路", "小李决定留下"],
+)
+def test_nominal_prefixes_conservatively_reset_a_carried_subject(
+    noun_prefixed_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{noun_prefixed_clause}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" not in signals.categories
