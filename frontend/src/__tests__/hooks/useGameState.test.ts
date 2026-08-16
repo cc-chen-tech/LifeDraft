@@ -312,6 +312,24 @@ describe('useGameState', () => {
       expect(mockSetters.setProcessing).toHaveBeenCalledWith(false);
     });
 
+    it('marks the durable command failed when the stream rejects before callbacks', async () => {
+      const { streamRegenerate } = require('@/lib/sse');
+      (streamRegenerate as jest.Mock).mockRejectedValueOnce(new Error('Network unavailable'));
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      await act(async () => {
+        await result.current.handleDailyStoryAction();
+      });
+
+      expect(result.current.dailyGenerationCommand).toEqual(expect.objectContaining({
+        status: 'failed',
+        mode: 'replace_current',
+      }));
+      expect(result.current.dailyGenerationCommand?.failure?.summary).toBe(
+        '重新生成失败',
+      );
+    });
+
     it('restores the old story and exposes structured failure details', async () => {
       const { streamRegenerate } = require('@/lib/sse');
       (streamRegenerate as jest.Mock).mockImplementation(async (gameId: number, callbacks: any) => {

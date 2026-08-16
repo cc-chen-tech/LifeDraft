@@ -3,25 +3,32 @@
 import { RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import type { DailyGenerationCommandState } from "@/hooks/game/dailyGenerationCommand";
 import { formatDailyDate } from "@/lib/dailyTransition";
 
 
 export function DailyTransitionLayer({
   transitionText,
   nextDate,
-  failed,
+  generation,
   onRetry,
 }: {
   transitionText: string;
   nextDate: string;
-  failed: boolean;
-  onRetry: () => void;
+  generation: DailyGenerationCommandState;
+  onRetry: () => void | Promise<void>;
 }) {
+  const isBusy = generation.status === "starting" || generation.status === "running";
+  const isFailed = generation.status === "failed";
+  const attemptProgress = generation.attempt !== null && generation.maxAttempts !== null
+    ? `第 ${generation.attempt}/${generation.maxAttempts} 次`
+    : null;
+
   return (
     <section
       role="status"
       aria-live="polite"
-      aria-busy={!failed}
+      aria-busy={isBusy}
       className="mx-auto flex min-h-[62vh] w-full max-w-3xl flex-col items-center justify-center px-5 py-16 text-center transition-opacity duration-700 motion-reduce:transition-none"
       data-testid="daily-transition-layer"
     >
@@ -44,18 +51,43 @@ export function DailyTransitionLayer({
         </p>
       </div>
 
-      {failed ? (
+      {isFailed ? (
+        <div className="mt-9 flex flex-col items-center gap-4">
+          <div role="alert" className="space-y-2">
+            <p className="text-sm font-medium text-[var(--text-primary)]">
+              {generation.failure?.summary
+                || generation.failure?.message
+                || "故事生成未能完成"}
+            </p>
+            <p className="text-xs text-[var(--text-secondary)]">
+              下一日故事暂未生成，可以再次尝试。
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            <RefreshCw className="mr-2 h-3.5 w-3.5" />
+            再次生成
+          </Button>
+        </div>
+      ) : isBusy ? (
+        <div className="mt-9 flex flex-col items-center gap-3 text-xs tracking-[0.12em] text-[var(--text-secondary)]">
+          <Button variant="outline" size="sm" disabled>
+            <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+            正在生成
+          </Button>
+          {attemptProgress && <span>{attemptProgress}</span>}
+          <span>下一日正在展开</span>
+        </div>
+      ) : generation.status === "succeeded" ? (
+        <div className="mt-9 text-xs tracking-[0.16em] text-[var(--text-secondary)]">
+          下一日已经准备好
+        </div>
+      ) : (
         <div className="mt-9 flex flex-col items-center gap-4">
           <p className="text-sm text-[var(--text-secondary)]">下一日故事暂未生成</p>
           <Button variant="outline" size="sm" onClick={onRetry}>
             <RefreshCw className="mr-2 h-3.5 w-3.5" />
             重试生成
           </Button>
-        </div>
-      ) : (
-        <div className="mt-9 flex items-center gap-2 text-xs tracking-[0.16em] text-[var(--text-secondary)]">
-          <span className="h-1 w-1 animate-pulse rounded-full bg-current motion-reduce:animate-none" />
-          下一日正在展开
         </div>
       )}
     </section>

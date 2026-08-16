@@ -189,6 +189,18 @@ export function useGameState({
       window.sessionStorage.removeItem(cursorStorageKey);
       window.sessionStorage.removeItem(activeStorageKey);
     };
+    const markReplacementFailed = (summary: string) => {
+      updateDailyGenerationCommand((current) => ({
+        ...current,
+        status: "failed",
+        mode: "replace_current",
+        failure: {
+          message: summary,
+          summary,
+          retryable: true,
+        },
+      }));
+    };
     window.sessionStorage.setItem(activeStorageKey, "1");
 
     // Cancel ongoing prefetch
@@ -276,6 +288,7 @@ export function useGameState({
                   console.error("[handleRegenerate] Complete event contained options but no story text");
                   setPhase("error");
                   setRegenerateToast({ type: "error", message: "生成失败，请重试" });
+                  markReplacementFailed("生成失败，请重试");
                   clearRegenerationCursor();
                   reject(new Error("No story text in complete event"));
                   return;
@@ -311,6 +324,7 @@ export function useGameState({
               } else {
                 console.error("[handleRegenerate] No options in complete event");
                 setRegenerateToast({ type: "error", message: "生成失败，请重试" });
+                markReplacementFailed("生成失败，请重试");
                 clearRegenerationCursor();
                 reject(new Error("No options in complete event"));
               }
@@ -340,6 +354,7 @@ export function useGameState({
                   generatingRef.current = false;
                   setPhase("error");
                   setRegenerateToast({ type: "error", message: "会话恢复失败，请刷新页面" });
+                  markReplacementFailed("会话恢复失败，请刷新页面");
                   reject(restoreErr);
                 }
                 return;
@@ -427,6 +442,7 @@ export function useGameState({
             generatingRef.current = false;
             setPhase("error");
             setRegenerateToast({ type: "error", message: "重新生成失败" });
+            markReplacementFailed("重新生成失败");
             reject(err);
           }
         });

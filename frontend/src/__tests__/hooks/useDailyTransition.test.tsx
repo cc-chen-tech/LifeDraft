@@ -122,7 +122,7 @@ describe("useDailyTransition", () => {
     });
     rerender({ phase: "error" });
 
-    expect(result.current.active?.failed).toBe(true);
+    expect(result.current.active).not.toBeNull();
     expect(result.current.active?.nextDate).toBe("2026-08-14");
   });
 
