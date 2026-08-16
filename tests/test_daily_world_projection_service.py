@@ -1,11 +1,23 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import threading
 from types import SimpleNamespace
 from typing import Any, Optional
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import sessionmaker
 
+from src.database.models import (
+    Base,
+    DailyWorldProjection,
+    DailyWorldProjectionAttempt,
+    Game,
+)
 from src.game.world_projection_schema import (
     WorldProjectionExtractionError,
+    WorldPatch,
+    WorldProjectionPayload,
     compute_projection_source_hash,
 )
 
@@ -21,6 +33,12 @@ class FakeSession:
     def close(self) -> None:
         self.closed = True
         self.state.closed_sessions += 1
+
+    def commit(self) -> None:
+        self.state.commits += 1
+
+    def rollback(self) -> None:
+        self.state.rollbacks += 1
 
 
 class FakeRepository:
@@ -86,6 +104,8 @@ class WorkerState:
         self.ready_result = True
         self.retry_result = True
         self.closed_sessions = 0
+        self.commits = 0
+        self.rollbacks = 0
 
 
 def _row(now: datetime, *, source_hash: Optional[str] = None) -> Any:
@@ -353,3 +373,394 @@ def test_enqueue_public_contract_accepts_game_event_and_player_state() -> None:
         12,
     )
     assert source_hash == compute_projection_source_hash("故事", ["选项"])
+
+
+def test_file_sqlite_ensure_commits_before_the_service_session_closes(tmp_path) -> None:
+    """A durable enqueue must survive the short-lived writer session."""
+    from src.services.daily_world_projection import DailyWorldProjectionService
+    from src.services.daily_world_projection_repository import ProjectionIdentity
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'projection.sqlite'}")
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    with sessions() as session:
+        session.add(Game(game_id=9, initial_state={}))
+        session.commit()
+
+    service = DailyWorldProjectionService(session_factory=sessions)
+    service.ensure_world_projection(
+        ProjectionIdentity(game_id=9, event_id="event-1", revision=1, day_index=0),
+        "故事",
+        ["选项"],
+    )
+
+    with sessions() as session:
+        assert session.query(DailyWorldProjection).count() == 1
+
+
+def test_file_sqlite_claim_attempt_and_ready_are_committed_without_provider_session(
+    tmp_path,
+) -> None:
+    """The provider callback observes no open service DB session and all writes persist."""
+    from src.services.daily_world_projection import DailyWorldProjectionService
+    from src.services.daily_world_projection_repository import (
+        DailyWorldProjectionRepository,
+        ProjectionIdentity,
+    )
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'worker.sqlite'}")
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    with sessions() as session:
+        session.add(Game(game_id=9, initial_state={}))
+        repo = DailyWorldProjectionRepository(session)
+        row = repo.ensure_projection(
+            ProjectionIdentity(game_id=9, event_id="event-1", revision=1, day_index=0),
+            compute_projection_source_hash("故事", ["选项"]),
+        )
+        row.next_attempt_at = now - timedelta(seconds=1)
+        session.commit()
+
+    extractor_calls: list[str] = []
+    service = DailyWorldProjectionService(
+        session_factory=sessions,
+        extractor=lambda *_args: (
+            extractor_calls.append("called")
+            or WorldProjectionPayload(
+                story_patch=WorldPatch(),
+                option_patches={0: WorldPatch()},
+                no_change=True,
+            )
+        ),
+        canonical_loader=lambda *_args: {
+            "revision": 1,
+            "story": "故事",
+            "options": ["选项"],
+            "tracked_state": {},
+        },
+        now_fn=lambda: now,
+        worker_id="worker-a",
+    )
+
+    assert service.run_once(now) == 1
+    with sessions() as session:
+        stored = session.query(DailyWorldProjection).one()
+        assert extractor_calls == ["called"]
+        assert stored.status == "ready_no_change"
+
+
+def test_coverage_is_persisted_as_a_json_mapping_not_a_signal_dataclass(
+    tmp_path,
+) -> None:
+    from src.services.daily_world_projection import DailyWorldProjectionService
+    from src.services.daily_world_projection_repository import (
+        DailyWorldProjectionRepository,
+        ProjectionIdentity,
+    )
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'coverage.sqlite'}")
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    with sessions() as session:
+        session.add(Game(game_id=9, initial_state={}))
+        row = DailyWorldProjectionRepository(session).ensure_projection(
+            ProjectionIdentity(game_id=9, event_id="event-1", revision=1, day_index=0),
+            compute_projection_source_hash("黑袍人抵达东海。", ["等待"]),
+        )
+        row.next_attempt_at = now - timedelta(seconds=1)
+        session.commit()
+
+    service = DailyWorldProjectionService(
+        session_factory=sessions,
+        extractor=lambda *_args: WorldProjectionPayload(
+            story_patch=WorldPatch(location_updates=[{"location": "东海"}]),
+            option_patches={0: WorldPatch()},
+        ),
+        canonical_loader=lambda *_args: {
+            "revision": 1,
+            "story": "黑袍人抵达东海。",
+            "options": ["等待"],
+            "tracked_state": {"character_locations": {"黑袍人": "长安"}},
+        },
+        now_fn=lambda: now,
+        worker_id="worker-a",
+    )
+
+    service.run_once(now)
+    with sessions() as session:
+        coverage = session.query(DailyWorldProjection).one().coverage_json
+        assert isinstance(coverage, dict)
+        assert coverage["requires_nonempty_patch"] is True
+
+
+def test_atomic_file_sqlite_slot_reservation_allows_only_one_eighth_call(
+    tmp_path,
+) -> None:
+    """Concurrent projections share one durable game/day provider-call budget."""
+    from src.services.daily_world_projection import DailyWorldProjectionService
+    from src.services.daily_world_projection_repository import (
+        DailyWorldProjectionRepository,
+        ProjectionIdentity,
+    )
+
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'slots.sqlite'}",
+        connect_args={"check_same_thread": False, "timeout": 1},
+    )
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    source_hash = compute_projection_source_hash("故事", ["选项"])
+    with sessions() as session:
+        session.add(Game(game_id=9, initial_state={}))
+        repo = DailyWorldProjectionRepository(session)
+        first = repo.ensure_projection(
+            ProjectionIdentity(game_id=9, event_id="event-1", revision=1, day_index=0),
+            source_hash,
+        )
+        second = repo.ensure_projection(
+            ProjectionIdentity(game_id=9, event_id="event-2", revision=1, day_index=1),
+            source_hash,
+        )
+        for _ in range(7):
+            repo.start_attempt(first.projection_id, 9, now)
+        first_id, second_id = first.projection_id, second.projection_id
+        session.commit()
+
+    service = DailyWorldProjectionService(
+        session_factory=sessions, worker_id="worker-a"
+    )
+    rows = [
+        SimpleNamespace(
+            projection_id=first_id,
+            game_id=9,
+            attempt_count=1,
+            source_hash=source_hash,
+        ),
+        SimpleNamespace(
+            projection_id=second_id,
+            game_id=9,
+            attempt_count=1,
+            source_hash=source_hash,
+        ),
+    ]
+    barrier = threading.Barrier(2)
+    results: list[Optional[int]] = []
+
+    def reserve(row: Any) -> None:
+        barrier.wait()
+        results.append(service._reserve_attempt(row, now))
+
+    threads = [threading.Thread(target=reserve, args=(row,)) for row in rows]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sum(result is not None for result in results) == 1
+    with sessions() as session:
+        assert (
+            session.query(DailyWorldProjectionAttempt).filter_by(game_id=9).count() == 8
+        )
+
+
+@pytest.mark.parametrize(
+    ("zone", "now", "expected_bounds", "expected_next"),
+    [
+        (
+            "Asia/Shanghai",
+            datetime(2026, 8, 17, 16, 30, tzinfo=timezone.utc),
+            (datetime(2026, 8, 17, 16), datetime(2026, 8, 18, 16)),
+            datetime(2026, 8, 18, 16),
+        ),
+        (
+            "America/New_York",
+            datetime(2026, 3, 8, 7, 30, tzinfo=timezone.utc),
+            (datetime(2026, 3, 8, 5), datetime(2026, 3, 9, 4)),
+            datetime(2026, 3, 9, 4),
+        ),
+    ],
+)
+def test_local_day_boundaries_use_iana_zone_and_utc_database_times(
+    zone: str,
+    now: datetime,
+    expected_bounds: tuple[datetime, datetime],
+    expected_next: datetime,
+) -> None:
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    service = DailyWorldProjectionService(
+        session_factory=lambda: pytest.fail("no database"), time_zone=zone
+    )
+
+    assert service.local_day_bounds_utc(now) == expected_bounds
+    assert service.next_local_day(now) == expected_next
+
+
+def test_stop_then_immediate_start_fences_the_old_scanner_generation() -> None:
+    """A released old scanner must not claim again after a new generation starts."""
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    first_entered = threading.Event()
+    first_released = threading.Event()
+    second_entered = threading.Event()
+    calls: list[int] = []
+    service = DailyWorldProjectionService(
+        session_factory=lambda: pytest.fail("scanner fake should not open a session")
+    )
+
+    def run_once(_now: datetime, *, _generation: int, _cancel: Any) -> int:
+        calls.append(_generation)
+        if _generation == 1:
+            first_entered.set()
+            first_released.wait()
+        else:
+            second_entered.set()
+        return 0
+
+    service.run_once = run_once  # type: ignore[method-assign]
+    service.start()
+    assert first_entered.wait(1)
+    service.stop(wait=False)
+    service.start()
+    assert second_entered.wait(1)
+    first_released.set()
+    assert first_released.wait(1)
+    service.stop(wait=False)
+
+    assert calls.count(1) == 1
+    assert 2 in calls
+
+
+def test_transaction_helper_commits_success_and_rolls_back_failure() -> None:
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    state = WorkerState(_row(now))
+    service = _service(state, now, pytest.fail)
+
+    assert service._transaction(lambda _session, _repo: "committed") == "committed"
+    with pytest.raises(RuntimeError, match="boom"):
+        service._transaction(
+            lambda _session, _repo: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
+
+    assert state.commits == 1
+    assert state.rollbacks == 1
+
+
+def test_transaction_helper_retries_sqlite_lock_with_injected_wait() -> None:
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    state = WorkerState(_row(now))
+    waits: list[int] = []
+    calls = 0
+    service = DailyWorldProjectionService(
+        session_factory=lambda: FakeSession(state),
+        repository_factory=lambda _session: FakeRepository(state),
+        lock_retry_wait=waits.append,
+    )
+
+    def write(_session: Any, _repo: Any) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OperationalError("UPDATE", {}, RuntimeError("database is locked"))
+        return "ok"
+
+    assert service._transaction(write) == "ok"
+    assert waits == [0]
+    assert (state.commits, state.rollbacks) == (1, 1)
+
+
+def test_file_sqlite_heartbeat_renewal_commits_and_releases_its_lock(tmp_path) -> None:
+    from src.services.daily_world_projection import DailyWorldProjectionService
+    from src.services.daily_world_projection_repository import (
+        DailyWorldProjectionRepository,
+        ProjectionIdentity,
+    )
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'heartbeat.sqlite'}")
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    with sessions() as session:
+        session.add(Game(game_id=9, initial_state={}))
+        row = DailyWorldProjectionRepository(session).ensure_projection(
+            ProjectionIdentity(game_id=9, event_id="event-1", revision=1, day_index=0),
+            compute_projection_source_hash("故事", ["选项"]),
+        )
+        row.status = "running"
+        row.lease_owner = "worker-a"
+        row.lease_expires_at = now + timedelta(minutes=1)
+        row_id, source_hash = row.projection_id, row.source_hash
+        session.commit()
+
+    service = DailyWorldProjectionService(
+        session_factory=sessions, worker_id="worker-a", now_fn=lambda: now
+    )
+
+    class Done:
+        calls = 0
+
+        def wait(self, _timeout: float) -> bool:
+            self.calls += 1
+            return self.calls > 1
+
+    service._lease_heartbeat(row_id, source_hash, Done())
+    with sessions() as session:
+        stored = session.get(DailyWorldProjection, row_id)
+        assert stored.lease_expires_at == now + timedelta(minutes=5)
+
+
+def test_file_sqlite_typed_failure_commits_retry_and_finished_attempt(tmp_path) -> None:
+    from src.services.daily_world_projection import DailyWorldProjectionService
+    from src.services.daily_world_projection_repository import (
+        DailyWorldProjectionRepository,
+        ProjectionIdentity,
+    )
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'retry.sqlite'}")
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    with sessions() as session:
+        session.add(Game(game_id=9, initial_state={}))
+        row = DailyWorldProjectionRepository(session).ensure_projection(
+            ProjectionIdentity(game_id=9, event_id="event-1", revision=1, day_index=0),
+            compute_projection_source_hash("故事", ["选项"]),
+        )
+        row.next_attempt_at = now - timedelta(seconds=1)
+        session.commit()
+
+    service = DailyWorldProjectionService(
+        session_factory=sessions,
+        extractor=lambda *_args: (_ for _ in ()).throw(
+            WorldProjectionExtractionError("bad response", code="invalid_schema")
+        ),
+        canonical_loader=lambda *_args: {
+            "revision": 1,
+            "story": "故事",
+            "options": ["选项"],
+            "tracked_state": {},
+        },
+        now_fn=lambda: now,
+        worker_id="worker-a",
+    )
+
+    service.run_once(now)
+    with sessions() as session:
+        stored = session.query(DailyWorldProjection).one()
+        attempt = session.query(DailyWorldProjectionAttempt).one()
+        assert (stored.status, stored.error_code, stored.next_attempt_at) == (
+            "failed_retryable",
+            "invalid_schema",
+            now + timedelta(seconds=5),
+        )
+        assert (attempt.outcome, attempt.error_code) == (
+            "extraction_error",
+            "invalid_schema",
+        )

@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Mapping, Optional, Protocol, Union
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from src.database.models import DailyWorldProjection, DailyWorldProjectionAttempt
+from src.database.models import DailyWorldProjection, DailyWorldProjectionAttempt, Game
 
 if TYPE_CHECKING:
     from src.game.world_projection_schema import WorldProjectionPayload
@@ -373,6 +373,47 @@ class DailyWorldProjectionRepository:
         self.db.add(attempt)
         self.db.flush()
         return int(attempt.attempt_id)
+
+    def reserve_attempt_slot(
+        self,
+        projection_id: int,
+        game_id: int,
+        day_start: datetime,
+        day_end: datetime,
+        now: datetime,
+        *,
+        max_attempts: int,
+    ) -> Optional[int]:
+        """Atomically reserve one provider-call slot in the caller transaction.
+
+        PostgreSQL locks the owning game row. SQLite has no row-level lock, so
+        the no-op game update deliberately obtains its writer lock before the
+        count and insert. The service retries transient lock conflicts.
+        """
+
+        dialect = self.db.bind.dialect.name if self.db.bind is not None else ""
+        if dialect == "sqlite":
+            self.db.execute(
+                text(
+                    "UPDATE games SET updated_at = updated_at WHERE game_id = :game_id"
+                ),
+                {"game_id": game_id},
+            )
+        else:
+            self.db.query(Game).filter(Game.game_id == game_id).with_for_update().one()
+
+        count = int(
+            self.db.query(DailyWorldProjectionAttempt)
+            .filter(
+                DailyWorldProjectionAttempt.game_id == game_id,
+                DailyWorldProjectionAttempt.started_at >= day_start,
+                DailyWorldProjectionAttempt.started_at < day_end,
+            )
+            .count()
+        )
+        if count >= max_attempts:
+            return None
+        return self.start_attempt(projection_id, game_id, now)
 
     def finish_attempt(
         self,
