@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from copy import deepcopy
 from threading import RLock
-from typing import Any
+from typing import Any, Optional
 
 from src.ai.models import GameEvent
 
@@ -64,7 +64,7 @@ def regenerate_daily_event_atomically(
     loop: Any,
     *,
     persist_callback: Any = None,
-    operation_id: str | None = None,
+    operation_id: Optional[str] = None,
     **generation_kwargs: Any,
 ) -> GameEvent:
     """Generate a full candidate while keeping the current event recoverable."""
