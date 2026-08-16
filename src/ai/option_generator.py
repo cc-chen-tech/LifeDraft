@@ -154,9 +154,8 @@ class OptionGenerator:
                     temperature=0.7,  # 从 0.8 降至 0.7，减少选项幻觉
                     max_tokens=2000,  # 从 1000 增至 2000，防止截断
                     request_timeout=(
-                        min(
-                            OPTION_GENERATION_REQUEST_TIMEOUT_SECONDS,
-                            generation_tracker.remaining_seconds,
+                        generation_tracker.cap_timeout(
+                            OPTION_GENERATION_REQUEST_TIMEOUT_SECONDS
                         )
                         if generation_tracker is not None
                         else OPTION_GENERATION_REQUEST_TIMEOUT_SECONDS

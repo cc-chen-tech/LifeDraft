@@ -139,6 +139,8 @@ class RoundSystemMixin:
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
         session: Optional[Any] = None,
+        force_regenerate: bool = False,
+        operation_id: Optional[str] = None,
     ) -> Optional[GameEvent]:
         """Generate an event for the current round. Delegates to RoundEventGenerator."""
         if not hasattr(self, "_event_generator_service"):
@@ -147,6 +149,8 @@ class RoundSystemMixin:
             stream_callback=stream_callback,
             status_callback=status_callback,
             session=session,
+            force_regenerate=force_regenerate,
+            operation_id=operation_id,
         )
 
     # ==================== Character Introduction ====================

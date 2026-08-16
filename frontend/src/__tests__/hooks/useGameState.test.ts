@@ -14,7 +14,7 @@ jest.mock('@/lib/sse', () => ({
   streamRegenerate: jest.fn(),
 }));
 
-const STORE_METHODS = ['saveGame', 'syncPlayerState', 'generateSummary'] as const;
+const STORE_METHODS = ['saveGame', 'syncState', 'syncPlayerState', 'generateSummary'] as const;
 
 type StoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (typeof STORE_METHODS)[number]>>;
 
@@ -22,6 +22,10 @@ function setupDefaultState() {
   useGameStore.setState({
     storyText: 'Frontend story',
     gameId: 1,
+    currentEvent: {
+      story: 'Frontend story',
+      options: [{ text: 'Old option' }],
+    },
   } as never);
 }
 
@@ -261,6 +265,64 @@ describe('useGameState', () => {
       expect(mockSetters.setProcessing).toHaveBeenCalledWith(false);
     });
 
+    it('restores the old story and exposes structured failure details', async () => {
+      const { streamRegenerate } = require('@/lib/sse');
+      (streamRegenerate as jest.Mock).mockImplementation(async (gameId: number, callbacks: any) => {
+        callbacks.onStory('被拒绝的候选稿');
+        await callbacks.onError({
+          message: '故事角色一致性检查连续未通过',
+          code: 'REQUIRED_CAST_MISSING',
+          summary: '故事角色一致性检查连续未通过',
+          detail: '当天需要登场的人物没有出现。',
+          retryable: true,
+          attempts_used: 3,
+          quality_level: 'expert',
+          operation_id: 'op-123',
+        });
+      });
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      await act(async () => {
+        await result.current.handleRegenerate();
+      });
+
+      expect(storeSpy.spies.syncState).toHaveBeenCalledWith({ gameId: 1 });
+      expect(mockSetters.setStoryText).toHaveBeenLastCalledWith('Frontend story');
+      expect(mockSetters.setOptions).toHaveBeenLastCalledWith([{ text: 'Old option' }]);
+      expect(mockSetters.setPhase).toHaveBeenLastCalledWith('options');
+      expect(result.current.regenerationFailure).toEqual(expect.objectContaining({
+        code: 'REQUIRED_CAST_MISSING',
+        attempts_used: 3,
+        operation_id: 'op-123',
+      }));
+    });
+
+    it('reconnects regeneration with the last delivered SSE id', async () => {
+      const { streamRegenerate } = require('@/lib/sse');
+      (streamRegenerate as jest.Mock)
+        .mockImplementationOnce(async (_gameId: number, callbacks: any) => {
+          callbacks.onStory('候选稿前半段');
+          callbacks.onEventId(7);
+          await callbacks.onError(new Error('Stream ended without complete event'));
+        })
+        .mockImplementationOnce(async (_gameId: number, callbacks: any) => {
+          callbacks.onStory('候选稿后半段');
+          callbacks.onComplete({
+            event_description: '候选稿前半段候选稿后半段',
+            options: [{ text: '继续' }],
+          });
+        });
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      await act(async () => { await result.current.handleRegenerate(); });
+
+      expect(streamRegenerate).toHaveBeenCalledTimes(2);
+      expect(streamRegenerate.mock.calls[1][2]).toEqual(
+        expect.objectContaining({ lastEventId: 7 })
+      );
+      expect(mockSetters.setPhase).toHaveBeenLastCalledWith('options');
+    });
+
     it('cancels ongoing prefetch before regeneration', async () => {
       mockPrefetchingRef.current = true;
       mockPrefetchAbortRef.current = { abort: jest.fn() } as any;
@@ -324,6 +386,27 @@ describe('useGameState', () => {
       const { result } = renderHook(() => useGameState(defaultParams));
       await act(async () => { await result.current.handleRegenerate(); });
       expect(mockSetters.setProcessing).toHaveBeenCalledWith(true, 'regenerating');
+    });
+
+    it('shows the current retry request and tier limit', async () => {
+      const { streamRegenerate } = require('@/lib/sse');
+      (streamRegenerate as jest.Mock).mockImplementation(async (gameId: number, callbacks: any) => {
+        callbacks.onStatus({
+          phase: 'retry',
+          attempt: 2,
+          max_attempts: 3,
+          quality_level: 'expert',
+        });
+        callbacks.onComplete({
+          event_description: 'Story',
+          options: [{ text: 'Option 1' }],
+        });
+      });
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      await act(async () => { await result.current.handleRegenerate(); });
+
+      expect(mockSetters.setProcessing).toHaveBeenCalledWith(true, 'retry:2/3');
     });
 
     it('sets success toast and clears it after timeout', async () => {

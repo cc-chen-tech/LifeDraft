@@ -1,4 +1,5 @@
 import type { EventOption, PlayerState, GameProgress, RoundInfo } from "@/lib/types";
+import type { GenerationFailurePayload } from "@/lib/sse";
 
 export interface RecoveryContext {
   eventStory?: string | null;
@@ -14,6 +15,19 @@ export interface RecoveredView {
   roundSummary: string;
   summaryText: string;
   error: string;
+}
+
+export function resolveRecoveredGenerationFailure(
+  playerState?: PlayerState | null,
+): GenerationFailurePayload | null {
+  const failure = playerState?.resume_view?.failure;
+  if (!failure || !failure.code) return null;
+  const summary = failure.summary || playerState?.resume_view?.error || "故事生成未能完成";
+  return {
+    message: summary,
+    ...failure,
+    summary,
+  };
 }
 
 export function resolveRecoveredView({

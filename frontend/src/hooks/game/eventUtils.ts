@@ -285,7 +285,7 @@ export function handleEventComplete(
  * 处理状态更新
  */
 export function handleStatusUpdate(
-  status: { phase: string },
+  status: { phase: string; attempt?: number; max_attempts?: number },
   setProcessing: (processing: boolean, message?: string) => void,
   isRetryingRef?: React.MutableRefObject<boolean>,
   onRetry?: () => void,
@@ -300,7 +300,11 @@ export function handleStatusUpdate(
     console.log("[onStatus] Retry event received, clearing story for new content");
     onRetry?.();
     if (isRetryingRef) isRetryingRef.current = true;
-    setProcessing(true, "retrying");
+    const retryProgress = typeof status.attempt === "number"
+      && typeof status.max_attempts === "number"
+      ? `retry:${status.attempt}/${status.max_attempts}`
+      : "retrying";
+    setProcessing(true, retryProgress);
     return;
   }
   setProcessing(true, status.phase);

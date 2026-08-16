@@ -105,7 +105,9 @@ class StoryService:
                 retry_count=1,
                 language=self.language,
                 request_timeout=(
-                    max(0.001, generation_tracker.remaining_seconds)
+                    generation_tracker.cap_timeout(
+                        STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS
+                    )
                     if generation_tracker is not None
                     else STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS
                 ),
@@ -220,7 +222,9 @@ class StoryService:
                 retry_count=1,
                 language=self.language,
                 request_timeout=(
-                    max(0.001, generation_tracker.remaining_seconds)
+                    generation_tracker.cap_timeout(
+                        STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS
+                    )
                     if generation_tracker is not None
                     else STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS
                 ),
@@ -411,7 +415,9 @@ class StoryService:
                 retry_count=1,
                 language=self.language,
                 request_timeout=(
-                    max(0.001, generation_tracker.remaining_seconds)
+                    generation_tracker.cap_timeout(
+                        STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS
+                    )
                     if generation_tracker is not None
                     else STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS
                 ),

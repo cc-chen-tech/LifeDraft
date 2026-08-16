@@ -4,10 +4,12 @@ Handles the core story text generation (Step 1 of the two-stage pipeline),
 consistency validation with retry, and life-phase determination.
 """
 
+import hashlib
 import json
 import logging
 import os
 import re
+import uuid
 from difflib import SequenceMatcher
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional, Union
@@ -48,6 +50,11 @@ from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.prompt_sanitizer import sanitize_persisted_player_name
 from src.ai.story_exceptions import StoryGenerationFailure
+from src.ai.story_validation import (
+    FindingSeverity,
+    ValidationFinding,
+    findings_from_legacy,
+)
 from src.ai.system_prompts import get_system_prompt
 from src.ai.text_quality import normalize_generated_story, validate_narrative_quality
 
@@ -120,7 +127,6 @@ class StoryGenerator:
         self.client = client
         self.quality_level = QualityLevel(quality_level or QualityLevel.EXPERT)
         self._quality_profile = PROFILES[self.quality_level]
-        self._validated_round_keys: set[tuple[Any, Any, Any]] = set()
         self._harness_enabled = self._env_enabled("ENABLE_CONSTRAINT_HARNESS")
         self._soft_narrative_lengths = self._env_enabled(
             "ENABLE_SOFT_NARRATIVE_LENGTHS"
@@ -211,8 +217,11 @@ class StoryGenerator:
     ) -> float:
         """Keep interactive story requests inside the selected quality budget."""
         if generation_tracker is not None:
-            return max(0.001, generation_tracker.remaining_seconds)
-        if narrative_budget is not None:
+            fallback = float(
+                get_generation_budget(self.quality_level.value).expected_seconds + 30
+            )
+            return float(generation_tracker.cap_timeout(fallback) or fallback)
+        if narrative_budget is not None and narrative_budget.total_deadline_seconds is not None:
             return float(narrative_budget.total_deadline_seconds)
         budget = get_generation_budget(self.quality_level.value)
         return float(budget.expected_seconds + 30)
@@ -633,6 +642,7 @@ class StoryGenerator:
         status_callback: Optional[Callable[[str], None]] = None,
         narrative_budget: Optional[NarrativeBudget] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
+        operation_id: Optional[str] = None,
     ) -> GameEvent:
         """
         Generate a single round's story and options.
@@ -660,7 +670,9 @@ class StoryGenerator:
         Returns:
             GameEvent with story and options
         """
-        if self._unified_narrative_budgets or narrative_budget is not None:
+        timeline = player_state.get("timeline")
+        daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
+        if daily_mode or self._unified_narrative_budgets or narrative_budget is not None:
             narrative_budget = narrative_budget or resolve_narrative_budget(
                 NarrativeKind.ROUND,
                 GenerationOperation.GENERATE,
@@ -719,8 +731,6 @@ class StoryGenerator:
             style_constraints=style_constraints,
             quality_level=self.quality_level.value,
         )
-        timeline = player_state.get("timeline")
-        daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
         generation_budget = (
             get_daily_generation_budget(self.quality_level.value)
             if daily_mode
@@ -758,6 +768,30 @@ class StoryGenerator:
                 language,
             )
 
+        resume_view = player_state.get("resume_view")
+        previous_failure = None
+        if isinstance(resume_view, dict):
+            previous_failure = resume_view.get("previous_failure")
+            if previous_failure is None and resume_view.get("phase") == "failed":
+                previous_failure = resume_view.get("failure")
+        if isinstance(previous_failure, dict):
+            failure_code = str(previous_failure.get("code") or "RETRY_EXHAUSTED")[:80]
+            failure_summary = str(previous_failure.get("summary") or "")[:180]
+            if language == "zh":
+                prompt += (
+                    "\n\n【上次手动重试原因】\n"
+                    f"错误编号：{failure_code}\n"
+                    f"原因：{failure_summary}\n"
+                    "请避免再次出现同类问题，但不要虚构新的关系人物来规避检查。"
+                )
+            else:
+                prompt += (
+                    "\n\n[Previous Manual Retry Reason]\n"
+                    f"Code: {failure_code}\n"
+                    f"Reason: {failure_summary}\n"
+                    "Avoid the same issue without inventing replacement relationship characters."
+                )
+
         # Step 1: Generate story text (with optional streaming)
         sys_prompt = get_system_prompt("story_novelist", language)
         history_prefix = self._long_history_prefix(player_state, sys_prompt + prompt)
@@ -783,21 +817,37 @@ class StoryGenerator:
         # 最多尝试次数：默认仅保留 QUICK 重试的一次回退；只有启用约束增强时才走 profile 次数重试。
         # - 无 harness：避免影响现有契约测试（一次主生成 + 一次 quick 重试）
         # - 有 harness：沿用 quality_profile 的重试预算，用于高风险修复。
-        max_attempts = (
+        max_story_requests = (
             narrative_budget.prose_call_limit
             if narrative_budget is not None
-            else (self._quality_profile.max_retries + 1 if self._harness_enabled else 1)
+            else self._quality_profile.max_retries + 1
         )
+        max_attempts = max_story_requests
 
         available_people_names = self._validation_people_names(
             player_state, character_settings
         )
+        required_people_names: list[str] = []
+        for relationship_event in relationship_events or []:
+            if isinstance(relationship_event, dict):
+                required_name = str(
+                    relationship_event.get("character_name")
+                    or relationship_event.get("name")
+                    or ""
+                ).strip()
+                if required_name and required_name not in required_people_names:
+                    required_people_names.append(required_name)
+        if isinstance(new_character, dict):
+            required_name = str(new_character.get("name") or "").strip()
+            if required_name and required_name not in required_people_names:
+                required_people_names.append(required_name)
 
         def _quick_validate_round_story(candidate: str):
             result = quick_validate_story(
                 story_text=candidate,
                 character_settings=character_settings,
                 available_people=available_people_names,
+                required_people=required_people_names,
                 language=language,
             )
             opening_issues = validate_daily_first_opening(
@@ -809,6 +859,11 @@ class StoryGenerator:
             if opening_issues:
                 result.issues.extend(opening_issues)
                 result.passed = False
+            result.findings = findings_from_legacy(
+                issues=result.issues,
+                warnings=result.warnings,
+                source="quick_validator",
+            )
             return result
 
         committed_stories = self._committed_round_stories(
@@ -821,6 +876,65 @@ class StoryGenerator:
 
         best_valid_story_text = ""
         last_generation_error: Optional[Exception] = None
+        last_findings: list[ValidationFinding] = []
+        provider_requests_used = 0
+        generation_operation_id = operation_id or uuid.uuid4().hex
+
+        def _call_candidate_story(**kwargs: Any) -> str:
+            nonlocal provider_requests_used
+            if provider_requests_used >= max_story_requests:
+                raise GenerationBudgetError(
+                    f"prose call allowance exhausted ({provider_requests_used}/{max_story_requests})"
+                )
+            provider_requests_used += 1
+            if status_callback:
+                status_callback(
+                    {
+                        "phase": (
+                            "generating_story"
+                            if provider_requests_used == 1
+                            else "retry"
+                        ),
+                        "attempt": provider_requests_used,
+                        "max_attempts": max_story_requests,
+                        "quality_level": self.quality_level.value,
+                    }
+                )
+            candidate = self._call_required_round_story(**kwargs)
+            candidate_hash = hashlib.sha256(candidate.encode("utf-8")).hexdigest()[:12]
+            logger.info(
+                "story_candidate operation_id=%s game_id=%s quality=%s request=%d "
+                "length=%d hash=%s",
+                generation_operation_id,
+                player_state.get("game_id"),
+                self.quality_level.value,
+                provider_requests_used,
+                len(candidate),
+                candidate_hash,
+            )
+            return candidate
+
+        def _log_findings(findings: list[ValidationFinding], disposition: str) -> None:
+            for finding in findings:
+                logger.info(
+                    "story_finding operation_id=%s game_id=%s request=%d code=%s "
+                    "severity=%s confidence=%.2f disposition=%s fingerprint=%s",
+                    generation_operation_id,
+                    player_state.get("game_id"),
+                    provider_requests_used,
+                    finding.code,
+                    finding.severity.value,
+                    finding.confidence,
+                    disposition,
+                    finding.fingerprint,
+                )
+
+        def _hard_findings(findings: list[ValidationFinding]) -> list[ValidationFinding]:
+            return [
+                finding
+                for finding in findings
+                if finding.severity.value == "hard"
+            ]
 
         def _set_best_story(candidate: Optional[str]) -> None:
             if not candidate:
@@ -891,6 +1005,34 @@ class StoryGenerator:
                 "Regenerate from established facts, character state, and causal history."
             )
 
+        def _build_targeted_repair_prompt(
+            base_prompt: str,
+            rejected_story: str,
+            issues: list[str],
+        ) -> str:
+            issue_lines = "\n".join(f"- {issue}" for issue in issues[:8])
+            if language == "zh":
+                return (
+                    base_prompt
+                    + "\n\n【定点修订 - 返回完整故事】\n"
+                    + "上一稿存在以下确定性问题：\n"
+                    + issue_lines
+                    + "\n\n【上一稿全文】\n"
+                    + rejected_story
+                    + "\n【上一稿结束】\n"
+                    + "请保留合格的情节、文风和事实，只修正上述问题，并返回修订后的完整故事。"
+                )
+            return (
+                base_prompt
+                + "\n\n[Targeted Revision - Return the Full Story]\n"
+                + "The rejected draft has these confirmed issues:\n"
+                + issue_lines
+                + "\n\n[Full Rejected Draft]\n"
+                + rejected_story
+                + "\n[End Rejected Draft]\n"
+                + "Preserve valid plot, style, and facts; fix only the listed issues and return the full revised story."
+            )
+
         # 初始化 Harness 组件（延迟初始化，避免每次构建时重复创建）
         if self._harness_enabled and self._validation_pipeline is None:
             from src.ai.harness import default_registry
@@ -902,6 +1044,7 @@ class StoryGenerator:
             self._diagnostics = ConstraintViolationDiagnostic()
 
         retry_hint = None
+        previous_hard_fingerprints: set[str] = set()
 
         for attempt in range(max_attempts):
             best_story_before_attempt = best_valid_story_text
@@ -921,14 +1064,14 @@ class StoryGenerator:
                     f"Round story attempt {attempt + 1}/{max_attempts}, temperature={current_temp}"
                 )
 
-                story_text = self._call_required_round_story(
+                story_text = _call_candidate_story(
                     language=language,
                     generation_tracker=generation_tracker,
                     system_prompt=sys_prompt,
                     user_prompt=attempt_prompt,
                     temperature=current_temp,
                     max_tokens=active_max_tokens,
-                    stream_callback=stream_callback if attempt == 0 else None,
+                    stream_callback=stream_callback,
                     frequency_penalty=0.4,  # ★ 轮次级别更强的反重复，因为同周多轮更容易重复
                     presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
                     request_timeout=self._story_request_timeout_seconds(
@@ -939,39 +1082,61 @@ class StoryGenerator:
 
                 # Step 1.4: Quick rule-based validation (before AI validation)
                 quick_result = _quick_validate_round_story(story_text)
+                last_findings = list(quick_result.findings)
+                _log_findings(
+                    last_findings,
+                    "retry" if _hard_findings(last_findings) else "accept_warning",
+                )
+                first_hard_fingerprints = {
+                    finding.fingerprint for finding in _hard_findings(last_findings)
+                }
                 quick_retry_used = False
                 locally_usable_story = quick_result.passed
-
-                if not quick_result.passed and allow_quick_regeneration:
-                    logger.warning(f"Quick validation failed: {quick_result.issues}")
-                    retry_lines = "\n".join(
-                        f"- {issue}" for issue in quick_result.issues
+                repeated_from_previous_candidate = (
+                    first_hard_fingerprints.intersection(
+                        previous_hard_fingerprints
                     )
-                    retry_prompt = (
-                        attempt_prompt
-                        + (
-                            "\n\n【快速一致性修正 - 必须重写】\n"
-                            if language == "zh"
-                            else "\n\n[Quick Consistency Fix - Regenerate Required]\n"
-                        )
-                        + retry_lines
-                        + (
-                            "\n请重新生成本轮故事，严格使用可用人物列表和既有人设，不要新增替代关系网络。"
-                            if language == "zh"
-                            else "\nRegenerate this round using the available people list and existing character setup."
-                        )
+                )
+                quick_circuit_broken = False
+                if repeated_from_previous_candidate:
+                    logger.warning(
+                        "Story validation circuit breaker: repeated hard fingerprint(s)=%s",
+                        sorted(repeated_from_previous_candidate),
+                    )
+                    if len(best_valid_story_text) <= 20:
+                        break
+                    story_text = best_valid_story_text
+                    last_findings = []
+                    locally_usable_story = True
+                    quick_circuit_broken = True
+                    previous_hard_fingerprints = set()
+                elif first_hard_fingerprints:
+                    previous_hard_fingerprints = first_hard_fingerprints
+                else:
+                    previous_hard_fingerprints = set()
+
+                if (
+                    not quick_circuit_broken
+                    and not quick_result.passed
+                    and allow_quick_regeneration
+                ):
+                    logger.warning(f"Quick validation failed: {quick_result.issues}")
+                    retry_prompt = _build_targeted_repair_prompt(
+                        attempt_prompt,
+                        story_text,
+                        quick_result.issues,
                     )
                     if status_callback:
                         status_callback("retry")
 
-                    story_text = self._call_required_round_story(
+                    story_text = _call_candidate_story(
                         language=language,
                         generation_tracker=generation_tracker,
                         system_prompt=sys_prompt,
                         user_prompt=retry_prompt,
                         temperature=0.65,
                         max_tokens=active_max_tokens,
-                        stream_callback=stream_callback if attempt == 0 else None,
+                        stream_callback=stream_callback,
                         frequency_penalty=0.4,
                         presence_penalty=0.4,
                         request_timeout=self._story_request_timeout_seconds(
@@ -985,6 +1150,11 @@ class StoryGenerator:
                     )
 
                     retry_result = _quick_validate_round_story(story_text)
+                    last_findings = list(retry_result.findings)
+                    _log_findings(
+                        last_findings,
+                        "retry" if _hard_findings(last_findings) else "accepted",
+                    )
 
                     if not retry_result.passed:
                         logger.warning(
@@ -992,25 +1162,49 @@ class StoryGenerator:
                             retry_result.issues,
                         )
                         locally_usable_story = False
-                        if not (
-                            self._soft_narrative_lengths
-                            and len(best_valid_story_text) > 20
-                        ):
+                        repeated_hard_fingerprints = first_hard_fingerprints.intersection(
+                            finding.fingerprint
+                            for finding in _hard_findings(last_findings)
+                        )
+                        if repeated_hard_fingerprints:
+                            logger.warning(
+                                "Story validation circuit breaker: repeated hard fingerprint(s)=%s",
+                                sorted(repeated_hard_fingerprints),
+                            )
+                            if len(best_valid_story_text) <= 20:
+                                break
+                            story_text = best_valid_story_text
+                        elif provider_requests_used < max_story_requests:
+                            previous_hard_fingerprints = {
+                                finding.fingerprint
+                                for finding in _hard_findings(last_findings)
+                            }
+                            retry_hint = "\n".join(retry_result.issues[:8])
+                            logger.info(
+                                "Hard validation findings changed; trying a fresh candidate within budget"
+                            )
+                            continue
+                        elif len(best_valid_story_text) <= 20:
                             break
-                        story_text = best_valid_story_text
+                        else:
+                            story_text = best_valid_story_text
                     else:
                         locally_usable_story = True
+                        previous_hard_fingerprints = set()
                     if retry_result.warnings:
                         logger.info(
                             "Quick validation retry warnings: %s",
                             retry_result.warnings,
                         )
 
-                elif not quick_result.passed:
+                elif not quick_circuit_broken and not quick_result.passed:
                     locally_usable_story = False
                     logger.warning(
-                        "Fast generation records local validation issues without a second provider call: %s",
+                        "Fast generation rejected deterministic hard validation issues without a second provider call: %s",
                         quick_result.issues,
+                    )
+                    raise ValueError(
+                        "Quick validation failed: " + "; ".join(quick_result.issues)
                     )
                 elif quick_result.warnings:
                     logger.info(f"Quick validation warnings: {quick_result.warnings}")
@@ -1026,14 +1220,14 @@ class StoryGenerator:
                     hard_shape_issues
                     and allow_quick_regeneration
                     and requires_shape_retry
-                    and max_attempts == 1
+                    and provider_requests_used < max_story_requests
                 ):
                     logger.warning(
                         "Story shape validation failed: %s", hard_shape_issues
                     )
                     if status_callback:
                         status_callback("retry")
-                    story_text = self._call_required_round_story(
+                    story_text = _call_candidate_story(
                         language=language,
                         generation_tracker=generation_tracker,
                         system_prompt=sys_prompt,
@@ -1041,7 +1235,7 @@ class StoryGenerator:
                         + _build_shape_retry_instruction(hard_shape_issues),
                         temperature=0.65,
                         max_tokens=active_max_tokens,
-                        stream_callback=stream_callback if attempt == 0 else None,
+                        stream_callback=stream_callback,
                         frequency_penalty=0.4,
                         presence_penalty=0.4,
                         request_timeout=self._story_request_timeout_seconds(
@@ -1089,6 +1283,11 @@ class StoryGenerator:
                         "Story shape issues recorded without another provider retry: %s",
                         hard_shape_issues,
                     )
+                    if not self._soft_narrative_lengths:
+                        raise ValueError(
+                            "Story shape validation failed: "
+                            + "; ".join(hard_shape_issues)
+                        )
                 else:
                     _set_best_story(story_text)
 
@@ -1112,14 +1311,14 @@ class StoryGenerator:
                         "grounded in the current date, unresolved threads, and player state; do not reuse "
                         "the earlier scene, phrasing, or options."
                     )
-                    story_text = self._call_required_round_story(
+                    story_text = _call_candidate_story(
                         language=language,
                         generation_tracker=generation_tracker,
                         system_prompt=sys_prompt,
                         user_prompt=repeat_retry_prompt,
                         temperature=0.65,
                         max_tokens=active_max_tokens,
-                        stream_callback=stream_callback if attempt == 0 else None,
+                        stream_callback=stream_callback,
                         frequency_penalty=0.5,
                         presence_penalty=0.5,
                         request_timeout=self._story_request_timeout_seconds(
@@ -1162,10 +1361,11 @@ class StoryGenerator:
                         language=language,
                         original_prompt=prompt,
                         sys_prompt=sys_prompt,
-                        stream_callback=stream_callback if attempt == 0 else None,
+                        stream_callback=stream_callback,
                         status_callback=status_callback,
                         narrative_budget=narrative_budget,
                         generation_tracker=generation_tracker,
+                        story_call=_call_candidate_story,
                     )
                     post_validation_shape_issues = _hard_shape_issues(story_text)
                     if post_validation_shape_issues:
@@ -1326,6 +1526,20 @@ class StoryGenerator:
                         language=language,
                     )
 
+                logger.info(
+                    "story_generation_outcome operation_id=%s game_id=%s quality=%s "
+                    "attempts=%d warnings=%d committed=true manual_retry=%s",
+                    generation_operation_id,
+                    player_state.get("game_id"),
+                    self.quality_level.value,
+                    provider_requests_used,
+                    sum(
+                        1
+                        for finding in last_findings
+                        if finding.severity.value == "warning"
+                    ),
+                    bool(previous_failure),
+                )
                 return event
 
             except _EmptyStoryProviderOutput as e:
@@ -1335,8 +1549,23 @@ class StoryGenerator:
                 last_generation_error = e
             except GenerationBudgetError as e:
                 logger.warning("Round request budget exhausted: %s", e)
+                best_valid_story_text = ""
                 last_generation_error = e
                 break
+            except StoryGenerationFailure as e:
+                # A candidate rejected by a hard consistency check is never a
+                # safe historical fallback. Preserve its structured findings
+                # for the player-facing terminal failure instead.
+                best_valid_story_text = ""
+                last_findings = list(e.findings)
+                last_generation_error = e
+                logger.warning(
+                    "Round event attempt %d failed hard consistency validation: %s",
+                    attempt + 1,
+                    e,
+                )
+                if e.circuit_break:
+                    raise
             except (ValueError, ValidationError, json.JSONDecodeError) as e:
                 logger.warning(f"Round event attempt {attempt + 1} failed: {e}")
                 last_generation_error = e
@@ -1370,6 +1599,14 @@ class StoryGenerator:
                 player_state,
                 language=language,
             )
+            logger.info(
+                "story_generation_outcome operation_id=%s game_id=%s quality=%s "
+                "attempts=%d committed=true fallback=true",
+                generation_operation_id,
+                player_state.get("game_id"),
+                self.quality_level.value,
+                provider_requests_used,
+            )
             return GameEvent(
                 event_description=best_valid_story_text,
                 options=fallback_options,
@@ -1378,7 +1615,29 @@ class StoryGenerator:
         message = "Story generation failed before producing a valid event"
         if last_generation_error is not None:
             message = f"{message}: {last_generation_error}"
-        raise StoryGenerationFailure(message) from last_generation_error
+        attempts_used = (
+            generation_tracker.prose_calls
+            if generation_tracker is not None
+            else provider_requests_used
+        )
+        logger.info(
+            "story_generation_outcome operation_id=%s game_id=%s quality=%s "
+            "attempts=%d committed=false hard_findings=%d",
+            generation_operation_id,
+            player_state.get("game_id"),
+            self.quality_level.value,
+            attempts_used,
+            sum(
+                1
+                for finding in last_findings
+                if finding.severity.value == "hard"
+            ),
+        )
+        raise StoryGenerationFailure(
+            message,
+            findings=last_findings,
+            attempts_used=attempts_used,
+        ) from last_generation_error
 
     # -------------------- Internal --------------------
 
@@ -1547,6 +1806,7 @@ class StoryGenerator:
         status_callback: Optional[Callable[[str], None]] = None,
         narrative_budget: Optional[NarrativeBudget] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
+        story_call: Optional[Callable[..., str]] = None,
     ) -> str:
         """
         Validate story consistency and retry once if CRITICAL issues found.
@@ -1562,21 +1822,6 @@ class StoryGenerator:
         logger.info(
             f"[_validate_and_retry_story] Entered with stream_callback={stream_callback is not None}"
         )
-
-        round_key = (
-            player_state.get("game_id"),
-            player_state.get("week", player_state.get("current_week")),
-            player_state.get("current_round"),
-        )
-        if round_key in self._validated_round_keys:
-            logger.info(
-                f"Skipping duplicate story consistency validation for round={round_key}"
-            )
-            return story_text
-        # P4-防膨胀：集合跨游戏持续增长，超限时整体重置（去重只需近期轮次）。
-        if len(self._validated_round_keys) > 500:
-            self._validated_round_keys.clear()
-        self._validated_round_keys.add(round_key)
 
         try:
             from src.ai.consistency_validator import ConsistencyValidator
@@ -1622,7 +1867,26 @@ class StoryGenerator:
 
             # Regenerate with fix instructions appended
             # ★ 重要：重试时也需要流式输出，否则前端会显示不完整的旧内容
-            retry_prompt = original_prompt + validation.fix_instructions
+            if language == "zh":
+                retry_prompt = (
+                    original_prompt
+                    + "\n\n【定点一致性修订 - 返回完整故事】\n"
+                    + validation.fix_instructions
+                    + "\n\n【上一稿全文】\n"
+                    + story_text
+                    + "\n【上一稿结束】\n"
+                    + "请保留没有问题的内容，仅修正上述一致性问题，并返回完整故事。"
+                )
+            else:
+                retry_prompt = (
+                    original_prompt
+                    + "\n\n[Targeted Consistency Revision - Return the Full Story]\n"
+                    + validation.fix_instructions
+                    + "\n\n[Full Rejected Draft]\n"
+                    + story_text
+                    + "\n[End Rejected Draft]\n"
+                    + "Preserve valid content, fix the listed consistency issues, and return the full story."
+                )
 
             # ★ 先发送状态提示，让前端显示"正在优化故事"
             if status_callback:
@@ -1648,7 +1912,7 @@ class StoryGenerator:
                 f"Consistency retry with temperature=0.7 (conservative), stream_callback={stream_callback is not None}"
             )
 
-            retry_story = self._call_required_round_story(
+            retry_story = (story_call or self._call_required_round_story)(
                 language=language,
                 generation_tracker=generation_tracker,
                 system_prompt=sys_prompt,
@@ -1669,15 +1933,89 @@ class StoryGenerator:
 
             if retry_story:
                 logger.info(f"重试生成完成，故事长度: {len(retry_story)}")
-                return retry_story
+                repaired_validation = validator.validate_story(
+                    story_text=retry_story,
+                    world_model=world_model,
+                    player_state_dict=player_state,
+                    character_settings=character_settings,
+                    language=language,
+                    run_ai_validation=not self._quality_profile.skip_ai_consistency_check,
+                    generation_tracker=generation_tracker,
+                    max_output_tokens=(
+                        narrative_budget.max_output_tokens
+                        if narrative_budget is not None
+                        else get_generation_budget(self.quality_level.value).max_tokens
+                    ),
+                )
+                if repaired_validation.passed or not repaired_validation.has_critical_issues:
+                    return retry_story
+
+                def _fingerprints(result: Any) -> set[str]:
+                    return {
+                        hashlib.sha256(
+                            (
+                                str(issue.dimension).strip().lower()
+                                + "|"
+                                + re.sub(r"\s+", " ", str(issue.description)).strip().lower()
+                            ).encode("utf-8")
+                        ).hexdigest()[:16]
+                        for issue in result.critical_issues
+                    }
+
+                original_fingerprints = _fingerprints(validation)
+                repaired_fingerprints = _fingerprints(repaired_validation)
+                repeated = bool(original_fingerprints & repaired_fingerprints)
+                findings = [
+                    ValidationFinding(
+                        code="VALIDATION_FAILED",
+                        severity=FindingSeverity.HARD,
+                        confidence=0.9,
+                        source="consistency_validator",
+                        message=issue.description,
+                        evidence=issue.description,
+                        repair_instruction=issue.fix_suggestion,
+                    )
+                    for issue in repaired_validation.critical_issues
+                ]
+                raise StoryGenerationFailure(
+                    (
+                        "repeated consistency hard fingerprint after targeted repair"
+                        if repeated
+                        else "consistency repair still contains hard findings"
+                    ),
+                    findings=findings,
+                    attempts_used=(
+                        generation_tracker.prose_calls
+                        if generation_tracker is not None
+                        else 1
+                    ),
+                    circuit_break=repeated,
+                )
 
             return story_text
 
-        except _EmptyStoryProviderOutput:
+        except (_EmptyStoryProviderOutput, GenerationBudgetError, StoryGenerationFailure):
             raise
         except Exception as e:
             logger.error(f"Story validation/retry failed: {e}")
-            return story_text
+            raise StoryGenerationFailure(
+                "consistency validation service unavailable",
+                findings=[
+                    ValidationFinding(
+                        code="VALIDATION_SERVICE_ERROR",
+                        severity=FindingSeverity.HARD,
+                        confidence=1.0,
+                        source="consistency_validator",
+                        message="故事一致性校验服务暂时不可用",
+                        repair_instruction="稍后重新生成并再次校验",
+                    )
+                ],
+                attempts_used=(
+                    generation_tracker.prose_calls
+                    if generation_tracker is not None
+                    else 1
+                ),
+            ) from e
 
     @staticmethod
     def _get_phase_from_state(player_state: Dict[str, Any]) -> str:

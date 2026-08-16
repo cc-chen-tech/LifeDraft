@@ -387,6 +387,17 @@ describe('eventUtils', () => {
       setStateSpy.mockRestore();
     });
 
+    it('includes the retry request number when the backend provides a budget', () => {
+      const setProcessing = jest.fn();
+
+      handleStatusUpdate(
+        { phase: 'retry', attempt: 2, max_attempts: 10 },
+        setProcessing,
+      );
+
+      expect(setProcessing).toHaveBeenCalledWith(true, 'retry:2/10');
+    });
+
     it('passes through other status phases', () => {
       const setProcessing = jest.fn();
       handleStatusUpdate({ phase: 'generating_story' }, setProcessing);

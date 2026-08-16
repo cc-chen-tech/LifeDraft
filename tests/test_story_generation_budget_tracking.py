@@ -78,7 +78,7 @@ def test_story_provider_call_consumes_prose_before_invocation() -> None:
     generator = StoryGenerator(client, quality_level="expert")
     tracker = _tracker()
 
-    for _ in range(2):
+    for _ in range(3):
         generator._call_required_round_story(
             language="zh",
             generation_tracker=tracker,
@@ -96,8 +96,8 @@ def test_story_provider_call_consumes_prose_before_invocation() -> None:
             max_tokens=2048,
         )
 
-    assert len(client.calls) == 2
-    assert tracker.prose_calls == 2
+    assert len(client.calls) == 3
+    assert tracker.prose_calls == 3
 
 
 def test_retry_wrapper_propagates_budget_exhaustion_without_provider_call(
@@ -346,9 +346,9 @@ def test_consistency_provider_call_consumes_validation_and_uses_request_tokens()
 
     assert result.passed
     assert second.passed
-    assert len(client.calls) == 1
+    assert len(client.calls) == 2
     assert client.calls[0]["max_tokens"] == 2048
-    assert tracker.validation_calls == 1
+    assert tracker.validation_calls == 2
 
 
 class RecordingStreamGenerator:
@@ -385,9 +385,9 @@ def test_opening_stream_uses_opening_budget_and_shared_tracker(
     assert call["generation_tracker"].prose_calls == 1
 
 
-@pytest.mark.parametrize(("quality", "deadline"), [("fast", 60), ("expert", 120), ("master", 240)])
+@pytest.mark.parametrize(("quality", "deadline"), [("fast", 60), ("expert", 120), ("master", None)])
 def test_opening_inherits_active_quality_deadline(
-    monkeypatch: pytest.MonkeyPatch, quality: str, deadline: int
+    monkeypatch: pytest.MonkeyPatch, quality: str, deadline: int | None
 ) -> None:
     monkeypatch.setenv("ENABLE_UNIFIED_NARRATIVE_BUDGETS", "true")
     generator = RecordingStreamGenerator(quality)
@@ -511,7 +511,7 @@ def test_truncation_recovery_consumes_same_prose_allowance_and_stops_on_exhausti
         generation_tracker=tracker,
     )
 
-    assert recovered == "开头被截断继续写出尚未完成的部分"
-    assert len(continuation_calls) == 1
+    assert recovered == "开头被截断继续写出尚未完成的部分继续写出尚未完成的部分"
+    assert len(continuation_calls) == 2
     assert continuation_calls[0]["_allow_truncation_recovery"] is False
-    assert tracker.prose_calls == 2
+    assert tracker.prose_calls == 3

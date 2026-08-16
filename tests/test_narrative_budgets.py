@@ -27,11 +27,11 @@ from src.ai.generation_budget import get_generation_budget
     ),
     [
         ("fast", "zh", 400, 700, 1400, 1024, 60, (1, 0, 1)),
-        ("expert", "zh", 800, 1400, 2400, 2048, 120, (2, 1, 2)),
-        ("master", "zh", 1200, 2200, 4000, 4096, 240, (3, 2, 2)),
+        ("expert", "zh", 800, 1400, 2400, 2048, 120, (3, 2, 2)),
+        ("master", "zh", 1200, 2200, 4000, 4096, None, (10, 2, 2)),
         ("fast", "en", 250, 450, 900, 1024, 60, (1, 0, 1)),
-        ("expert", "en", 500, 900, 1500, 2048, 120, (2, 1, 2)),
-        ("master", "en", 800, 1400, 2500, 4096, 240, (3, 2, 2)),
+        ("expert", "en", 500, 900, 1500, 2048, 120, (3, 2, 2)),
+        ("master", "en", 800, 1400, 2500, 4096, None, (10, 2, 2)),
     ],
 )
 def test_round_budget_defaults_are_localized_and_orthogonal(
@@ -41,7 +41,7 @@ def test_round_budget_defaults_are_localized_and_orthogonal(
     target_max: int,
     compression_threshold: int,
     max_output_tokens: int,
-    deadline: int,
+    deadline: int | None,
     call_limits: tuple[int, int, int],
 ) -> None:
     budget = resolve_narrative_budget(
@@ -94,7 +94,7 @@ def test_opening_and_continuation_have_kind_specific_defaults(
         budget.max_output_tokens,
         budget.length.unit,
     ) == expected
-    assert budget.total_deadline_seconds == 240
+    assert budget.total_deadline_seconds is None
 
 
 def test_rewrite_derives_soft_band_but_keeps_request_execution_budget() -> None:
@@ -108,8 +108,8 @@ def test_rewrite_derives_soft_band_but_keeps_request_execution_budget() -> None:
 
     assert (budget.length.target_min, budget.length.target_max) == (1600, 2400)
     assert budget.max_output_tokens == 2048
-    assert budget.prose_call_limit == 2
-    assert budget.validation_call_limit == 1
+    assert budget.prose_call_limit == 3
+    assert budget.validation_call_limit == 2
     assert budget.total_deadline_seconds == 120
 
 
@@ -180,17 +180,19 @@ def test_call_tracker_consumes_before_overflowing_each_category() -> None:
 
     assert tracker.consume("prose") == 1
     assert tracker.consume("prose") == 2
+    assert tracker.consume("prose") == 3
     with pytest.raises(GenerationBudgetExceeded, match="prose"):
         tracker.consume("prose")
-    assert tracker.prose_calls == 2
+    assert tracker.prose_calls == 3
 
     assert tracker.consume("validation") == 1
+    assert tracker.consume("validation") == 2
     with pytest.raises(GenerationBudgetExceeded, match="validation"):
         tracker.consume("validation")
-    assert tracker.validation_calls == 1
+    assert tracker.validation_calls == 2
 
 
-@pytest.mark.parametrize("quality,total", [("fast", 2), ("expert", 5), ("master", 7)])
+@pytest.mark.parametrize("quality,total", [("fast", 2), ("expert", 7), ("master", 14)])
 def test_quality_total_call_ceiling_matches_product_contract(quality: str, total: int) -> None:
     budget = resolve_narrative_budget(
         NarrativeKind.ROUND,
@@ -234,6 +236,16 @@ def test_call_tracker_exposes_remaining_total_deadline() -> None:
     now[0] += 25.5
 
     assert tracker.remaining_seconds == pytest.approx(94.5)
+
+
+def test_master_call_tracker_has_no_aggregate_deadline() -> None:
+    now = [10.0]
+    budget = resolve_narrative_budget("round", "generate", "master", "zh")
+    tracker = GenerationCallTracker(budget, clock=lambda: now[0])
+    now[0] += 10_000
+
+    assert tracker.remaining_seconds is None
+    assert tracker.consume("prose") == 1
 
 
 def test_recovery_scope_rejects_recursive_entry() -> None:

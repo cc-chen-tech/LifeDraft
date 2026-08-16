@@ -223,6 +223,30 @@ describe('SSE Streaming', () => {
       expect(onComplete).not.toHaveBeenCalled();
     });
 
+    it('preserves structured generation failure fields', async () => {
+      const onError = jest.fn();
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'event: error\ndata: {"error":"故事角色一致性检查连续未通过","code":"REQUIRED_CAST_MISSING","summary":"故事角色一致性检查连续未通过","detail":"当天需要登场的人物没有出现。","retryable":true,"attempts_used":3,"quality_level":"expert","operation_id":"op-123"}\n\n',
+        ]),
+      });
+
+      await streamGameEvent(123, { onError });
+
+      expect(onError).toHaveBeenCalledWith({
+        message: '故事角色一致性检查连续未通过',
+        error: '故事角色一致性检查连续未通过',
+        code: 'REQUIRED_CAST_MISSING',
+        summary: '故事角色一致性检查连续未通过',
+        detail: '当天需要登场的人物没有出现。',
+        retryable: true,
+        attempts_used: 3,
+        quality_level: 'expert',
+        operation_id: 'op-123',
+      });
+    });
+
     it('does not emit empty complete when an error event is followed by DONE', async () => {
       const onComplete = jest.fn();
       const onError = jest.fn();
@@ -604,6 +628,22 @@ describe('SSE Streaming', () => {
   });
 
   describe('streamRegenerate', () => {
+    it('sends Last-Event-ID when resuming the same regeneration transaction', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'event: complete\ndata: {"event_description":"完成","options":[{"text":"继续"}]}\n\n',
+        ]),
+      });
+
+      await streamRegenerate(9, {}, { lastEventId: 12 });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/games/9/regenerate-stream',
+        expect.objectContaining({ headers: { 'Last-Event-ID': '12' } })
+      );
+    });
+
     it('calls fetch with correct URL', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

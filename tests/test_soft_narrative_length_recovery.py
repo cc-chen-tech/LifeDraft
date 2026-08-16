@@ -209,7 +209,9 @@ def test_failed_shape_repair_recovers_latest_story_and_three_options(
         option_generator=FailingOptionGenerator(),
     )
 
-    assert client.calls == 2
+    # Expert mode spends its full three-request story budget before accepting
+    # the best warning-only candidate with deterministic fallback options.
+    assert client.calls == 3
     assert event.event_description == story
     assert len(event.options) == 3
 
@@ -434,7 +436,7 @@ def test_severe_continuity_is_terminal_in_its_production_priority_bucket(
     assert all(constraint_type in prompt for prompt in retry_prompts)
 
 
-def test_unified_expert_budget_caps_harness_at_two_prose_calls(
+def test_unified_expert_budget_caps_harness_at_three_prose_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
@@ -464,5 +466,5 @@ def test_unified_expert_budget_caps_harness_at_two_prose_calls(
             option_generator=ThreeOptionGenerator(),
         )
 
-    assert len(generator.client.calls) == 2
+    assert len(generator.client.calls) == 3
     assert "[Retry Hint]" in generator.client.calls[1]["user_prompt"]

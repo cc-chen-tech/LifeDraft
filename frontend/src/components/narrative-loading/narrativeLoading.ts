@@ -96,13 +96,18 @@ export function resolveNarrativeLoadingCopy({
   transport,
 }: NarrativeLoadingCopyOptions): NarrativeLoadingCopy {
   const normalizedPhase = phase?.trim().toLowerCase();
+  const retryProgress = normalizedPhase?.match(/^retry:(\d+)\/(\d+)$/);
   const resolvedTransport = transport ?? "active";
   const label = getAllowedLabel(stepLabel) ?? getAllowedLabel(contextLabel);
   const status =
     context === "hydrate" || normalizedPhase === "completed"
       ? undefined
       : label ??
-        (normalizedPhase ? PHASE_GROUPS[normalizedPhase] ?? fallbackStatus(operation) : undefined);
+        (retryProgress
+          ? `正在写作（第 ${retryProgress[1]}/${retryProgress[2]} 次）`
+          : normalizedPhase
+            ? PHASE_GROUPS[normalizedPhase] ?? fallbackStatus(operation)
+            : undefined);
 
   return {
     title: TITLES[context],

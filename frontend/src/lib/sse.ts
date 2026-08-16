@@ -5,13 +5,35 @@
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "error" | null;
 export type StreamActivityKind = "status" | "story" | "complete" | "error";
 
+export interface GenerationFailurePayload {
+  message: string;
+  error?: string;
+  code?: string;
+  summary?: string;
+  detail?: string;
+  retryable?: boolean;
+  attempts_used?: number;
+  quality_level?: string;
+  operation_id?: string;
+}
+
+export interface StreamStatusPayload {
+  phase: string;
+  heartbeat?: boolean;
+  cached_count?: number;
+  message?: string;
+  attempt?: number;
+  max_attempts?: number;
+  quality_level?: string;
+}
+
 export interface StreamCallbacks {
   onStory?: (text: string) => void;
   onChunk?: (chunk: string) => void;
   onEventId?: (eventId: number) => void;
-  onStatus?: (status: { phase: string; heartbeat?: boolean; cached_count?: number; message?: string }) => void;
+  onStatus?: (status: StreamStatusPayload) => void;
   onComplete?: (data: Record<string, unknown>) => void;
-  onError?: (error: Error | { message: string }) => void;
+  onError?: (error: Error | GenerationFailurePayload) => void;
   onConnectionStatus?: (status: ConnectionStatus) => void;
   onReconnecting?: (attempt: number, maxRetries: number) => void;
   onActivity?: (kind: StreamActivityKind) => void;
@@ -153,12 +175,16 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
                 parsedRecord?.type === 'error' ||
                 parsedRecord?.event === 'error'
               ) {
-                const rawError = parsedRecord?.error ?? parsedRecord?.message;
+                const rawError = parsedRecord?.summary ?? parsedRecord?.error ?? parsedRecord?.message;
                 const errorMsg = typeof rawError === 'string' ? rawError : 'Unknown server error';
                 console.error('[SSE] Error event received:', errorMsg);
                 isErrorReceived = true;
                 emitErrorActivity();
-                callbacks.onError?.({ message: errorMsg });
+                callbacks.onError?.(
+                  parsedRecord
+                    ? { ...parsedRecord, message: errorMsg } as GenerationFailurePayload
+                    : { message: errorMsg }
+                );
                 currentEventType = null;
                 pendingEventId = null;
                 void reader.cancel().catch(() => undefined);
@@ -170,7 +196,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
               if (currentEventType === 'status' || parsedRecord?.type === 'status') {
                 const rawStatus = parsedRecord?.status ?? parsedRecord;
                 const statusData = rawStatus !== null && typeof rawStatus === 'object'
-                  ? rawStatus as { phase: string; heartbeat?: boolean; cached_count?: number; message?: string }
+                  ? rawStatus as StreamStatusPayload
                   : { phase: '' };
                 callbacks.onActivity?.("status");
                 callbacks.onStatus?.(statusData);
@@ -367,11 +393,20 @@ export async function streamGameEvent(
 export async function streamRegenerate(
   gameId: number,
   callbacks: StreamCallbacks,
-  options?: { story_context?: string; adjustment?: string; signal?: AbortSignal }
+  options?: {
+    story_context?: string;
+    adjustment?: string;
+    signal?: AbortSignal;
+    lastEventId?: number;
+  }
 ): Promise<void> {
+  const headers = options?.lastEventId === undefined
+    ? undefined
+    : { 'Last-Event-ID': String(options.lastEventId) };
   const response = await fetchSSEWithRetry(`/api/games/${gameId}/regenerate-stream`, {
     method: 'GET',
     credentials: 'include',
+    headers,
     signal: options?.signal,
   }, callbacks);
 

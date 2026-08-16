@@ -673,41 +673,43 @@ async def update_game_settings(
         raise HTTPException(status_code=404, detail="Game not found or not owned by user")
 
     if req.constraint_level is not None:
-        # 持久化到 Game 表
-        db_session = SessionLocal()
-        try:
-            game = (
-                db_session.query(Game)
-                .filter(Game.game_id == game_id, Game.user_id == user_id)
-                .first()
-            )
-            if game:
-                setattr(game, "constraint_level", req.constraint_level)
-                db_session.commit()
-        finally:
-            db_session.close()
+        from starlette.concurrency import run_in_threadpool
 
-        # 同步更新会话中的 GameLoop
-        game_session = session_store.get(game_id, user_id=user_id)
-        if game_session and game_session.game_loop:
-            game_session.game_loop.quality_level = req.constraint_level
-            from src.ai.generator import EventGenerator
-            from src.game.character_creation import CharacterCreator
-            from src.game.story_service import StoryService
-            from src.game.yearly_summary import YearlySummaryGenerator
+        from src.api.routers.gameplay.sse_helpers import _get_game_state_lock
 
-            game_session.game_loop.ai_generator = EventGenerator(quality_level=req.constraint_level)
-            # 重新创建依赖 ai_generator 的服务
-            game_session.game_loop.yearly_summary_gen = YearlySummaryGenerator(
-                game_session.game_loop.ai_generator, game_session.game_loop.language
-            )
-            game_session.game_loop.character_creator = CharacterCreator(
-                ai_generator=game_session.game_loop.ai_generator,
-                language=game_session.game_loop.language,
-            )
-            game_session.game_loop.story_service = StoryService(
-                game_session.game_loop.ai_generator, game_session.game_loop.language
-            )
+        def persist_and_rebind_quality() -> None:
+            # DB and live service ordering share the generation lock. This makes
+            # concurrent A/B PATCH requests observe the same serial order in
+            # persistence and in the active session.
+            with _get_game_state_lock(game_id):
+                db_session = SessionLocal()
+                game_session = session_store.get(game_id, user_id=user_id)
+                game_loop = game_session.game_loop if game_session else None
+                previous_live_quality = (
+                    getattr(game_loop, "quality_level", None) if game_loop else None
+                )
+                live_changed = False
+                try:
+                    game = (
+                        db_session.query(Game)
+                        .filter(Game.game_id == game_id, Game.user_id == user_id)
+                        .first()
+                    )
+                    if game_loop:
+                        game_loop.set_quality_level(req.constraint_level)
+                        live_changed = True
+                    if game:
+                        setattr(game, "constraint_level", req.constraint_level)
+                        db_session.commit()
+                except Exception:
+                    db_session.rollback()
+                    if live_changed and previous_live_quality is not None:
+                        game_loop.set_quality_level(previous_live_quality)
+                    raise
+                finally:
+                    db_session.close()
+
+        await run_in_threadpool(persist_and_rebind_quality)
 
     return MessageResponse(success=True, message="Settings updated")
 

@@ -11,6 +11,11 @@ from typing import Any, Dict, List, Optional
 
 from src.ai.harness.era_validator import validate_era_consistency
 from src.ai.professional_risk import find_unsafe_professional_claims
+from src.ai.story_validation import (
+    FindingSeverity,
+    ValidationFinding,
+    findings_from_legacy,
+)
 from src.game.relationship_authority import extract_required_key_people
 
 logger = logging.getLogger(__name__)
@@ -23,10 +28,19 @@ class QuickValidationResult:
     passed: bool
     issues: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    findings: List[ValidationFinding] = field(default_factory=list)
 
     @property
     def has_issues(self) -> bool:
         return len(self.issues) > 0
+
+    @property
+    def hard_findings(self) -> List[ValidationFinding]:
+        return [
+            finding
+            for finding in self.findings
+            if finding.severity is FindingSeverity.HARD
+        ]
 
 
 class QuickValidator:
@@ -258,6 +272,7 @@ class QuickValidator:
         story_text: str,
         character_settings: Optional[Dict[str, Any]] = None,
         available_people: Optional[List[str]] = None,
+        required_people: Optional[List[str]] = None,
         language: str = "zh",
     ) -> QuickValidationResult:
         """
@@ -276,7 +291,27 @@ class QuickValidator:
         warnings: List[str] = []
 
         if not story_text:
-            return QuickValidationResult(passed=True, issues=issues, warnings=warnings)
+            issues.append("empty_story_output")
+            return QuickValidationResult(
+                passed=False,
+                issues=issues,
+                warnings=warnings,
+                findings=findings_from_legacy(
+                    issues=issues,
+                    warnings=warnings,
+                    source="quick_validator",
+                ),
+            )
+
+        missing_required_people = [
+            str(name).strip()
+            for name in (required_people or [])
+            if str(name).strip() and str(name).strip() not in story_text
+        ]
+        if missing_required_people:
+            issues.append(
+                "缺少当天明确要求登场人物：" + "、".join(missing_required_people)
+            )
 
         # 1. 检查违禁词
         forbidden_issues = self._check_forbidden_words(story_text, language)
@@ -327,7 +362,16 @@ class QuickValidator:
         issues.extend(deceased_family_issues)
 
         passed = len(issues) == 0
-        result = QuickValidationResult(passed=passed, issues=issues, warnings=warnings)
+        result = QuickValidationResult(
+            passed=passed,
+            issues=issues,
+            warnings=warnings,
+            findings=findings_from_legacy(
+                issues=issues,
+                warnings=warnings,
+                source="quick_validator",
+            ),
+        )
 
         if issues:
             logger.info(f"Quick validation found {len(issues)} issues: {issues}")
@@ -521,7 +565,43 @@ class QuickValidator:
     ) -> List[str]:
         """Reject high-confidence named role aliases not present in the cast."""
         if language != "zh":
-            return []
+            allowed = {name.strip().casefold() for name in available_people if name.strip()}
+            role = (
+                r"mentor|manager|supervisor|director|doctor|lawyer|teacher|"
+                r"colleague|partner|friend|sibling|parent|boss|investor"
+            )
+            direct_suffix = re.compile(
+                rf"^\s*(?:,\s*)?(?:(?:a|an|the|her|his|their|our)\s+)?"
+                rf"(?:(?:new|approved|former|senior|trusted)\s+)*(?:{role})\b"
+                r"|^\s*(?:,\s*)?(?:said|told|asked|replied|joined|led|managed|"
+                r"assigned|took\s+over|was\s+responsible\s+for)\b",
+                re.IGNORECASE,
+            )
+            direct_prefix = re.compile(
+                rf"\b(?:{role})\s+$",
+                re.IGNORECASE,
+            )
+            aliases: list[str] = []
+            for match in re.finditer(
+                r"\b([A-Z][a-z]+(?:[-'][A-Z]?[a-z]+)?(?:\s+[A-Z][a-z]+(?:[-'][A-Z]?[a-z]+)?){1,2})\b",
+                text,
+            ):
+                alias = match.group(1)
+                if alias.casefold() in allowed:
+                    continue
+                before = text[max(0, match.start() - 32) : match.start()]
+                after = text[match.end() : min(len(text), match.end() + 80)]
+                if (
+                    direct_suffix.search(after) or direct_prefix.search(before)
+                ) and alias not in aliases:
+                    aliases.append(alias)
+
+            if not aliases:
+                return []
+            return [
+                "Unapproved named person has a persistent role, dialogue, or responsibility "
+                f"({', '.join(aliases[:3])}); use only the available cast."
+            ]
 
         surname_class = re.escape(self.COMMON_CHINESE_SURNAMES)
         role_pattern = "老师|经理|医生|律师|主任|老板|师傅|叔|姨|哥|姐"
@@ -565,15 +645,12 @@ class QuickValidator:
             if present_key_people:
                 return [], []
             return (
-                [
-                    "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
-                ],
                 [],
+                ["Preset relationship-network coverage is below the quality target; delivery is still allowed."],
             )
 
         invented_names = self._extract_likely_chinese_person_names(text, allowed_names)
         if present_key_people:
-            key_people_ratio = len(present_key_people) / len(key_people_names)
             required_network_count = (len(key_people_names) * 4 + 4) // 5
             if (
                 len(key_people_names) >= 3
@@ -606,14 +683,6 @@ class QuickValidator:
                     ],
                     [],
                 )
-            if key_people_ratio < 0.5 and len(invented_names) >= 3:
-                return (
-                    [
-                        "上一版故事预设关键人物使用不足，反而引入了大量名单外人物"
-                        f"（{ '、'.join(invented_names[:5]) }）；请围绕可用人物列表重写。"
-                    ],
-                    [],
-                )
             if (
                 len(key_people_names) >= 3
                 and len(invented_names) >= 3
@@ -630,20 +699,24 @@ class QuickValidator:
                 )
             return [], []
 
-        if len(invented_names) >= 2:
+        if len(invented_names) >= 1 and (
+            self._invented_cast_has_role_transfer_cues(text, invented_names)
+            or self._invented_cast_drives_plot(text, invented_names)
+        ):
             return (
                 [
-                    "上一版故事完全没有使用预设关键人物，反而引入了名单外人物"
+                    "上一版故事出现高置信度名单外人物并承担身份、关系或主线职责"
                     f"（{ '、'.join(invented_names[:5]) }）；请围绕可用人物列表重写。"
                 ],
                 [],
             )
 
         return (
-            [
-                "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
-            ],
             [],
+            [
+                "上一版故事预设关系网覆盖低于建议值"
+                f"（已使用0/{len(key_people_names)}）；这是后台质量指标，不阻止交付。"
+            ],
         )
 
     def _key_person_has_active_presence(self, text: str, name: str) -> bool:
@@ -1260,6 +1333,7 @@ def quick_validate_story(
     story_text: str,
     character_settings: Optional[Dict[str, Any]] = None,
     available_people: Optional[List[str]] = None,
+    required_people: Optional[List[str]] = None,
     language: str = "zh",
 ) -> QuickValidationResult:
     """
@@ -1279,5 +1353,6 @@ def quick_validate_story(
         story_text=story_text,
         character_settings=character_settings,
         available_people=available_people,
+        required_people=required_people,
         language=language,
     )

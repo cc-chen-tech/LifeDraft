@@ -60,7 +60,7 @@ class StoryRewriter:
         if generation_tracker is not None:
             generation_tracker.consume("prose")
             call_kwargs.setdefault(
-                "request_timeout", max(0.001, generation_tracker.remaining_seconds)
+                "request_timeout", generation_tracker.cap_timeout()
             )
         return self.client.call(
             generation_tracker=generation_tracker,

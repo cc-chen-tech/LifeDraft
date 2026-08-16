@@ -55,7 +55,7 @@ class NarrativeBudget:
     prose_call_limit: int
     validation_call_limit: int
     option_call_limit: int
-    total_deadline_seconds: int
+    total_deadline_seconds: Optional[int]
 
     @property
     def total_call_limit(self) -> int:
@@ -153,10 +153,12 @@ _KIND_OUTPUT_TOKENS = {
 }
 _CALL_LIMITS = {
     "fast": (1, 0, 1),
-    "expert": (2, 1, 2),
-    "master": (3, 2, 2),
+    # Expert needs one initial consistency judgement plus one verification of
+    # the targeted repair. These calls are separate from the 3 prose requests.
+    "expert": (3, 2, 2),
+    "master": (10, 2, 2),
 }
-_DEADLINES = {"fast": 60, "expert": 120, "master": 240}
+_DEADLINES = {"fast": 60, "expert": 120, "master": None}
 _DISPLAY_SUMMARY_BANDS = {
     "week": {"zh": (80, 160), "en": (50, 100)},
     "month": {"zh": (180, 320), "en": (120, 220)},
@@ -386,8 +388,16 @@ def get_generation_budget(level: str) -> GenerationBudget:
         max_tokens=budget.max_output_tokens,
         allow_quick_regeneration=budget.prose_call_limit > 1,
         allow_ai_consistency=budget.validation_call_limit > 0,
-        expected_min_seconds=budget.total_deadline_seconds // 2,
-        expected_seconds=budget.total_deadline_seconds,
+        expected_min_seconds=(
+            budget.total_deadline_seconds // 2
+            if budget.total_deadline_seconds is not None
+            else _LEGACY_GENERATION_BUDGETS[quality].expected_min_seconds
+        ),
+        expected_seconds=(
+            budget.total_deadline_seconds
+            if budget.total_deadline_seconds is not None
+            else _LEGACY_GENERATION_BUDGETS[quality].expected_seconds
+        ),
     )
 
 
@@ -418,11 +428,24 @@ class GenerationCallTracker:
         return self._clock() - self._started_at
 
     @property
-    def remaining_seconds(self) -> float:
+    def remaining_seconds(self) -> Optional[float]:
         """Wall-clock time still available to the whole narrative request."""
+        if self.budget.total_deadline_seconds is None:
+            return None
         return max(0.0, self.budget.total_deadline_seconds - self.elapsed_seconds)
 
+    def cap_timeout(self, maximum: Optional[float] = None) -> Optional[float]:
+        """Cap one provider timeout without inventing an aggregate deadline."""
+        remaining = self.remaining_seconds
+        if remaining is None:
+            return maximum
+        if maximum is None:
+            return max(0.001, remaining)
+        return max(0.001, min(maximum, remaining))
+
     def _assert_before_deadline(self) -> None:
+        if self.budget.total_deadline_seconds is None:
+            return
         if self.elapsed_seconds >= self.budget.total_deadline_seconds:
             raise GenerationDeadlineExceeded(
                 f"Narrative deadline exhausted after {self.elapsed_seconds:.3f}s"

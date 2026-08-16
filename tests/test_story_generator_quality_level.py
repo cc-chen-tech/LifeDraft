@@ -7,6 +7,10 @@
 from unittest.mock import MagicMock, patch
 
 from src.ai.harness.quality_level import QualityLevel
+import pytest
+
+from src.ai.consistency_validator import ConsistencyIssue, ValidationResult
+from src.ai.story_exceptions import StoryGenerationFailure
 from src.ai.story_generator import StoryGenerator
 
 
@@ -34,8 +38,8 @@ def test_fast_mode_skips_ai_consistency_check():
     assert result == "测试故事"
 
 
-def test_expert_mode_keeps_consistency_guard():
-    """EXPERT 模式下 _validate_and_retry_story 保持防循环守卫."""
+def test_expert_mode_revalidates_every_candidate_for_the_same_round():
+    """同一轮的新候选和手动重生成都不能复用旧候选的校验结论。"""
     mock_client = MagicMock()
     gen = StoryGenerator(mock_client, quality_level=QualityLevel.EXPERT)
 
@@ -60,14 +64,53 @@ def test_expert_mode_keeps_consistency_guard():
         # 验证 ConsistencyValidator 确实被构造了
         mock_validator_cls.assert_called_once()
 
-    # 第二次调用同一 round 应被守卫跳过
-    result2 = gen._validate_and_retry_story(
-        story_text="测试故事2",
-        world_model=MagicMock(),
-        player_state=player_state,
-        character_settings={},
-        language="zh",
-        original_prompt="prompt",
-        sys_prompt="sys",
-    )
+    with patch("src.ai.consistency_validator.ConsistencyValidator") as second_cls:
+        second_validator = MagicMock()
+        second_validator.validate_story.return_value = MagicMock(passed=True)
+        second_cls.return_value = second_validator
+        result2 = gen._validate_and_retry_story(
+            story_text="测试故事2",
+            world_model=MagicMock(),
+            player_state=player_state,
+            character_settings={},
+            language="zh",
+            original_prompt="prompt",
+            sys_prompt="sys",
+        )
+        second_validator.validate_story.assert_called_once()
     assert result2 == "测试故事2"
+
+
+def test_consistency_repair_is_revalidated_and_same_hard_issue_breaks() -> None:
+    issue = ConsistencyIssue(
+        dimension="identity",
+        severity="CRITICAL",
+        description="导师身份与权威关系网冲突",
+        fix_suggestion="恢复既定导师身份",
+    )
+    failed = ValidationResult(
+        passed=False,
+        issues=[issue],
+        fix_instructions="恢复既定导师身份",
+    )
+    generator = StoryGenerator(MagicMock(), quality_level=QualityLevel.EXPERT)
+    story_call = MagicMock(return_value="修订后仍把名单外人物写成导师")
+
+    with patch(
+        "src.ai.consistency_validator.ConsistencyValidator.validate_story",
+        side_effect=[failed, failed],
+    ) as validate_story:
+        with pytest.raises(StoryGenerationFailure):
+            generator._validate_and_retry_story(
+                story_text="初稿把名单外人物写成导师",
+                world_model=MagicMock(),
+                player_state={"game_id": 99, "week": 1, "current_round": 1},
+                character_settings={},
+                language="zh",
+                original_prompt="继续故事",
+                sys_prompt="系统",
+                story_call=story_call,
+            )
+
+    assert story_call.call_count == 1
+    assert validate_story.call_count == 2

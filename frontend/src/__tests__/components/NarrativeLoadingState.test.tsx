@@ -65,6 +65,12 @@ describe("resolveNarrativeLoadingCopy", () => {
     expect(resolveNarrativeLoadingCopy({ context: "gameplay", phase })).toMatchObject({ status });
   });
 
+  it("shows structured retry attempt progress", () => {
+    expect(
+      resolveNarrativeLoadingCopy({ context: "gameplay", phase: "retry:2/3" })
+    ).toMatchObject({ status: "正在写作（第 2/3 次）" });
+  });
+
   it("prefers a real step label and falls back by operation for an unknown phase", () => {
     expect(
       resolveNarrativeLoadingCopy({

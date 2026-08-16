@@ -8,7 +8,11 @@ import { useSessionStore } from "@/stores/useSessionStore";
 import { useHydration } from "@/hooks/useHydration";
 import { games } from "@/lib/api";
 import type { EventOption } from "@/lib/types";
-import { resolveRecoveredStoryText, resolveRecoveredView } from "@/lib/sessionRecovery";
+import {
+  resolveRecoveredGenerationFailure,
+  resolveRecoveredStoryText,
+  resolveRecoveredView,
+} from "@/lib/sessionRecovery";
 
 // Import sub-hooks
 import { usePhaseManager, Phase, ConnectionStatus } from "./game/usePhaseManager";
@@ -118,11 +122,13 @@ export function usePlayGame() {
     isSaving,
     saveToast,
     regenerateToast,
+    regenerationFailure,
     summaryText,
     roundSummary,
     endingData,
     setSummaryText,
     setRoundSummary,
+    setRegenerationFailure,
     handleSave,
     handleContinueAfterSummary,
     handleContinueToNextRound,
@@ -145,6 +151,17 @@ export function usePlayGame() {
     syncPlayerState,
   });
 
+  useEffect(() => {
+    if (phase !== "options" && phase !== "generating" && phase !== "error") {
+      setRegenerationFailure(null);
+    }
+  }, [phase, setRegenerationFailure]);
+
+  useEffect(() => {
+    const persistedFailure = resolveRecoveredGenerationFailure(playerState);
+    if (persistedFailure) setRegenerationFailure(persistedFailure);
+  }, [playerState, setRegenerationFailure]);
+
   // ===== Event Generator =====
   const {
     generateEvent,
@@ -165,6 +182,7 @@ export function usePlayGame() {
     setCurrentEvent,
     setGameOver,
     setRoundSummary,
+    setRegenerationFailure,
     setIsPrefetching,
     runTokenRef,
     abortRef,
@@ -533,6 +551,7 @@ export function usePlayGame() {
     isViewingHistory,
     saveToast,
     regenerateToast,
+    regenerationFailure,
     isSaving,
     connectionStatus,
     reconnectAttempt,
@@ -619,6 +638,7 @@ export function usePlayGame() {
     isSaving,
     saveToast,
     regenerateToast,
+    regenerationFailure,
     endingData,
     connectionStatus,
     reconnectAttempt,

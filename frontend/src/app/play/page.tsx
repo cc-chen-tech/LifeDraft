@@ -94,6 +94,7 @@ export default function PlayPage() {
     isSaving,
     saveToast,
     regenerateToast,
+    regenerationFailure,
     transport: gameplayTransport,
     loadingOperation: gameplayOperation,
     loadingIdentity,
@@ -781,6 +782,52 @@ export default function PlayPage() {
         isViewingHistory={isViewingHistory}
         toolsProps={toolsProps}
       >
+        {regenerationFailure && !isViewingHistory && (
+          <section
+            role="alert"
+            className="mb-6 rounded-2xl border border-amber-300/50 bg-amber-50/80 p-4 text-sm text-amber-950 shadow-sm dark:border-amber-700/50 dark:bg-amber-950/30 dark:text-amber-100"
+          >
+            <div className="flex items-start gap-2">
+              <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">
+                  {regenerationFailure.summary || regenerationFailure.message}
+                </p>
+                <p className="mt-1 text-xs opacity-80">
+                  失败稿没有保存，也没有改动人物关系；你仍可阅读旧故事。
+                </p>
+                <details className="mt-3">
+                  <summary className="cursor-pointer select-none text-xs font-medium">
+                    查看失败详情
+                  </summary>
+                  <div className="mt-2 space-y-1 text-xs opacity-85">
+                    {regenerationFailure.detail && <p>{regenerationFailure.detail}</p>}
+                    <p>
+                      {regenerationFailure.code || "RETRY_EXHAUSTED"}
+                      {typeof regenerationFailure.attempts_used === "number"
+                        ? ` · 已尝试 ${regenerationFailure.attempts_used} 次`
+                        : ""}
+                      {regenerationFailure.quality_level
+                        ? ` · ${regenerationFailure.quality_level}`
+                        : ""}
+                    </p>
+                  </div>
+                </details>
+                {regenerationFailure.retryable !== false && (
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    size="sm"
+                    className="mt-3"
+                    onClick={handleCoordinatedRegenerate}
+                  >
+                    再次生成
+                  </Button>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
         {dailyTransition.active && !isViewingHistory ? (
           <DailyTransitionLayer
             transitionText={dailyTransition.active.transitionText}

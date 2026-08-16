@@ -235,6 +235,15 @@ export interface SavedResumeView {
   summary_text?: string;
   resource_warnings?: Array<Record<string, unknown>>;
   error?: string;
+  failure?: {
+    code?: string;
+    summary?: string;
+    detail?: string;
+    retryable?: boolean;
+    attempts_used?: number;
+    quality_level?: string;
+    operation_id?: string;
+  };
   completed_week?: number;
   completed_round?: number;
 }

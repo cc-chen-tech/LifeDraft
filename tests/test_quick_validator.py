@@ -18,8 +18,61 @@ class TestQuickValidator:
         """Test validation of empty story."""
         validator = QuickValidator()
         result = validator.validate("")
+        assert result.passed is False
+        assert result.findings[0].code == "EMPTY_OUTPUT"
+
+    def test_required_scene_person_missing_is_a_hard_failure(self):
+        validator = QuickValidator()
+
+        result = validator.validate(
+            "你在会议室独自核对当天的材料。",
+            required_people=["陈晓雨"],
+        )
+
+        assert result.passed is False
+        assert result.hard_findings[0].code == "REQUIRED_CAST_MISSING"
+
+    def test_required_scene_person_present_passes_cast_requirement(self):
+        validator = QuickValidator()
+
+        result = validator.validate(
+            "陈晓雨走进会议室，和你一起核对当天的材料。",
+            required_people=["陈晓雨"],
+        )
+
+        assert not any(
+            finding.code == "REQUIRED_CAST_MISSING"
+            for finding in result.findings
+        )
+
+    def test_full_relationship_network_coverage_is_warning_only(self):
+        validator = QuickValidator()
+
+        result = validator.validate(
+            "你独自在工作室整理材料，确认明天再联系其他人。",
+            available_people=["陆昊然", "陈晓雨", "林一凡"],
+        )
+
         assert result.passed is True
-        assert len(result.issues) == 0
+        assert any(
+            finding.code == "CAST_COVERAGE_LOW"
+            and finding.severity.value == "warning"
+            for finding in result.findings
+        )
+
+    def test_unknown_person_with_identity_and_plot_duty_is_hard(self):
+        validator = QuickValidator()
+
+        result = validator.validate(
+            "苏婉清以投资人兼导师的身份接管项目，随后苏婉清决定下一步融资节奏。",
+            available_people=["陆昊然", "陈晓雨", "林一凡"],
+        )
+
+        assert result.passed is False
+        assert any(
+            finding.code == "HIGH_CONFIDENCE_UNKNOWN_PERSON"
+            for finding in result.hard_findings
+        )
 
     def test_validate_clean_story_zh(self):
         """Test validation of clean Chinese story."""

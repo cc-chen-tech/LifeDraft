@@ -4,12 +4,15 @@
 """
 
 from unittest.mock import MagicMock, patch
+import json
 
 import pytest
 
 from src.ai.harness.quality_level import QualityLevel
+from src.ai.quick_validator import QuickValidationResult
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.ai.story_generator import StoryGenerator
+from src.ai.story_validation import findings_from_legacy
 
 pytestmark = pytest.mark.usefixtures("constraint_harness_disabled")
 
@@ -118,6 +121,26 @@ def test_fast_mode_single_attempt():
     assert client.call.call_count == 1
 
 
+def test_fast_mode_rejects_a_deterministic_hard_validation_failure():
+    invalid_story = "我在会议室核对当天的安排，并把需要决定的事项逐一记下。" * 22
+    mock_client = MagicMock()
+    mock_client.call.return_value = invalid_story
+    gen = StoryGenerator(mock_client, quality_level=QualityLevel.FAST)
+    mock_option_gen = MagicMock()
+
+    with pytest.raises(StoryGenerationFailure):
+        gen.generate_round_event(
+            player_state={"game_id": 1, "current_week": 1},
+            language="zh",
+            round_number=0,
+            round_context="",
+            option_generator=mock_option_gen,
+        )
+
+    assert mock_client.call.call_count == 1
+    mock_option_gen.generate_options_only.assert_not_called()
+
+
 def test_expert_without_harness_uses_one_attempt_for_valid_story():
     """Harness 关闭时，EXPERT 的合格正文不会增加隐式尝试。"""
     gen, client = _make_generator(QualityLevel.EXPERT)
@@ -181,6 +204,232 @@ def test_round_event_fails_closed_when_quick_validation_retry_still_drifts():
 
     assert mock_client.call.call_count == 2
     mock_option_gen.generate_options_only.assert_not_called()
+
+
+def test_quick_validation_repair_prompt_contains_the_rejected_draft():
+    """Removing the rejected draft would turn a targeted repair into a blind rewrite."""
+    invalid_story = (
+        "我把当天的安排写在白板上，准备和陈越继续核对方案。"
+        * 30
+    )
+    repaired_story = "林岚和陈越在会议室逐项核对方案，并记录下一步安排。" * 32
+    mock_client = MagicMock()
+    mock_client.call.side_effect = [invalid_story, repaired_story]
+    gen = StoryGenerator(mock_client, quality_level=QualityLevel.EXPERT)
+    mock_option_gen = MagicMock()
+    mock_option_gen.generate_options_only.return_value = MagicMock(
+        options=[MagicMock(text="继续核对")]
+    )
+    statuses = []
+
+    gen.generate_round_event(
+        player_state={"game_id": 1, "current_week": 1},
+        language="zh",
+        round_number=0,
+        round_context="",
+        option_generator=mock_option_gen,
+        status_callback=statuses.append,
+    )
+
+    repair_prompt = mock_client.call.call_args_list[1].kwargs["user_prompt"]
+    assert invalid_story in repair_prompt
+    assert "上一稿全文" in repair_prompt
+    attempt_statuses = [status for status in statuses if isinstance(status, dict)]
+    assert attempt_statuses[:2] == [
+        {
+            "phase": "generating_story",
+            "attempt": 1,
+            "max_attempts": 3,
+            "quality_level": "expert",
+        },
+        {
+            "phase": "retry",
+            "attempt": 2,
+            "max_attempts": 3,
+            "quality_level": "expert",
+        },
+    ]
+
+
+def test_changed_hard_fingerprint_uses_remaining_expert_budget():
+    story = "林岚和陈越在会议室逐项核对方案，并记录下一步安排。" * 32
+    mock_client = MagicMock()
+    mock_client.call.side_effect = [story, story, story]
+    gen = StoryGenerator(mock_client, quality_level=QualityLevel.EXPERT)
+    mock_option_gen = MagicMock()
+    mock_option_gen.generate_options_only.return_value = MagicMock(
+        options=[MagicMock(text="继续核对")]
+    )
+
+    def result(*issues: str) -> QuickValidationResult:
+        return QuickValidationResult(
+            passed=not issues,
+            issues=list(issues),
+            findings=findings_from_legacy(
+                issues=issues,
+                warnings=[],
+                source="quick_validator",
+            ),
+        )
+
+    with patch(
+        "src.ai.quick_validator.quick_validate_story",
+        side_effect=[
+            result("缺少当天明确要求登场人物：陈晓雨"),
+            result("现代故事开头使用了章回体标题"),
+            result(),
+        ],
+    ):
+        event = gen.generate_round_event(
+            player_state={"game_id": 1, "current_week": 1},
+            language="zh",
+            round_number=0,
+            round_context="",
+            option_generator=mock_option_gen,
+        )
+
+    assert event.options
+    assert mock_client.call.call_count == 3
+
+
+def test_same_hard_fingerprint_on_second_consecutive_candidate_circuits_breaks():
+    story = "林岚和陈越在会议室逐项核对方案，并记录下一步安排。" * 32
+    mock_client = MagicMock()
+    mock_client.call.side_effect = [story, story, story]
+    gen = StoryGenerator(mock_client, quality_level=QualityLevel.EXPERT)
+    mock_option_gen = MagicMock()
+
+    def result(issue: str) -> QuickValidationResult:
+        return QuickValidationResult(
+            passed=False,
+            issues=[issue],
+            findings=findings_from_legacy(
+                issues=[issue],
+                warnings=[],
+                source="quick_validator",
+            ),
+        )
+
+    with patch(
+        "src.ai.quick_validator.quick_validate_story",
+        side_effect=[
+            result("缺少当天明确要求登场人物：陈晓雨"),
+            result("现代故事开头使用了章回体标题"),
+            result("现代故事开头使用了章回体标题"),
+        ],
+    ):
+        with pytest.raises(StoryGenerationFailure) as failure:
+            gen.generate_round_event(
+                player_state={"game_id": 1, "current_week": 1},
+                language="zh",
+                round_number=0,
+                round_context="",
+                option_generator=mock_option_gen,
+            )
+
+    assert "allowance exhausted" not in str(failure.value)
+    assert mock_client.call.call_count == 3
+    mock_option_gen.generate_options_only.assert_not_called()
+
+
+def test_consistency_repair_hard_failure_cannot_fall_back_or_skip_validation():
+    """完整生成路径不能吞掉修订复检失败后提交未校验的下一稿。"""
+    story = "林岚和陈越在会议室逐项核对方案，并记录下一步安排。" * 32
+    hard_result = json.dumps(
+        {
+            "should_retry": True,
+            "retry_reason": "角色身份冲突",
+            "issues": [
+                {
+                    "dimension": "identity",
+                    "severity": "CRITICAL",
+                    "description": "名单外人物被写成导师并接管职责",
+                    "fix_suggestion": "删除名单外导师",
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    client = MagicMock()
+    client.call.side_effect = [story, hard_result, story, hard_result, story]
+    generator = StoryGenerator(client, quality_level=QualityLevel.EXPERT)
+    options = MagicMock()
+
+    with pytest.raises(StoryGenerationFailure, match="repeated consistency"):
+        generator.generate_round_event(
+            player_state={"game_id": 91, "current_week": 1, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings=_three_person_relationship_settings(),
+            world_model=MagicMock(continuity_ledger=None),
+            option_generator=options,
+        )
+
+    assert client.call.call_count == 4
+    options.generate_options_only.assert_not_called()
+
+
+def test_consistency_service_failure_cannot_be_treated_as_acceptance():
+    story = "林岚和陈越在会议室逐项核对方案，并记录下一步安排。" * 32
+    client = MagicMock()
+    client.call.side_effect = [
+        story,
+        RuntimeError("validator unavailable"),
+        story,
+        RuntimeError("validator unavailable"),
+        story,
+    ]
+    generator = StoryGenerator(client, quality_level=QualityLevel.EXPERT)
+    options = MagicMock()
+
+    with pytest.raises(StoryGenerationFailure):
+        generator.generate_round_event(
+            player_state={"game_id": 92, "current_week": 1, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings=_three_person_relationship_settings(),
+            world_model=MagicMock(continuity_ledger=None),
+            option_generator=options,
+        )
+
+    options.generate_options_only.assert_not_called()
+
+
+def test_player_retry_prompt_carries_previous_safe_failure_reason():
+    story = "林岚和陈越在会议室逐项核对方案，并记录下一步安排。" * 32
+    mock_client = MagicMock()
+    mock_client.call.return_value = story
+    gen = StoryGenerator(mock_client, quality_level=QualityLevel.EXPERT)
+    mock_option_gen = MagicMock()
+    mock_option_gen.generate_options_only.return_value = MagicMock(
+        options=[MagicMock(text="继续核对")]
+    )
+
+    gen.generate_round_event(
+        player_state={
+            "game_id": 1,
+            "current_week": 1,
+            "resume_view": {
+                "phase": "generating",
+                "previous_failure": {
+                    "code": "HIGH_CONFIDENCE_UNKNOWN_PERSON",
+                    "summary": "故事角色一致性检查连续未通过",
+                    "detail": "上次失败稿没有保存。",
+                },
+            },
+        },
+        language="zh",
+        round_number=0,
+        round_context="",
+        option_generator=mock_option_gen,
+    )
+
+    prompt = mock_client.call.call_args_list[0].kwargs["user_prompt"]
+    assert "上次手动重试原因" in prompt
+    assert "HIGH_CONFIDENCE_UNKNOWN_PERSON" in prompt
+    assert "故事角色一致性检查连续未通过" in prompt
 
 
 def test_round_event_fails_closed_after_cast_and_world_validation_failures():

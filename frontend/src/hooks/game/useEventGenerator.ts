@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useGameStore } from "@/stores/useGameStore";
 import { streamGameEvent } from "@/lib/sse";
-import type { StreamActivityKind } from "@/lib/sse";
+import type { GenerationFailurePayload, StreamActivityKind } from "@/lib/sse";
 import type { EventOption } from "@/lib/types";
 import type { Phase, ConnectionStatus } from "./usePhaseManager";
 import type {
@@ -40,6 +40,7 @@ interface UseEventGeneratorParams {
   setCurrentEvent: (event: { story: string; options: EventOption[]; event_id?: string; revision?: number; story_date?: string } | null) => void;
   setGameOver: (gameOver: boolean) => void;
   setRoundSummary: (summary: string | null) => void;
+  setRegenerationFailure?: (failure: GenerationFailurePayload | null) => void;
   setIsPrefetching: (prefetching: boolean) => void;
   runTokenRef: React.MutableRefObject<number>;
   abortRef: React.MutableRefObject<AbortController | null>;
@@ -93,6 +94,7 @@ export function useEventGenerator({
   setCurrentEvent,
   setGameOver,
   setRoundSummary,
+  setRegenerationFailure,
   setIsPrefetching,
   runTokenRef,
   abortRef,
@@ -471,6 +473,9 @@ export function useEventGenerator({
             if (valid && isCurrent()) clearDurableResume();
           },
           onError: (error) => {
+            if (!(error instanceof Error) && error.code) {
+              setRegenerationFailure?.(error);
+            }
             void dispatchStreamError(error);
           },
         },
@@ -505,6 +510,7 @@ export function useEventGenerator({
     setProcessing,
     setReconnectAttempt,
     setRoundSummary,
+    setRegenerationFailure,
     setStoryText,
     setTransport,
     setLoadingOperation,

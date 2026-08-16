@@ -171,7 +171,7 @@ class ConsistencyValidator:
                 max_tokens=max_output_tokens,
                 thinking=False,
                 request_timeout=(
-                    generation_tracker.remaining_seconds if generation_tracker is not None else None
+                    generation_tracker.cap_timeout() if generation_tracker is not None else None
                 ),
                 generation_tracker=generation_tracker,
             )
@@ -181,8 +181,10 @@ class ConsistencyValidator:
 
         except Exception as e:
             logger.error(f"Consistency validation failed: {e}")
-            # On error, pass through (don't block story generation)
-            return ValidationResult(passed=True)
+            # Expert/master validation is part of candidate acceptance. A
+            # budget, deadline, provider, or parser failure cannot be converted
+            # into a successful judgement for an unverified candidate.
+            raise
 
     @staticmethod
     def _invalid_response_result(language: str) -> ValidationResult:

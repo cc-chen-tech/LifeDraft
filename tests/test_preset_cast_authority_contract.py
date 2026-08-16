@@ -14,7 +14,11 @@ from config.prompts.story_prompts import (
     get_story_only_prompt,
 )
 from src.ai.models import EventOption, GameEvent
-from src.ai.story_exceptions import StoryGenerationFailure
+from src.ai.story_exceptions import (
+    GenerationFailureCode,
+    StoryGenerationFailure,
+    build_generation_failure,
+)
 from src.game.round.event_generator import RoundEventGenerator
 from src.game.world_model import WorldModel
 
@@ -291,7 +295,8 @@ def test_quick_validator_uses_relationships_list_for_required_cast() -> None:
     )
 
     assert not result.passed
-    assert any("没有使用预设关键人物" in issue for issue in result.issues)
+    assert any("名单外命名角色" in issue for issue in result.issues)
+    assert any("覆盖低于建议值" in warning for warning in result.warnings)
 
 
 def test_quick_validator_rejects_unapproved_role_alias_with_single_preset_person() -> None:
@@ -1188,8 +1193,8 @@ def test_quick_validator_rejects_single_new_role_substitute_for_preset_network()
     assert any("名单外关键角色替代预设关系网" in issue for issue in result.issues)
 
 
-def test_quick_validator_rejects_family_only_story_when_key_people_are_missing() -> None:
-    """Family members are available people, but they do not replace preset key people."""
+def test_quick_validator_warns_for_family_only_story_when_network_is_missing() -> None:
+    """Whole-network coverage is a metric unless today's scene requires someone."""
     from config.prompts._helpers import _collect_available_people
     from src.ai.quick_validator import quick_validate_story
 
@@ -1210,8 +1215,8 @@ def test_quick_validator_rejects_family_only_story_when_key_people_are_missing()
         language="zh",
     )
 
-    assert not result.passed
-    assert any("没有使用预设关键人物" in issue for issue in result.issues)
+    assert result.passed
+    assert any("覆盖低于建议值" in warning for warning in result.warnings)
 
 
 def test_quick_validator_rejects_active_action_from_deceased_family_member() -> None:
@@ -1526,9 +1531,72 @@ def test_scheduled_event_generation_retries_when_story_replaces_preset_cast() ->
     assert len(client.calls) == 2
     assert all(call["thinking"] is False for call in client.calls)
     assert event is not None
-    assert "没有使用预设关键人物" in client.calls[1]["user_prompt"]
+    assert "缺少当天明确要求登场人物" in client.calls[1]["user_prompt"]
     assert "陆昊然" in event.event_description
     assert "马老板" not in event.event_description
+
+
+def test_scheduled_event_fails_closed_when_fallback_omits_required_cast() -> None:
+    """A deterministic fallback may not turn a required-cast failure into success."""
+
+    class InvalidClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def call(self, **kwargs: Any) -> str:
+            self.calls.append(kwargs)
+            return """
+            {
+              "event_description": "林清独自在会议室整理材料，没有遇到其他人。",
+              "options": [
+                {"text": "继续整理", "effects": {}},
+                {"text": "暂时休息", "effects": {}}
+              ]
+            }
+            """
+
+    class PlayerState:
+        timeline = {
+            "version": 2,
+            "day_index": 3,
+            "week_number": 1,
+            "current_date": "2026-08-12",
+        }
+
+        def to_dict(self) -> dict[str, Any]:
+            return {
+                "player_name": "林清",
+                "week": 1,
+                "current_round": 1,
+                "timeline": self.timeline,
+                "character_settings": _modern_product_manager_settings(),
+            }
+
+    client = InvalidClient()
+    generator = RoundEventGenerator(
+        player_state_getter=lambda: None,
+        ai_generator=SimpleNamespace(ai_client=client, quality_level="expert"),
+        language_getter=lambda: "zh",
+        character_introduction_service=None,
+        summary_selector=None,
+        relationship_service=None,
+    )
+
+    with pytest.raises(StoryGenerationFailure) as caught:
+        generator._generate_scheduled_event(
+            scheduled_events=[
+                {"description": "参加投资会议", "parties": ["陈晓雨"]}
+            ],
+            player_state=PlayerState(),
+        )
+
+    assert len(client.calls) == 3
+    failure = build_generation_failure(
+        caught.value,
+        quality_level="expert",
+        operation_id="scheduled-op",
+    )
+    assert failure.code is GenerationFailureCode.REQUIRED_CAST_MISSING
 
 
 def test_resume_existing_round_story_rejects_preset_cast_drift_before_options_only() -> None:
