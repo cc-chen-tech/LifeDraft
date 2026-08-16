@@ -157,10 +157,9 @@ class DailyWorldProjectionRepository:
         worker_id: str,
         now: datetime,
         lease_until: datetime,
+        *,
+        source_hash: str,
     ) -> bool:
-        task = self.db.get(DailyWorldProjection, projection_id)
-        if task is None:
-            return False
         updated = (
             self.db.query(DailyWorldProjection)
             .filter(
@@ -168,7 +167,7 @@ class DailyWorldProjectionRepository:
                 DailyWorldProjection.status == "running",
                 DailyWorldProjection.lease_owner == worker_id,
                 DailyWorldProjection.lease_expires_at > now,
-                DailyWorldProjection.source_hash == task.source_hash,
+                DailyWorldProjection.source_hash == source_hash,
             )
             .update(
                 {
@@ -227,10 +226,9 @@ class DailyWorldProjectionRepository:
         worker_id: str,
         error_code: str,
         next_attempt_at: datetime,
+        *,
+        source_hash: str,
     ) -> bool:
-        task = self.db.get(DailyWorldProjection, projection_id)
-        if task is None:
-            return False
         now = datetime.utcnow()
         updated = (
             self.db.query(DailyWorldProjection)
@@ -239,7 +237,7 @@ class DailyWorldProjectionRepository:
                 DailyWorldProjection.status == "running",
                 DailyWorldProjection.lease_owner == worker_id,
                 DailyWorldProjection.lease_expires_at > now,
-                DailyWorldProjection.source_hash == task.source_hash,
+                DailyWorldProjection.source_hash == source_hash,
             )
             .update(
                 {

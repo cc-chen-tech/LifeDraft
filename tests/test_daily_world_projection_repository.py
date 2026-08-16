@@ -150,6 +150,54 @@ def test_claim_due_uses_lease_fencing(db_session, frozen_now) -> None:
     assert repo.claim_due(now=frozen_now, worker_id="worker-b", limit=1) == []
 
 
+def test_old_source_cannot_renew_or_retry_after_same_worker_reclaims_reset_row(
+    db_session, frozen_now
+) -> None:
+    """A reset does not let a same-worker stale call inherit the new source lease."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    original = repo.ensure_projection(identity(), source_hash="hash-a")
+    [first_claim] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    old_source_hash = str(first_claim.source_hash)
+
+    replacement = repo.ensure_projection(identity(), source_hash="hash-b")
+    [replacement_claim] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    lease_before = replacement_claim.lease_expires_at
+    next_attempt_before = replacement_claim.next_attempt_at
+
+    assert replacement.projection_id == original.projection_id
+    assert replacement_claim.source_hash == "hash-b"
+    assert (
+        repo.renew_lease(
+            replacement_claim.projection_id,
+            "worker-a",
+            frozen_now,
+            frozen_now + timedelta(minutes=15),
+            source_hash=old_source_hash,
+        )
+        is False
+    )
+    assert (
+        repo.mark_retryable(
+            replacement_claim.projection_id,
+            "worker-a",
+            "provider_timeout",
+            frozen_now + timedelta(minutes=30),
+            source_hash=old_source_hash,
+        )
+        is False
+    )
+
+    db_session.expire_all()
+    persisted = db_session.get(DailyWorldProjection, replacement_claim.projection_id)
+    assert persisted.source_hash == "hash-b"
+    assert persisted.status == "running"
+    assert persisted.lease_owner == "worker-a"
+    assert persisted.lease_expires_at == lease_before
+    assert persisted.next_attempt_at == next_attempt_before
+    assert persisted.error_code is None
+
+
 def test_worker_and_source_hash_fence_late_projection_writes(
     db_session, frozen_now
 ) -> None:
@@ -165,6 +213,7 @@ def test_worker_and_source_hash_fence_late_projection_writes(
             "worker-b",
             frozen_now,
             frozen_now + timedelta(minutes=2),
+            source_hash=claimed.source_hash,
         )
         is False
     )
@@ -174,6 +223,7 @@ def test_worker_and_source_hash_fence_late_projection_writes(
             "worker-b",
             "provider_timeout",
             frozen_now + timedelta(minutes=5),
+            source_hash=claimed.source_hash,
         )
         is False
     )
