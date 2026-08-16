@@ -4,21 +4,18 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Mapping, Sequence
 
 _SENTENCE_BOUNDARY = re.compile(r"[。！？!?；;]+")
 _CLAUSE_BOUNDARY = re.compile(r"[，,]+")
-_CONTINUATION_ADVERBS = (
-    "此时",
-    "这时",
-    "这时候",
-    "随后",
-    "然后",
-    "接着",
-    "而后",
-    "与此同时",
-)
-_SUBJECTLESS_DIRECTION_PREFIXES = ("向", "对", "把", "在", "从", "往")
+_POS_MODIFIER_TAGS = frozenset({"c", "d", "e", "f", "o", "t", "u", "y"})
+_POS_NOMINAL_TAG_PREFIX = "n"
+
+try:
+    import thulac as _thulac
+except ImportError:  # The detector must fail closed when the local model is absent.
+    _thulac = None
 _LOCATION_TERMS = (
     "抵达",
     "到达",
@@ -86,7 +83,7 @@ def _clause_contexts(
                 clause = clause.strip()
                 if not clause:
                     continue
-                candidate = _normalized_clause_start(clause)
+                candidate = clause.lstrip(" \t、，,；;：:—-")
                 tracked_subject = _leading_tracked_name(candidate, tracked_names)
                 if tracked_subject is not None:
                     active_tracked_subject = tracked_subject
@@ -104,32 +101,61 @@ def _has_tracked_entity(clause: str, tracked_names: Sequence[str]) -> bool:
     return any(name in clause for name in tracked_names)
 
 
-def _normalized_clause_start(clause: str) -> str:
-    candidate = clause.lstrip(" \t、，,；;：:—-")
-    while True:
-        connector = next(
-            (
-                prefix
-                for prefix in _CONTINUATION_ADVERBS
-                if candidate.startswith(prefix)
-            ),
-            None,
-        )
-        if connector is None:
-            break
-        candidate = candidate[len(connector) :].lstrip(" \t、，,；;：:—-")
-    return candidate
+@lru_cache(maxsize=1)
+def _pos_tagger() -> Any | None:
+    if _thulac is None:
+        return None
+    try:
+        return _thulac.thulac(seg_only=False, filt=False)
+    except Exception:
+        return None
+
+
+def _pos_tokens(candidate: str) -> tuple[tuple[str, str], ...]:
+    """Return bundled offline POS tokens, or no tokens when unavailable."""
+    if _thulac is None:
+        return ()
+    tagger = _pos_tagger()
+    if tagger is None:
+        return ()
+    try:
+        return tuple((str(word), str(tag)) for word, tag in tagger.cut(candidate))
+    except Exception:
+        return ()
+
+
+def _content_tokens(
+    tokens: Sequence[tuple[str, str]],
+) -> tuple[tuple[str, str], ...]:
+    return tuple((word, tag) for word, tag in tokens if tag not in _POS_MODIFIER_TAGS)
 
 
 def _leading_tracked_name(candidate: str, tracked_names: Sequence[str]) -> str | None:
-    return next((name for name in tracked_names if candidate.startswith(name)), None)
+    direct_match = next(
+        (name for name in tracked_names if candidate.startswith(name)), None
+    )
+    if direct_match is not None:
+        return direct_match
+    return next(
+        (
+            name
+            for word, _ in _content_tokens(_pos_tokens(candidate))[:1]
+            for name in tracked_names
+            if word == name
+        ),
+        None,
+    )
 
 
 def _is_safe_subjectless_continuation(candidate: str) -> bool:
-    """Allow carry-over only for grammar that explicitly omits a subject."""
-    return candidate.startswith(_SUBJECTLESS_DIRECTION_PREFIXES) or any(
-        candidate.startswith(term) for term in _LOCATION_TERMS
-    )
+    """Allow carry-over only when local POS finds a non-nominal predicate start."""
+    content = _content_tokens(_pos_tokens(candidate))
+    if not content:
+        return False
+    _, leading_tag = content[0]
+    if leading_tag.startswith(_POS_NOMINAL_TAG_PREFIX):
+        return False
+    return leading_tag == "p" or leading_tag.startswith("v")
 
 
 def _known_record_terms(

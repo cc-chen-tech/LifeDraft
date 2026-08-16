@@ -1,5 +1,6 @@
 import pytest
 
+import src.game.world_projection_coverage as world_projection_coverage
 from src.game.world_projection_coverage import detect_world_change_signals
 
 
@@ -190,6 +191,65 @@ def test_nominal_prefixes_conservatively_reset_a_carried_subject(
 ) -> None:
     signals = detect_world_change_signals(
         f"黑袍人收拾行囊，{noun_prefixed_clause}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" not in signals.categories
+
+
+@pytest.mark.parametrize(
+    "noun_prefixed_clause",
+    [
+        "向导决定留守",
+        "对手说自己不走",
+        "把手决定离开",
+        "路人决定继续赶路",
+        "小李决定留下",
+    ],
+)
+def test_pos_noun_subjects_reset_a_carried_location_subject(
+    noun_prefixed_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{noun_prefixed_clause}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" not in signals.categories
+
+
+@pytest.mark.parametrize(
+    "subjectless_clause",
+    [
+        "但还是向朋友道别",
+        "然而最终抵达东海",
+        "最终抵达东海",
+        "并且继续向东海前进",
+        "继续向东海前进",
+        "已抵达东海",
+    ],
+)
+def test_pos_subjectless_clauses_preserve_a_carried_location_subject(
+    subjectless_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{subjectless_clause}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" in signals.categories
+
+
+def test_missing_pos_dependency_fails_closed_without_inheriting_subject(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(world_projection_coverage, "_thulac", None)
+
+    signals = detect_world_change_signals(
+        "黑袍人收拾行囊，抵达东海。",
         [],
         {"character_locations": {"黑袍人": {"location": "花果山"}}},
     )
