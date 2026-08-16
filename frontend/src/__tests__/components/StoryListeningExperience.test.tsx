@@ -356,6 +356,152 @@ describe("StoryListeningExperience", () => {
     jest.useRealTimers();
   });
 
+  it("recovers when playback silently stops advancing without media stall events", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 10 });
+    fireEvent.loadedMetadata(audio);
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 1.75,
+    });
+    fireEvent.playing(audio);
+    fireEvent.timeUpdate(audio);
+
+    await act(async () => {
+      jest.advanceTimersByTime(7_999);
+    });
+    expect(load).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "网络不稳定，继续朗读" })).toBeInTheDocument();
+    audio.currentTime = 0;
+    fireEvent.loadedMetadata(audio);
+    expect(audio.currentTime).toBe(1.75);
+  });
+
+  it("keeps extending the silent-stall deadline while playback advances", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 1,
+    });
+    fireEvent.playing(audio);
+    fireEvent.timeUpdate(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(7_000);
+    });
+
+    audio.currentTime = 2;
+    fireEvent.timeUpdate(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(7_000);
+    });
+
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("stops automatic reload loops after a second silent stall and lets the listener retry", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 10 });
+    fireEvent.loadedMetadata(audio);
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 1.75,
+    });
+    fireEvent.playing(audio);
+    fireEvent.timeUpdate(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+
+    audio.currentTime = 0;
+    fireEvent.loadedMetadata(audio);
+    fireEvent.canPlay(audio);
+    fireEvent.playing(audio);
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+
+    expect(load).toHaveBeenCalledTimes(1);
+    const retry = screen.getByRole("button", { name: "网络不稳定，继续朗读" });
+    fireEvent.click(retry);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(play).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels the silent-stall deadline when the listener pauses", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    fireEvent.playing(audio);
+    fireEvent.click(screen.getByRole("button", { name: "暂停朗读" }));
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("does not let a silent-stall deadline reload a newer paragraph", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+
+    const firstAudio = document.querySelector("audio") as HTMLAudioElement;
+    fireEvent.playing(firstAudio);
+    fireEvent.click(screen.getByText("查看正文").closest("button") as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("button", { name: "从第 2 段开始朗读" }));
+    await waitFor(() => expect(document.querySelector('audio[data-active="true"]')).toHaveAttribute(
+      "src",
+      "/api/voice-reading/audio/second.mp3",
+    ));
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["音色", "calm_male"],
+    ["语速", "1.25"],
+  ])("cancels the silent-stall deadline when %s changes", async (label, value) => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    fireEvent.playing(audio);
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+
+    expect(load).not.toHaveBeenCalled();
+  });
+
   it("preserves a confirmed resume position across consecutive failures before metadata", async () => {
     jest.useFakeTimers();
     renderExperience();
@@ -660,7 +806,7 @@ describe("StoryListeningExperience", () => {
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
     const audio = document.querySelector("audio") as HTMLAudioElement;
 
-    fireEvent.waiting(audio);
+    fireEvent.playing(audio);
     fireEvent.click(await screen.findByRole("button", { name: /推开那扇门/ }));
     await act(async () => {
       jest.advanceTimersByTime(8_000);
@@ -677,7 +823,7 @@ describe("StoryListeningExperience", () => {
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
     const audio = document.querySelector("audio") as HTMLAudioElement;
 
-    fireEvent.waiting(audio);
+    fireEvent.playing(audio);
     unmount();
     await act(async () => {
       jest.advanceTimersByTime(8_000);
