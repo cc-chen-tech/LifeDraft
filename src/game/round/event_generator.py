@@ -1416,7 +1416,6 @@ Return ONLY JSON, no other text."""
             self._prompt_context(player_state) if player_state is not None else {}
         )
         timeline = state_dict.get("timeline")
-        daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
         first_daily_day = (
             isinstance(timeline, dict) and int(timeline.get("day_index") or 0) == 0
         )
