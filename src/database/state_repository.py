@@ -2,12 +2,13 @@
 
 import logging
 import os
+from copy import deepcopy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 
-from src.database.models import (Game, GameState, Image,
+from src.database.models import (DailyWorldProjection, Game, GameState, Image,
                                  PortraitImageGenerationJob, SessionLocal,
                                  get_db)
 from src.game.story_origin import (StoryOriginLocked,
@@ -104,6 +105,12 @@ class StateRepository:
         # 它也是正常状态（下一事件可能尚未生成）。清除它会导致刷新后章节重新生成。
         db = SessionLocal()
         try:
+            game = None
+            if self._projection_merge_enabled(player_state):
+                game = self._lock_game_for_projection_merge(db, game_id)
+                self._merge_authoritative_projection_state(
+                    db, game_id, player_state, game
+                )
             # 保存新的状态快照
             state = GameState(
                 game_id=game_id,
@@ -114,7 +121,8 @@ class StateRepository:
             db.add(state)
 
             # 更新 Game 表的 updated_at
-            game = db.query(Game).filter(Game.game_id == game_id).first()
+            if game is None:
+                game = db.query(Game).filter(Game.game_id == game_id).first()
             if game:
                 game.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
                 logger.info(f"save_game_progress: Updated game {game_id} updated_at")
@@ -145,6 +153,132 @@ class StateRepository:
             return False
         finally:
             db.close()
+
+    @staticmethod
+    def _projection_merge_enabled(player_state: "PlayerState") -> bool:
+        from config.feature_flags import get_feature
+        from src.game.daily_timeline import is_daily_timeline
+
+        return get_feature("daily_world_projection_v1") and is_daily_timeline(
+            player_state
+        )
+
+    @staticmethod
+    def _lock_game_for_projection_merge(db: Any, game_id: int) -> Optional[Game]:
+        bind = db.get_bind()
+        if bind.dialect.name == "sqlite":
+            updated = db.execute(
+                text(
+                    "UPDATE games SET updated_at = updated_at "
+                    "WHERE game_id = :game_id"
+                ),
+                {"game_id": game_id},
+            )
+            if updated.rowcount != 1:
+                return None
+            return db.get(Game, game_id)
+        return (
+            db.query(Game)
+            .filter(Game.game_id == game_id)
+            .with_for_update()
+            .one_or_none()
+        )
+
+    @staticmethod
+    def _merge_authoritative_projection_state(
+        db: Any,
+        game_id: int,
+        player_state: "PlayerState",
+        game: Optional[Game],
+    ) -> None:
+        """Rebase a stale candidate onto the durable derived-state snapshot."""
+
+        from src.game.state import PlayerState
+        from src.game.world_projection_state import (
+            apply_contiguous_world_projections,
+            projection_row_snapshot,
+        )
+
+        latest = (
+            db.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+        )
+        state_data = latest.state_json if latest is not None else getattr(
+            game, "initial_state", None
+        )
+        if isinstance(state_data, dict):
+            durable = PlayerState.from_dict(dict(state_data))
+            player_state.world_projection_state = deepcopy(
+                durable.world_projection_state
+            )
+
+        applied_through = int(
+            player_state.world_projection_state.get(
+                "applied_through_day_index", -1
+            )
+        )
+        for record in player_state.day_history:
+            if (
+                isinstance(record, dict)
+                and isinstance(record.get("day_index"), int)
+                and not isinstance(record.get("day_index"), bool)
+                and record["day_index"] > applied_through
+                and "world_projection_identity" in record
+            ):
+                record["world_projection_status"] = "pending"
+
+        rows = [
+            projection_row_snapshot(row)
+            for row in (
+                db.query(DailyWorldProjection)
+                .filter(DailyWorldProjection.game_id == game_id)
+                .order_by(
+                    DailyWorldProjection.day_index,
+                    DailyWorldProjection.revision.desc(),
+                    DailyWorldProjection.projection_id,
+                )
+                .all()
+            )
+        ]
+        for source in player_state.world_projection_state.get(
+            "applied_sources", []
+        ):
+            if not isinstance(source, dict):
+                continue
+            matches = [
+                record
+                for record in player_state.day_history
+                if isinstance(record, dict)
+                and record.get("event_id") == source.get("event_id")
+                and record.get("revision") == source.get("revision")
+                and record.get("day_index") == source.get("day_index")
+            ]
+            if len(matches) != 1 or matches[0].get(
+                "choice_option_index"
+            ) != source.get("option_index"):
+                raise ValueError("world_projection_choice_conflict")
+            matching_rows = [
+                row
+                for row in rows
+                if row.event_id == source.get("event_id")
+                and row.revision == source.get("revision")
+                and row.day_index == source.get("day_index")
+                and row.source_hash == source.get("source_hash")
+            ]
+            if len(matching_rows) != 1:
+                raise ValueError("world_projection_source_missing")
+            row = matching_rows[0]
+            matches[0]["world_projection_id"] = row.projection_id
+            matches[0]["world_projection_identity"] = {
+                "event_id": row.event_id,
+                "revision": row.revision,
+                "day_index": row.day_index,
+                "source_hash": row.source_hash,
+            }
+            matches[0]["world_projection_status"] = "applied"
+        apply_contiguous_world_projections(player_state, rows)
 
     def _prune_old_auto_snapshots(self, db, game_id: int) -> int:
         """删除超出保留上限的旧自动快照，手动存档点（is_save_point=True）永不删除。

@@ -160,6 +160,7 @@ class GameInitializer:
 
         # Create GameLoop and load the state
         game_loop = GameLoop(language=self.language, quality_level=constraint_level)
+        game_loop.game_id = game_id
         game_loop.load_game(initial_state)
 
         return game_loop, game_id

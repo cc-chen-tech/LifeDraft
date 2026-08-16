@@ -105,6 +105,7 @@ class RoundSystemMixin:
             postprocess_callback=getattr(self, "_queue_daily_postprocessing", None),
             settlement_lock=getattr(self, "_daily_mutation_lock", None),
             language_getter=lambda: self.language,
+            game_id_getter=lambda: getattr(self, "game_id", None),
             projection_lookup=self._lookup_daily_choice_projection,
             projection_settled_callback=self._wake_daily_projection_applier,
         )

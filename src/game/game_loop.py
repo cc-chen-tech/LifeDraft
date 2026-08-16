@@ -77,6 +77,7 @@ class GameLoop(RoundSystemMixin):
         self.quality_level = quality_level
         self.event_callback = event_callback
         self.result_callback = result_callback
+        self.game_id: Optional[int] = None
         self.player_state: Optional[PlayerState] = None  # type: ignore[assignment]
         self.current_event: Optional[GameEvent] = None
         self._generating: bool = False  # Flag to prevent concurrent generation
@@ -185,6 +186,13 @@ class GameLoop(RoundSystemMixin):
         Returns:
             Loaded PlayerState
         """
+        stored_game_id = state_dict.get("_game_id")
+        if (
+            isinstance(stored_game_id, int)
+            and not isinstance(stored_game_id, bool)
+            and stored_game_id > 0
+        ):
+            self.game_id = stored_game_id
         self.player_state = PlayerState.from_dict(state_dict)
 
         # 如果characters为空但有character_settings，尝试初始化

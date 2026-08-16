@@ -6,9 +6,11 @@ from datetime import datetime
 import pytest
 from sqlalchemy.orm import sessionmaker
 
+from config.feature_flags import reset_features, set_feature
 from src.ai.models import EventOption, GameEvent
 from src.api.session_store import session_store
 from src.database.models import DailyWorldProjection, Game, GameState
+from src.database.state_repository import StateRepository
 from src.game.daily_timeline import build_daily_timeline
 from src.game.game_loop import GameLoop
 from src.game.round.daily_choice_processor import DailyChoiceProcessor
@@ -293,6 +295,7 @@ def test_concurrent_worker_and_choice_preserve_one_projection_application(
         player_state_getter=lambda: base,
         current_event_getter=lambda: holder["event"],
         current_event_setter=lambda value: holder.__setitem__("event", value),
+        game_id_getter=lambda: game_id,
         projection_lookup=lookup,
     )
 
@@ -377,3 +380,220 @@ def test_serial_applier_updates_live_session_and_uses_its_mutation_lock(
         )
     finally:
         session_store.remove(game_id, user_id=99156)
+
+
+def test_serial_applier_includes_session_registered_during_database_apply(
+    temp_db_file,
+) -> None:
+    engine, _ = temp_db_file
+    game_id, Session = _seed_game(engine, days=(5,), statuses=("ready",))
+    stale_state = PlayerState.from_dict(_latest(Session, game_id))
+    loop = object.__new__(GameLoop)
+    loop.player_state = stale_state
+    loop._daily_mutation_lock = threading.RLock()
+    service = DailyWorldProjectionService(session_factory=Session)
+    snapshot_taken = threading.Event()
+    release_apply = threading.Event()
+    original_active = service._active_game_loops
+    calls = 0
+
+    def active_loops(requested_game_id):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            snapshot_taken.set()
+            assert release_apply.wait(timeout=5)
+            return []
+        return original_active(requested_game_id)
+
+    service._active_game_loops = active_loops
+    worker = threading.Thread(target=lambda: service.apply_ready_for_game(game_id))
+    worker.start()
+    assert snapshot_taken.wait(timeout=5)
+    session_store.put(game_id, loop, user_id=88156)
+    release_apply.set()
+    worker.join(timeout=5)
+
+    try:
+        assert not worker.is_alive()
+        assert (
+            loop.player_state.world_projection_state["applied_through_day_index"] == 5
+        )
+        assert (
+            len(loop.player_state.world_projection_state["world"]["fact_updates"]) == 1
+        )
+    finally:
+        session_store.remove(game_id, user_id=88156)
+
+
+def test_choice_projection_lookup_is_strictly_scoped_to_game(temp_db_file) -> None:
+    engine, _ = temp_db_file
+    Session = sessionmaker(bind=engine)
+    record = _record(0)
+    with Session.begin() as db:
+        game_a = Game(language="zh", initial_state={})
+        game_b = Game(language="zh", initial_state={})
+        db.add_all((game_a, game_b))
+        db.flush()
+        game_a_id = game_a.game_id
+        game_b_id = game_b.game_id
+        db.add(_projection(game_b_id, record, "ready"))
+
+    state = PlayerState(
+        timeline=build_daily_timeline(start_date="2026-08-01", day_index=0),
+        timeline_version=2,
+    )
+    event = GameEvent(
+        event_id=record["event_id"],
+        revision=record["revision"],
+        story_date=record["story_date"],
+        event_description=record["event_description"],
+        options=[EventOption(**option) for option in record["options"]],
+    )
+    holder = {"event": event}
+    service = DailyWorldProjectionService(session_factory=Session)
+    processor = DailyChoiceProcessor(
+        player_state_getter=lambda: state,
+        current_event_getter=lambda: holder["event"],
+        current_event_setter=lambda value: holder.__setitem__("event", value),
+        game_id_getter=lambda: game_a_id,
+        projection_lookup=service.lookup_choice_projection,
+    )
+
+    processor.make_choice(
+        event_id=event.event_id,
+        revision=event.revision,
+        option_index=0,
+    )
+
+    assert game_a_id != game_b_id
+    assert state.day_history[-1]["world_projection_status"] == "pending"
+    assert state.world_projection_state["world"]["fact_updates"] == []
+
+
+def test_choice_save_revalidates_projection_after_lookup_supersede(
+    temp_db_file, monkeypatch
+) -> None:
+    engine, _ = temp_db_file
+    Session = sessionmaker(bind=engine)
+    record = _record(0)
+    state = PlayerState(
+        timeline=build_daily_timeline(start_date="2026-08-01", day_index=0),
+        timeline_version=2,
+    )
+    with Session.begin() as db:
+        game = Game(language="zh", initial_state=state.to_dict())
+        db.add(game)
+        db.flush()
+        game_id = game.game_id
+        db.add(
+            GameState(
+                game_id=game_id,
+                week=state.week,
+                age=state.age,
+                state_json=state.to_dict(),
+            )
+        )
+        db.add(_projection(game_id, record, "ready"))
+    event = GameEvent(
+        event_id=record["event_id"],
+        revision=record["revision"],
+        story_date=record["story_date"],
+        event_description=record["event_description"],
+        options=[EventOption(**option) for option in record["options"]],
+    )
+    holder = {"event": event}
+    service = DailyWorldProjectionService(session_factory=Session)
+
+    def lookup_then_supersede(**identity):
+        snapshot = service.lookup_choice_projection(**identity)
+        with Session.begin() as db:
+            db.query(DailyWorldProjection).filter(
+                DailyWorldProjection.game_id == game_id
+            ).update({"status": "superseded"}, synchronize_session=False)
+        return snapshot
+
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", Session)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        processor = DailyChoiceProcessor(
+            player_state_getter=lambda: state,
+            current_event_getter=lambda: holder["event"],
+            current_event_setter=lambda value: holder.__setitem__("event", value),
+            game_id_getter=lambda: game_id,
+            projection_lookup=lookup_then_supersede,
+        )
+        processor.make_choice(
+            event_id=event.event_id,
+            revision=event.revision,
+            option_index=0,
+            persist_callback=lambda candidate: StateRepository().save_game_progress(
+                game_id, candidate
+            ),
+        )
+    finally:
+        reset_features()
+
+    assert state.day_history[-1]["world_projection_status"] == "pending"
+    assert state.world_projection_state["world"]["fact_updates"] == []
+    assert (
+        _latest(Session, game_id)["world_projection_state"]["world"]["fact_updates"]
+        == []
+    )
+
+
+def test_normal_save_cannot_overwrite_cross_process_projection_apply(
+    temp_db_file, monkeypatch
+) -> None:
+    engine, _ = temp_db_file
+    game_id, Session = _seed_game(engine, days=(0,), statuses=("ready",))
+    stale_candidate = PlayerState.from_dict(_latest(Session, game_id))
+    service = DailyWorldProjectionService(session_factory=Session)
+    assert service.apply_ready_for_game(game_id) == 1
+
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", Session)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        assert StateRepository().save_game_progress(game_id, stale_candidate) is True
+    finally:
+        reset_features()
+
+    saved = _latest(Session, game_id)
+    assert saved["world_projection_state"]["applied_through_day_index"] == 0
+    assert [
+        item["fact"]
+        for item in saved["world_projection_state"]["world"]["fact_updates"]
+    ] == ["day-0-applied"]
+    assert saved["day_history"][0]["world_projection_status"] == "applied"
+    assert saved["day_history"][0]["world_projection_id"] > 0
+    assert saved["day_history"][0]["world_projection_identity"]["event_id"] == (
+        "event-0"
+    )
+
+
+def test_normal_save_rejects_choice_conflicting_with_applied_projection(
+    temp_db_file, monkeypatch
+) -> None:
+    engine, _ = temp_db_file
+    game_id, Session = _seed_game(engine, days=(0,), statuses=("ready",))
+    stale_candidate = PlayerState.from_dict(_latest(Session, game_id))
+    service = DailyWorldProjectionService(session_factory=Session)
+    assert service.apply_ready_for_game(game_id) == 1
+    stale_candidate.day_history[0]["choice_option_index"] = 1
+
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", Session)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        assert StateRepository().save_game_progress(game_id, stale_candidate) is False
+    finally:
+        reset_features()
+
+    saved = _latest(Session, game_id)
+    assert saved["day_history"][0]["choice_option_index"] == 0
+    assert saved["day_history"][0]["world_projection_status"] == "applied"

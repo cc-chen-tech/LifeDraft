@@ -223,6 +223,11 @@ class SessionStore:
         cached data (like options cache) for better performance.
         """
         key = self.make_key(game_id, user_id)
+        try:
+            game_loop.game_id = game_id
+        except AttributeError:
+            # Lightweight contract-test doubles may not expose writable attrs.
+            pass
 
         with self._lock:
             existing_session = self._sessions.get(key)

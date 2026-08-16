@@ -42,6 +42,7 @@ class DailyChoiceProcessor:
         postprocess_callback: Optional[Callable[[str], None]] = None,
         settlement_lock: Optional[Any] = None,
         language_getter: Optional[Callable[[], str]] = None,
+        game_id_getter: Optional[Callable[[], Optional[int]]] = None,
         projection_lookup: Optional[Callable[..., Any]] = None,
         projection_settled_callback: Optional[Callable[[Any], None]] = None,
     ) -> None:
@@ -52,6 +53,7 @@ class DailyChoiceProcessor:
         self.postprocess_callback = postprocess_callback
         self._settlement_lock = settlement_lock or Lock()
         self._get_language = language_getter or (lambda: "zh")
+        self._get_game_id = game_id_getter or (lambda: None)
         self.projection_lookup = projection_lookup
         self.projection_settled_callback = projection_settled_callback
 
@@ -118,7 +120,11 @@ class DailyChoiceProcessor:
                 event.event_description, event.options
             ),
         }
-        projection = self._lookup_projection(projection_identity)
+        lookup_identity = dict(projection_identity)
+        game_id = self._get_game_id()
+        if isinstance(game_id, int) and not isinstance(game_id, bool) and game_id > 0:
+            lookup_identity["game_id"] = game_id
+        projection = self._lookup_projection(lookup_identity)
         transition_text = resolve_daily_transition(
             option,
             state,
@@ -178,7 +184,7 @@ class DailyChoiceProcessor:
             "world_projection_identity": deepcopy(projection_identity),
             "world_projection_status": "pending",
         }
-        projection_id = self._matching_projection_id(projection, projection_identity)
+        projection_id = self._matching_projection_id(projection, lookup_identity)
         if projection_id is not None:
             record["world_projection_id"] = projection_id
         result = {

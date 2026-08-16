@@ -276,6 +276,7 @@ class DailyWorldProjectionService:
     def lookup_choice_projection(
         self,
         *,
+        game_id: int,
         event_id: str,
         revision: int,
         day_index: int,
@@ -287,6 +288,7 @@ class DailyWorldProjectionService:
             rows = (
                 session.query(DailyWorldProjection)
                 .filter(
+                    DailyWorldProjection.game_id == game_id,
                     DailyWorldProjection.event_id == event_id,
                     DailyWorldProjection.revision == revision,
                     DailyWorldProjection.day_index == day_index,
@@ -446,16 +448,29 @@ class DailyWorldProjectionService:
 
         from src.api.routers.gameplay.sse_helpers import _get_game_state_lock
 
-        loops = self._active_game_loops(game_id)
         with _get_game_state_lock(game_id), ExitStack() as loop_locks:
+            loops = self._active_game_loops(game_id)
+            locked_loop_ids: set[int] = set()
             for loop in sorted(loops, key=id):
                 mutation_lock = getattr(loop, "_daily_mutation_lock", None)
                 if mutation_lock is not None:
                     loop_locks.enter_context(mutation_lock)
+                locked_loop_ids.add(id(loop))
             applied_count, rows_to_mark, state_data = self._transaction(
                 lambda session, _repo: self._apply_and_save_contiguous(session, game_id)
             )
             if state_data is not None:
+                # A session can be restored while the database transaction is
+                # running.  Include and lock it before publishing so a stale
+                # pre-commit snapshot cannot immediately overwrite this apply.
+                loops = self._active_game_loops(game_id)
+                for loop in sorted(loops, key=id):
+                    if id(loop) in locked_loop_ids:
+                        continue
+                    mutation_lock = getattr(loop, "_daily_mutation_lock", None)
+                    if mutation_lock is not None:
+                        loop_locks.enter_context(mutation_lock)
+                    locked_loop_ids.add(id(loop))
                 self._publish_projection_state(loops, state_data)
             applied_at = self._as_utc_naive(self.now_fn())
             for projection_id, source_hash in rows_to_mark:
