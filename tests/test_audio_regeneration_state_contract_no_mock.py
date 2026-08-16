@@ -19,7 +19,7 @@ def test_voice_setting_contract_preserves_selected_voice_color() -> None:
         uploaded_voice_available=False,
         auto_read_enabled=False,
         tts_provider="minimax",
-        tts_model="speech-02-turbo",
+        tts_model="speech-2.8-turbo",
         tts_provider_available=True,
         backend_audio_enabled=True,
         playback_mode="audio",

@@ -89,6 +89,8 @@ def test_story_voice_response_fields_match_frontend_contract() -> None:
 
 
 def test_voice_settings_contract_supports_reading_defaults() -> None:
+    defaults = VoiceReadingSettingsResponse()
+
     assert {
         "member_required",
         "enabled",
@@ -110,6 +112,7 @@ def test_voice_settings_contract_supports_reading_defaults() -> None:
     assert "getSettings" in FRONTEND_API
     assert "updateSettings" in FRONTEND_API
     assert "requestReading" in FRONTEND_API
+    assert defaults.tts_model == "speech-2.8-turbo"
 
 
 def test_daily_listener_uses_chapter_audio_without_browser_speech() -> None:

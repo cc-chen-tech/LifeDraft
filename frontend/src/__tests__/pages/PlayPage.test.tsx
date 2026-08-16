@@ -150,7 +150,7 @@ describe('PlayPage', () => {
             status: 'ready',
             playback_mode: 'audio',
             provider: 'minimax',
-            model: 'speech-02-turbo',
+            model: 'speech-2.8-turbo',
             message: '',
             segments: [{
               paragraph_index: 0,

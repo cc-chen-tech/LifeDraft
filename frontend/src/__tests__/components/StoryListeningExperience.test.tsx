@@ -78,7 +78,7 @@ function setupApi() {
     uploaded_voice_available: false,
     auto_read_enabled: true,
     tts_provider: "minimax",
-    tts_model: "speech-02-turbo",
+    tts_model: "speech-2.8-turbo",
     tts_provider_available: true,
     backend_audio_enabled: true,
     playback_mode: "audio",
@@ -89,7 +89,7 @@ function setupApi() {
     status: "queued",
     playback_mode: "unavailable",
     provider: "minimax",
-    model: "speech-02-turbo",
+    model: "speech-2.8-turbo",
     message: "",
     segments: segments.map((segment) => ({ ...segment, status: "queued", audio_url: null })),
   });
@@ -98,7 +98,7 @@ function setupApi() {
     status: "ready",
     playback_mode: "audio",
     provider: "minimax",
-    model: "speech-02-turbo",
+    model: "speech-2.8-turbo",
     message: "",
     segments,
   });
@@ -196,7 +196,7 @@ describe("StoryListeningExperience", () => {
       status: "queued",
       playback_mode: "unavailable",
       provider: "minimax",
-      model: "speech-02-turbo",
+      model: "speech-2.8-turbo",
       message: "",
       segments: segments.map((segment) => ({
         ...segment,
@@ -221,7 +221,7 @@ describe("StoryListeningExperience", () => {
       status: "ready",
       playback_mode: "audio",
       provider: "minimax",
-      model: "speech-02-turbo",
+      model: "speech-2.8-turbo",
       message: "",
       segments,
     });
@@ -257,7 +257,7 @@ describe("StoryListeningExperience", () => {
         status: "failed",
         playback_mode: "unavailable",
         provider: "minimax",
-        model: "speech-02-turbo",
+        model: "speech-2.8-turbo",
         error_code: "tts_generation_failed",
         message: "高质量语音生成失败",
         segments: [{ ...segments[0], status: "failed", audio_url: null }],
@@ -267,7 +267,7 @@ describe("StoryListeningExperience", () => {
         status: "ready",
         playback_mode: "audio",
         provider: "minimax",
-        model: "speech-02-turbo",
+        model: "speech-2.8-turbo",
         message: "",
         segments,
       });
@@ -876,7 +876,7 @@ describe("StoryListeningExperience", () => {
       status: "ready",
       playback_mode: "audio",
       provider: "minimax",
-      model: "speech-02-turbo",
+      model: "speech-2.8-turbo",
       message: "",
       segments: [
         { ...segments[0], start_ms: 250 },
