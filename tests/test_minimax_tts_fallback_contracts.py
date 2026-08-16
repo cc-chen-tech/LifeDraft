@@ -62,7 +62,7 @@ def test_local_audio_is_validated_measured_and_atomically_published(tmp_path: Pa
             payload: dict[str, object],
             output_path: Path,
             on_progress=None,
-        ) -> None:
+        ) -> str:
             if on_progress is not None:
                 on_progress()
             self.output_paths.append(output_path)
@@ -71,6 +71,10 @@ def test_local_audio_is_validated_measured_and_atomically_published(tmp_path: Pa
                 audio.setsampwidth(2)
                 audio.setframerate(8_000)
                 audio.writeframes(b"\x00\x00" * 1_000)
+            return (
+                "1\n00:00:00,000 --> 00:00:00,060\n第一段。\n\n"
+                "2\n00:00:00,065 --> 00:00:00,125\n第二段。\n"
+            )
 
     client = RecordingClient()
     provider = MiniMaxTTSProvider(
@@ -79,7 +83,11 @@ def test_local_audio_is_validated_measured_and_atomically_published(tmp_path: Pa
     )
 
     speech = provider.synthesize(
-        {"text_hash": "atomic-story", "text": "按实际音频时长返回。"},
+        {
+            "text_hash": "atomic-story",
+            "text": "第一段。\n\n第二段。",
+            "paragraphs": ["第一段。", "第二段。"],
+        },
         "calm_male",
         1.25,
     )
@@ -89,13 +97,17 @@ def test_local_audio_is_validated_measured_and_atomically_published(tmp_path: Pa
     assert client.output_paths[0].parent == asset_dir
     assert client.output_paths[0] != published
     assert "speed-float64-3ff4000000000000" in published.name
-    assert "cache-v2" in published.name
+    assert "cache-v3" in published.name
     assert published.exists()
     assert list(asset_dir.glob(".*")) == []
     assert speech.duration_ms == 125
+    assert [
+        (cue.paragraph_index, cue.start_ms, cue.end_ms)
+        for cue in speech.paragraph_cues
+    ] == [(0, 0, 65), (1, 65, 125)]
 
 
-def test_close_accepted_speeds_use_distinct_v2_cache_tokens(tmp_path: Path) -> None:
+def test_close_accepted_speeds_use_distinct_v3_cache_tokens(tmp_path: Path) -> None:
     provider = MiniMaxTTSProvider(
         config=_config(tmp_path, {"MINIMAX_E2E_LOCAL_AUDIO": "true"})
     )

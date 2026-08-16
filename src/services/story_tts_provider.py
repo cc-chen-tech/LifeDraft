@@ -41,6 +41,14 @@ class GeneratedSpeech:
     model: str
     media_type: Optional[str]
     playback_mode: PlaybackMode
+    paragraph_cues: tuple["ParagraphCue", ...] = ()
+
+
+@dataclass(frozen=True)
+class ParagraphCue:
+    paragraph_index: int
+    start_ms: int
+    end_ms: int
 
 
 class StoryTTSProvider(Protocol):
@@ -117,6 +125,7 @@ class DeterministicTTSProvider:
             int(MIN_DETERMINISTIC_AUDIO_DURATION_SECONDS * 1000),
             int(len(text) * 120 / speed),
         )
+        paragraphs = [str(value) for value in context.get("paragraphs", []) if str(value)]
         return GeneratedSpeech(
             storage_path=f"/api/voice-reading/audio/{text_hash}-{voice_id}.wav",
             duration_ms=duration,
@@ -124,7 +133,30 @@ class DeterministicTTSProvider:
             model=self.model,
             media_type="audio/wav",
             playback_mode="audio",
+            paragraph_cues=_proportional_paragraph_cues(paragraphs, duration),
         )
+
+
+def _proportional_paragraph_cues(
+    paragraphs: list[str], duration_ms: int
+) -> tuple[ParagraphCue, ...]:
+    if not paragraphs:
+        return ()
+    weights = [max(1, len("".join(paragraph.split()))) for paragraph in paragraphs]
+    total_weight = sum(weights)
+    starts = [0]
+    consumed = 0
+    for weight in weights[:-1]:
+        consumed += weight
+        starts.append(round(duration_ms * consumed / total_weight))
+    return tuple(
+        ParagraphCue(
+            paragraph_index=index,
+            start_ms=start,
+            end_ms=starts[index + 1] if index + 1 < len(starts) else duration_ms,
+        )
+        for index, start in enumerate(starts)
+    )
 
 
 def build_story_tts_provider() -> StoryTTSProvider:

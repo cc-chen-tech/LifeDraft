@@ -39,17 +39,21 @@ const segments = [
   {
     paragraph_index: 0,
     status: "ready",
-    audio_url: "/api/voice-reading/audio/first.mp3",
+    audio_url: "/api/voice-reading/audio/chapter.mp3",
     asset_id: 1,
     duration_ms: 4_000,
+    start_ms: 0,
+    end_ms: 4_000,
     media_type: "audio/mpeg",
   },
   {
     paragraph_index: 1,
     status: "ready",
-    audio_url: "/api/voice-reading/audio/second.mp3",
-    asset_id: 2,
+    audio_url: "/api/voice-reading/audio/chapter.mp3",
+    asset_id: 1,
     duration_ms: 5_000,
+    start_ms: 4_000,
+    end_ms: 9_000,
     media_type: "audio/mpeg",
   },
 ];
@@ -185,6 +189,54 @@ describe("StoryListeningExperience", () => {
     expect(screen.queryByText("正在朗读第 1 段")).not.toBeInTheDocument();
   });
 
+  it("preserves a paragraph selection made before its chapter cues are ready", async () => {
+    const readyJob = deferred<Awaited<ReturnType<typeof api.voice_reading.getJob>>>();
+    voiceApi.requestReading.mockResolvedValueOnce({
+      job_id: 19,
+      status: "queued",
+      playback_mode: "unavailable",
+      provider: "minimax",
+      model: "speech-02-turbo",
+      message: "",
+      segments: segments.map((segment) => ({
+        ...segment,
+        status: "queued",
+        audio_url: null,
+        start_ms: null,
+        end_ms: null,
+      })),
+    });
+    voiceApi.getJob.mockReturnValueOnce(readyJob.promise);
+    renderExperience();
+
+    fireEvent.click((await screen.findByText("查看正文")).closest("button") as HTMLButtonElement);
+    const secondParagraph = await screen.findByRole("button", {
+      name: "从第 2 段开始朗读",
+    });
+    fireEvent.click(secondParagraph);
+    expect(secondParagraph).toHaveAttribute("aria-current", "true");
+
+    readyJob.resolve({
+      job_id: 19,
+      status: "ready",
+      playback_mode: "audio",
+      provider: "minimax",
+      model: "speech-02-turbo",
+      message: "",
+      segments,
+    });
+    const audio = await waitFor(() => {
+      const element = document.querySelector("audio") as HTMLAudioElement | null;
+      expect(element).not.toBeNull();
+      return element as HTMLAudioElement;
+    });
+    Object.defineProperty(audio, "duration", { configurable: true, value: 9 });
+    fireEvent.loadedMetadata(audio);
+
+    expect(audio.currentTime).toBe(4);
+    expect(secondParagraph).toHaveAttribute("aria-current", "true");
+  });
+
   it("stops narration immediately when a daily choice is selected", async () => {
     const { onSelectChoice } = renderExperience();
     await screen.findByRole("button", { name: /推开那扇门/ });
@@ -252,7 +304,12 @@ describe("StoryListeningExperience", () => {
     });
 
     await waitFor(() => expect(secondParagraph).toHaveAttribute("aria-current", "true"));
-    fireEvent.canPlay(document.querySelector("audio") as HTMLAudioElement);
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 9 });
+    fireEvent.loadedMetadata(audio);
+    expect(audio.currentTime).toBe(6);
+    expect(screen.getByLabelText("朗读进度")).toHaveValue("6000");
+    fireEvent.canPlay(audio);
     await waitFor(() => expect(play).toHaveBeenCalled());
   });
 
@@ -304,13 +361,13 @@ describe("StoryListeningExperience", () => {
     fireEvent.change(screen.getByLabelText("朗读进度"), { target: { value: "5000" } });
 
     expect(firstAudio.currentTime).toBe(0);
-    await waitFor(() => expect((document.querySelector("audio") as HTMLAudioElement).getAttribute("src")).toBe("/api/voice-reading/audio/second.mp3"));
     const audio = document.querySelector("audio") as HTMLAudioElement;
-    Object.defineProperty(audio, "duration", { configurable: true, value: 6 });
+    expect(audio).toBe(firstAudio);
+    Object.defineProperty(audio, "duration", { configurable: true, value: 10 });
 
     fireEvent.loadedMetadata(audio);
 
-    expect(audio.currentTime).toBe(1);
+    expect(audio.currentTime).toBe(5);
     expect(screen.getByLabelText("朗读进度")).toHaveAttribute("max", "10000");
   });
 
@@ -496,10 +553,10 @@ describe("StoryListeningExperience", () => {
     fireEvent.playing(firstAudio);
     fireEvent.click(screen.getByText("查看正文").closest("button") as HTMLButtonElement);
     fireEvent.click(await screen.findByRole("button", { name: "从第 2 段开始朗读" }));
-    await waitFor(() => expect(document.querySelector('audio[data-active="true"]')).toHaveAttribute(
-      "src",
-      "/api/voice-reading/audio/second.mp3",
-    ));
+    await waitFor(() => expect(screen.getByText("第 2 段", { exact: true })).toBeInTheDocument());
+    const chapterAudio = document.querySelector('audio[data-active="true"]');
+    expect(chapterAudio).toBe(firstAudio);
+    expect(chapterAudio).toHaveAttribute("src", "/api/voice-reading/audio/chapter.mp3");
     await act(async () => {
       jest.advanceTimersByTime(8_000);
     });
@@ -606,27 +663,35 @@ describe("StoryListeningExperience", () => {
     expect(play).toHaveBeenCalledTimes(1);
   });
 
-  it("pauses delayed playback and ignores old-source canplay after changing paragraphs", async () => {
+  it("keeps a delayed autoplay promise from pausing a paragraph seek on the same chapter", async () => {
     const delayedPlay = deferred<void>();
-    play.mockImplementationOnce(() => delayedPlay.promise);
+    play.mockImplementationOnce(() => delayedPlay.promise).mockResolvedValueOnce(undefined);
     renderExperience();
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
-    const firstAudio = document.querySelector("audio") as HTMLAudioElement;
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "readyState", {
+      configurable: true,
+      value: HTMLMediaElement.HAVE_METADATA,
+    });
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
 
-    fireEvent.canPlay(firstAudio);
+    fireEvent.canPlay(audio);
     expect(play).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText("查看正文").closest("button") as HTMLButtonElement);
     fireEvent.click(await screen.findByRole("button", { name: "从第 2 段开始朗读" }));
-    await waitFor(() => expect((document.querySelector("audio") as HTMLAudioElement).getAttribute("src")).toBe("/api/voice-reading/audio/second.mp3"));
+    expect(audio.currentTime).toBe(4);
+    expect(play).toHaveBeenCalledTimes(2);
 
     pause.mockClear();
-    fireEvent.canPlay(firstAudio);
     await act(async () => {
       delayedPlay.resolve();
     });
 
-    expect(play).toHaveBeenCalledTimes(1);
-    expect(pause).toHaveBeenCalledTimes(1);
+    expect(pause).not.toHaveBeenCalled();
   });
 
   it("pauses delayed playback after a daily choice or unmount", async () => {
@@ -694,14 +759,11 @@ describe("StoryListeningExperience", () => {
     expect(screen.getByRole("button", { name: "暂停朗读" })).toBeInTheDocument();
   });
 
-  it("restarts the final segment when replay is selected after ended", async () => {
+  it("restarts the complete chapter when replay is selected after ended", async () => {
     renderExperience();
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
-    const firstAudio = document.querySelector("audio") as HTMLAudioElement;
-    fireEvent.ended(firstAudio);
-    await waitFor(() => expect((document.querySelector("audio") as HTMLAudioElement).getAttribute("src")).toBe("/api/voice-reading/audio/second.mp3"));
     const audio = document.querySelector("audio") as HTMLAudioElement;
-    Object.defineProperty(audio, "currentTime", { configurable: true, writable: true, value: 5 });
+    Object.defineProperty(audio, "currentTime", { configurable: true, writable: true, value: 9 });
 
     fireEvent.ended(audio);
     fireEvent.click(screen.getByRole("button", { name: "播放朗读" }));
@@ -790,37 +852,82 @@ describe("StoryListeningExperience", () => {
     jest.useRealTimers();
   });
 
-  it("moves to the next paragraph when the current MiniMax audio ends", async () => {
+  it("persists paragraph-local progress when the chapter clock crosses a cue", async () => {
     renderExperience();
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
     const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 4.5,
+    });
 
-    fireEvent.ended(audio);
+    fireEvent.timeUpdate(audio);
 
     expect(await screen.findByText("第 2 段")).toBeInTheDocument();
-    expect(document.querySelector("audio")).toHaveAttribute("src", "/api/voice-reading/audio/second.mp3");
+    expect(voiceApi.updateProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ paragraph_index: 1, position_ms: 500 }),
+    );
   });
 
-  it("keeps the next paragraph buffered and starts it without waiting for another canplay event", async () => {
+  it("keeps the first paragraph active during leading silence before its cue", async () => {
+    voiceApi.getJob.mockResolvedValue({
+      job_id: 19,
+      status: "ready",
+      playback_mode: "audio",
+      provider: "minimax",
+      model: "speech-02-turbo",
+      message: "",
+      segments: [
+        { ...segments[0], start_ms: 250 },
+        { ...segments[1], start_ms: 4_250 },
+      ],
+    });
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    fireEvent.click((await screen.findByText("查看正文")).closest("button") as HTMLButtonElement);
+    const firstParagraph = await screen.findByRole("button", {
+      name: "从第 1 段开始朗读",
+    });
+    const secondParagraph = await screen.findByRole("button", {
+      name: "从第 2 段开始朗读",
+    });
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0.1,
+    });
+
+    fireEvent.timeUpdate(audio);
+
+    expect(firstParagraph).toHaveAttribute("aria-current", "true");
+    expect(secondParagraph).not.toHaveAttribute("aria-current", "true");
+  });
+
+  it("keeps one chapter audio playing while the active paragraph cue changes", async () => {
     renderExperience();
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
 
-    const [currentAudio, bufferedNextAudio] = Array.from(document.querySelectorAll("audio"));
-    expect(currentAudio).toHaveAttribute("src", "/api/voice-reading/audio/first.mp3");
-    expect(bufferedNextAudio).toHaveAttribute("src", "/api/voice-reading/audio/second.mp3");
-    expect(bufferedNextAudio).toHaveAttribute("preload", "auto");
-    Object.defineProperty(bufferedNextAudio, "readyState", {
+    const [chapterAudio] = Array.from(document.querySelectorAll("audio"));
+    expect(document.querySelectorAll("audio")).toHaveLength(1);
+    expect(chapterAudio).toHaveAttribute("src", "/api/voice-reading/audio/chapter.mp3");
+    Object.defineProperty(chapterAudio, "currentTime", {
       configurable: true,
-      value: HTMLMediaElement.HAVE_FUTURE_DATA,
+      writable: true,
+      value: 4.05,
     });
     play.mockClear();
+    pause.mockClear();
+    load.mockClear();
 
-    fireEvent.ended(currentAudio);
+    fireEvent.timeUpdate(chapterAudio);
 
     await waitFor(() => expect(screen.getByText("第 2 段")).toBeInTheDocument());
-    const activeAudio = document.querySelector('audio[data-active="true"]');
-    expect(activeAudio).toBe(bufferedNextAudio);
-    await waitFor(() => expect(play.mock.instances).toContain(bufferedNextAudio));
+    expect(document.querySelector("audio")).toBe(chapterAudio);
+    expect(play).not.toHaveBeenCalled();
+    expect(pause).not.toHaveBeenCalled();
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("cancels a pending recovery when the listener selects a daily choice", async () => {

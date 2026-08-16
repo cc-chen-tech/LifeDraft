@@ -10,7 +10,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
 
 from config.settings import settings
 
-VOICE_ASSET_VERSION = 2
+VOICE_ASSET_VERSION = 3
 
 
 class Base(DeclarativeBase):
@@ -461,6 +461,8 @@ class VoiceReadingSegment(Base):
     paragraph_index = Column(Integer, nullable=False)
     text_hash = Column(String(128), nullable=False, index=True)
     text_content = Column(Text, nullable=False)
+    start_ms = Column(Integer, nullable=True)
+    end_ms = Column(Integer, nullable=True)
     status = Column(String(30), nullable=False, default="queued", index=True)
     error_code = Column(String(80), nullable=True)
     error_message = Column(Text, nullable=True)
@@ -724,6 +726,10 @@ def _ensure_legacy_columns() -> None:
         },
         "generated_voice_assets": {
             "asset_version": "INTEGER DEFAULT 1 NOT NULL",
+        },
+        "voice_reading_segments": {
+            "start_ms": "INTEGER",
+            "end_ms": "INTEGER",
         },
     }
 

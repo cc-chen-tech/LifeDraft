@@ -98,6 +98,8 @@ export interface VoiceReadingSegment {
   audio_url?: string | null;
   asset_id?: number | null;
   duration_ms?: number | null;
+  start_ms?: number | null;
+  end_ms?: number | null;
   media_type?: string | null;
   error_code?: string | null;
 }

@@ -341,6 +341,8 @@ class VoiceReadingSegmentResponse(BaseModel):
     audio_url: Optional[str] = None
     asset_id: Optional[int] = None
     duration_ms: Optional[int] = None
+    start_ms: Optional[int] = None
+    end_ms: Optional[int] = None
     media_type: Optional[str] = None
     error_code: Optional[str] = None
 

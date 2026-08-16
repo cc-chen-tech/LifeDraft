@@ -85,6 +85,10 @@ export function StoryListeningExperience({
   const autoPlayRequestedRef = useRef(true);
   const autoReadRef = useRef(true);
   const pendingResumePositionRef = useRef<number | null>(0);
+  const pendingSavedProgressRef = useRef<{
+    paragraphIndex: number;
+    positionMs: number;
+  } | null>(null);
   const lastProgressWriteRef = useRef(0);
   const activeParagraphRef = useRef(0);
   const playbackGenerationRef = useRef(0);
@@ -119,35 +123,50 @@ export function StoryListeningExperience({
   const [positionMs, setPositionMs] = useState(0);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
-  const [mediaDurations, setMediaDurations] = useState<Record<number, number>>({});
+  const [chapterMediaDurationMs, setChapterMediaDurationMs] = useState<number | null>(null);
   const [networkRetryRequired, setNetworkRetryRequired] = useState(false);
   const [networkRetryVisible, setNetworkRetryVisible] = useState(false);
 
   const currentSegment = segments.find(
     (segment) => segment.paragraph_index === activeParagraph,
   );
-  const nextSegment = segments.find(
-    (segment) => segment.paragraph_index === activeParagraph + 1 && segment.audio_url,
-  );
-  const bufferedSegments = [currentSegment, nextSegment].filter(
-    (segment): segment is VoiceReadingSegment => Boolean(segment?.audio_url),
-  );
-  const activeAudioSource = currentSegment?.audio_url ?? null;
+  const chapterSegment = segments.find((segment) => segment.audio_url);
+  const activeAudioSource = chapterSegment?.audio_url ?? null;
   useLayoutEffect(() => {
     activeAudioSourceRef.current = activeAudioSource;
   }, [activeAudioSource]);
   const readySegments = segments.filter((segment) => segment.audio_url);
   const segmentDuration = (segment: VoiceReadingSegment) =>
-    mediaDurations[segment.paragraph_index] ?? segment.duration_ms ?? 0;
-  const totalDurationMs = segments.reduce((total, segment) => total + segmentDuration(segment), 0);
-  const elapsedBeforeCurrent = segments
-    .filter((segment) => segment.paragraph_index < activeParagraph)
-    .reduce((total, segment) => total + segmentDuration(segment), 0);
+    segment.start_ms != null && segment.end_ms != null
+      ? Math.max(0, segment.end_ms - segment.start_ms)
+      : segment.duration_ms ?? 0;
+  const declaredDurationMs = Math.max(
+    0,
+    ...segments.map((segment) => segment.end_ms ?? 0),
+    segments.reduce((total, segment) => total + segmentDuration(segment), 0),
+  );
+  const totalDurationMs = chapterMediaDurationMs ?? declaredDurationMs;
+  const elapsedBeforeCurrent = currentSegment?.start_ms
+    ?? segments
+      .filter((segment) => segment.paragraph_index < activeParagraph)
+      .reduce((total, segment) => total + segmentDuration(segment), 0);
   const chapterPositionMs = Math.min(
     totalDurationMs,
     elapsedBeforeCurrent + positionMs,
   );
   const progressRatio = totalDurationMs > 0 ? chapterPositionMs / totalDurationMs : 0;
+
+  const locateChapterPosition = (milliseconds: number) => {
+    let locatedSegment: VoiceReadingSegment | undefined;
+    for (const segment of segments) {
+      if ((segment.start_ms ?? 0) <= milliseconds) locatedSegment = segment;
+    }
+    const paragraphStartMs = locatedSegment?.start_ms ?? 0;
+    return {
+      paragraphIndex: locatedSegment?.paragraph_index ?? activeParagraphRef.current,
+      paragraphPositionMs: Math.max(0, milliseconds - paragraphStartMs),
+    };
+  };
 
   const clearRecoveryWatchdog = () => {
     if (recoveryTimerRef.current !== null) {
@@ -239,9 +258,10 @@ export function StoryListeningExperience({
     setActiveParagraph(0);
     setPositionMs(0);
     pendingResumePositionRef.current = 0;
+    pendingSavedProgressRef.current = null;
     recoveredParagraphsRef.current.clear();
     finalSegmentEndedRef.current = false;
-    setMediaDurations({});
+    setChapterMediaDurationMs(null);
     setNetworkRetryRequired(false);
     setNetworkRetryVisible(false);
 
@@ -260,7 +280,11 @@ export function StoryListeningExperience({
           if (!active || generation !== generationRef.current) return;
           setActiveParagraph(Math.min(progress.paragraph_index, Math.max(0, paragraphs.length - 1)));
           setPositionMs(progress.position_ms);
-          pendingResumePositionRef.current = progress.position_ms;
+          pendingSavedProgressRef.current = {
+            paragraphIndex: progress.paragraph_index,
+            positionMs: progress.position_ms,
+          };
+          pendingResumePositionRef.current = null;
         } catch (error) {
           if ((error as { status?: number }).status !== 404) {
             console.warn("[StoryListeningExperience] Progress recovery unavailable", error);
@@ -409,23 +433,31 @@ export function StoryListeningExperience({
   const activateBufferedAudio = useEffectEvent((
     audio: HTMLAudioElement,
     source: string,
-    paragraphIndex: number,
   ) => {
     if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
       const durationMs = Math.round(audio.duration * 1000);
       if (Number.isFinite(durationMs) && durationMs > 0) {
-        setMediaDurations((current) => (
-          current[paragraphIndex] === durationMs
-            ? current
-            : { ...current, [paragraphIndex]: durationMs }
-        ));
+        setChapterMediaDurationMs(durationMs);
+      }
+      if (pendingSavedProgressRef.current !== null) {
+        const saved = pendingSavedProgressRef.current;
+        const savedSegment = segments.find(
+          (segment) => segment.paragraph_index === saved.paragraphIndex,
+        );
+        if (savedSegment?.start_ms != null) {
+          pendingResumePositionRef.current = savedSegment.start_ms + saved.positionMs;
+          pendingSavedProgressRef.current = null;
+        }
       }
       if (pendingResumePositionRef.current !== null) {
         const resumeMs = Number.isFinite(durationMs) && durationMs > 0
           ? Math.min(Math.max(0, pendingResumePositionRef.current), durationMs)
           : Math.max(0, pendingResumePositionRef.current);
+        const resumePosition = locateChapterPosition(resumeMs);
         audio.currentTime = resumeMs / 1000;
-        setPositionMs(resumeMs);
+        activeParagraphRef.current = resumePosition.paragraphIndex;
+        setActiveParagraph(resumePosition.paragraphIndex);
+        setPositionMs(resumePosition.paragraphPositionMs);
         pendingResumePositionRef.current = null;
       }
     }
@@ -440,11 +472,11 @@ export function StoryListeningExperience({
 
   useEffect(() => {
     const audio = audioRef.current;
-    const source = currentSegment?.audio_url;
+    const source = activeAudioSource;
     if (!audio || !source) return;
     clearRecoveryWatchdog();
     playbackGenerationRef.current += 1;
-    activateBufferedAudio(audio, source, currentSegment.paragraph_index);
+    activateBufferedAudio(audio, source);
     return () => {
       clearRecoveryWatchdog();
       playbackGenerationRef.current += 1;
@@ -452,18 +484,35 @@ export function StoryListeningExperience({
       if (playingAudioRef.current?.audio === audio) playingAudioRef.current = null;
       audio.pause();
     };
-  }, [currentSegment?.audio_url, currentSegment?.paragraph_index]);
+  }, [activeAudioSource]);
 
   const chooseParagraph = (index: number) => {
+    const targetSegment = segments.find((segment) => segment.paragraph_index === index);
+    const targetPositionMs = targetSegment?.start_ms;
     cancelActivePlayback();
     setActiveParagraph(index);
+    activeParagraphRef.current = index;
     setPositionMs(0);
-    pendingResumePositionRef.current = 0;
+    pendingSavedProgressRef.current = targetPositionMs == null
+      ? { paragraphIndex: index, positionMs: 0 }
+      : null;
+    pendingResumePositionRef.current = targetPositionMs ?? null;
     autoPlayRequestedRef.current = true;
     finalSegmentEndedRef.current = false;
     setNetworkRetryRequired(false);
     setNetworkRetryVisible(false);
     persistProgress(index, 0);
+    const audio = audioRef.current;
+    if (
+      audio &&
+      activeAudioSource &&
+      targetPositionMs != null &&
+      audio.readyState >= HTMLMediaElement.HAVE_METADATA
+    ) {
+      audio.currentTime = targetPositionMs / 1000;
+      pendingResumePositionRef.current = null;
+      playAudio(audio, activeAudioSource, true);
+    }
   };
 
   const handleEnded = (audio: HTMLAudioElement, source: string) => {
@@ -473,20 +522,18 @@ export function StoryListeningExperience({
     }
     clearRecoveryWatchdog();
     recordAudioDiagnostic("ended");
-    const nextIndex = activeParagraph + 1;
-    if (nextIndex < paragraphs.length) {
-      chooseParagraph(nextIndex);
-      return;
-    }
     playRequestRef.current = null;
     playingAudioRef.current = null;
     playbackGenerationRef.current += 1;
     finalSegmentEndedRef.current = true;
     autoPlayRequestedRef.current = false;
     setStatus("ready");
-    const duration = currentSegment ? segmentDuration(currentSegment) : 0;
+    const finalSegment = segments.at(-1);
+    const finalIndex = finalSegment?.paragraph_index ?? activeParagraph;
+    const duration = finalSegment ? segmentDuration(finalSegment) : 0;
+    setActiveParagraph(finalIndex);
     setPositionMs(duration);
-    persistProgress(activeParagraph, duration, true);
+    persistProgress(finalIndex, duration, true);
   };
 
   const armRecoveryWatchdog = (
@@ -539,12 +586,31 @@ export function StoryListeningExperience({
 
   const handleTimeUpdate = (audio: HTMLAudioElement, source: string) => {
     if (!isCurrentAudio(audio, source)) return;
-    const milliseconds = audio.currentTime * 1000;
+    const chapterMilliseconds = audio.currentTime * 1000;
+    const firstSegment = segments.at(0);
+    const timedSegment = segments.find((segment, index) => {
+      if (segment.start_ms == null) return false;
+      const endMs = segment.end_ms
+        ?? segments[index + 1]?.start_ms
+        ?? totalDurationMs;
+      return chapterMilliseconds >= segment.start_ms && chapterMilliseconds < endMs;
+    }) ?? (
+      firstSegment?.start_ms != null && chapterMilliseconds < firstSegment.start_ms
+        ? firstSegment
+        : segments.at(-1)
+    );
+    const paragraphIndex = timedSegment?.paragraph_index ?? activeParagraphRef.current;
+    const paragraphStartMs = timedSegment?.start_ms ?? 0;
+    const milliseconds = Math.max(0, chapterMilliseconds - paragraphStartMs);
+    if (paragraphIndex !== activeParagraphRef.current) {
+      activeParagraphRef.current = paragraphIndex;
+      setActiveParagraph(paragraphIndex);
+    }
     setPositionMs(milliseconds);
     const playbackAdvanced =
       recoveryTimerRef.current !== null &&
       recoveryStartPositionMsRef.current !== null &&
-      milliseconds > recoveryStartPositionMsRef.current;
+      chapterMilliseconds > recoveryStartPositionMsRef.current;
     if (playbackAdvanced) {
       const playingAudio = playingAudioRef.current;
       if (
@@ -560,7 +626,7 @@ export function StoryListeningExperience({
     const now = Date.now();
     if (now - lastProgressWriteRef.current >= 2_000) {
       lastProgressWriteRef.current = now;
-      persistProgress(activeParagraph, milliseconds);
+      persistProgress(paragraphIndex, milliseconds);
     }
   };
 
@@ -571,7 +637,11 @@ export function StoryListeningExperience({
       cancelActivePlayback();
       autoPlayRequestedRef.current = false;
       setStatus("paused");
-      persistProgress(activeParagraph, audio.currentTime * 1000);
+      const startMs = currentSegment?.start_ms ?? elapsedBeforeCurrent;
+      persistProgress(
+        activeParagraph,
+        Math.max(0, audio.currentTime * 1000 - startMs),
+      );
       return;
     }
     autoPlayRequestedRef.current = true;
@@ -581,43 +651,49 @@ export function StoryListeningExperience({
       setPositionMs(0);
       finalSegmentEndedRef.current = false;
     }
-    if (currentSegment?.audio_url) playAudio(audio, currentSegment.audio_url, true);
+    if (activeAudioSource) playAudio(audio, activeAudioSource, true);
   };
 
   const handleRestart = () => chooseParagraph(0);
 
   const handleSeek = (event: ChangeEvent<HTMLInputElement>) => {
     const target = Number(event.target.value);
-    let remaining = target;
-    for (const segment of segments) {
-      const duration = segmentDuration(segment);
-      if (remaining <= duration || segment === segments.at(-1)) {
-        const wasPlaying = status === "playing";
-        const audio = audioRef.current;
-        const source = segment.audio_url;
-        const canSeekImmediately =
-          audio !== null &&
-          typeof source === "string" &&
-          segment.paragraph_index === activeParagraph &&
-          isCurrentAudio(audio, source) &&
-          audio.readyState >= HTMLMediaElement.HAVE_METADATA;
-        cancelActivePlayback();
-        setActiveParagraph(segment.paragraph_index);
-        setPositionMs(remaining);
-        pendingResumePositionRef.current = remaining;
-        autoPlayRequestedRef.current = wasPlaying;
-        finalSegmentEndedRef.current = false;
-        setNetworkRetryRequired(false);
-        setNetworkRetryVisible(false);
-        persistProgress(segment.paragraph_index, remaining);
-        if (canSeekImmediately) {
-          audio.currentTime = remaining / 1000;
-          pendingResumePositionRef.current = null;
-          if (wasPlaying) playAudio(audio, source, true);
-        }
-        break;
-      }
-      remaining -= duration;
+    const segment = segments.find((candidate, index) => {
+      const startMs = candidate.start_ms
+        ?? segments
+          .slice(0, index)
+          .reduce((total, value) => total + segmentDuration(value), 0);
+      const endMs = candidate.end_ms ?? startMs + segmentDuration(candidate);
+      return target >= startMs && (target < endMs || candidate === segments.at(-1));
+    }) ?? segments.at(-1);
+    if (!segment) return;
+    const startMs = segment.start_ms
+      ?? segments
+        .filter((candidate) => candidate.paragraph_index < segment.paragraph_index)
+        .reduce((total, value) => total + segmentDuration(value), 0);
+    const paragraphPositionMs = Math.max(0, target - startMs);
+    const wasPlaying = status === "playing";
+    const audio = audioRef.current;
+    cancelActivePlayback();
+    setActiveParagraph(segment.paragraph_index);
+    activeParagraphRef.current = segment.paragraph_index;
+    setPositionMs(paragraphPositionMs);
+    pendingSavedProgressRef.current = null;
+    pendingResumePositionRef.current = target;
+    autoPlayRequestedRef.current = wasPlaying;
+    finalSegmentEndedRef.current = false;
+    setNetworkRetryRequired(false);
+    setNetworkRetryVisible(false);
+    persistProgress(segment.paragraph_index, paragraphPositionMs);
+    if (
+      audio &&
+      activeAudioSource &&
+      isCurrentAudio(audio, activeAudioSource) &&
+      audio.readyState >= HTMLMediaElement.HAVE_METADATA
+    ) {
+      audio.currentTime = target / 1000;
+      pendingResumePositionRef.current = null;
+      if (wasPlaying) playAudio(audio, activeAudioSource, true);
     }
   };
 
@@ -646,7 +722,13 @@ export function StoryListeningExperience({
   const handleChoice = (index: number) => {
     const audio = audioRef.current;
     cancelActivePlayback();
-    if (audio) persistProgress(activeParagraph, audio.currentTime * 1000);
+    if (audio) {
+      const startMs = currentSegment?.start_ms ?? elapsedBeforeCurrent;
+      persistProgress(
+        activeParagraph,
+        Math.max(0, audio.currentTime * 1000 - startMs),
+      );
+    }
     generationRef.current += 1;
     autoPlayRequestedRef.current = false;
     setStatus("paused");
@@ -667,24 +749,33 @@ export function StoryListeningExperience({
   };
 
   const handleLoadedMetadata = (audio: HTMLAudioElement, source: string) => {
-    if (!isCurrentAudio(audio, source) || !currentSegment) {
+    if (!isCurrentAudio(audio, source)) {
       audio.pause();
       return;
     }
     const durationMs = Math.round(audio.duration * 1000);
     if (Number.isFinite(durationMs) && durationMs > 0) {
-      setMediaDurations((current) => (
-        current[currentSegment.paragraph_index] === durationMs
-          ? current
-          : { ...current, [currentSegment.paragraph_index]: durationMs }
-      ));
+      setChapterMediaDurationMs(durationMs);
+    }
+    if (pendingSavedProgressRef.current !== null) {
+      const saved = pendingSavedProgressRef.current;
+      const savedSegment = segments.find(
+        (segment) => segment.paragraph_index === saved.paragraphIndex,
+      );
+      if (savedSegment?.start_ms != null) {
+        pendingResumePositionRef.current = savedSegment.start_ms + saved.positionMs;
+        pendingSavedProgressRef.current = null;
+      }
     }
     if (pendingResumePositionRef.current !== null) {
       const resumeMs = durationMs > 0
         ? Math.min(Math.max(0, pendingResumePositionRef.current), durationMs)
         : Math.max(0, pendingResumePositionRef.current);
+      const resumePosition = locateChapterPosition(resumeMs);
       audio.currentTime = resumeMs / 1000;
-      setPositionMs(resumeMs);
+      activeParagraphRef.current = resumePosition.paragraphIndex;
+      setActiveParagraph(resumePosition.paragraphIndex);
+      setPositionMs(resumePosition.paragraphPositionMs);
       pendingResumePositionRef.current = null;
     }
     recordAudioDiagnostic("loadedmetadata");
@@ -721,7 +812,7 @@ export function StoryListeningExperience({
 
   const handleNetworkRetry = () => {
     const audio = audioRef.current;
-    const source = currentSegment?.audio_url;
+    const source = activeAudioSource;
     if (!audio || !source) return;
     clearRecoveryWatchdog();
     playbackGenerationRef.current += 1;
@@ -783,35 +874,26 @@ export function StoryListeningExperience({
           </div>
         </div>
 
-        {bufferedSegments.map((segment) => {
-          const source = segment.audio_url as string;
-          const isActive = segment.paragraph_index === activeParagraph;
-          return (
-            <audio
-              key={`${segment.paragraph_index}-${source}`}
-              ref={(node) => {
-                if (!isActive) return;
-                if (node) {
-                  audioRef.current = node;
-                } else if (audioRef.current?.getAttribute("src") === source) {
-                  audioRef.current = null;
-                }
-              }}
-              src={source}
-              preload="auto"
-              aria-hidden="true"
-              data-active={isActive ? "true" : "false"}
-              onLoadedMetadata={isActive ? (event) => handleLoadedMetadata(event.currentTarget, source) : undefined}
-              onCanPlay={isActive ? (event) => handleCanPlay(event.currentTarget, source) : undefined}
-              onPlaying={isActive ? (event) => handlePlaying(event.currentTarget, source) : undefined}
-              onWaiting={isActive ? (event) => scheduleRecoveryWatchdog(event.currentTarget, source, "waiting") : undefined}
-              onStalled={isActive ? (event) => scheduleRecoveryWatchdog(event.currentTarget, source, "stalled") : undefined}
-              onEnded={isActive ? (event) => handleEnded(event.currentTarget, source) : undefined}
-              onTimeUpdate={isActive ? (event) => handleTimeUpdate(event.currentTarget, source) : undefined}
-              onError={isActive ? (event) => scheduleRecoveryWatchdog(event.currentTarget, source, "error") : undefined}
-            />
-          );
-        })}
+        {activeAudioSource ? (
+          <audio
+            key={activeAudioSource}
+            ref={(node) => {
+              audioRef.current = node;
+            }}
+            src={activeAudioSource}
+            preload="auto"
+            aria-hidden="true"
+            data-active="true"
+            onLoadedMetadata={(event) => handleLoadedMetadata(event.currentTarget, activeAudioSource)}
+            onCanPlay={(event) => handleCanPlay(event.currentTarget, activeAudioSource)}
+            onPlaying={(event) => handlePlaying(event.currentTarget, activeAudioSource)}
+            onWaiting={(event) => scheduleRecoveryWatchdog(event.currentTarget, activeAudioSource, "waiting")}
+            onStalled={(event) => scheduleRecoveryWatchdog(event.currentTarget, activeAudioSource, "stalled")}
+            onEnded={(event) => handleEnded(event.currentTarget, activeAudioSource)}
+            onTimeUpdate={(event) => handleTimeUpdate(event.currentTarget, activeAudioSource)}
+            onError={(event) => scheduleRecoveryWatchdog(event.currentTarget, activeAudioSource, "error")}
+          />
+        ) : null}
 
         <div className="w-full max-w-xl">
           <label className="sr-only" htmlFor="chapter-progress">朗读进度</label>
