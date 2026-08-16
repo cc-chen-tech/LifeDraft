@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy import event
 
 from src.database.models import DailyWorldProjection
 from src.services.daily_world_projection_repository import (
@@ -129,4 +130,49 @@ def test_supersede_only_fences_older_revisions(db_session) -> None:
     )
     assert (
         db_session.get(DailyWorldProjection, current.projection_id).status == "pending"
+    )
+
+
+def test_supersede_fences_an_old_revision_that_becomes_ready_during_update(
+    db_session,
+) -> None:
+    """A worker completion between scan and write cannot leave an old revision ready."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    older = repo.ensure_projection(identity(revision=1), source_hash="hash-old")
+    db_session.flush()
+    switched_to_ready = False
+
+    def mark_ready_before_supersede(
+        connection, cursor, statement, parameters, context, executemany
+    ) -> None:
+        nonlocal switched_to_ready
+        if switched_to_ready or not statement.startswith(
+            "UPDATE daily_world_projections"
+        ):
+            return
+        switched_to_ready = True
+        connection.exec_driver_sql(
+            "UPDATE daily_world_projections SET status = 'ready' WHERE projection_id = ?",
+            (older.projection_id,),
+        )
+
+    event.listen(
+        db_session.bind,
+        "before_cursor_execute",
+        mark_ready_before_supersede,
+    )
+    try:
+        assert repo.supersede(older.game_id, older.event_id, before_revision=2) == 1
+    finally:
+        event.remove(
+            db_session.bind,
+            "before_cursor_execute",
+            mark_ready_before_supersede,
+        )
+
+    assert switched_to_ready is True
+    db_session.expire_all()
+    assert (
+        db_session.get(DailyWorldProjection, older.projection_id).status == "superseded"
     )
