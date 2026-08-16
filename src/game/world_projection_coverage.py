@@ -10,6 +10,8 @@ from typing import Any, Mapping, Sequence
 _SENTENCE_BOUNDARY = re.compile(r"[。！？!?；;]+")
 _CLAUSE_BOUNDARY = re.compile(r"[，,]+")
 _POS_PREFIX_FUNCTION_TAGS = frozenset({"c", "d", "e", "f", "o", "t", "u", "y"})
+_POS_DETERMINER_TAGS = frozenset({"r"})
+_STRUCTURAL_PARTICLE_TAGS = frozenset({"uj"})
 
 try:
     from jieba import Tokenizer as _JiebaTokenizer
@@ -93,7 +95,7 @@ def _clause_contexts(
                 if tracked_subject is not None:
                     active_tracked_subject = tracked_subject
                 elif active_tracked_subject and _is_safe_subjectless_continuation(
-                    candidate
+                    candidate, tracked_names
                 ):
                     pass
                 else:
@@ -146,37 +148,81 @@ def _content_tokens(
     )
 
 
+def _initial_subject_tokens(
+    tokens: Sequence[tuple[str, str]],
+) -> tuple[tuple[str, str], ...]:
+    start = 0
+    while start < len(tokens) and (
+        tokens[start][1] in _POS_PREFIX_FUNCTION_TAGS
+        or tokens[start][1] in _POS_DETERMINER_TAGS
+    ):
+        start += 1
+    return tuple(tokens[start:])
+
+
+def _joined_known_name(
+    tokens: Sequence[tuple[str, str]], tracked_names: Sequence[str]
+) -> str | None:
+    joined = ""
+    for word, _ in tokens:
+        joined += word
+        exact_match = next((name for name in tracked_names if name == joined), None)
+        if exact_match is not None:
+            return exact_match
+        if not any(name.startswith(joined) for name in tracked_names):
+            return None
+    return None
+
+
 def _leading_tracked_name(candidate: str, tracked_names: Sequence[str]) -> str | None:
+    """Bind an exact leading raw span or a determiner-prefixed token span."""
     direct_match = next(
         (name for name in tracked_names if candidate.startswith(name)), None
     )
     if direct_match is not None:
         return direct_match
-    return next(
-        (
-            name
-            for word, _ in _content_tokens(_pos_tokens(candidate))[:1]
-            for name in tracked_names
-            if word == name
-        ),
-        None,
+    return _joined_known_name(
+        _initial_subject_tokens(_pos_tokens(candidate)), tracked_names
     )
 
 
-def _is_safe_subjectless_continuation(candidate: str) -> bool:
+def _starts_relative_person_subject(
+    tokens: Sequence[tuple[str, str]], tracked_names: Sequence[str]
+) -> bool:
+    for index, (word, tag) in enumerate(tokens):
+        if word != "的" and tag not in _STRUCTURAL_PARTICLE_TAGS:
+            continue
+        subject_tokens = _initial_subject_tokens(tokens[index + 1 :])
+        if not subject_tokens:
+            continue
+        if _joined_known_name(subject_tokens, tracked_names) is not None:
+            return True
+        return subject_tokens[0][1].startswith(("n", "r"))
+    return False
+
+
+def _valid_prepositional_prefix(tokens: Sequence[tuple[str, str]]) -> bool:
+    content = _content_tokens(tokens)
+    if not content:
+        return True
+    return content[0][1] == "p"
+
+
+def _is_safe_subjectless_continuation(
+    candidate: str, tracked_names: Sequence[str]
+) -> bool:
     """Permit only complete-token function prefixes before an action/location."""
     tokens = _pos_tokens(candidate)
     if not tokens:
+        return False
+    if _starts_relative_person_subject(tokens, tracked_names):
         return False
     location_index = next(
         (index for index, (word, _) in enumerate(tokens) if word in _LOCATION_TERMS),
         None,
     )
     if location_index is not None:
-        return all(
-            tag in _POS_PREFIX_FUNCTION_TAGS or tag == "p"
-            for _, tag in tokens[:location_index]
-        )
+        return _valid_prepositional_prefix(tokens[:location_index])
     content = _content_tokens(tokens)
     if not content:
         return False

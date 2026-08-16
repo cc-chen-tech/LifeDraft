@@ -2,6 +2,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
+from typing import Optional
 
 import pytest
 
@@ -346,3 +347,45 @@ def test_jieba_pos_singleton_initializes_once_and_serializes_concurrent_cuts(
     assert results == [serial_result] * 12
     assert initialized == 1
     assert max_active_cuts == 1
+
+
+@pytest.mark.parametrize("prepositional_clause", ["在东海落脚", "向朋友道别"])
+def test_full_prepositional_action_sequences_preserve_a_carried_subject(
+    prepositional_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{prepositional_clause}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" in signals.categories
+
+
+def test_relative_prepositional_phrase_resets_before_a_new_person_subject() -> None:
+    signals = detect_world_change_signals(
+        "黑袍人收拾行囊，在东海的孙悟空决定留守，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" not in signals.categories
+
+
+@pytest.mark.parametrize(
+    ("candidate", "tracked_names", "expected_subject"),
+    [
+        ("那个黑袍人抵达东海", ("黑袍人",), "黑袍人"),
+        ("那个孙悟空决定留守", ("黑袍人", "孙悟空"), "孙悟空"),
+        ("那个猪八戒抵达东海", ("黑袍人", "孙悟空"), None),
+    ],
+)
+def test_determiner_prefixed_token_spans_bind_only_exact_known_names(
+    candidate: str,
+    tracked_names: tuple[str, ...],
+    expected_subject: Optional[str],
+) -> None:
+    assert (
+        world_projection_coverage._leading_tracked_name(candidate, tracked_names)
+        == expected_subject
+    )
