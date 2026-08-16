@@ -428,6 +428,40 @@ describe('useEventGenerator run isolation', () => {
     } as Response);
   });
 
+  it('preserves a soft fallback notice when 404 recovery commits a persisted event', async () => {
+    const notice = {
+      code: 'SOFT_VALIDATION_FALLBACK' as const,
+      summary: 'Showing best draft',
+      reason: 'Non-blocking quality warning',
+      retryable: true,
+      attempts_used: 3,
+    };
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        current_event: {
+          event_description: 'Persisted soft story',
+          options: [{ text: 'Continue' }],
+          delivery_notice: notice,
+        },
+      }),
+    });
+    const { result } = renderHook(() => useEventGenerator(params));
+
+    act(() => { void result.current.generateEvent(); });
+    await flushMicrotasks();
+    const callbacks = mockStreamGameEvent.mock.calls[0][1];
+    await act(async () => {
+      await callbacks.onError?.({ message: '404 Not Found' });
+    });
+
+    expect(setters.setCurrentEvent).toHaveBeenCalledWith({
+      story: 'Persisted soft story',
+      options: [{ text: 'Continue' }],
+      delivery_notice: notice,
+    });
+  });
+
   it('keeps a superseded prefetch response from mutating the next game stores', async () => {
     let resolveLegacySync!: () => void;
     const legacySyncGate = new Promise<void>((resolve) => {

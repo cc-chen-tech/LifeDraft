@@ -215,7 +215,7 @@ def test_v1_voice_assets_are_retained_but_excluded_from_v3_reuse() -> None:
             voice_id="warm_female",
             speed=1.0,
             provider="minimax",
-            model="speech-02-turbo",
+            model="speech-2.8-turbo",
             storage_path="/api/voice-reading/audio/legacy-v1.mp3",
             duration_ms=800,
             status="ready",
@@ -230,7 +230,7 @@ def test_v1_voice_assets_are_retained_but_excluded_from_v3_reuse() -> None:
             voice_id="warm_female",
             speed=1.0,
             provider="minimax",
-            model="speech-02-turbo",
+            model="speech-2.8-turbo",
             storage_path="/api/voice-reading/audio/fresh-v3.mp3",
             duration_ms=800,
             status="ready",
@@ -241,7 +241,7 @@ def test_v1_voice_assets_are_retained_but_excluded_from_v3_reuse() -> None:
             "warm_female",
             1.0,
             provider="minimax",
-            model="speech-02-turbo",
+            model="speech-2.8-turbo",
             user_id=int(user.user_id),
         )
 
@@ -365,7 +365,7 @@ def test_process_job_regenerates_missing_or_corrupt_v3_cached_assets(tmp_path) -
                 voice_id="warm_female",
                 speed=1.0,
                 provider="minimax",
-                model="speech-02-turbo",
+                model="speech-2.8-turbo",
                 storage_path=f"/api/voice-reading/audio/{cached_name}",
                 duration_ms=1_000,
                 status="ready",
@@ -446,7 +446,7 @@ def test_two_sessions_can_claim_a_queued_job_only_once() -> None:
 def test_processing_job_loser_exits_without_synthesizing() -> None:
     class FailIfSynthesizedProvider:
         provider = "minimax"
-        model = "speech-02-turbo"
+        model = "speech-2.8-turbo"
 
         def metadata(self) -> StoryTTSProviderMetadata:
             return StoryTTSProviderMetadata(
@@ -792,7 +792,7 @@ def test_replaced_worker_token_cannot_refresh_or_commit_stale_results() -> None:
             voice_id="warm_female",
             speed=1.0,
             provider="minimax",
-            model="speech-02-turbo",
+            model="speech-2.8-turbo",
             storage_path="/api/voice-reading/audio/stale-worker.wav",
             duration_ms=1_000,
             status="ready",
@@ -926,6 +926,113 @@ def test_provider_model_identity_prevents_wrong_audio_reuse() -> None:
         session.close()
 
 
+def test_tts_model_upgrade_retains_old_asset_without_reusing_it() -> None:
+    class UpgradedMiniMaxProvider:
+        provider = "minimax"
+        model = "speech-2.8-turbo"
+
+        def __init__(self) -> None:
+            self.synthesize_calls = 0
+
+        def metadata(self) -> StoryTTSProviderMetadata:
+            return StoryTTSProviderMetadata(
+                provider=self.provider,
+                model=self.model,
+                playback_mode="audio",
+                media_type="audio/mpeg",
+                available=True,
+                backend_audio_enabled=True,
+            )
+
+        def synthesize(self, context, voice_id, speed, on_progress=None) -> GeneratedSpeech:
+            self.synthesize_calls += 1
+            return GeneratedSpeech(
+                storage_path="/api/voice-reading/audio/current-model.mp3",
+                duration_ms=2_200,
+                provider=self.provider,
+                model=self.model,
+                media_type="audio/mpeg",
+                playback_mode="audio",
+                paragraph_cues=(ParagraphCue(0, 0, 2_200),),
+            )
+
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice Model Upgrade",
+        )
+        session.add(user)
+        session.flush()
+        repository = StoryVoiceReadingRepository(session)
+        text = "模型升级后应该保留旧音频，但生成并选用新模型音频。"
+        text_hash = normalize_text_hash(text)
+        context = {
+            "source_type": "current_story",
+            "game_id": 304,
+            "week": 2,
+            "round_number": 1,
+            "stage": "event",
+            "attempt_id": "model-upgrade",
+            "text_hash": text_hash,
+            "text": text,
+            "paragraphs": [text],
+            "paragraph_cues": [
+                {"paragraph_index": 0, "start_ms": 0, "end_ms": 2_100}
+            ],
+        }
+        old_asset = repository.create_asset(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            provider="minimax",
+            model="speech-02-turbo",
+            storage_path="/api/voice-reading/audio/old-model.mp3",
+            duration_ms=2_100,
+            status="ready",
+        )
+        session.commit()
+
+        provider = UpgradedMiniMaxProvider()
+        service = StoryVoiceReadingService(repository, provider=provider)
+        request = StoryVoiceReadingRequest(
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            auto_play=True,
+        )
+
+        queued = service.request_reading(int(user.user_id), request)
+        ready = service.process_job(int(user.user_id), int(queued.job_id))
+        session.commit()
+
+        old_asset_after_upgrade = session.get(GeneratedVoiceAsset, int(old_asset.asset_id))
+        current_assets = (
+            session.query(GeneratedVoiceAsset)
+            .filter_by(
+                user_id=int(user.user_id),
+                text_hash=text_hash,
+                provider="minimax",
+                model="speech-2.8-turbo",
+            )
+            .all()
+        )
+
+        assert provider.synthesize_calls == 1
+        assert old_asset_after_upgrade is not None
+        assert old_asset_after_upgrade.status == "ready"
+        assert ready.model == "speech-2.8-turbo"
+        assert ready.asset_id != old_asset.asset_id
+        assert ready.audio_url == "/api/voice-reading/audio/current-model.mp3"
+        assert len(current_assets) == 1
+    finally:
+        session.rollback()
+        session.close()
+
+
 def test_unavailable_provider_saves_failed_job_without_audio_asset() -> None:
     init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
@@ -1033,7 +1140,7 @@ def test_provider_backed_request_saves_and_reuses_asset() -> None:
 def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
     class CachedMiniMaxProvider:
         provider = "minimax"
-        model = "speech-02-turbo"
+        model = "speech-2.8-turbo"
 
         def __init__(self) -> None:
             self.synthesize_calls = 0
@@ -1087,7 +1194,7 @@ def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
             voice_id="warm_female",
             speed=1.0,
             provider="minimax",
-            model="speech-02-turbo",
+            model="speech-2.8-turbo",
             storage_path="/api/voice-reading/audio/minimax-cache.mp3",
             duration_ms=2200,
             status="ready",
@@ -1273,7 +1380,7 @@ def test_job_response_for_mp3_voice_asset_returns_mpeg_media_type() -> None:
             voice_id="calm_male",
             speed=1.0,
             provider="minimax",
-            model="speech-02-turbo",
+            model="speech-2.8-turbo",
             storage_path="/api/voice-reading/audio/minimax-job.mp3",
             duration_ms=4100,
             status="ready",

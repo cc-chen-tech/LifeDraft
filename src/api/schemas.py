@@ -298,7 +298,7 @@ class VoiceReadingSettingsResponse(BaseModel):
     auto_read_enabled: bool = True
     selected_speed: float = 1.0
     tts_provider: str = "minimax"
-    tts_model: str = "speech-02-turbo"
+    tts_model: str = "speech-2.8-turbo"
     tts_provider_available: bool = False
     backend_audio_enabled: bool = False
     playback_mode: str = "unavailable"

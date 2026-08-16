@@ -36,6 +36,7 @@ const mockUsePlayGame = {
   roundInfo: { current_round: 1, rounds_per_week: 3 },
   roundHistory: [],
   storyText: 'This is the current story text.',
+  currentEvent: null,
   isGameOver: false,
   storyContainerRef: { current: null },
   setPhase: jest.fn(),
@@ -150,7 +151,7 @@ describe('PlayPage', () => {
             status: 'ready',
             playback_mode: 'audio',
             provider: 'minimax',
-            model: 'speech-02-turbo',
+            model: 'speech-2.8-turbo',
             message: '',
             segments: [{
               paragraph_index: 0,
@@ -499,6 +500,13 @@ describe('PlayPage', () => {
         currentEvent: {
           story: originalStory,
           options: [{ text: '继续', brief_result: '继续推进' }],
+          delivery_notice: {
+            code: 'SOFT_VALIDATION_FALLBACK',
+            summary: '旧提示',
+            reason: '旧原因',
+            retryable: true,
+            attempts_used: 3,
+          },
         },
         storyText: originalStory,
       });
@@ -511,7 +519,7 @@ describe('PlayPage', () => {
         }
         if (url.includes('/rewrite-stream')) {
           return Promise.resolve(createSSEMockResponse([
-            `event: complete\ndata: {"new_story":"${rewrittenStory}","rewritten_story":"${rewrittenStory}"}\n\n`,
+            `event: complete\ndata: {"new_story":"${rewrittenStory}","rewritten_story":"${rewrittenStory}","event":{"options":[{"text":"继续","brief_result":"继续推进"}],"delivery_notice":null}}\n\n`,
           ]));
         }
         return Promise.resolve(jsonResponse({}));
@@ -532,6 +540,7 @@ describe('PlayPage', () => {
       await waitFor(() => {
         expect(useGameStore.getState().currentEvent?.story).toBe(rewrittenStory);
       });
+      expect(useGameStore.getState().currentEvent?.delivery_notice).toBeUndefined();
     });
   });
 
@@ -1009,6 +1018,31 @@ describe('PlayPage', () => {
       expect(screen.getByText('查看失败详情')).toBeInTheDocument();
       expect(screen.getByText(/REQUIRED_CAST_MISSING/)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '再次生成' })).toBeInTheDocument();
+    });
+
+    it('shows a subdued notice and regeneration action for a soft fallback story', () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        currentEvent: {
+          story: '三次尝试后选出的故事。',
+          options: mockUsePlayGame.options,
+          delivery_notice: {
+            code: 'SOFT_VALIDATION_FALLBACK',
+            summary: '已展示自动尝试中较好的一稿',
+            reason: '这版故事通过了必要检查，但仍有非关键质量提示。你可以继续阅读，也可以重新生成。',
+            retryable: true,
+            attempts_used: 3,
+          },
+        },
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByText('已展示自动尝试中较好的一稿')).toBeInTheDocument();
+      expect(screen.getByText(/仍有非关键质量提示/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '重新生成' })).toBeInTheDocument();
+      expect(screen.queryByText('失败稿没有保存，也没有改动人物关系；你仍可阅读旧故事。')).not.toBeInTheDocument();
     });
   });
 

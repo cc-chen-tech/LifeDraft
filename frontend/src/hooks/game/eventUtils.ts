@@ -1,7 +1,7 @@
 "use client";
 
 import { useGameStore } from "@/stores/useGameStore";
-import type { EventOption } from "@/lib/types";
+import type { EventOption, StoryDeliveryNotice } from "@/lib/types";
 import type { NarrativeTransportState } from "@/components/narrative-loading/NarrativeLoadingState";
 
 // ==================== Types ====================
@@ -13,6 +13,7 @@ export interface EventData {
   event_description?: string;
   story?: string;
   options?: EventOption[];
+  delivery_notice?: StoryDeliveryNotice;
   game_over?: boolean;
 }
 
@@ -25,6 +26,7 @@ export interface EventHandlers {
     event_id?: string;
     revision?: number;
     story_date?: string;
+    delivery_notice?: StoryDeliveryNotice;
   } | null) => void;
   setPhase: (phase: string) => void;
   setGameOver: (gameOver: boolean) => void;
@@ -46,6 +48,7 @@ function buildCurrentEvent(eventData: EventData, story: string, options: EventOp
     ...(eventData.event_id ? { event_id: eventData.event_id } : {}),
     ...(typeof eventData.revision === "number" ? { revision: eventData.revision } : {}),
     ...(eventData.story_date ? { story_date: eventData.story_date } : {}),
+    ...(eventData.delivery_notice ? { delivery_notice: eventData.delivery_notice } : {}),
   };
 }
 
@@ -259,9 +262,10 @@ export function handleEventComplete(
 
   if (optionsChanged) setOptions(receivedOptions);
   if (storyChanged) setStoryText(result.finalStory);
-  if (optionsChanged || storyChanged) {
-    setCurrentEvent(buildCurrentEvent(eventData, result.finalStory, receivedOptions));
-  }
+  // Completion metadata is replacement-based: even if text/options are
+  // unchanged, a clean event must clear an earlier fallback notice and a
+  // degraded event must attach its new notice.
+  setCurrentEvent(buildCurrentEvent(eventData, result.finalStory, receivedOptions));
   // 延迟切换到 options 阶段，让用户看到完整故事后再选择
   setTimeout(() => {
     if (!isCurrentRun()) {

@@ -5,7 +5,7 @@ import { useGameStore } from "@/stores/useGameStore";
 import { useSceneImageStore } from "@/stores/useSceneImageStore";
 import { streamRegenerate, type GenerationFailurePayload } from "@/lib/sse";
 import api from "@/lib/api";
-import type { EventOption } from "@/lib/types";
+import type { EventOption, StoryDeliveryNotice } from "@/lib/types";
 import type { Phase } from "./usePhaseManager";
 import {
   INITIAL_DAILY_GENERATION_COMMAND,
@@ -25,7 +25,7 @@ interface UseGameStateParams {
   setPhase: (phase: Phase | ((prev: Phase) => Phase)) => void;
   setStoryText: (text: string) => void;
   appendStoryText: (text: string) => void;
-  setCurrentEvent: (event: { story: string; options: EventOption[]; event_id?: string; revision?: number; story_date?: string } | null) => void;
+  setCurrentEvent: (event: { story: string; options: EventOption[]; event_id?: string; revision?: number; story_date?: string; delivery_notice?: StoryDeliveryNotice } | null) => void;
   setOptions: (options: EventOption[]) => void;
   setProcessing: (processing: boolean, message?: string) => void;
   generatingRef: React.MutableRefObject<boolean>;
@@ -270,6 +270,7 @@ export function useGameState({
                 event_description?: string;
                 story?: string;
                 options?: EventOption[];
+                delivery_notice?: StoryDeliveryNotice;
               };
 
               const receivedOptions = eventData.options || [];
@@ -302,6 +303,7 @@ export function useGameState({
                   ...(eventData.event_id ? { event_id: eventData.event_id } : {}),
                   ...(typeof eventData.revision === "number" ? { revision: eventData.revision } : {}),
                   ...(eventData.story_date ? { story_date: eventData.story_date } : {}),
+                  ...(eventData.delivery_notice ? { delivery_notice: eventData.delivery_notice } : {}),
                 });
                 setPhase("options");
                 setRoundSummary(null);

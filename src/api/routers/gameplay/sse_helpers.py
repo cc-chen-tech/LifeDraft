@@ -141,6 +141,9 @@ def persist_rewritten_current_event(game_loop, game_id: int, rewritten_story: st
         return
 
     game_loop.current_event.event_description = rewritten_story
+    # A successful rewrite is a new clean delivery. Never retain the fallback
+    # warning from the story it replaced.
+    game_loop.current_event.delivery_notice = None
 
     player_state = getattr(game_loop, "player_state", None)
     if player_state is not None:
@@ -159,6 +162,7 @@ def persist_rewritten_current_event(game_loop, game_id: int, rewritten_story: st
             if not isinstance(event_data, dict):
                 event_data = {}
         event_data["event_description"] = rewritten_story
+        event_data.pop("delivery_notice", None)
         if isinstance(current_event_data, dict) and "story_text" in current_event_data:
             event_data["story_text"] = rewritten_story
         elif "story_text" in event_data:

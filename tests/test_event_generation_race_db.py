@@ -40,7 +40,12 @@ class TestDurableGenerationLifecycle:
         event = _event()
 
         def generate_round_event(
-            *, stream_callback, status_callback, session, operation_id=None
+            *,
+            stream_callback,
+            status_callback,
+            session,
+            force_regenerate=False,
+            operation_id=None,
         ):
             started.set()
             status_callback("generating_story")
@@ -88,7 +93,12 @@ class TestDurableGenerationLifecycle:
         event = _event("共享任务结果")
 
         def generate_round_event(
-            *, stream_callback, status_callback, session, operation_id=None
+            *,
+            stream_callback,
+            status_callback,
+            session,
+            force_regenerate=False,
+            operation_id=None,
         ):
             started.set()
             status_callback("generating_story")

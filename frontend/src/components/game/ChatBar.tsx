@@ -19,7 +19,7 @@ import { isWithinInputLimit } from "@/lib/inputLimits";
 import { api } from "@/lib/api";
 import { streamRewrite } from "@/lib/sse";
 import { useGameStore } from "@/stores/useGameStore";
-import type { EventOption } from "@/lib/types";
+import type { EventOption, StoryDeliveryNotice } from "@/lib/types";
 import { LifeSummaryPanel, type LifeSummaryData } from "./LifeSummaryPanel";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -90,6 +90,7 @@ interface ChatBarProps {
     revision?: number;
     story_date?: string;
     options?: EventOption[];
+    delivery_notice?: StoryDeliveryNotice | null;
   }) => void;
   isSaving?: boolean;
   isStoryBusy?: boolean;
@@ -433,11 +434,12 @@ export function ChatBar({
                 revision?: number;
                 story_date?: string;
                 options?: EventOption[];
+                delivery_notice?: StoryDeliveryNotice | null;
               };
             };
             const newStory = payload.new_story || payload.rewritten_story;
             if (newStory) {
-              setTimeout(() => onRewriteComplete?.(newStory, payload.event), 0);
+              setTimeout(() => onRewriteComplete?.(newStory, payload.event || {}), 0);
             }
             setRewriteInstruction("");
             setIsRewriting(false);

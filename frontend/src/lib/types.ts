@@ -260,6 +260,7 @@ export interface CurrentEventData {
   event_description?: string;
   story_text?: string;
   options?: EventOption[];
+  delivery_notice?: StoryDeliveryNotice;
 }
 
 export interface DailyTimeline {
@@ -401,12 +402,21 @@ export interface PresetInfo {
   character_settings: CharacterSettings;
 }
 
+export interface StoryDeliveryNotice {
+  code: "SOFT_VALIDATION_FALLBACK";
+  summary: string;
+  reason: string;
+  retryable: boolean;
+  attempts_used: number;
+}
+
 export interface GameEvent {
   story: string;
   options: EventOption[];
   event_id?: string;
   revision?: number;
   story_date?: string;
+  delivery_notice?: StoryDeliveryNotice;
 }
 
 export interface EventOption {

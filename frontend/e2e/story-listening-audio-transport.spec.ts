@@ -198,7 +198,7 @@ async function installFixture(page: Page, options: FixtureOptions = {}): Promise
       selected_voice_color: 'warm_female',
       selected_speed: 1,
       tts_provider: 'minimax',
-      tts_model: 'speech-02-turbo',
+      tts_model: 'speech-2.8-turbo',
       tts_provider_available: true,
       backend_audio_enabled: true,
       playback_mode: 'audio',
@@ -225,7 +225,7 @@ async function installFixture(page: Page, options: FixtureOptions = {}): Promise
       status: 'ready',
       playback_mode: 'audio',
       provider: 'minimax',
-      model: 'speech-02-turbo',
+      model: 'speech-2.8-turbo',
       message: '',
       segments: [0, 1, 2].map((paragraph_index) => ({
         paragraph_index,

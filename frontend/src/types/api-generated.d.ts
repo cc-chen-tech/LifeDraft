@@ -3209,7 +3209,7 @@ export interface components {
             tts_provider: string;
             /**
              * Tts Model
-             * @default speech-02-turbo
+             * @default speech-2.8-turbo
              */
             tts_model: string;
             /**

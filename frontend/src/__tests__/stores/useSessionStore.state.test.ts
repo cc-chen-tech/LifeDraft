@@ -46,6 +46,38 @@ describe('useSessionStore State Comparison Logic', () => {
 
   // ==================== shallowChanged Function Tests ====================
   describe('shallowChanged function behavior', () => {
+    it('returns a persisted soft fallback notice with the recovered current event', async () => {
+      const deliveryNotice = {
+        code: 'SOFT_VALIDATION_FALLBACK',
+        summary: '已展示自动尝试中较好的一稿',
+        reason: '这版故事通过了必要检查，但仍有非关键质量提示。',
+        retryable: true,
+        attempts_used: 3,
+      };
+      act(() => {
+        useSessionStore.setState({ gameId: 1 });
+      });
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        player_state: createBasePlayerState(),
+        progress: { week: 1, current_round: 1, rounds_per_week: 3 },
+        round_info: { current_round: 1, week: 1 },
+        current_event: {
+          event_description: '恢复后的故事',
+          options: [{ text: '继续' }, { text: '重试' }],
+          delivery_notice: deliveryNotice,
+        },
+      }));
+
+      let recovered;
+      await act(async () => {
+        recovered = await useSessionStore.getState().syncState();
+      });
+
+      expect(recovered).toEqual(expect.objectContaining({
+        event: expect.objectContaining({ delivery_notice: deliveryNotice }),
+      }));
+    });
+
     it('replaces a legacy cached playerState when the server omits wealth', async () => {
       const legacy = {
         ...createBasePlayerState(),

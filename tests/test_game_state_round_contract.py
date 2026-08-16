@@ -16,7 +16,7 @@ client = TestClient(app)
 class TestGameStateRoundContract:
     """契约测试：GameState round_info 字段"""
 
-    @patch("src.api.routers.gameplay.summary.session_service")
+    @patch("src.api.deps.session_service")
     def test_current_round_from_player_state(self, mock_session_service):
         """current_round 必须反映 player_state.current_round 的值"""
         session = MagicMock()
@@ -49,7 +49,7 @@ class TestGameStateRoundContract:
             f"实际为 {data['round_info']['current_round']}"
         )
 
-    @patch("src.api.routers.gameplay.summary.session_service")
+    @patch("src.api.deps.session_service")
     def test_current_round_defaults_to_zero_when_missing(self, mock_session_service):
         """player_state 缺少 current_round 时默认返回 0"""
         session = MagicMock()
@@ -71,7 +71,7 @@ class TestGameStateRoundContract:
 
         assert data["round_info"]["current_round"] == 0
 
-    @patch("src.api.routers.gameplay.summary.session_service")
+    @patch("src.api.deps.session_service")
     def test_week_advances_in_progress(self, mock_session_service):
         """progress.week 应正确反映 player_state.week"""
         session = MagicMock()
