@@ -10,11 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.story_exceptions import StoryRewriteFailure
-from src.api.deps import (
-    get_current_user_optional,
-    get_db,
-    require_session as _require_session,
-)  # noqa: N813
+from src.api.deps import get_current_user_optional, get_db, require_session as _require_session  # noqa: N813
 from src.api.routers.gameplay.sse_helpers import (
     _enqueue_accepted_daily_projection,
     invalidate_daily_media_after_event_replacement,
