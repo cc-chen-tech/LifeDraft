@@ -13,7 +13,46 @@ _CLAUSE_BOUNDARY = re.compile(r"[，,]+")
 _POS_PREFIX_FUNCTION_TAGS = frozenset({"c", "d", "e", "f", "o", "t", "u", "y"})
 _POS_DETERMINER_TAGS = frozenset({"r"})
 _STRUCTURAL_PARTICLE_TAGS = frozenset({"uj"})
-_LOCATION_OBJECT_ONTOLOGY = frozenset({"住所", "方向", "街道", "码头", "港口", "客栈"})
+_LOCATION_OBJECT_SUFFIXES = (
+    "住所",
+    "方向",
+    "码头",
+    "客栈",
+    "园",
+    "洞",
+    "宫",
+    "山",
+    "海",
+    "江",
+    "河",
+    "湖",
+    "街",
+    "道",
+    "路",
+    "巷",
+    "院",
+    "室",
+    "屋",
+    "房",
+    "店",
+    "馆",
+    "站",
+    "场",
+    "港",
+    "岸",
+    "岛",
+    "村",
+    "镇",
+    "城",
+    "楼",
+    "塔",
+    "寺",
+    "庙",
+    "门",
+    "桥",
+    "林",
+    "原",
+)
 
 try:
     from jieba import Tokenizer as _JiebaTokenizer
@@ -136,8 +175,7 @@ def _known_location_names(tracked_state: Any) -> tuple[str, ...]:
     character_locations = tracked_state.get("character_locations")
     if isinstance(character_locations, Mapping):
         for value in character_locations.values():
-            if isinstance(value, Mapping):
-                add(value.get("location"))
+            add(value)
     for key in ("known_locations", "locations", "landmarks"):
         values = tracked_state.get(key)
         if isinstance(values, Mapping):
@@ -305,7 +343,7 @@ def _is_proven_location_or_object(
     return (
         any(tag == "ns" for _, tag in noun_span)
         or span_name in known_location_names
-        or span_name in _LOCATION_OBJECT_ONTOLOGY
+        or span_name.endswith(_LOCATION_OBJECT_SUFFIXES)
     )
 
 

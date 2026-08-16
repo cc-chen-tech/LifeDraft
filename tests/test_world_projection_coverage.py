@@ -491,3 +491,39 @@ def test_tracked_state_landmarks_prove_relative_location_objects() -> None:
     )
 
     assert "location_updates" in signals.categories
+
+
+@pytest.mark.parametrize(
+    "relative_place_clause",
+    ["在东海的花园等待", "在东海的山洞赶路", "在东海的竹林小屋等待"],
+)
+def test_location_object_suffixes_prove_unlisted_relative_places(
+    relative_place_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{relative_place_clause}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" in signals.categories
+
+
+def test_legacy_character_location_string_proves_a_relative_place() -> None:
+    signals = detect_world_change_signals(
+        "黑袍人收拾行囊，在东海的甲地等待，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": "甲地"}},
+    )
+
+    assert "location_updates" in signals.categories
+
+
+def test_known_location_before_a_relative_unknown_person_does_not_allow_carry() -> None:
+    signals = detect_world_change_signals(
+        "黑袍人收拾行囊，在东海的游客等待，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "东海"}}},
+    )
+
+    assert "location_updates" not in signals.categories
