@@ -558,3 +558,51 @@ def test_strict_multi_character_place_forms_preserve_carry(
     )
 
     assert "location_updates" in signals.categories
+
+
+@pytest.mark.parametrize(
+    "relative_object_event",
+    ["在东海的城门关闭", "在东海的车站停运", "在东海的石桥坍塌"],
+)
+def test_relative_place_object_events_do_not_carry_a_person_subject(
+    relative_object_event: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{relative_object_event}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" not in signals.categories
+
+
+@pytest.mark.parametrize(
+    "ns_compound",
+    ["长安公主", "东海商船", "京城信使", "西湖船夫"],
+)
+def test_ns_plus_noun_relative_compounds_fail_closed_without_full_place_evidence(
+    ns_compound: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，在东海的{ns_compound}等待，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" not in signals.categories
+
+
+@pytest.mark.parametrize(
+    "subjectless_place_clause",
+    ["在东海的车站等待", "在东海的客栈落脚", "在东海的街道前进", "在北京继续"],
+)
+def test_relative_places_require_human_compatible_mobility_or_stay_predicates(
+    subjectless_place_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{subjectless_place_clause}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" in signals.categories

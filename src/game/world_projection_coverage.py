@@ -101,6 +101,10 @@ _LOCATION_TERMS = (
     "所在位置变为",
     "位置改为",
 )
+_HUMAN_COMPATIBLE_LOCATION_PREDICATES = frozenset(
+    (*_LOCATION_TERMS, "前进", "赶路", "等待", "停留", "休息", "继续")
+)
+_POS_PLACE_MODIFIER_TAGS = frozenset({"a", "b", "d", "f", "m", "q"})
 _FACT_TERMS = ("受伤", "康复", "失去", "获得", "成为", "不再", "状态变为")
 _CAREER_TERMS = ("入职", "升职", "晋升", "调任", "辞职", "被解雇", "换了工作")
 _HABIT_TERMS = ("养成了", "开始习惯", "不再习惯", "改掉了", "每天都会")
@@ -348,6 +352,17 @@ def _relative_noun_span(
     return tuple(tokens)
 
 
+def _relative_predicate(tokens: Sequence[tuple[str, str]]) -> str | None:
+    return next((word for word, tag in tokens if tag.startswith("v")), None)
+
+
+def _is_single_ns_place(noun_span: Sequence[tuple[str, str]]) -> bool:
+    content = tuple(
+        (word, tag) for word, tag in noun_span if tag not in _POS_PLACE_MODIFIER_TAGS
+    )
+    return len(content) == 1 and content[0][1] == "ns"
+
+
 def _is_proven_location_or_object(
     tokens: Sequence[tuple[str, str]], known_location_names: Sequence[str]
 ) -> bool:
@@ -356,7 +371,7 @@ def _is_proven_location_or_object(
         return False
     span_name = "".join(word for word, _ in noun_span)
     return (
-        any(tag == "ns" for _, tag in noun_span)
+        _is_single_ns_place(noun_span)
         or span_name in known_location_names
         or span_name.endswith(_LOCATION_OBJECT_SUFFIXES)
     )
@@ -376,7 +391,10 @@ def _relative_subject_binding(
         return _RelativeSubjectBinding(_RelativeSubjectAction.REBIND, tracked_subject)
     if _joined_known_name(subject_tokens, boundary_names) is not None:
         return _RelativeSubjectBinding(_RelativeSubjectAction.RESET)
-    if _is_proven_location_or_object(subject_tokens, known_location_names):
+    if (
+        _is_proven_location_or_object(subject_tokens, known_location_names)
+        and _relative_predicate(subject_tokens) in _HUMAN_COMPATIBLE_LOCATION_PREDICATES
+    ):
         return _RelativeSubjectBinding(_RelativeSubjectAction.CARRY)
     return _RelativeSubjectBinding(_RelativeSubjectAction.RESET)
 
