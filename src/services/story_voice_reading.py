@@ -299,22 +299,45 @@ class StoryVoiceReadingService:
                 return self.get_job(user_id, job_id)
             return self.get_job(user_id, job_id)
 
-        primary_asset_assigned = job.asset_id is not None
         for segment in job.segments:
-            if str(segment.status) == "ready":
-                continue
             segment.status = "processing"
-            next_token = self.repository.commit_processing_changes(
-                user_id, job_id, lease_token
+        next_token = self.repository.commit_processing_changes(user_id, job_id, lease_token)
+        if next_token is None:
+            return self.get_job(user_id, job_id)
+        lease_token = next_token
+
+        chapter_context = dict(job.context_json)
+        chapter_context["paragraphs"] = [str(segment.text_content) for segment in job.segments]
+
+        def refresh_processing_lease() -> None:
+            nonlocal lease_token
+            next_lease_token = self.repository.commit_processing_changes(
+                user_id,
+                job_id,
+                lease_token,
             )
-            if next_token is None:
-                return self.get_job(user_id, job_id)
-            lease_token = next_token
-            segment_context = dict(job.context_json)
-            segment_context["text"] = str(segment.text_content)
-            segment_context["text_hash"] = str(segment.text_hash)
+            if next_lease_token is None:
+                raise RuntimeError("voice reading processing lease was replaced")
+            lease_token = next_lease_token
+
+        try:
+            speech = self.provider.synthesize(
+                chapter_context,
+                str(job.voice_id),
+                float(job.speed),
+                on_progress=refresh_processing_lease,
+            )
+            if (
+                speech.playback_mode != "audio"
+                or speech.storage_path is None
+                or speech.duration_ms is None
+            ):
+                raise RuntimeError("provider returned no high-quality chapter audio")
+            if len(speech.paragraph_cues) != len(job.segments):
+                raise RuntimeError("provider returned incomplete paragraph cues")
+
             ready_asset = self.repository.find_ready_asset(
-                text_hash=str(segment.text_hash),
+                text_hash=str(job.text_hash),
                 voice_id=str(job.voice_id),
                 speed=float(job.speed),
                 provider=metadata.provider,
@@ -324,92 +347,67 @@ class StoryVoiceReadingService:
             if ready_asset is not None and not self._is_valid_cached_asset(ready_asset):
                 self.repository.invalidate_asset(
                     ready_asset,
-                    "Generated MiniMax audio is missing or invalid",
+                    "Generated MiniMax chapter audio is missing or invalid",
                 )
                 ready_asset = None
-            try:
-                if ready_asset is None:
-                    def refresh_processing_lease() -> None:
-                        nonlocal lease_token
-                        next_lease_token = self.repository.commit_processing_changes(
-                            user_id,
-                            job_id,
-                            lease_token,
-                        )
-                        if next_lease_token is None:
-                            raise RuntimeError("voice reading processing lease was replaced")
-                        lease_token = next_lease_token
+            if ready_asset is None:
+                ready_asset = self.repository.create_asset(
+                    user_id=user_id,
+                    context=chapter_context,
+                    voice_id=str(job.voice_id),
+                    speed=float(job.speed),
+                    provider=speech.provider,
+                    model=speech.model,
+                    storage_path=speech.storage_path,
+                    duration_ms=speech.duration_ms,
+                    status="ready",
+                )
 
-                    speech = self.provider.synthesize(
-                        segment_context,
-                        str(job.voice_id),
-                        float(job.speed),
-                        on_progress=refresh_processing_lease,
-                    )
-                    if (
-                        speech.playback_mode != "audio"
-                        or speech.storage_path is None
-                        or speech.duration_ms is None
-                    ):
-                        raise RuntimeError("provider returned no high-quality audio")
-                    ready_asset = self.repository.create_asset(
-                        user_id=user_id,
-                        context=segment_context,
-                        voice_id=str(job.voice_id),
-                        speed=float(job.speed),
-                        provider=speech.provider,
-                        model=speech.model,
-                        storage_path=speech.storage_path,
-                        duration_ms=speech.duration_ms,
-                        status="ready",
-                    )
+            refreshed_job = self.repository.get_job(job_id, user_id)
+            if refreshed_job is None:
+                raise RuntimeError("voice reading job disappeared during synthesis")
+            cues_by_index = {cue.paragraph_index: cue for cue in speech.paragraph_cues}
+            for segment in refreshed_job.segments:
+                cue = cues_by_index.get(int(segment.paragraph_index))
+                if cue is None or cue.start_ms < 0 or cue.end_ms <= cue.start_ms:
+                    raise RuntimeError("provider returned invalid paragraph cues")
                 segment.asset = ready_asset
+                segment.start_ms = cue.start_ms
+                segment.end_ms = cue.end_ms
                 segment.status = "ready"
                 segment.error_code = None
                 segment.error_message = None
-                # Make each ready paragraph visible immediately so the client can
-                # begin playback while later paragraphs continue generating.
-                primary_asset_id = (
-                    int(ready_asset.asset_id) if not primary_asset_assigned else None
-                )
-                next_token = self.repository.commit_processing_changes(
+
+            if (
+                self.repository.commit_processing_changes(
                     user_id,
                     job_id,
                     lease_token,
-                    primary_asset_id=primary_asset_id,
+                    primary_asset_id=int(ready_asset.asset_id),
+                    terminal_status="ready",
                 )
-                if next_token is None:
-                    return self.get_job(user_id, job_id)
-                lease_token = next_token
-                primary_asset_assigned = True
-            except Exception as error:
-                segment.status = "failed"
-                segment.error_code = "tts_generation_failed"
-                segment.error_message = str(error)
-                if (
-                    self.repository.commit_processing_changes(
-                        user_id,
-                        job_id,
-                        lease_token,
-                        terminal_status="failed",
-                        error_code="tts_generation_failed",
-                        error_message="High-quality narration could not be generated",
-                    )
-                    is None
-                ):
-                    return self.get_job(user_id, job_id)
+                is None
+            ):
                 return self.get_job(user_id, job_id)
-
-        if (
-            self.repository.commit_processing_changes(
-                user_id,
-                job_id,
-                lease_token,
-                terminal_status="ready",
-            )
-            is None
-        ):
-            return self.get_job(user_id, job_id)
+        except Exception as error:
+            failed_job = self.repository.get_job(job_id, user_id)
+            if failed_job is not None:
+                for segment in failed_job.segments:
+                    segment.status = "failed"
+                    segment.error_code = "tts_generation_failed"
+                    segment.error_message = str(error)
+            if (
+                self.repository.commit_processing_changes(
+                    user_id,
+                    job_id,
+                    lease_token,
+                    terminal_status="failed",
+                    error_code="tts_generation_failed",
+                    error_message="High-quality narration could not be generated",
+                )
+                is None
+            ):
+                return self.get_job(user_id, job_id)
         return self.get_job(user_id, job_id)
 
     def _is_valid_cached_asset(self, asset: Any) -> bool:
@@ -458,7 +456,11 @@ class StoryVoiceReadingService:
             status=str(job.status),
             audio_url=first_ready.audio_url if first_ready is not None else None,
             asset_id=first_ready.asset_id if first_ready is not None else None,
-            duration_ms=first_ready.duration_ms if first_ready is not None else None,
+            duration_ms=(
+                int(job.asset.duration_ms)
+                if job.asset is not None
+                else first_ready.duration_ms if first_ready is not None else None
+            ),
             playback_mode=playback_mode,
             provider=provider,
             model=model,
@@ -477,7 +479,13 @@ class StoryVoiceReadingService:
             status=str(segment.status),
             audio_url=storage_path,
             asset_id=int(asset.asset_id) if asset is not None else None,
-            duration_ms=int(asset.duration_ms) if asset is not None else None,
+            duration_ms=(
+                int(segment.end_ms) - int(segment.start_ms)
+                if segment.start_ms is not None and segment.end_ms is not None
+                else int(asset.duration_ms) if asset is not None else None
+            ),
+            start_ms=int(segment.start_ms) if segment.start_ms is not None else None,
+            end_ms=int(segment.end_ms) if segment.end_ms is not None else None,
             media_type=media_type_for_voice_asset(storage_path) if storage_path else None,
             error_code=str(segment.error_code) if segment.error_code else None,
         )

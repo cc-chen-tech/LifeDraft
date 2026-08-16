@@ -3,7 +3,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 const GAME_ID = 880101;
 const AUDIO_DURATION_SECONDS = 12;
 const STALL_WATCHDOG_MS = 8_000;
-const FIXTURE_AUDIO_PATH = '/api/voice-reading/audio/fixture-0.wav';
+const FIXTURE_AUDIO_PATH = '/api/voice-reading/audio/fixture-chapter.wav';
 
 type AudioDiagnostic = {
   paragraphIndex: number;
@@ -230,9 +230,11 @@ async function installFixture(page: Page, options: FixtureOptions = {}): Promise
       segments: [0, 1, 2].map((paragraph_index) => ({
         paragraph_index,
         status: 'ready',
-        audio_url: `/api/voice-reading/audio/fixture-${paragraph_index}.wav`,
-        duration_ms: AUDIO_DURATION_SECONDS * 1_000,
+        audio_url: FIXTURE_AUDIO_PATH,
+        duration_ms: 4_000,
         media_type: 'audio/wav',
+        start_ms: paragraph_index * 4_000,
+        end_ms: (paragraph_index + 1) * 4_000,
       })),
     }),
   }));
@@ -295,9 +297,19 @@ test.describe('StoryListeningExperience audio transport', () => {
     await expectRealPlayback(page);
     await expect.poll(() => fixture.audioRequests.length).toBeGreaterThan(0);
     await expect.poll(() => fixture.rangeRequests.length).toBeGreaterThan(0);
-    await expect.poll(
-      () => routeRequestsForPath(fixture, '/api/voice-reading/audio/fixture-1.wav').length,
-    ).toBeGreaterThan(0);
+    expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));
+
+    const audio = page.locator('audio[data-active="true"]');
+    await audio.evaluate((element) => {
+      const media = element as HTMLAudioElement;
+      media.dataset.continuityToken = 'same-chapter-node';
+      media.currentTime = 4.05;
+      media.dispatchEvent(new Event('timeupdate'));
+    });
+    await expect(page.getByText('第 2 段', { exact: true })).toBeVisible();
+    await expect(audio).toHaveAttribute('data-continuity-token', 'same-chapter-node');
+    await expect(audio).toHaveAttribute('src', FIXTURE_AUDIO_PATH);
+    expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));
   });
 
   test('offers a retry when real playback silently stops advancing', async ({ page }) => {
@@ -345,7 +357,7 @@ test.describe('StoryListeningExperience audio transport', () => {
       { timeout: 5_000 },
     ).toBeGreaterThanOrEqual(2);
     const secondSourceRequest = routeRequestsForPath(fixture, FIXTURE_AUDIO_PATH)[1];
-    if (!secondSourceRequest) throw new Error('Missing second fixture-0 audio request');
+    if (!secondSourceRequest) throw new Error('Missing second chapter audio request');
     expect(secondSourceRequest.observedAtMs - errorDiagnostic.observedAtMs).toBeGreaterThanOrEqual(7_950);
     // A delayed retry may lose the browser's autoplay gesture. The transport
     // recovery is complete once the real source has reloaded; a user click is
@@ -360,9 +372,13 @@ test.describe('StoryListeningExperience audio transport', () => {
     await page.goto(`/play?gameId=${GAME_ID}`);
 
     await expect(page.getByText('第 2 段', { exact: true })).toBeVisible();
-    await expect(page.locator('audio[data-active="true"]')).toHaveAttribute('src', '/api/voice-reading/audio/fixture-1.wav');
+    const audio = page.locator('audio[data-active="true"]');
+    await expect(audio).toHaveAttribute('src', FIXTURE_AUDIO_PATH);
     await expectRealPlayback(page);
-    expect(fixture.audioRequests[0]).toBe('/api/voice-reading/audio/fixture-1.wav');
+    await expect.poll(
+      () => audio.evaluate((element) => (element as HTMLAudioElement).currentTime),
+    ).toBeGreaterThanOrEqual(4);
+    expect(fixture.audioRequests[0]).toBe(FIXTURE_AUDIO_PATH);
   });
 
   test('a choice during recovery prevents the old failed audio from being restarted', async ({ page }) => {

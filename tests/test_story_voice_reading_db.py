@@ -28,6 +28,7 @@ from src.services.story_voice_reading import (
 from src.services.story_tts_provider import (
     DeterministicTTSProvider,
     GeneratedSpeech,
+    ParagraphCue,
     StoryTTSProviderMetadata,
     UnavailableTTSProvider,
 )
@@ -39,6 +40,7 @@ def test_asset_version_schema_migration_is_additive_and_idempotent(tmp_path, mon
     with migration_engine.begin() as connection:
         connection.execute(text("CREATE TABLE generated_voice_assets (asset_id INTEGER PRIMARY KEY)"))
         connection.execute(text("CREATE TABLE voice_reading_jobs (job_id INTEGER PRIMARY KEY)"))
+        connection.execute(text("CREATE TABLE voice_reading_segments (segment_id INTEGER PRIMARY KEY)"))
 
     monkeypatch.setattr(database_models, "engine", migration_engine)
     database_models._ensure_legacy_columns()
@@ -47,6 +49,9 @@ def test_asset_version_schema_migration_is_additive_and_idempotent(tmp_path, mon
     inspector = inspect(migration_engine)
     asset_columns = {column["name"] for column in inspector.get_columns("generated_voice_assets")}
     job_columns = {column["name"] for column in inspector.get_columns("voice_reading_jobs")}
+    segment_columns = {
+        column["name"] for column in inspector.get_columns("voice_reading_segments")
+    }
     with migration_engine.begin() as connection:
         connection.execute(text("INSERT INTO generated_voice_assets (asset_id) VALUES (1)"))
         connection.execute(text("INSERT INTO voice_reading_jobs (job_id) VALUES (1)"))
@@ -59,6 +64,7 @@ def test_asset_version_schema_migration_is_additive_and_idempotent(tmp_path, mon
 
     assert "asset_version" in asset_columns
     assert "asset_version" in job_columns
+    assert {"start_ms", "end_ms"}.issubset(segment_columns)
     assert asset_version == 1
     assert job_version == 1
 
@@ -179,7 +185,7 @@ def test_voice_job_and_asset_reuse_by_text_hash_uses_real_database() -> None:
         session.close()
 
 
-def test_v1_voice_assets_are_retained_but_excluded_from_v2_reuse() -> None:
+def test_v1_voice_assets_are_retained_but_excluded_from_v3_reuse() -> None:
     init_db()
     session = SessionLocal()
     try:
@@ -225,7 +231,7 @@ def test_v1_voice_assets_are_retained_but_excluded_from_v2_reuse() -> None:
             speed=1.0,
             provider="minimax",
             model="speech-02-turbo",
-            storage_path="/api/voice-reading/audio/fresh-v2.mp3",
+            storage_path="/api/voice-reading/audio/fresh-v3.mp3",
             duration_ms=800,
             status="ready",
         )
@@ -240,7 +246,7 @@ def test_v1_voice_assets_are_retained_but_excluded_from_v2_reuse() -> None:
         )
 
         assert legacy_asset.asset_version == 1
-        assert fresh_asset.asset_version == 2
+        assert fresh_asset.asset_version == 3
         assert reusable is not None
         assert reusable.asset_id == fresh_asset.asset_id
     finally:
@@ -248,7 +254,7 @@ def test_v1_voice_assets_are_retained_but_excluded_from_v2_reuse() -> None:
         session.close()
 
 
-def test_v2_request_deduplication_isolated_from_legacy_jobs() -> None:
+def test_v3_request_deduplication_isolated_from_legacy_jobs() -> None:
     init_db()
     session = SessionLocal()
     try:
@@ -266,8 +272,8 @@ def test_v2_request_deduplication_isolated_from_legacy_jobs() -> None:
             "round_number": 1,
             "stage": "event",
             "attempt_id": "legacy-v1-job",
-            "text_hash": normalize_text_hash("旧任务不得阻断 v2 音频生成。"),
-            "text": "旧任务不得阻断 v2 音频生成。",
+            "text_hash": normalize_text_hash("旧任务不得阻断 v3 音频生成。"),
+            "text": "旧任务不得阻断 v3 音频生成。",
         }
         legacy_dedupe_key = normalize_text_hash(
             ":".join(
@@ -307,13 +313,13 @@ def test_v2_request_deduplication_isolated_from_legacy_jobs() -> None:
         created = session.query(VoiceReadingJob).filter_by(job_id=response.job_id).one()
 
         assert created.job_id != legacy_job.job_id
-        assert created.asset_version == 2
+        assert created.asset_version == 3
     finally:
         session.rollback()
         session.close()
 
 
-def test_process_job_regenerates_missing_or_corrupt_v2_cached_assets(tmp_path) -> None:
+def test_process_job_regenerates_missing_or_corrupt_v3_cached_assets(tmp_path) -> None:
     init_db()
     session = SessionLocal()
     try:
@@ -334,7 +340,7 @@ def test_process_job_regenerates_missing_or_corrupt_v2_cached_assets(tmp_path) -
         service = StoryVoiceReadingService(repository, provider=provider)
 
         for label, corrupt_bytes in (("missing", None), ("corrupt", b"not a wav")):
-            story_text = f"{label} v2 音频缓存必须重新生成。"
+            story_text = f"{label} v3 音频缓存必须重新生成。"
             context = {
                 "source_type": "current_story",
                 "game_id": 913,
@@ -348,7 +354,7 @@ def test_process_job_regenerates_missing_or_corrupt_v2_cached_assets(tmp_path) -
             response = service.request_reading(
                 int(user.user_id), StoryVoiceReadingRequest(context=context)
             )
-            cached_name = f"{label}-cache-v2.wav"
+            cached_name = f"{label}-cache-v3.wav"
             cached_file = tmp_path / "voice" / cached_name
             if corrupt_bytes is not None:
                 cached_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1040,7 +1046,17 @@ def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
             )
 
         def synthesize(self, context, voice_id, speed, on_progress=None) -> GeneratedSpeech:
-            raise AssertionError("cached mp3 asset should be reused without synthesis")
+            if on_progress is not None:
+                on_progress()
+            return GeneratedSpeech(
+                storage_path="/api/voice-reading/audio/minimax-cache.mp3",
+                duration_ms=2_200,
+                provider=self.provider,
+                model=self.model,
+                media_type="audio/mpeg",
+                playback_mode="audio",
+                paragraph_cues=(ParagraphCue(0, 0, 2_200),),
+            )
 
     init_db()
     private_id = f"priv_{uuid4().hex[:16]}"

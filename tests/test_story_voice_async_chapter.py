@@ -30,6 +30,14 @@ def _request(text: str) -> StoryVoiceReadingRequest:
 
 
 def test_chapter_request_is_idempotent_and_processes_ordered_paragraph_audio() -> None:
+    class RecordingChapterProvider(DeterministicTTSProvider):
+        def __init__(self) -> None:
+            self.contexts: list[dict[str, object]] = []
+
+        def synthesize(self, context, voice_id, speed, on_progress=None):
+            self.contexts.append(dict(context))
+            return super().synthesize(context, voice_id, speed, on_progress=on_progress)
+
     init_db()
     session = SessionLocal()
     try:
@@ -41,9 +49,10 @@ def test_chapter_request_is_idempotent_and_processes_ordered_paragraph_audio() -
         session.add(user)
         session.flush()
         user_id = int(user.user_id)
+        provider = RecordingChapterProvider()
         service = StoryVoiceReadingService(
             StoryVoiceReadingRepository(session),
-            provider=DeterministicTTSProvider(),
+            provider=provider,
         )
         request = _request("第一段完整故事。\n\n第二段继续故事。")
 
@@ -62,8 +71,15 @@ def test_chapter_request_is_idempotent_and_processes_ordered_paragraph_audio() -
 
         assert ready.status == "ready"
         assert [segment.status for segment in ready.segments] == ["ready", "ready"]
-        assert all(segment.audio_url for segment in ready.segments)
-        assert session.query(GeneratedVoiceAsset).filter_by(user_id=user_id).count() == 2
+        assert len(provider.contexts) == 1
+        assert provider.contexts[0]["text"] == "第一段完整故事。\n\n第二段继续故事。"
+        assert provider.contexts[0]["paragraphs"] == ["第一段完整故事。", "第二段继续故事。"]
+        assert ready.segments[0].audio_url == ready.segments[1].audio_url
+        assert ready.segments[0].asset_id == ready.segments[1].asset_id
+        assert ready.segments[0].start_ms == 0
+        assert ready.segments[0].end_ms == ready.segments[1].start_ms
+        assert ready.segments[1].end_ms == ready.duration_ms
+        assert session.query(GeneratedVoiceAsset).filter_by(user_id=user_id).count() == 1
     finally:
         session.rollback()
         session.close()
@@ -104,18 +120,17 @@ def test_failed_segment_marks_chapter_failed_without_browser_audio() -> None:
         session.close()
 
 
-def test_first_paragraph_is_visible_while_later_paragraphs_prefetch() -> None:
-    second_started = Event()
-    release_second = Event()
+def test_chapter_is_published_only_after_the_single_continuous_asset_is_ready() -> None:
+    synthesis_started = Event()
+    release_synthesis = Event()
 
-    class BlockingSecondParagraphProvider(DeterministicTTSProvider):
+    class BlockingChapterProvider(DeterministicTTSProvider):
         calls = 0
 
         def synthesize(self, context, voice_id, speed, on_progress=None):
             self.calls += 1
-            if self.calls == 2:
-                second_started.set()
-                assert release_second.wait(timeout=5)
+            synthesis_started.set()
+            assert release_synthesis.wait(timeout=5)
             return super().synthesize(
                 context,
                 voice_id,
@@ -135,7 +150,7 @@ def test_first_paragraph_is_visible_while_later_paragraphs_prefetch() -> None:
         setup_session.add(user)
         setup_session.flush()
         user_id = int(user.user_id)
-        provider = BlockingSecondParagraphProvider()
+        provider = BlockingChapterProvider()
         queued = StoryVoiceReadingService(
             StoryVoiceReadingRepository(setup_session), provider=provider
         ).request_reading(user_id, _request("首段可先播放。\n\n第二段仍在生成。"))
@@ -154,7 +169,7 @@ def test_first_paragraph_is_visible_while_later_paragraphs_prefetch() -> None:
 
         worker = Thread(target=process)
         worker.start()
-        assert second_started.wait(timeout=5)
+        assert synthesis_started.wait(timeout=5)
 
         observer = SessionLocal()
         try:
@@ -162,19 +177,17 @@ def test_first_paragraph_is_visible_while_later_paragraphs_prefetch() -> None:
                 StoryVoiceReadingRepository(observer), provider=provider
             ).get_job(user_id, queued.job_id)
             assert partial.status == "processing"
-            assert partial.segments[0].status == "ready"
-            assert partial.segments[0].audio_url
-            assert partial.segments[1].status in {"queued", "processing"}
-            assert partial.segments[1].audio_url is None
+            assert all(segment.audio_url is None for segment in partial.segments)
         finally:
             observer.close()
 
-        release_second.set()
+        release_synthesis.set()
         worker.join(timeout=5)
         assert not worker.is_alive()
         assert worker_errors == []
+        assert provider.calls == 1
     finally:
-        release_second.set()
+        release_synthesis.set()
         setup_session.close()
 
 

@@ -3162,6 +3162,10 @@ export interface components {
             asset_id?: number | null;
             /** Duration Ms */
             duration_ms?: number | null;
+            /** Start Ms */
+            start_ms?: number | null;
+            /** End Ms */
+            end_ms?: number | null;
             /** Media Type */
             media_type?: string | null;
             /** Error Code */

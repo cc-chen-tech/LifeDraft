@@ -292,7 +292,7 @@ class StoryVoiceReadingRepository:
         return cast(Optional[datetime], job.updated_at) if job is not None else None
 
     def invalidate_asset(self, asset: GeneratedVoiceAsset, reason: str) -> None:
-        """Retain an unusable v2 asset record but prevent further reuse."""
+        """Retain an unusable older asset record but prevent further reuse."""
         setattr(asset, "status", "invalid")
         setattr(asset, "error_message", reason)
         self.db.flush()
