@@ -205,6 +205,7 @@ class RoundSystemMixin:
         event_id: Optional[str] = None,
         revision: Optional[int] = None,
         persist_callback: Optional[Callable[[Any], bool]] = None,
+        prefetched_event: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """Process round choice. Delegates to RoundChoiceProcessor."""
         if not hasattr(self, "_choice_processor"):
@@ -217,6 +218,7 @@ class RoundSystemMixin:
                 revision=revision or 0,
                 option_index=option_index,
                 persist_callback=persist_callback,
+                prefetched_event=prefetched_event,
             )
         return self._choice_processor.make_round_choice(
             option_index=option_index,

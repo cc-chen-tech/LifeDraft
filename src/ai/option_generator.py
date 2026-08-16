@@ -111,6 +111,9 @@ class OptionGenerator:
         )
         retained_options: List[EventOption] = []
         retry_count = min(retry_count, display_budget.option_call_limit)
+        from src.game.daily_timeline import is_daily_timeline
+
+        daily_mode = is_daily_timeline(player_state)
 
         for attempt in range(retry_count):
             try:
@@ -174,6 +177,22 @@ class OptionGenerator:
                     parsed_options = self._parse_candidate_options(
                         data.get("options", [])
                     )
+                    if daily_mode and parsed_options:
+                        recommended_count = sum(
+                            bool(option.likely_choice) for option in parsed_options
+                        )
+                        if recommended_count != 1:
+                            last_error = (
+                                "每日模式必须恰好一个推荐选项"
+                                if language == "zh"
+                                else "daily mode requires exactly one recommended option"
+                            )
+                            retained_options = []
+                            logger.warning(
+                                "Attempt %d violated daily recommendation contract; retrying",
+                                attempt + 1,
+                            )
+                            continue
                     retained_options = self._merge_usable_options(
                         retained_options,
                         parsed_options,

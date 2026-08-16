@@ -228,7 +228,9 @@ def prepare_daily_option_transitions(
         )
         prepared.append(option.model_copy(update={"transition_text": candidate}))
         excluded.add(normalize_daily_transition(str(candidate)))
-    return prepared
+    from src.game.daily_recommendation import prepare_daily_option_recommendation
+
+    return prepare_daily_option_recommendation(prepared, player_state)
 
 
 def resolve_daily_transition(

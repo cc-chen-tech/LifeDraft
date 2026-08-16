@@ -31,6 +31,8 @@ class FeatureFlags(TypedDict, total=False):
     unified_narrative_budgets: bool
     structured_story_memory: bool
     daily_timeline_v2: bool
+    daily_recommended_prefetch: bool
+    daily_recommended_tts_prefetch: bool
 
 
 # Mapping from feature flag name -> environment variable name
@@ -49,6 +51,8 @@ _ENV_VAR_MAP: Dict[str, str] = {
     "unified_narrative_budgets": "ENABLE_UNIFIED_NARRATIVE_BUDGETS",
     "structured_story_memory": "ENABLE_STRUCTURED_STORY_MEMORY",
     "daily_timeline_v2": "ENABLE_DAILY_TIMELINE_V2",
+    "daily_recommended_prefetch": "ENABLE_DAILY_RECOMMENDED_PREFETCH",
+    "daily_recommended_tts_prefetch": "ENABLE_DAILY_RECOMMENDED_TTS_PREFETCH",
 }
 
 FEATURE_DEFAULTS: FeatureFlags = {
@@ -66,6 +70,8 @@ FEATURE_DEFAULTS: FeatureFlags = {
     "unified_narrative_budgets": False,
     "structured_story_memory": False,
     "daily_timeline_v2": False,
+    "daily_recommended_prefetch": False,
+    "daily_recommended_tts_prefetch": False,
 }
 
 

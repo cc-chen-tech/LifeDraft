@@ -516,6 +516,48 @@ class VoiceReadingProgress(Base):
     )
 
 
+class DailyRecommendedPrefetch(Base):
+    """Persisted speculative next-day event for one recommended choice."""
+
+    __tablename__ = "daily_recommended_prefetches"
+
+    prefetch_id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)
+    event_id = Column(String(96), nullable=False, index=True)
+    revision = Column(Integer, nullable=False)
+    day_index = Column(Integer, nullable=False)
+    option_index = Column(Integer, nullable=False)
+    state_fingerprint = Column(String(128), nullable=False)
+    status = Column(String(30), nullable=False, default="queued", index=True)
+    next_event_json = Column(JSON, nullable=True)
+    tts_job_id = Column(Integer, ForeignKey("voice_reading_jobs.job_id"), nullable=True)
+    voice_id = Column(String(80), nullable=True)
+    voice_speed = Column(Float, nullable=True)
+    demanded = Column(Boolean, nullable=False, default=False)
+    lease_token = Column(String(64), nullable=True, index=True)
+    lease_expires_at = Column(DateTime, nullable=True)
+    error_code = Column(String(80), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+    consumed_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_daily_recommended_prefetch_identity",
+            "game_id",
+            "event_id",
+            "revision",
+            "option_index",
+            "state_fingerprint",
+            unique=True,
+        ),
+    )
+
+
 class GeneratedMusicAsset(Base):
     """Persisted metadata for reusable AI-generated background music."""
 

@@ -1437,7 +1437,7 @@ def get_options_only_prompt(
 3. 每个选项明确列出对【精力(energy)、情绪(mood)、学识(knowledge)】的影响值
 4. 选项应呈现真实的权衡取舍，不应有明显最优选项
 5. **关系影响必须指定为"relationships": {{"姓名": +/-数值}}，姓名必须严格来自可用人物列表，禁止使用列表中不存在的名字！**
-6. 标注"likely_choice": true/false表示角色最可能做出的选择{daily_transition_requirement}
+6. 标注"likely_choice": true/false；每日模式必须恰好一个选项为 true，表示最贴近人物愿景、核心矛盾与近期选择轨迹，不代表数值最优{daily_transition_requirement}
 
 【输出格式】
 仅返回有效的JSON格式：
@@ -1520,7 +1520,7 @@ def get_options_only_prompt(
 4. Each option clearly lists effects on [energy, mood, knowledge]
 5. Options should present real trade-offs - no option should be clearly superior
 6. Relationship effects should be specified as "relationships": {{"name": +/-value}}, name must come from Available People List
-7. Mark "likely_choice": true/false to indicate what the character would most likely choose{daily_transition_requirement_en}
+7. Mark "likely_choice": true/false. In daily mode exactly one option must be true: the path most aligned with the character's life vision, core conflict, and recent choices, not the statistically optimal option{daily_transition_requirement_en}
 
 [Output Format]
 Return ONLY valid JSON:

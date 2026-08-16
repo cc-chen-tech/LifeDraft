@@ -311,16 +311,47 @@ async def make_choice_sync(
             game_loop, game_id
         )
         if daily_mode:
+            from config.feature_flags import get_feature
+            from src.services.daily_recommended_prefetch import (
+                finalize_choice_prefetch,
+                resolve_choice_prefetch_for_game,
+            )
+
+            prefetch_resolution = None
+            if get_feature("daily_recommended_prefetch"):
+                try:
+                    prefetch_resolution = resolve_choice_prefetch_for_game(
+                        game_id=game_id,
+                        game_loop=game_loop,
+                        option_index=req.option_index,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Recommended prefetch resolution failed; using canonical sync choice"
+                    )
             db = get_db()
 
             def persist_callback(candidate):
                 return db.save_game_progress(game_id, candidate)
-            return game_loop.make_round_choice(
+            result = game_loop.make_round_choice(
                 option_index=req.option_index,
                 event_id=req.event_id,
                 revision=req.revision,
                 persist_callback=persist_callback,
+                prefetched_event=(
+                    prefetch_resolution.next_event
+                    if prefetch_resolution is not None
+                    else None
+                ),
             )
+            if prefetch_resolution is not None:
+                try:
+                    finalize_choice_prefetch(prefetch_resolution)
+                except Exception:
+                    logger.exception(
+                        "Recommended prefetch finalization failed after sync choice"
+                    )
+            return result
         return game_loop.make_round_choice(option_index=req.option_index)
 
     try:

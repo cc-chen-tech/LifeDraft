@@ -11,7 +11,11 @@ import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import { isWithinInputLimit } from "@/lib/inputLimits";
 
 interface OptionCardsProps {
-  options: { text: string; potential_effects?: Record<string, unknown> }[];
+  options: {
+    text: string;
+    potential_effects?: Record<string, unknown>;
+    likely_choice?: boolean;
+  }[];
   onSelect: (index: number) => void | Promise<void>;
   onCustomChoice?: (text: string) => void | Promise<void>;
   allowCustomChoice?: boolean;
@@ -84,7 +88,11 @@ export function OptionCards({
         <button
           key={i}
           data-slot="choice-branch-row"
-          aria-label={`选择 ${i + 1}：${option.text}`}
+          aria-label={
+            option.likely_choice
+              ? `推荐，更贴近愿景，选择 ${i + 1}：${option.text}`
+              : `选择 ${i + 1}：${option.text}`
+          }
           title={option.text}
           className={cn(
             "group flex min-h-14 w-full items-center gap-3 px-0 py-3 text-left",
@@ -114,12 +122,22 @@ export function OptionCards({
             {i + 1}
           </span>
 
-          {/* Option text */}
-          <span
-            data-testid={`option-text-${i}`}
-            className="min-w-0 flex-1 whitespace-normal break-words text-sm leading-7 text-[var(--text-primary)]"
-          >
-            {option.text}
+          {/* Option text and unobtrusive editorial recommendation */}
+          <span className="min-w-0 flex-1">
+            {option.likely_choice && (
+              <span
+                aria-hidden="true"
+                className="mb-0.5 block text-[0.6875rem] font-medium tracking-[0.08em] text-[var(--text-secondary)]"
+              >
+                推荐 · 更贴近愿景
+              </span>
+            )}
+            <span
+              data-testid={`option-text-${i}`}
+              className="block whitespace-normal break-words text-sm leading-7 text-[var(--text-primary)]"
+            >
+              {option.text}
+            </span>
           </span>
 
           {/* Action indicator */}

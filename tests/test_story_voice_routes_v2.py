@@ -108,6 +108,8 @@ def test_health_exposes_daily_tts_and_music_runtime_capabilities(monkeypatch) ->
     assert response.status_code == 200
     assert response.json()["capabilities"] == {
         "daily_timeline_v2": True,
+        "daily_recommended_prefetch": False,
+        "daily_recommended_tts_prefetch": False,
         "tts_provider": "minimax",
         "tts_provider_available": True,
         "tts_audio_transport": "range_v2",

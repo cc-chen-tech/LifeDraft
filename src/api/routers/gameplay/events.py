@@ -15,6 +15,7 @@ from src.api.routers.gameplay.sse_helpers import (
     replay_cached_then_complete,
     return_existing_event,
     stream_round_event,
+    wait_for_demanded_daily_prefetch,
     wait_for_event_generation,
 )
 from src.api.services.event_generation_operation import EventGenerationConflict
@@ -144,6 +145,18 @@ async def generate_event(
             raise HTTPException(status_code=400, detail="Game is already over")
 
         if game_loop.current_event and game_loop.current_event.options:
+            try:
+                from src.services.daily_recommended_prefetch import (
+                    ensure_daily_recommended_prefetch,
+                )
+
+                ensure_daily_recommended_prefetch(
+                    game_id=game_id,
+                    user_id=user_id,
+                    game_loop=game_loop,
+                )
+            except Exception:
+                logger.exception("Failed to resume daily recommended prefetch")
             if last_event_id is not None:
                 stream = replay_cached_then_complete(
                     session, last_event_id, game_loop.current_event
@@ -193,7 +206,29 @@ async def generate_event_sync(
         raise HTTPException(status_code=400, detail="Game is already over")
 
     if game_loop.current_event and game_loop.current_event.options:
+        try:
+            from src.services.daily_recommended_prefetch import (
+                ensure_daily_recommended_prefetch,
+            )
+
+            ensure_daily_recommended_prefetch(
+                game_id=game_id,
+                user_id=user_id,
+                game_loop=game_loop,
+            )
+        except Exception:
+            logger.exception("Failed to resume daily recommended prefetch")
         return game_loop.current_event.model_dump()
+
+    try:
+        prefetched_event = await wait_for_demanded_daily_prefetch(game_loop, game_id)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Recommended next-day generation is still running; reconnect to continue waiting",
+        ) from exc
+    if prefetched_event is not None:
+        return prefetched_event.model_dump()
 
     try:
         operation, _ = get_or_start_round_event_generation(game_loop, game_id, session)

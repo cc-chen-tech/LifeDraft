@@ -145,11 +145,19 @@ def persist_rewritten_current_event(game_loop, game_id: int, rewritten_story: st
     player_state = getattr(game_loop, "player_state", None)
     if player_state is not None:
         current_event_data = getattr(player_state, "current_event_data", None)
-        event_data = game_loop.current_event.model_dump()
-        if not isinstance(event_data, dict):
-            event_data = {}
         if isinstance(current_event_data, dict):
-            event_data = {**current_event_data, **event_data}
+            # Rewrites preserve the persisted event identity and legacy JSON
+            # shape; Pydantic defaults from a reconstructed in-memory event
+            # must not invent a new event_id or empty story_date on refresh.
+            event_data = dict(current_event_data)
+            event_data["options"] = [
+                option.model_dump(exclude_none=True)
+                for option in game_loop.current_event.options
+            ]
+        else:
+            event_data = game_loop.current_event.model_dump(exclude_none=True)
+            if not isinstance(event_data, dict):
+                event_data = {}
         event_data["event_description"] = rewritten_story
         if isinstance(current_event_data, dict) and "story_text" in current_event_data:
             event_data["story_text"] = rewritten_story
@@ -187,6 +195,11 @@ def shutdown_sse_thread_pool(
     for pool in (story_pool, background_pool):
         if pool is not None:
             pool.shutdown(wait=wait, cancel_futures=not wait)
+    from src.services.daily_recommended_prefetch import (
+        shutdown_daily_recommended_prefetch,
+    )
+
+    shutdown_daily_recommended_prefetch(wait=wait)
 
 
 def build_round_illustration_job(
@@ -639,6 +652,18 @@ def _run_event_generation_operation(operation, game_loop, game_id: int, session)
             _set_generation_resume_view(game_loop, game_id, "options")
             operation.complete(event)
             try:
+                from src.services.daily_recommended_prefetch import (
+                    ensure_daily_recommended_prefetch,
+                )
+
+                ensure_daily_recommended_prefetch(
+                    game_id=game_id,
+                    user_id=getattr(session, "user_id", None),
+                    game_loop=game_loop,
+                )
+            except Exception:
+                logger.exception("Failed to start daily recommended prefetch")
+            try:
                 _trigger_round_illustration_generation(game_loop, game_id, event, stage="event")
             except Exception as exc:
                 logger.exception("Failed to trigger round illustration: %s", exc)
@@ -686,6 +711,29 @@ async def wait_for_event_generation(operation, timeout: float = SSE_STREAM_TIMEO
     return operation.snapshot_after(-1)
 
 
+async def wait_for_demanded_daily_prefetch(
+    game_loop, game_id: int, timeout: float = SSE_STREAM_TIMEOUT
+) -> Optional[Any]:
+    """Join a selected speculative job before starting canonical generation."""
+
+    from config.feature_flags import get_feature
+
+    if not get_feature("daily_recommended_prefetch"):
+        return None
+    from src.services.daily_recommended_prefetch import probe_demanded_prefetch
+
+    deadline = asyncio.get_running_loop().time() + timeout
+    while True:
+        probe = probe_demanded_prefetch(game_id=game_id, game_loop=game_loop)
+        if probe.event is not None:
+            return probe.event
+        if not probe.pending:
+            return None
+        if asyncio.get_running_loop().time() >= deadline:
+            raise asyncio.TimeoutError
+        await asyncio.sleep(0.1)
+
+
 async def stream_round_event(
     game_loop, game_id: int, session=None, last_event_id: Optional[int] = None
 ):
@@ -694,6 +742,19 @@ async def stream_round_event(
         from src.api.session_store import GameLoopSession
 
         session = GameLoopSession(game_loop=game_loop, game_id=game_id)
+
+    try:
+        prefetched_event = await wait_for_demanded_daily_prefetch(game_loop, game_id)
+    except asyncio.TimeoutError:
+        yield make_sse_event(
+            "error",
+            {"error": "Recommended next-day generation is still running; reconnect to continue waiting"},
+        )
+        return
+    if prefetched_event is not None:
+        yield make_sse_event("status", {"phase": "prefetch_hit"})
+        yield make_sse_event("complete", prefetched_event.model_dump())
+        return
 
     try:
         operation, should_start = get_or_start_round_event_generation(
@@ -801,6 +862,14 @@ async def stream_choice(
     def _run_locked():
         try:
             if is_custom:
+                if daily_mode:
+                    from src.services.daily_recommended_prefetch import (
+                        invalidate_daily_recommended_prefetch_for_current_event,
+                    )
+
+                    invalidate_daily_recommended_prefetch_for_current_event(
+                        game_id=game_id, game_loop=game_loop
+                    )
                 result_holder[0] = game_loop.make_custom_choice(
                     custom_text=custom_text,
                     stream_callback=stream_cb,
@@ -808,6 +877,24 @@ async def stream_choice(
                 )
             else:
                 if daily_mode:
+                    from config.feature_flags import get_feature
+                    from src.services.daily_recommended_prefetch import (
+                        finalize_choice_prefetch,
+                        resolve_choice_prefetch_for_game,
+                    )
+
+                    prefetch_resolution = None
+                    if get_feature("daily_recommended_prefetch"):
+                        try:
+                            prefetch_resolution = resolve_choice_prefetch_for_game(
+                                game_id=game_id,
+                                game_loop=game_loop,
+                                option_index=option_index,
+                            )
+                        except Exception:
+                            logger.exception(
+                                "Recommended prefetch resolution failed; using canonical choice"
+                            )
                     db = get_db()
 
                     def persist_postprocess():
@@ -825,7 +912,19 @@ async def stream_choice(
                         event_id=event_id,
                         revision=revision,
                         persist_callback=persist_callback,
+                        prefetched_event=(
+                            prefetch_resolution.next_event
+                            if prefetch_resolution is not None
+                            else None
+                        ),
                     )
+                    if prefetch_resolution is not None:
+                        try:
+                            finalize_choice_prefetch(prefetch_resolution)
+                        except Exception:
+                            logger.exception(
+                                "Recommended prefetch finalization failed after choice"
+                            )
                 else:
                     result_holder[0] = game_loop.make_round_choice(
                         option_index=option_index,
@@ -959,8 +1058,15 @@ def _run_daily_regeneration_operation(
     """Run one atomic daily replacement independently of its SSE subscriber."""
     try:
         from src.game.daily_event_revision import regenerate_daily_event_atomically
+        from src.services.daily_recommended_prefetch import (
+            ensure_daily_recommended_prefetch,
+            invalidate_daily_recommended_prefetch_for_current_event,
+        )
 
         with _get_game_state_lock(game_id):
+            invalidate_daily_recommended_prefetch_for_current_event(
+                game_id=game_id, game_loop=game_loop
+            )
             db = get_db()
             event = regenerate_daily_event_atomically(
                 game_loop,
@@ -978,6 +1084,11 @@ def _run_daily_regeneration_operation(
                 logger.exception(
                     "Daily regeneration committed but old scene media invalidation failed"
                 )
+            ensure_daily_recommended_prefetch(
+                game_id=game_id,
+                user_id=getattr(session, "user_id", None),
+                game_loop=game_loop,
+            )
             operation.complete(event)
     except Exception as exc:
         logger.exception("Daily regeneration operation failed: %s", exc)
@@ -1140,7 +1251,14 @@ async def stream_regenerate(
         try:
             if daily_mode:
                 from src.game.daily_event_revision import regenerate_daily_event_atomically
+                from src.services.daily_recommended_prefetch import (
+                    ensure_daily_recommended_prefetch,
+                    invalidate_daily_recommended_prefetch_for_current_event,
+                )
 
+                invalidate_daily_recommended_prefetch_for_current_event(
+                    game_id=game_id, game_loop=game_loop
+                )
                 db = get_db()
                 new_event = regenerate_daily_event_atomically(
                     game_loop,
@@ -1152,6 +1270,11 @@ async def stream_regenerate(
                     session=session,
                 )
                 invalidate_daily_media_after_event_replacement(game_loop, game_id)
+                ensure_daily_recommended_prefetch(
+                    game_id=game_id,
+                    user_id=getattr(session, "user_id", None),
+                    game_loop=game_loop,
+                )
                 result_holder[0] = new_event
                 logger.info(
                     "Daily regeneration complete: %d chars, %d options",
@@ -1396,9 +1519,16 @@ async def stream_rewrite(
 
     if is_daily_timeline(game_loop.player_state):
         from src.game.daily_event_revision import rewrite_daily_event_atomically
+        from src.services.daily_recommended_prefetch import (
+            ensure_daily_recommended_prefetch,
+            invalidate_daily_recommended_prefetch_for_current_event,
+        )
 
         try:
             yield make_sse_event("status", {"phase": "rewriting"})
+            invalidate_daily_recommended_prefetch_for_current_event(
+                game_id=game_id, game_loop=game_loop
+            )
             db = get_db()
             event = await asyncio.to_thread(
                 rewrite_daily_event_atomically,
@@ -1412,6 +1542,11 @@ async def stream_rewrite(
                 ),
             )
             invalidate_daily_media_after_event_replacement(game_loop, game_id)
+            ensure_daily_recommended_prefetch(
+                game_id=game_id,
+                user_id=getattr(session, "user_id", None),
+                game_loop=game_loop,
+            )
             yield make_sse_event(
                 "complete",
                 {"new_story": event.event_description, "event": event.model_dump()},
