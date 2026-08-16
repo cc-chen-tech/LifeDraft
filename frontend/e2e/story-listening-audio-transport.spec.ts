@@ -362,8 +362,12 @@ test.describe('StoryListeningExperience audio transport', () => {
     // A delayed retry may lose the browser's autoplay gesture. The transport
     // recovery is complete once the real source has reloaded; a user click is
     // then the portable way to resume on both configured browser projects.
-    const resumeButton = page.getByRole('button', { name: '播放朗读' });
-    if (await resumeButton.isVisible()) await resumeButton.click();
+    // Query and click in one browser task. Recovery can start playback between
+    // an isVisible() check and click(), which would turn the same control into
+    // "暂停朗读" and make the test pause healthy playback by mistake.
+    await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>('button[aria-label="播放朗读"]')?.click();
+    });
     await expectRealPlayback(page);
   });
 

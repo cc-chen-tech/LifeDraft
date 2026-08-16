@@ -584,13 +584,18 @@ export function StoryListeningExperience({
   const handleTimeUpdate = (audio: HTMLAudioElement, source: string) => {
     if (!isCurrentAudio(audio, source)) return;
     const chapterMilliseconds = audio.currentTime * 1000;
+    const firstSegment = segments.at(0);
     const timedSegment = segments.find((segment, index) => {
       if (segment.start_ms == null) return false;
       const endMs = segment.end_ms
         ?? segments[index + 1]?.start_ms
         ?? totalDurationMs;
       return chapterMilliseconds >= segment.start_ms && chapterMilliseconds < endMs;
-    }) ?? segments.at(-1);
+    }) ?? (
+      firstSegment?.start_ms != null && chapterMilliseconds < firstSegment.start_ms
+        ? firstSegment
+        : segments.at(-1)
+    );
     const paragraphIndex = timedSegment?.paragraph_index ?? activeParagraphRef.current;
     const paragraphStartMs = timedSegment?.start_ms ?? 0;
     const milliseconds = Math.max(0, chapterMilliseconds - paragraphStartMs);

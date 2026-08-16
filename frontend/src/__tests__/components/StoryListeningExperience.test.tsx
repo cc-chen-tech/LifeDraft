@@ -505,10 +505,10 @@ describe("StoryListeningExperience", () => {
     fireEvent.playing(firstAudio);
     fireEvent.click(screen.getByText("查看正文").closest("button") as HTMLButtonElement);
     fireEvent.click(await screen.findByRole("button", { name: "从第 2 段开始朗读" }));
-    await waitFor(() => expect(document.querySelector('audio[data-active="true"]')).toHaveAttribute(
-      "src",
-      "/api/voice-reading/audio/second.mp3",
-    ));
+    await waitFor(() => expect(screen.getByText("第 2 段", { exact: true })).toBeInTheDocument());
+    const chapterAudio = document.querySelector('audio[data-active="true"]');
+    expect(chapterAudio).toBe(firstAudio);
+    expect(chapterAudio).toHaveAttribute("src", "/api/voice-reading/audio/chapter.mp3");
     await act(async () => {
       jest.advanceTimersByTime(8_000);
     });
@@ -820,6 +820,41 @@ describe("StoryListeningExperience", () => {
     expect(voiceApi.updateProgress).toHaveBeenCalledWith(
       expect.objectContaining({ paragraph_index: 1, position_ms: 500 }),
     );
+  });
+
+  it("keeps the first paragraph active during leading silence before its cue", async () => {
+    voiceApi.getJob.mockResolvedValue({
+      job_id: 19,
+      status: "ready",
+      playback_mode: "audio",
+      provider: "minimax",
+      model: "speech-02-turbo",
+      message: "",
+      segments: [
+        { ...segments[0], start_ms: 250 },
+        { ...segments[1], start_ms: 4_250 },
+      ],
+    });
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    fireEvent.click((await screen.findByText("查看正文")).closest("button") as HTMLButtonElement);
+    const firstParagraph = await screen.findByRole("button", {
+      name: "从第 1 段开始朗读",
+    });
+    const secondParagraph = await screen.findByRole("button", {
+      name: "从第 2 段开始朗读",
+    });
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "currentTime", {
+      configurable: true,
+      writable: true,
+      value: 0.1,
+    });
+
+    fireEvent.timeUpdate(audio);
+
+    expect(firstParagraph).toHaveAttribute("aria-current", "true");
+    expect(secondParagraph).not.toHaveAttribute("aria-current", "true");
   });
 
   it("keeps one chapter audio playing while the active paragraph cue changes", async () => {
