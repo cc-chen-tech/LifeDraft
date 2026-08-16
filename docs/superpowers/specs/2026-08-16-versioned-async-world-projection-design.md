@@ -1,7 +1,7 @@
 # 版本化异步世界投影设计
 
 **日期：** 2026-08-16
-**状态：** 待用户评审
+**状态：** 已确认
 **适用范围：** 日历时间线 v2 的每日故事生成、重新生成、选择结算、世界状态提取与存档修复
 
 ## 1. 背景与目标
@@ -161,6 +161,8 @@
 唯一约束为 `(game_id, event_id, revision)`。worker 更新必须同时匹配 `source_hash` 和未 superseded 状态。
 
 玩家状态新增 `world_projection_state` 派生层，保存按天物化后的七类世界信息、每条记录的来源事件/revision/day index，以及应用水位。现有来源不明的 world model 不原地删除或覆盖，只作为 legacy soft hints。提示构建器和校验器通过统一 resolver 读取“不可变基础事实 + 新投影层 + legacy soft hints”，不再直接把旧混合字段当作同等权威。
+
+另建 `daily_world_projection_attempts` 调用账本，逐次记录 projection/game、开始与完成时间、结果和错误类别。每日调用上限、最近一小时异常率和维修审计只能由该账本计算，不能由累计 attempt count 或进程日志推断。`world_projection_state.applied_sources` 保存已经物化的 `(event_id, revision, day_index)`，保证崩溃重放幂等。
 
 任务执行使用应用进程内的常驻 projection service，每 15 秒扫描并领取到期记录，不引入 Redis/Celery 等新外部依赖。数据库 lease 负责多实例互斥；worker 每 15 秒续租，lease 时长为当前 provider 单次超时加 60 秒。进程重启后，其他实例可以领取租约已过期的任务。
 
