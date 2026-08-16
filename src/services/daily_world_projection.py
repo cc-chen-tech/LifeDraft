@@ -20,9 +20,10 @@ from types import SimpleNamespace
 from typing import Any, Callable, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from src.database.models import DailyWorldProjection, GameState, SessionLocal
+from src.database.models import DailyWorldProjection, Game, GameState, SessionLocal
 from src.game.world_projection_coverage import detect_world_change_signals
 from src.game.world_projection_schema import (
     WorldProjectionExtractionError,
@@ -279,12 +280,12 @@ class DailyWorldProjectionService:
         for attempt in range(LOCK_RETRY_ATTEMPTS):
             session = self.session_factory()
             try:
-                result = callback(session, self.repository_factory(session))
-                if cancel_guard is None:
-                    if before_commit is not None:
-                        before_commit()
-                    session.commit()
-                else:
+
+                def commit_boundary() -> None:
+                    if cancel_guard is None:
+                        if before_commit is not None:
+                            before_commit()
+                        return
                     # stop() sets its generation cancel event under this same
                     # lifecycle lock.  This makes "cancel check + commit" one
                     # linearizable decision rather than a check-then-commit race.
@@ -301,6 +302,23 @@ class DailyWorldProjectionService:
                         self.before_guarded_commit()
                     if before_commit is not None:
                         before_commit()
+
+                begin = getattr(session, "begin", None)
+                if callable(begin):
+                    # SQLite releases a top-level SAVEPOINT as a commit when no
+                    # explicit outer transaction exists. Repositories use
+                    # begin_nested() for uniqueness races, so establish the
+                    # outer boundary before their callbacks can create one.
+                    with begin():
+                        connection = session.connection()
+                        if connection.dialect.name == "sqlite":
+                            connection.exec_driver_sql("BEGIN")
+                        result = callback(session, self.repository_factory(session))
+                        commit_boundary()
+                else:
+                    # Task 3's lightweight FakeSession has no begin() API.
+                    result = callback(session, self.repository_factory(session))
+                    commit_boundary()
                     session.commit()
                 if after_commit is not None:
                     after_commit()
@@ -347,13 +365,47 @@ class DailyWorldProjectionService:
         )
 
         def ensure_and_supersede(_session: Any, repo: Any) -> Any:
+            self._lock_replacement_game(_session, identity.game_id)
             projection = repo.ensure_projection(identity, source_hash)
             repo.supersede(
                 identity.game_id, identity.event_id, before_revision=identity.revision
             )
+            newer_exists = (
+                _session.query(DailyWorldProjection)
+                .filter(
+                    DailyWorldProjection.game_id == identity.game_id,
+                    DailyWorldProjection.event_id == identity.event_id,
+                    DailyWorldProjection.revision > identity.revision,
+                )
+                .first()
+                is not None
+            )
+            if newer_exists:
+                repo.supersede(
+                    identity.game_id,
+                    identity.event_id,
+                    before_revision=identity.revision + 1,
+                )
             return projection
 
         return self._transaction(ensure_and_supersede)
+
+    @staticmethod
+    def _lock_replacement_game(session: Any, game_id: int) -> None:
+        """Serialize replacement callbacks for one game before inspecting revisions."""
+
+        bind = session.get_bind()
+        if bind.dialect.name == "sqlite":
+            # SQLite has no FOR UPDATE. A no-op row update acquires its writer
+            # lock before the nested projection savepoint can be released.
+            session.execute(
+                text(
+                    "UPDATE games SET updated_at = updated_at WHERE game_id = :game_id"
+                ),
+                {"game_id": game_id},
+            )
+            return
+        session.query(Game).filter(Game.game_id == game_id).with_for_update().one()
 
     @staticmethod
     def _projection_identity_and_source(
@@ -384,7 +436,13 @@ class DailyWorldProjectionService:
                 event_id=str(event_id),
                 revision=int(revision),
                 day_index=int(
-                    field(timeline, "day_index", field(player_state, "day_index", 0))
+                    field(
+                        event,
+                        "day_index",
+                        field(
+                            timeline, "day_index", field(player_state, "day_index", 0)
+                        ),
+                    )
                 ),
                 story_date=field(event, "story_date", field(timeline, "current_date")),
             )

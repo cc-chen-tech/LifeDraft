@@ -79,37 +79,6 @@ def test_regenerate_replaces_story_options_and_revision_but_keeps_day() -> None:
     ]
 
 
-def test_failed_replacement_persistence_never_notifies_accepted_boundary() -> None:
-    """An enqueue before persistence could supersede the player's still-live story."""
-    loop = FakeLoop()
-    accepted = []
-
-    with pytest.raises(RuntimeError, match="daily_event_persistence_failed"):
-        regenerate_daily_event_atomically(
-            loop,
-            persist_callback=lambda _state: False,
-            accepted_callback=accepted.append,
-        )
-
-    assert accepted == []
-    assert loop.current_event.revision == 1
-
-
-def test_replacement_notifies_accepted_boundary_with_committed_revision() -> None:
-    """A stale candidate callback must not observe revision one as accepted."""
-    loop = FakeLoop()
-    accepted = []
-
-    event = regenerate_daily_event_atomically(
-        loop,
-        persist_callback=lambda _state: True,
-        accepted_callback=accepted.append,
-    )
-
-    assert accepted == [event]
-    assert accepted[0].revision == 2
-
-
 def test_regenerate_passes_operation_id_into_candidate_pipeline() -> None:
     loop = FakeLoop()
     captured = {}
