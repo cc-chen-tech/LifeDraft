@@ -1,6 +1,7 @@
 """Durable event-generation ownership contracts (Layer 3)."""
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 
 import pytest
 
@@ -53,6 +54,29 @@ class TestEventGenerationCoordinator:
 
         assert second is first
         assert should_start is False
+
+    def test_daily_requests_for_same_slot_join_running_operation(self):
+        coordinator = EventGenerationCoordinator()
+        first_key = EventGenerationKey(
+            game_id=156,
+            week=31,
+            round_number=5,
+            stage="daily",
+            resolved_mode="generate_missing",
+        )
+        second_key = replace(
+            first_key,
+            stage="daily-reconnect",
+            resolved_mode="replace_current",
+            base_event_id="evt-current",
+            base_revision=3,
+        )
+
+        first, first_should_start = coordinator.get_or_create_for_slot(first_key)
+        second, second_should_start = coordinator.get_or_create_for_slot(second_key)
+
+        assert first is second
+        assert (first_should_start, second_should_start) == (True, False)
 
 
 def test_daily_event_generation_key_changes_after_timeline_advance() -> None:

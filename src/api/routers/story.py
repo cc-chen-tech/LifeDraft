@@ -134,8 +134,8 @@ async def regenerate_story(
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
 
-    # ★ 移除 current_event 检查，因为重新生成可以在任何状态下工作
-    # 即使没有 current_event，也可以生成新事件
+    # The daily backend resolves this request defensively: a complete current
+    # event is replaced atomically; a missing/incomplete event is generated.
 
     try:
         from src.game.daily_event_revision import regenerate_daily_event_atomically

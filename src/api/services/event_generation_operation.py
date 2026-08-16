@@ -23,6 +23,9 @@ class EventGenerationKey:
     week: int
     round_number: int
     stage: str = "event"
+    resolved_mode: str = "event"
+    base_event_id: str = ""
+    base_revision: int = 0
 
 
 @dataclass(frozen=True)
@@ -167,10 +170,44 @@ class EventGenerationCoordinator:
                 and not restart_completed
             ):
                 return current, False
+            return self._create_unlocked(key)
 
-            operation = EventGenerationOperation(key)
-            self._current = operation
-            return operation, True
+    def get_or_create_for_slot(
+        self,
+        key: EventGenerationKey,
+        *,
+        restart_completed: bool = False,
+    ) -> tuple[EventGenerationOperation, bool]:
+        """Coalesce all daily requests targeting the same saved day."""
+
+        with self._lock:
+            current = self._current
+            if current is not None and current.status == "running":
+                same_slot = (
+                    current.key.game_id,
+                    current.key.week,
+                    current.key.round_number,
+                ) == (key.game_id, key.week, key.round_number)
+                if same_slot:
+                    return current, False
+                raise EventGenerationConflict(
+                    f"generation already running for {current.key}"
+                )
+            if (
+                current is not None
+                and current.key == key
+                and current.status == "completed"
+                and not restart_completed
+            ):
+                return current, False
+            return self._create_unlocked(key)
+
+    def _create_unlocked(
+        self, key: EventGenerationKey
+    ) -> tuple[EventGenerationOperation, bool]:
+        operation = EventGenerationOperation(key)
+        self._current = operation
+        return operation, True
 
     def current(self) -> Optional[EventGenerationOperation]:
         """Return the current durable operation without changing its state."""

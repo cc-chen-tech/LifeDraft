@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from src.ai.models import EventOption, GameEvent
 from src.api.routers.gameplay import sse_helpers
 from src.api.services.event_generation_operation import (
     EventGenerationConflict,
@@ -92,6 +93,49 @@ async def test_failed_worker_emits_error_without_complete(monkeypatch) -> None:
     assert events[-1] == ("error", None, {"error": "provider timed out"})
     assert all(event_type != "complete" for event_type, _, _ in events)
     assert ("story", 0, "在失败前生成的片段") in events
+
+
+@pytest.mark.asyncio
+async def test_started_daily_generation_announces_intent_and_resolved_mode(
+    monkeypatch,
+) -> None:
+    async def _no_prefetch(*args, **kwargs):
+        return None
+
+    operation = EventGenerationOperation(
+        EventGenerationKey(
+            game_id=880_001,
+            week=3,
+            round_number=2,
+            stage="daily",
+            resolved_mode="generate_missing",
+        )
+    )
+    monkeypatch.setattr(
+        sse_helpers,
+        "wait_for_demanded_daily_prefetch",
+        _no_prefetch,
+    )
+    monkeypatch.setattr(
+        sse_helpers,
+        "get_or_start_round_event_generation",
+        lambda *args, **kwargs: (operation, True),
+    )
+
+    stream = sse_helpers.stream_round_event(object(), 880_001, session=object())
+    first = _parse_frame(await stream.__anext__())
+    await stream.aclose()
+
+    assert first == (
+        "status",
+        None,
+        {
+            "phase": "preparing",
+            "operation_id": operation.operation_id,
+            "requested_intent": "ensure_current",
+            "resolved_mode": "generate_missing",
+        },
+    )
 
 
 @pytest.mark.asyncio
@@ -280,4 +324,101 @@ def test_daily_regeneration_reconnect_does_not_start_a_second_transaction(
     assert should_start is True
     assert reconnect_should_start is False
     assert reconnected is first
+    assert len(submitted) == 1
+
+
+def test_daily_replace_without_current_event_starts_missing_generation(
+    monkeypatch,
+) -> None:
+    submitted = []
+
+    class _Pool:
+        def submit(self, fn, *args):
+            submitted.append((fn, args))
+
+    stale_event_data = GameEvent(
+        event_id="stale-persisted-event",
+        revision=9,
+        story_date="2026-08-15",
+        event_description="只存在于残留字段里的旧故事。",
+        options=[
+            EventOption(text="旧选项一", effects={}),
+            EventOption(text="旧选项二", effects={}),
+        ],
+    ).model_dump()
+    game_loop = SimpleNamespace(
+        player_state=SimpleNamespace(
+            timeline=build_daily_timeline(start_date="2026-08-08", day_index=7),
+            current_event_data=stale_event_data,
+        ),
+        current_event=None,
+    )
+    session = SimpleNamespace(event_generation=EventGenerationCoordinator())
+    monkeypatch.setattr(sse_helpers, "_get_sse_thread_pool", lambda: _Pool())
+    monkeypatch.setattr(
+        sse_helpers,
+        "_set_generation_resume_view",
+        lambda *args, **kwargs: None,
+    )
+
+    operation, should_start = sse_helpers._get_or_start_daily_operation(
+        game_loop,
+        156,
+        session,
+        "replace_current",
+        None,
+    )
+
+    assert should_start is True
+    assert operation.key.resolved_mode == "generate_missing"
+    assert operation.key.base_event_id == ""
+    assert len(submitted) == 1
+
+
+def test_daily_replace_with_complete_event_starts_atomic_replacement(
+    monkeypatch,
+) -> None:
+    submitted = []
+
+    class _Pool:
+        def submit(self, fn, *args):
+            submitted.append((fn, args))
+
+    event = GameEvent(
+        event_id="day-7-old",
+        revision=4,
+        story_date="2026-08-15",
+        event_description="完整的当天故事。",
+        options=[
+            EventOption(text="选项一", effects={}),
+            EventOption(text="选项二", effects={}),
+        ],
+    )
+    game_loop = SimpleNamespace(
+        player_state=SimpleNamespace(
+            timeline=build_daily_timeline(start_date="2026-08-08", day_index=7),
+            current_event_data=event.model_dump(),
+        ),
+        current_event=event,
+    )
+    session = SimpleNamespace(event_generation=EventGenerationCoordinator())
+    monkeypatch.setattr(sse_helpers, "_get_sse_thread_pool", lambda: _Pool())
+    monkeypatch.setattr(
+        sse_helpers,
+        "_set_generation_resume_view",
+        lambda *args, **kwargs: None,
+    )
+
+    operation, should_start = sse_helpers._get_or_start_daily_operation(
+        game_loop,
+        156,
+        session,
+        "replace_current",
+        None,
+    )
+
+    assert should_start is True
+    assert operation.key.resolved_mode == "replace_current"
+    assert operation.key.base_event_id == "day-7-old"
+    assert operation.key.base_revision == 4
     assert len(submitted) == 1
