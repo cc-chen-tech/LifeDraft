@@ -300,6 +300,38 @@ test.describe('StoryListeningExperience audio transport', () => {
     ).toBeGreaterThan(0);
   });
 
+  test('offers a retry when real playback silently stops advancing', async ({ page }) => {
+    const fixture = await installFixture(page);
+    await page.goto(`/play?gameId=${GAME_ID}`);
+    await expectRealPlayback(page);
+
+    const activeAudio = page.locator('audio[data-active="true"]');
+    const frozenAtMs = await activeAudio.evaluate((element) => {
+      const audio = element as HTMLAudioElement;
+      Object.defineProperty(audio, 'play', {
+        configurable: true,
+        value: () => new Promise<void>(() => undefined),
+      });
+      audio.pause();
+      return Date.now();
+    });
+
+    const retryButton = page.getByRole('button', { name: '网络不稳定，继续朗读' });
+    await expect(retryButton).toBeVisible({ timeout: STALL_WATCHDOG_MS + 2_000 });
+    const recovery = [...fixture.diagnostics]
+      .reverse()
+      .find((diagnostic) => diagnostic.mediaState === 'automatic_recovery');
+    expect(recovery).toBeDefined();
+    expect((recovery?.observedAtMs ?? 0) - frozenAtMs).toBeLessThanOrEqual(STALL_WATCHDOG_MS + 1_000);
+    await expect(page.getByRole('button', { name: '拆开信封' })).toBeEnabled();
+
+    await activeAudio.evaluate((element) => {
+      Reflect.deleteProperty(element, 'play');
+    });
+    await retryButton.click();
+    await expectRealPlayback(page);
+  });
+
   test('reloads and resumes after the first real audio request fails', async ({ page }) => {
     const fixture = await installFixture(page, { failFirstAudioRequest: true });
     await page.goto(`/play?gameId=${GAME_ID}`);
