@@ -32,10 +32,14 @@ class LengthDriftClient:
     def __init__(self, story: str):
         self.story = story
         self.calls: list[dict[str, Any]] = []
+        self.validation_calls = 0
 
     def call(self, **kwargs: Any) -> str:
         self.calls.append(kwargs)
         if kwargs.get("temperature") == 0.3:
+            self.validation_calls += 1
+            if self.validation_calls > 1:
+                return '{"should_retry": false, "retry_reason": "", ' '"issues": []}'
             return (
                 '{"should_retry": true, "retry_reason": "fixture", "issues": ['
                 '{"dimension": "temporal", "severity": "CRITICAL", '
@@ -163,7 +167,9 @@ class MinimalWorldModel:
         return []
 
 
-@pytest.mark.parametrize("harness_enabled", [False, True], ids=["harness-off", "harness-on"])
+@pytest.mark.parametrize(
+    "harness_enabled", [False, True], ids=["harness-off", "harness-on"]
+)
 @pytest.mark.parametrize("story_length", [1329, 1710, 2315])
 def test_expert_length_drift_keeps_story_and_three_options(
     monkeypatch: pytest.MonkeyPatch,
@@ -200,7 +206,9 @@ def test_failed_shape_repair_recovers_latest_story_and_three_options(
     story = _story_with_length(1329)
     client = FailAfterFirstStoryClient(story)
 
-    event = StoryGenerator(client, quality_level=QualityLevel.EXPERT).generate_round_event(
+    event = StoryGenerator(
+        client, quality_level=QualityLevel.EXPERT
+    ).generate_round_event(
         player_state={"game_id": 8, "week": 4, "current_round": 0},
         language="zh",
         round_number=0,
@@ -239,28 +247,26 @@ def test_blank_shape_repair_recovers_complete_story_and_three_options(
     assert len(event.options) == 3
 
 
-def test_blank_consistency_rewrite_recovers_complete_story_and_three_options(
+def test_blank_consistency_rewrite_remains_a_hard_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "false")
     monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
     story = _story_with_length(900)
 
-    event = StoryGenerator(
-        BlankConsistencyRewriteClient(story),
-        quality_level=QualityLevel.EXPERT,
-    ).generate_round_event(
-        player_state={"game_id": 14, "week": 4, "current_round": 0},
-        language="zh",
-        round_number=0,
-        round_context="",
-        character_settings={},
-        option_generator=ThreeOptionGenerator(),
-        world_model=MinimalWorldModel(),
-    )
-
-    assert event.event_description == story
-    assert len(event.options) == 3
+    with pytest.raises(StoryGenerationFailure):
+        StoryGenerator(
+            BlankConsistencyRewriteClient(story),
+            quality_level=QualityLevel.EXPERT,
+        ).generate_round_event(
+            player_state={"game_id": 14, "week": 4, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings={},
+            option_generator=ThreeOptionGenerator(),
+            world_model=MinimalWorldModel(),
+        )
 
 
 def test_successful_shape_repair_becomes_latest_fallback_story(

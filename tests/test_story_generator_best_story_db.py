@@ -43,7 +43,9 @@ class TestStoryGeneratorBestStoryFallback:
         client.call.side_effect = [accepted_story, rejected_story, ""]
 
         mock_option_gen = MagicMock()
-        mock_option_gen.generate_options_only.side_effect = Exception("option gen failed")
+        mock_option_gen.generate_options_only.side_effect = Exception(
+            "option gen failed"
+        )
 
         # 模拟 Harness：第一次接受；第二次 CRITICAL 后重试，第三次为空。
         gen._harness_enabled = True
@@ -96,7 +98,9 @@ class TestStoryGeneratorBestStoryFallback:
         client.call.return_value = "短"
 
         mock_option_gen = MagicMock()
-        mock_option_gen.generate_options_only.side_effect = Exception("option gen failed")
+        mock_option_gen.generate_options_only.side_effect = Exception(
+            "option gen failed"
+        )
 
         gen._harness_enabled = False
 
@@ -122,14 +126,18 @@ class TestStoryGeneratorBestStoryFallback:
             "午后，团队针对数据权限和样本交接展开讨论，你提出先完成小范围验证，再把结果带回项目会上复盘。"
             "傍晚离开实验室前，你写下明天要跟进的三项事项，也决定把尚未解决的顾虑坦诚告诉合作方。"
         ) * 6
-        long_story = medium_story + (
-            "第二天的复盘让你确认了验证范围，也为下一次沟通准备了更清晰的备选方案。"
-        ) * 2
+        long_story = (
+            medium_story
+            + ("第二天的复盘让你确认了验证范围，也为下一次沟通准备了更清晰的备选方案。")
+            * 2
+        )
         # 两个 Harness 已接受候选后，空文本不得覆盖其中较长的一个。
         client.call.side_effect = [medium_story, long_story, ""]
 
         mock_option_gen = MagicMock()
-        mock_option_gen.generate_options_only.side_effect = Exception("option gen failed")
+        mock_option_gen.generate_options_only.side_effect = Exception(
+            "option gen failed"
+        )
 
         gen._harness_enabled = True
         gen._validation_pipeline = MagicMock()
@@ -262,6 +270,7 @@ class TestStoryGeneratorBestStoryFallback:
             "你在会议室里见到一个与既有设定冲突的人物，对方要求你立刻放弃已经确认的计划。"
             "你没有接受这个要求，而是重新核对关系记录、时间线和当天必须完成的事项。"
         ) * 10
+
         def stream_rejected(**kwargs):
             callback = kwargs.get("stream_callback")
             if callback:
@@ -321,7 +330,9 @@ class TestStoryGeneratorBestStoryFallback:
         streamed_chunks = []
 
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
-            mock_quick.return_value = SimpleNamespace(passed=True, issues=[], warnings=[])
+            mock_quick.return_value = SimpleNamespace(
+                passed=True, issues=[], warnings=[]
+            )
             with pytest.raises(StoryGenerationFailure):
                 gen.generate_round_event(
                     player_state={"game_id": 1, "current_week": 1},
@@ -364,7 +375,9 @@ class TestStoryGeneratorBestStoryFallback:
         gen._diagnostics.generate_report.return_value = {}
 
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
-            mock_quick.return_value = SimpleNamespace(passed=True, issues=[], warnings=[])
+            mock_quick.return_value = SimpleNamespace(
+                passed=True, issues=[], warnings=[]
+            )
             with pytest.raises(StoryGenerationFailure):
                 gen.generate_round_event(
                     player_state={"game_id": 1, "current_week": 1},
@@ -374,14 +387,18 @@ class TestStoryGeneratorBestStoryFallback:
                     option_generator=MagicMock(),
                 )
 
-    def test_master_uses_total_budget_after_soft_candidate_and_failed_hard_repairs(self):
+    def test_master_uses_total_budget_after_soft_candidate_and_failed_hard_repairs(
+        self,
+    ):
         """内部两次修复不能让 MASTER 在 10 次总预算尚未用完时提前退出。"""
         gen, client = self._make_generator(QualityLevel.MASTER)
         soft_story = (
             "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
             "同事随后与你确认下一步安排，你决定先验证关键假设，再继续推进合作。"
         ) * 24
-        hard_stories = [soft_story.replace("同事", f"名单外人物{i}", 1) for i in range(1, 10)]
+        hard_stories = [
+            soft_story.replace("同事", f"名单外人物{i}", 1) for i in range(1, 10)
+        ]
         client.call.side_effect = [soft_story, *hard_stories]
         gen._soft_narrative_lengths = True
         gen._harness_enabled = True
@@ -569,6 +586,59 @@ class TestStoryGeneratorBestStoryFallback:
         assert event.event_description == soft_story
         assert event.delivery_notice is not None
 
+    def test_soft_candidate_survives_consistency_circuit_break_to_budget(self):
+        """一致性修复熔断只结束当前链，已有软稿时仍继续到总预算。"""
+        gen, client = self._make_generator(QualityLevel.EXPERT)
+        paragraph = (
+            "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
+            "同事随后与你确认下一步安排，你决定先验证关键假设，再继续推进合作。"
+        )
+        stories = [
+            paragraph * 13,
+            (paragraph * 13).replace("今天", "当日", 1),
+            (paragraph * 13).replace("今天", "此刻", 1),
+        ]
+        client.call.side_effect = stories
+        gen._soft_narrative_lengths = True
+        gen._harness_enabled = True
+        gen._validation_pipeline = MagicMock()
+        gen._validation_pipeline.validate.return_value = SimpleNamespace(
+            passed=True,
+            score=88.0,
+            critical_failures=[],
+            high_warnings=[SimpleNamespace(constraint_type="pacing")],
+            medium_notes=[],
+            low_notes=[],
+        )
+        gen._diagnostics = MagicMock()
+        gen._diagnostics.generate_report.return_value = {}
+        consistency_circuit = StoryGenerationFailure(
+            "repeated consistency hard fingerprint after targeted repair",
+            circuit_break=True,
+        )
+        gen._validate_and_retry_story = MagicMock(
+            side_effect=[stories[0], consistency_circuit, consistency_circuit]
+        )
+
+        with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
+            mock_quick.return_value = SimpleNamespace(
+                passed=True,
+                issues=[],
+                warnings=[],
+            )
+            event = gen.generate_round_event(
+                player_state={"game_id": 1, "current_week": 1},
+                language="zh",
+                round_number=0,
+                round_context="",
+                world_model=object(),
+                option_generator=MagicMock(),
+            )
+
+        assert client.call.call_count == 3
+        assert event.event_description == stories[0]
+        assert event.delivery_notice is not None
+
     def test_consistency_repair_is_rechecked_by_quick_validator(self):
         """一致性修订改变文本后，新的硬 quick finding 必须阻止交付。"""
         gen, client = self._make_generator(QualityLevel.EXPERT)
@@ -580,18 +650,27 @@ class TestStoryGeneratorBestStoryFallback:
         client.call.return_value = initial_story
         gen._soft_narrative_lengths = True
         gen._harness_enabled = False
-        gen._validate_and_retry_story = MagicMock(return_value=repaired_but_hard_invalid)
+        gen._validate_and_retry_story = MagicMock(
+            return_value=repaired_but_hard_invalid
+        )
         streamed_chunks = []
 
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
-            mock_quick.side_effect = [
-                SimpleNamespace(passed=True, issues=[], warnings=[]),
-                SimpleNamespace(
-                    passed=False,
-                    issues=["名单外命名角色：名单外人物"],
+
+            def quick_result(*, story_text, **_kwargs):
+                if "名单外人物" in story_text:
+                    return SimpleNamespace(
+                        passed=False,
+                        issues=["名单外命名角色：名单外人物"],
+                        warnings=[],
+                    )
+                return SimpleNamespace(
+                    passed=True,
+                    issues=[],
                     warnings=[],
-                ),
-            ] * 3
+                )
+
+            mock_quick.side_effect = quick_result
             with pytest.raises(StoryGenerationFailure):
                 gen.generate_round_event(
                     player_state={"game_id": 1, "current_week": 1},

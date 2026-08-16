@@ -228,7 +228,10 @@ class StoryGenerator:
                 get_generation_budget(self.quality_level.value).expected_seconds + 30
             )
             return float(generation_tracker.cap_timeout(fallback) or fallback)
-        if narrative_budget is not None and narrative_budget.total_deadline_seconds is not None:
+        if (
+            narrative_budget is not None
+            and narrative_budget.total_deadline_seconds is not None
+        ):
             return float(narrative_budget.total_deadline_seconds)
         budget = get_generation_budget(self.quality_level.value)
         return float(budget.expected_seconds + 30)
@@ -685,7 +688,11 @@ class StoryGenerator:
         """
         timeline = player_state.get("timeline")
         daily_mode = isinstance(timeline, dict) and timeline.get("version") == 2
-        if daily_mode or self._unified_narrative_budgets or narrative_budget is not None:
+        if (
+            daily_mode
+            or self._unified_narrative_budgets
+            or narrative_budget is not None
+        ):
             narrative_budget = narrative_budget or resolve_narrative_budget(
                 NarrativeKind.ROUND,
                 GenerationOperation.GENERATE,
@@ -958,12 +965,10 @@ class StoryGenerator:
                     finding.fingerprint,
                 )
 
-        def _hard_findings(findings: list[ValidationFinding]) -> list[ValidationFinding]:
-            return [
-                finding
-                for finding in findings
-                if finding.severity.value == "hard"
-            ]
+        def _hard_findings(
+            findings: list[ValidationFinding],
+        ) -> list[ValidationFinding]:
+            return [finding for finding in findings if finding.severity.value == "hard"]
 
         def _set_best_story(candidate: Optional[str]) -> None:
             if not candidate:
@@ -1145,10 +1150,8 @@ class StoryGenerator:
                 }
                 quick_retry_used = False
                 locally_usable_story = quick_result.passed
-                repeated_from_previous_candidate = (
-                    first_hard_fingerprints.intersection(
-                        previous_hard_fingerprints
-                    )
+                repeated_from_previous_candidate = first_hard_fingerprints.intersection(
+                    previous_hard_fingerprints
                 )
                 quick_circuit_broken = False
                 if repeated_from_previous_candidate:
@@ -1221,9 +1224,11 @@ class StoryGenerator:
                             retry_result.issues,
                         )
                         locally_usable_story = False
-                        repeated_hard_fingerprints = first_hard_fingerprints.intersection(
-                            finding.fingerprint
-                            for finding in _hard_findings(last_findings)
+                        repeated_hard_fingerprints = (
+                            first_hard_fingerprints.intersection(
+                                finding.fingerprint
+                                for finding in _hard_findings(last_findings)
+                            )
                         )
                         if repeated_hard_fingerprints:
                             logger.warning(
@@ -1292,52 +1297,89 @@ class StoryGenerator:
                     )
                     if status_callback:
                         status_callback("retry")
-                    story_text = _call_candidate_story(
-                        language=language,
-                        generation_tracker=generation_tracker,
-                        system_prompt=sys_prompt,
-                        user_prompt=attempt_prompt
-                        + _build_shape_retry_instruction(hard_shape_issues),
-                        temperature=0.65,
-                        max_tokens=active_max_tokens,
-                        stream_callback=stream_callback,
-                        frequency_penalty=0.4,
-                        presence_penalty=0.4,
-                        request_timeout=self._story_request_timeout_seconds(
-                            narrative_budget, generation_tracker
-                        ),
+                    pre_shape_story = story_text
+                    pre_shape_findings = list(last_findings)
+                    can_restore_pre_shape_story = (
+                        self._soft_narrative_lengths
+                        and locally_usable_story
+                        and all(
+                            issue in {"story_too_short", "story_too_long"}
+                            for issue in hard_shape_issues
+                        )
                     )
-                    logger.info(
-                        "Story shape retry completed with %d characters",
-                        len(story_text),
-                    )
-                    retry_shape_issues = _hard_shape_issues(story_text)
-                    final_shape_issues = retry_shape_issues
-                    retry_quick_result = _quick_validate_round_story(story_text)
-                    if not retry_quick_result.passed:
+
+                    try:
+                        repaired_story = _call_candidate_story(
+                            language=language,
+                            generation_tracker=generation_tracker,
+                            system_prompt=sys_prompt,
+                            user_prompt=attempt_prompt
+                            + _build_shape_retry_instruction(hard_shape_issues),
+                            temperature=0.65,
+                            max_tokens=active_max_tokens,
+                            stream_callback=stream_callback,
+                            frequency_penalty=0.4,
+                            presence_penalty=0.4,
+                            request_timeout=self._story_request_timeout_seconds(
+                                narrative_budget, generation_tracker
+                            ),
+                        )
+                    except Exception as repair_error:
+                        if not can_restore_pre_shape_story:
+                            raise
                         logger.warning(
-                            "Story shape retry still failed: shape=%s quick=%s",
-                            retry_shape_issues,
-                            retry_quick_result.issues,
+                            "Story shape retry failed; retaining the pre-repair "
+                            "length-warning candidate for remaining hard gates: %s",
+                            repair_error,
                         )
-                        raise ValueError(
-                            "Story shape validation failed: "
-                            + "; ".join(
-                                retry_shape_issues + retry_quick_result.issues
-                            )
+                        story_text = pre_shape_story
+                        last_findings = pre_shape_findings
+                        final_shape_issues = hard_shape_issues
+                    else:
+                        story_text = repaired_story
+                        logger.info(
+                            "Story shape retry completed with %d characters",
+                            len(story_text),
                         )
-                    elif retry_shape_issues:
-                        logger.warning(
-                            "Story shape retry completed with diagnostics: %s",
-                            retry_shape_issues,
-                        )
-                        if not self._soft_narrative_lengths:
-                            raise ValueError(
-                                "Story shape validation failed: "
-                                + "; ".join(retry_shape_issues)
-                            )
-                    if self._soft_narrative_lengths and retry_quick_result.passed:
-                        last_findings = list(retry_quick_result.findings)
+                        retry_shape_issues = _hard_shape_issues(story_text)
+                        retry_quick_result = _quick_validate_round_story(story_text)
+                        if not retry_quick_result.passed:
+                            if can_restore_pre_shape_story:
+                                logger.warning(
+                                    "Story shape retry introduced hard quick findings; "
+                                    "retaining the pre-repair length-warning candidate "
+                                    "for remaining hard gates: %s",
+                                    retry_quick_result.issues,
+                                )
+                                story_text = pre_shape_story
+                                last_findings = pre_shape_findings
+                                final_shape_issues = hard_shape_issues
+                            else:
+                                logger.warning(
+                                    "Story shape retry still failed: shape=%s quick=%s",
+                                    retry_shape_issues,
+                                    retry_quick_result.issues,
+                                )
+                                raise ValueError(
+                                    "Story shape validation failed: "
+                                    + "; ".join(
+                                        retry_shape_issues + retry_quick_result.issues
+                                    )
+                                )
+                        else:
+                            final_shape_issues = retry_shape_issues
+                            if retry_shape_issues:
+                                logger.warning(
+                                    "Story shape retry completed with diagnostics: %s",
+                                    retry_shape_issues,
+                                )
+                                if not self._soft_narrative_lengths:
+                                    raise ValueError(
+                                        "Story shape validation failed: "
+                                        + "; ".join(retry_shape_issues)
+                                    )
+                            if self._soft_narrative_lengths:
+                                last_findings = list(retry_quick_result.findings)
                 elif hard_shape_issues:
                     logger.warning(
                         "Story shape issues recorded without another provider retry: %s",
@@ -1431,11 +1473,7 @@ class StoryGenerator:
                     last_findings = list(post_validation_quick_result.findings)
                     _log_findings(
                         last_findings,
-                        (
-                            "retry"
-                            if _hard_findings(last_findings)
-                            else "accepted"
-                        ),
+                        ("retry" if _hard_findings(last_findings) else "accepted"),
                     )
                     if not post_validation_quick_result.passed:
                         raise ValueError(
@@ -1522,9 +1560,7 @@ class StoryGenerator:
                         if self._soft_narrative_lengths
                         else []
                     )
-                    hard_validation_failures = list(
-                        validation_result.critical_failures
-                    )
+                    hard_validation_failures = list(validation_result.critical_failures)
                     for failure in promoted_continuity_failures:
                         if failure not in hard_validation_failures:
                             hard_validation_failures.append(failure)
@@ -1618,9 +1654,7 @@ class StoryGenerator:
                         validation_score=candidate_validation_score,
                     )
                     if provider_requests_used < max_story_requests:
-                        retry_hint = (
-                            "Improve non-blocking story quality warnings while preserving all established facts."
-                        )
+                        retry_hint = "Improve non-blocking story quality warnings while preserving all established facts."
                         logger.info(
                             "Soft-warning candidate retained; trying another candidate within budget"
                         )
@@ -1704,7 +1738,20 @@ class StoryGenerator:
                     e,
                 )
                 if e.circuit_break:
-                    raise
+                    if len(best_soft_story_text) <= 20:
+                        raise
+                    previous_hard_fingerprints = set()
+                    retry_hint = None
+                    if (
+                        provider_requests_used < max_story_requests
+                        and attempt < max_attempts - 1
+                    ):
+                        logger.info(
+                            "Consistency circuit ended the current repair chain; "
+                            "trying a fresh candidate because a soft fallback is retained"
+                        )
+                        continue
+                    break
             except (ValueError, ValidationError, json.JSONDecodeError) as e:
                 logger.warning(f"Round event attempt {attempt + 1} failed: {e}")
                 last_generation_error = e
@@ -1831,11 +1878,7 @@ class StoryGenerator:
             player_state.get("game_id"),
             self.quality_level.value,
             attempts_used,
-            sum(
-                1
-                for finding in last_findings
-                if finding.severity.value == "hard"
-            ),
+            sum(1 for finding in last_findings if finding.severity.value == "hard"),
         )
         raise StoryGenerationFailure(
             message,
@@ -2151,7 +2194,10 @@ class StoryGenerator:
                         else get_generation_budget(self.quality_level.value).max_tokens
                     ),
                 )
-                if repaired_validation.passed or not repaired_validation.has_critical_issues:
+                if (
+                    repaired_validation.passed
+                    or not repaired_validation.has_critical_issues
+                ):
                     return retry_story
 
                 def _fingerprints(result: Any) -> set[str]:
@@ -2160,7 +2206,9 @@ class StoryGenerator:
                             (
                                 str(issue.dimension).strip().lower()
                                 + "|"
-                                + re.sub(r"\s+", " ", str(issue.description)).strip().lower()
+                                + re.sub(r"\s+", " ", str(issue.description))
+                                .strip()
+                                .lower()
                             ).encode("utf-8")
                         ).hexdigest()[:16]
                         for issue in result.critical_issues
@@ -2198,7 +2246,11 @@ class StoryGenerator:
 
             return story_text
 
-        except (_EmptyStoryProviderOutput, GenerationBudgetError, StoryGenerationFailure):
+        except (
+            _EmptyStoryProviderOutput,
+            GenerationBudgetError,
+            StoryGenerationFailure,
+        ):
             raise
         except Exception as e:
             logger.error(f"Story validation/retry failed: {e}")
