@@ -14,6 +14,7 @@ export interface PlayReadingFrameProps
   playerState: Record<string, unknown> | null;
   progress: Record<string, unknown> | null;
   isViewingHistory: boolean;
+  hideProgress?: boolean;
   toolsProps: Omit<PlayToolsProps, "className">;
   children: ReactNode;
 }
@@ -25,6 +26,7 @@ export const PlayReadingFrame = memo(function PlayReadingFrame({
   playerState,
   progress,
   isViewingHistory,
+  hideProgress = false,
   toolsProps,
   children,
   ...pageProps
@@ -44,7 +46,7 @@ export const PlayReadingFrame = memo(function PlayReadingFrame({
           className="min-w-0 px-5 py-6 sm:px-8 sm:py-8 md:px-10 md:py-10"
         >
           <div ref={contentRef} className="min-w-0">
-            {!isViewingHistory ? (
+            {!isViewingHistory && !hideProgress ? (
               <header className="mb-8 border-b border-[var(--border-default)] pb-5">
                 <StatusBar
                   playerState={playerState}

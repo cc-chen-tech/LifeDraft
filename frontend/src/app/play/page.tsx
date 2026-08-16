@@ -776,6 +776,7 @@ export default function PlayPage() {
         playerState={playerState}
         progress={progress}
         isViewingHistory={isViewingHistory}
+        hideProgress={Boolean(dailyTransition.active)}
         toolsProps={toolsProps}
       >
         {regenerationFailure && !isViewingHistory && (

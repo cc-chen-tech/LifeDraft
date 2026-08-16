@@ -273,6 +273,7 @@ test('daily choice settles once and automatically opens the next calendar day', 
   await page.getByRole('button', { name: '拆开信封' }).click();
 
   await expect(page.getByText('信封尚未拆尽沉默，时间已携着余韵走向明日。')).toBeVisible();
+  await expect(page.getByText('公元 2026 年 8 月 14 日')).toHaveCount(1);
   await expect(
     page
       .getByTestId('daily-transition-layer')
@@ -416,6 +417,7 @@ test('refresh after a saved choice safely retries generation on the advanced day
 
   await page.goto(`/play?gameId=${gameId}`);
   await expect(page.getByText('今日的回声渐远，明日已从静处缓缓靠近。')).toBeVisible();
+  await expect(page.getByText('公元 2026 年 8 月 14 日')).toHaveCount(1);
   await expect(
     page
       .getByTestId('daily-transition-layer')

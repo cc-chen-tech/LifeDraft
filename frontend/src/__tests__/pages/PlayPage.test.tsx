@@ -201,6 +201,42 @@ describe('PlayPage', () => {
       expect(screen.queryByText(/第1周|周一|第1轮\/3|共 365 天/)).not.toBeInTheDocument();
     });
 
+    it('hides the advanced daily progress while the next-day transition is active', async () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      const timeline = {
+        version: 2,
+        current_date: '2026-08-14',
+        day_index: 1,
+        day_number: 2,
+        total_days: 365,
+      };
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'loading',
+        storyText: '',
+        displayText: '',
+        playerState: {
+          ...mockUsePlayGame.playerState,
+          age: 28,
+          timeline,
+        },
+      });
+
+      render(<PlayPage />);
+      act(() => {
+        window.dispatchEvent(new CustomEvent('story2:daily-settlement', {
+          detail: {
+            transitionText: '今日落定，明日将至。',
+            nextTimeline: timeline,
+          },
+        }));
+      });
+
+      expect(await screen.findByTestId('daily-transition-layer')).toBeInTheDocument();
+      expect(screen.queryByTestId('status-bar')).not.toBeInTheDocument();
+      expect(screen.getAllByText('公元 2026 年 8 月 14 日')).toHaveLength(1);
+    });
+
   });
 
   describe('Loading state', () => {
