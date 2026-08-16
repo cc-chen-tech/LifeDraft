@@ -265,28 +265,51 @@ class DailyWorldProjectionRepository:
         return self._finish_fenced_update("mark_applied", projection_id, updated)
 
     def supersede(self, game_id: int, event_id: str, before_revision: int) -> int:
-        now = datetime.utcnow()
-        updated = (
-            self.db.query(DailyWorldProjection)
+        candidates = (
+            self.db.query(
+                DailyWorldProjection.projection_id,
+                DailyWorldProjection.game_id,
+                DailyWorldProjection.event_id,
+                DailyWorldProjection.revision,
+                DailyWorldProjection.source_hash,
+            )
             .filter(
                 DailyWorldProjection.game_id == game_id,
                 DailyWorldProjection.event_id == event_id,
                 DailyWorldProjection.revision < before_revision,
                 DailyWorldProjection.status != "superseded",
             )
-            .update(
-                {
-                    DailyWorldProjection.status: "superseded",
-                    DailyWorldProjection.lease_owner: None,
-                    DailyWorldProjection.lease_expires_at: None,
-                    DailyWorldProjection.updated_at: now,
-                },
-                synchronize_session=False,
-            )
+            .all()
         )
+        now = datetime.utcnow()
+        updated_count = 0
+        for candidate in candidates:
+            updated = (
+                self.db.query(DailyWorldProjection)
+                .filter(
+                    DailyWorldProjection.projection_id == candidate.projection_id,
+                    DailyWorldProjection.game_id == candidate.game_id,
+                    DailyWorldProjection.event_id == candidate.event_id,
+                    DailyWorldProjection.revision == candidate.revision,
+                    DailyWorldProjection.source_hash == candidate.source_hash,
+                    DailyWorldProjection.status != "superseded",
+                )
+                .update(
+                    {
+                        DailyWorldProjection.status: "superseded",
+                        DailyWorldProjection.lease_owner: None,
+                        DailyWorldProjection.lease_expires_at: None,
+                        DailyWorldProjection.updated_at: now,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            updated_count += int(updated)
+            if updated == 0:
+                self._log_fenced("supersede", int(candidate.projection_id))
         self.db.flush()
         self.db.expire_all()
-        return int(updated)
+        return updated_count
 
     def start_attempt(self, projection_id: int, game_id: int, now: datetime) -> int:
         attempt = DailyWorldProjectionAttempt(

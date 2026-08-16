@@ -176,3 +176,49 @@ def test_supersede_fences_an_old_revision_that_becomes_ready_during_update(
     assert (
         db_session.get(DailyWorldProjection, older.projection_id).status == "superseded"
     )
+
+
+def test_supersede_is_fenced_when_source_hash_changes_during_update(
+    db_session,
+) -> None:
+    """A projection whose accepted source changed cannot be superseded by a stale scan."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    older = repo.ensure_projection(identity(revision=1), source_hash="hash-old")
+    db_session.flush()
+    source_hash_changed = False
+
+    def replace_source_before_supersede(
+        connection, cursor, statement, parameters, context, executemany
+    ) -> None:
+        nonlocal source_hash_changed
+        if source_hash_changed or not statement.startswith(
+            "UPDATE daily_world_projections"
+        ):
+            return
+        source_hash_changed = True
+        connection.exec_driver_sql(
+            "UPDATE daily_world_projections SET source_hash = 'hash-new' "
+            "WHERE projection_id = ?",
+            (older.projection_id,),
+        )
+
+    event.listen(
+        db_session.bind,
+        "before_cursor_execute",
+        replace_source_before_supersede,
+    )
+    try:
+        assert repo.supersede(older.game_id, older.event_id, before_revision=2) == 0
+    finally:
+        event.remove(
+            db_session.bind,
+            "before_cursor_execute",
+            replace_source_before_supersede,
+        )
+
+    assert source_hash_changed is True
+    db_session.expire_all()
+    persisted = db_session.get(DailyWorldProjection, older.projection_id)
+    assert persisted.source_hash == "hash-new"
+    assert persisted.status == "pending"
