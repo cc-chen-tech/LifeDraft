@@ -827,6 +827,25 @@ def test_quick_validator_preserves_particle_shaped_characters_inside_given_names
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+def test_quick_validator_preserves_bare_four_person_reference() -> None:
+    """Bare numeral-plus-person phrases can definitely refer back to the group."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
+            "陈可欣、赵强、方蕾、孙明共同制定由四人负责的方案。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外人物主导剧情" in issue for issue in result.issues)
+
+
 def test_quick_validator_ignores_coordinated_interrogative_phrases() -> None:
     """Question words joined by a coordinator are not invented people."""
     from src.ai.quick_validator import quick_validate_story
@@ -909,6 +928,25 @@ def test_quick_validator_does_not_borrow_person_context_from_later_sentence() ->
         story_text=(
             "陆昊然与同事复盘项目，方向键与安全阀共同确定产品策略。"
             "随后三名顾问进入会议室。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+def test_quick_validator_does_not_treat_human_object_as_subject_context() -> None:
+    """An indefinite human object does not identify coordinated subjects."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然与同事复盘项目，"
+            "方向键与安全阀共同确定三名顾问的权限。"
         ),
         character_settings=settings,
         available_people=["陆昊然", "陈晓雨", "林一凡"],
