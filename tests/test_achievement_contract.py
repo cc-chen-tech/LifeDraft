@@ -18,7 +18,7 @@ class TestAchievementAPIContract:
 
     def test_ending_api_returns_life_review_field(self):
         """结局 API 响应应包含 life_review 字段"""
-        with patch("src.api.routers.gameplay.summary.session_service") as mock_service:
+        with patch("src.api.deps.session_service") as mock_service:
             mock_session = MagicMock()
             mock_game_loop = MagicMock()
             mock_game_loop.is_game_over.return_value = True
@@ -54,7 +54,7 @@ class TestAchievementAPIContract:
 
     def test_ending_api_achievements_structure(self):
         """成就字段应为结构化对象列表"""
-        with patch("src.api.routers.gameplay.summary.session_service") as mock_service:
+        with patch("src.api.deps.session_service") as mock_service:
             mock_session = MagicMock()
             mock_game_loop = MagicMock()
             mock_game_loop.is_game_over.return_value = True
@@ -94,7 +94,7 @@ class TestAchievementAPIContract:
 
     def test_ending_api_game_not_over_returns_400(self):
         """游戏未结束时返回 400"""
-        with patch("src.api.routers.gameplay.summary.session_service") as mock_service:
+        with patch("src.api.deps.session_service") as mock_service:
             mock_session = MagicMock()
             mock_game_loop = MagicMock()
             mock_game_loop.is_game_over.return_value = False
@@ -108,7 +108,7 @@ class TestAchievementAPIContract:
 
     def test_life_review_resource_curves_structure(self):
         """resource_curves contains the three active resources."""
-        with patch("src.api.routers.gameplay.summary.session_service") as mock_service:
+        with patch("src.api.deps.session_service") as mock_service:
             mock_session = MagicMock()
             mock_game_loop = MagicMock()
             mock_game_loop.is_game_over.return_value = True
@@ -142,7 +142,7 @@ class TestAchievementAPIContract:
 
     def test_life_review_badge_wall_structure(self):
         """achievement_badge_wall 条目包含所需字段"""
-        with patch("src.api.routers.gameplay.summary.session_service") as mock_service:
+        with patch("src.api.deps.session_service") as mock_service:
             mock_session = MagicMock()
             mock_game_loop = MagicMock()
             mock_game_loop.is_game_over.return_value = True
