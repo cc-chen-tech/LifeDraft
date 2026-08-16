@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import threading
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Mapping, Sequence
 
 _SENTENCE_BOUNDARY = re.compile(r"[。！？!?；;]+")
@@ -12,12 +13,7 @@ _CLAUSE_BOUNDARY = re.compile(r"[，,]+")
 _POS_PREFIX_FUNCTION_TAGS = frozenset({"c", "d", "e", "f", "o", "t", "u", "y"})
 _POS_DETERMINER_TAGS = frozenset({"r"})
 _STRUCTURAL_PARTICLE_TAGS = frozenset({"uj"})
-_HUMAN_PRONOUNS = frozenset({"他", "她", "它", "他们", "她们", "本人"})
-_HUMAN_ROLE_TERMS = frozenset(
-    {"向导", "对手", "朋友", "客人", "店主", "老板", "船夫", "守卫", "士兵"}
-)
-_SUBJECT_PREDICATE_TERMS = frozenset({"决定", "说", "打算", "选择", "准备"})
-_MOVEMENT_PREDICATE_TERMS = frozenset({"前进"})
+_LOCATION_OBJECT_ONTOLOGY = frozenset({"住所", "方向", "街道", "码头", "港口", "客栈"})
 
 try:
     from jieba import Tokenizer as _JiebaTokenizer
@@ -69,6 +65,18 @@ class WorldChangeSignals:
     matched_spans: tuple[str, ...]
 
 
+class _RelativeSubjectAction(str, Enum):
+    CARRY = "carry"
+    REBIND = "rebind"
+    RESET = "reset"
+
+
+@dataclass(frozen=True)
+class _RelativeSubjectBinding:
+    action: _RelativeSubjectAction
+    subject: str | None = None
+
+
 def _tracked_character_names(tracked_state: Any) -> tuple[str, ...]:
     if not isinstance(tracked_state, Mapping):
         return ()
@@ -78,10 +86,75 @@ def _tracked_character_names(tracked_state: Any) -> tuple[str, ...]:
     return tuple(str(name) for name in locations if str(name).strip())
 
 
+def _known_boundary_names(
+    tracked_state: Any, tracked_names: Sequence[str]
+) -> tuple[str, ...]:
+    names = list(tracked_names)
+    if not isinstance(tracked_state, Mapping):
+        return tuple(names)
+    for key in ("commitments", "active_commitments", "causal_chains"):
+        records = tracked_state.get(key)
+        if isinstance(records, Mapping):
+            records = (
+                (records,)
+                if "parties" in records or "characters" in records
+                else tuple(records.values())
+            )
+        if not isinstance(records, (list, tuple)):
+            continue
+        for record in records:
+            if not isinstance(record, Mapping):
+                continue
+            for field in ("parties", "characters"):
+                people = record.get(field)
+                if isinstance(people, str) and people.strip():
+                    names.append(people.strip())
+                elif isinstance(people, (list, tuple)):
+                    names.extend(
+                        person.strip()
+                        for person in people
+                        if isinstance(person, str) and person.strip()
+                    )
+    return tuple(dict.fromkeys(names))
+
+
+def _known_location_names(tracked_state: Any) -> tuple[str, ...]:
+    if not isinstance(tracked_state, Mapping):
+        return ()
+    names: list[str] = []
+
+    def add(value: Any) -> None:
+        if isinstance(value, str) and value.strip():
+            names.append(value.strip())
+        elif isinstance(value, Mapping):
+            for field in ("name", "location", "label"):
+                add(value.get(field))
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                add(item)
+
+    character_locations = tracked_state.get("character_locations")
+    if isinstance(character_locations, Mapping):
+        for value in character_locations.values():
+            if isinstance(value, Mapping):
+                add(value.get("location"))
+    for key in ("known_locations", "locations", "landmarks"):
+        values = tracked_state.get(key)
+        if isinstance(values, Mapping):
+            for name, value in values.items():
+                add(name)
+                add(value)
+        else:
+            add(values)
+    return tuple(dict.fromkeys(names))
+
+
 def _clause_contexts(
     story: str,
     options: Sequence[Any],
     tracked_names: Sequence[str],
+    boundary_names: Sequence[str],
+    known_location_names: Sequence[str],
 ) -> tuple[tuple[str, bool], ...]:
     source_texts = [str(story or "")]
     source_texts.extend(
@@ -100,12 +173,23 @@ def _clause_contexts(
                 tracked_subject = _leading_tracked_name(candidate, tracked_names)
                 if tracked_subject is not None:
                     active_tracked_subject = tracked_subject
-                elif active_tracked_subject and _is_safe_subjectless_continuation(
-                    candidate, tracked_names
-                ):
-                    pass
                 else:
-                    active_tracked_subject = None
+                    relative_binding = _relative_subject_binding(
+                        _pos_tokens(candidate),
+                        tracked_names,
+                        boundary_names,
+                        known_location_names,
+                    )
+                    if relative_binding is not None:
+                        if relative_binding.action is _RelativeSubjectAction.REBIND:
+                            active_tracked_subject = relative_binding.subject
+                        elif relative_binding.action is _RelativeSubjectAction.RESET:
+                            active_tracked_subject = None
+                    elif not (
+                        active_tracked_subject
+                        and _is_safe_subjectless_continuation(candidate)
+                    ):
+                        active_tracked_subject = None
                 contexts.append((clause, active_tracked_subject is not None))
     return tuple(contexts)
 
@@ -202,31 +286,46 @@ def _relative_subject_tokens(
     return ()
 
 
-def _is_high_confidence_person(
-    subject_tokens: Sequence[tuple[str, str]], tracked_names: Sequence[str]
+def _relative_noun_span(
+    tokens: Sequence[tuple[str, str]],
+) -> tuple[tuple[str, str], ...]:
+    for index, (_, tag) in enumerate(tokens):
+        if tag.startswith("v"):
+            return tuple(tokens[:index])
+    return tuple(tokens)
+
+
+def _is_proven_location_or_object(
+    tokens: Sequence[tuple[str, str]], known_location_names: Sequence[str]
 ) -> bool:
-    if not subject_tokens:
+    noun_span = _relative_noun_span(tokens)
+    if not noun_span:
         return False
-    if _joined_known_name(subject_tokens, tracked_names) is not None:
-        return True
-    word, tag = subject_tokens[0]
+    span_name = "".join(word for word, _ in noun_span)
     return (
-        tag == "nr"
-        or word in _HUMAN_PRONOUNS
-        or word in _HUMAN_ROLE_TERMS
-        or word.endswith("人")
+        any(tag == "ns" for _, tag in noun_span)
+        or span_name in known_location_names
+        or span_name in _LOCATION_OBJECT_ONTOLOGY
     )
 
 
-def _has_subject_predicate(tokens: Sequence[tuple[str, str]]) -> bool:
-    return any(word in _SUBJECT_PREDICATE_TERMS for word, _ in tokens)
-
-
-def _has_location_or_movement_predicate(tokens: Sequence[tuple[str, str]]) -> bool:
-    return any(
-        word in _LOCATION_TERMS or word in _MOVEMENT_PREDICATE_TERMS
-        for word, _ in tokens
-    )
+def _relative_subject_binding(
+    tokens: Sequence[tuple[str, str]],
+    tracked_names: Sequence[str],
+    boundary_names: Sequence[str],
+    known_location_names: Sequence[str],
+) -> _RelativeSubjectBinding | None:
+    subject_tokens = _relative_subject_tokens(tokens)
+    if not subject_tokens:
+        return None
+    tracked_subject = _joined_known_name(subject_tokens, tracked_names)
+    if tracked_subject is not None:
+        return _RelativeSubjectBinding(_RelativeSubjectAction.REBIND, tracked_subject)
+    if _joined_known_name(subject_tokens, boundary_names) is not None:
+        return _RelativeSubjectBinding(_RelativeSubjectAction.RESET)
+    if _is_proven_location_or_object(subject_tokens, known_location_names):
+        return _RelativeSubjectBinding(_RelativeSubjectAction.CARRY)
+    return _RelativeSubjectBinding(_RelativeSubjectAction.RESET)
 
 
 def _valid_prepositional_prefix(tokens: Sequence[tuple[str, str]]) -> bool:
@@ -236,21 +335,11 @@ def _valid_prepositional_prefix(tokens: Sequence[tuple[str, str]]) -> bool:
     return content[0][1] == "p"
 
 
-def _is_safe_subjectless_continuation(
-    candidate: str, tracked_names: Sequence[str]
-) -> bool:
+def _is_safe_subjectless_continuation(candidate: str) -> bool:
     """Permit only complete-token function prefixes before an action/location."""
     tokens = _pos_tokens(candidate)
     if not tokens:
         return False
-    relative_subject = _relative_subject_tokens(tokens)
-    if relative_subject:
-        if _is_high_confidence_person(relative_subject, tracked_names):
-            return False
-        if _has_subject_predicate(relative_subject):
-            return False
-        if not _has_location_or_movement_predicate(relative_subject):
-            return False
     location_index = next(
         (index for index, (word, _) in enumerate(tokens) if word in _LOCATION_TERMS),
         None,
@@ -312,6 +401,8 @@ def detect_world_change_signals(
 ) -> WorldChangeSignals:
     """Return correlated evidence only; this detector never constructs a patch."""
     tracked_names = _tracked_character_names(tracked_state)
+    boundary_names = _known_boundary_names(tracked_state, tracked_names)
+    known_location_names = _known_location_names(tracked_state)
     known_commitment_terms = _known_record_terms(
         tracked_state,
         ("commitments", "active_commitments"),
@@ -341,7 +432,13 @@ def detect_world_change_signals(
             if term not in matches:
                 matches.append(term)
 
-    for clause, has_location_subject in _clause_contexts(story, options, tracked_names):
+    for clause, has_location_subject in _clause_contexts(
+        story,
+        options,
+        tracked_names,
+        boundary_names,
+        known_location_names,
+    ):
         has_tracked_entity = _has_tracked_entity(clause, tracked_names)
         if has_location_subject:
             record("location_updates", _matching_terms(clause, _LOCATION_TERMS))

@@ -421,3 +421,73 @@ def test_relative_person_subjects_reset_before_subject_or_movement_predicates(
     )
 
     assert "location_updates" not in signals.categories
+
+
+@pytest.mark.parametrize(
+    "unknown_person_clause",
+    [
+        "在东海的猪八戒前进",
+        "在东海的游客前进",
+        "在东海的导游前进",
+        "在东海的路人落脚",
+    ],
+)
+def test_unknown_relative_nouns_fail_closed_without_a_person_role_list(
+    unknown_person_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{unknown_person_clause}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" not in signals.categories
+
+
+@pytest.mark.parametrize(
+    "relative_tracked_clause", ["在东海的黑袍人等待", "在东海的孙悟空等待"]
+)
+def test_relative_exact_tracked_names_rebind_the_active_subject(
+    relative_tracked_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{relative_tracked_clause}，抵达东海。",
+        [],
+        {
+            "character_locations": {
+                "黑袍人": {"location": "花果山"},
+                "孙悟空": {"location": "东海"},
+            }
+        },
+    )
+
+    assert "location_updates" in signals.categories
+
+
+@pytest.mark.parametrize(
+    "relative_place_clause",
+    ["向朋友的住所赶路", "在东海的街道等待", "在码头的客栈落脚"],
+)
+def test_proven_relative_locations_or_objects_carry_through_any_predicate(
+    relative_place_clause: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，{relative_place_clause}，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" in signals.categories
+
+
+def test_tracked_state_landmarks_prove_relative_location_objects() -> None:
+    signals = detect_world_change_signals(
+        "黑袍人收拾行囊，在云梦泽的石桥等待，抵达东海。",
+        [],
+        {
+            "character_locations": {"黑袍人": {"location": "花果山"}},
+            "landmarks": {"石桥": {"location": "云梦泽"}},
+        },
+    )
+
+    assert "location_updates" in signals.categories
