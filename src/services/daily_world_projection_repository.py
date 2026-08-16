@@ -282,6 +282,36 @@ class DailyWorldProjectionRepository:
         )
         return self._finish_fenced_update("mark_ready", projection_id, updated)
 
+    def mark_ready_and_finish_attempt(
+        self,
+        projection_id: int,
+        worker_id: str,
+        source_hash: str,
+        payload: "WorldProjectionPayload",
+        no_change: bool,
+        *,
+        coverage: Optional[CoverageInput],
+        attempt_id: int,
+        now: datetime,
+    ) -> bool:
+        """Commit final projection publication and ledger finalization together."""
+
+        published = self.mark_ready(
+            projection_id,
+            worker_id,
+            source_hash,
+            payload,
+            no_change,
+            coverage=coverage,
+        )
+        self._finish_attempt_update(
+            attempt_id,
+            "success" if published else "lease_lost",
+            None if published else "lease_lost",
+            now,
+        )
+        return published
+
     def mark_retryable(
         self,
         projection_id: int,
@@ -314,6 +344,49 @@ class DailyWorldProjectionRepository:
             )
         )
         return self._finish_fenced_update("mark_retryable", projection_id, updated)
+
+    def mark_retryable_and_finish_attempt(
+        self,
+        projection_id: int,
+        worker_id: str,
+        error_code: str,
+        next_attempt_at: datetime,
+        *,
+        source_hash: str,
+        attempt_id: int,
+        outcome: str,
+        now: datetime,
+    ) -> bool:
+        """Commit retry scheduling and provider-ledger finalization together."""
+
+        retried = self.mark_retryable(
+            projection_id,
+            worker_id,
+            error_code,
+            next_attempt_at,
+            source_hash=source_hash,
+        )
+        self._finish_attempt_update(attempt_id, outcome, error_code, now)
+        return retried
+
+    def release_lease_and_finish_attempt(
+        self,
+        projection_id: int,
+        worker_id: str,
+        source_hash: str,
+        now: datetime,
+        *,
+        attempt_id: int,
+        outcome: str,
+        error_code: Optional[str],
+    ) -> bool:
+        """Atomically release a cancelled worker lease and close its ledger row."""
+
+        released = self.release_lease(
+            projection_id, worker_id, now, source_hash=source_hash
+        )
+        self._finish_attempt_update(attempt_id, outcome, error_code, now)
+        return released
 
     def mark_applied(
         self, projection_id: int, source_hash: str, applied_at: datetime
@@ -556,7 +629,22 @@ class DailyWorldProjectionRepository:
         error_code: Optional[str],
         now: datetime,
     ) -> None:
-        updated = (
+        updated = self._finish_attempt_update(attempt_id, outcome, error_code, now)
+        self.db.flush()
+        if updated == 0:
+            logger.warning(
+                "daily_world_projection_fenced_write action=finish_attempt attempt_id=%s",
+                attempt_id,
+            )
+
+    def _finish_attempt_update(
+        self,
+        attempt_id: int,
+        outcome: str,
+        error_code: Optional[str],
+        now: datetime,
+    ) -> int:
+        return int(
             self.db.query(DailyWorldProjectionAttempt)
             .filter(
                 DailyWorldProjectionAttempt.attempt_id == attempt_id,
@@ -571,12 +659,6 @@ class DailyWorldProjectionRepository:
                 synchronize_session=False,
             )
         )
-        self.db.flush()
-        if updated == 0:
-            logger.warning(
-                "daily_world_projection_fenced_write action=finish_attempt attempt_id=%s",
-                attempt_id,
-            )
 
     def count_game_attempts_between(
         self, game_id: int, start: datetime, end: datetime

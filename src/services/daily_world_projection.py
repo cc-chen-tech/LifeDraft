@@ -75,6 +75,9 @@ class DailyWorldProjectionService:
         after_final_publish_commit: Optional[Callable[[], None]] = None,
         before_guarded_commit: Optional[Callable[[], None]] = None,
         before_lease_commit: Optional[Callable[[], None]] = None,
+        before_claim_guard: Optional[Callable[[], None]] = None,
+        before_claim_commit: Optional[Callable[[], None]] = None,
+        before_reservation_guard: Optional[Callable[[], None]] = None,
     ) -> None:
         self.session_factory = session_factory
         self.repository_factory = repository_factory
@@ -94,6 +97,9 @@ class DailyWorldProjectionService:
         self.after_final_publish_commit = after_final_publish_commit
         self.before_guarded_commit = before_guarded_commit
         self.before_lease_commit = before_lease_commit
+        self.before_claim_guard = before_claim_guard
+        self.before_claim_commit = before_claim_commit
+        self.before_reservation_guard = before_reservation_guard
         zone_name = time_zone or os.getenv(
             "WORLD_PROJECTION_TIME_ZONE", DEFAULT_TIME_ZONE
         )
@@ -265,6 +271,7 @@ class DailyWorldProjectionService:
         cancel_guard: Optional[Any] = None,
         after_commit: Optional[Callable[[], None]] = None,
         before_commit: Optional[Callable[[], None]] = None,
+        before_guard: Optional[Callable[[], None]] = None,
     ) -> Any:
         """Commit one DB transition, optionally linearized against stop()."""
 
@@ -281,6 +288,8 @@ class DailyWorldProjectionService:
                     # stop() sets its generation cancel event under this same
                     # lifecycle lock.  This makes "cancel check + commit" one
                     # linearizable decision rather than a check-then-commit race.
+                    if before_guard is not None:
+                        before_guard()
                     with self._lock:
                         if cancel_guard.is_set():
                             raise GenerationCancelled()
@@ -355,6 +364,32 @@ class DailyWorldProjectionService:
             lambda _session, repo: repo.ensure_projection(identity, source_hash)
         )
 
+    def _release_claims(
+        self, claims: Sequence[tuple[int, str]], owner: str, now: datetime
+    ) -> None:
+        """Release only leases still owned by this stale generation/source."""
+
+        for projection_id, source_hash in claims:
+            try:
+                self._release_lease(projection_id, source_hash, owner, now)
+            except Exception:
+                logger.exception(
+                    "daily_world_projection_claim_release_failed "
+                    "projection_id=%s source_hash=%s",
+                    projection_id,
+                    source_hash,
+                )
+
+    def _release_claim_async(
+        self, claim: tuple[int, str], owner: str, now: datetime
+    ) -> None:
+        threading.Thread(
+            target=self._release_claims,
+            args=([claim], owner, now),
+            name="daily-world-projection-claim-release",
+            daemon=True,
+        ).start()
+
     def run_once(
         self,
         now: Optional[datetime] = None,
@@ -369,26 +404,48 @@ class DailyWorldProjectionService:
         clock_now = now or self.now_fn()
         db_now = self._as_utc_naive(clock_now)
         owner = self._owner_for(_cancel)
-        claimed_ids = self._transaction(
-            lambda _session, repo: [
-                int(row.projection_id)
-                for row in repo.claim_due(
-                    now=db_now, worker_id=owner, limit=self.claim_limit
-                )
-            ]
-        )
+        try:
+            claims = self._transaction(
+                lambda _session, repo: [
+                    (int(row.projection_id), str(row.source_hash))
+                    for row in repo.claim_due(
+                        now=db_now, worker_id=owner, limit=self.claim_limit
+                    )
+                ],
+                cancel_guard=_cancel,
+                before_guard=(self.before_claim_guard if _cancel is not None else None),
+                before_commit=(
+                    self.before_claim_commit if _cancel is not None else None
+                ),
+            )
+        except GenerationCancelled:
+            return 0
+        if not self._active_generation(_generation, _cancel):
+            self._release_claims(claims, owner, db_now)
+            return 0
         pool = self._pool
-        for projection_id in claimed_ids:
+        for index, (projection_id, source_hash) in enumerate(claims):
             if not self._active_generation(_generation, _cancel):
+                self._release_claims(claims[index:], owner, db_now)
                 break
             if pool is None:
                 self._process_claim(projection_id, clock_now, _cancel)
             else:
                 try:
-                    pool.submit(self._process_claim, projection_id, clock_now, _cancel)
+                    future = pool.submit(
+                        self._process_claim, projection_id, clock_now, _cancel
+                    )
+                    future.add_done_callback(
+                        lambda completed, claim=(projection_id, source_hash): (
+                            self._release_claim_async(claim, owner, db_now)
+                            if completed.cancelled()
+                            else None
+                        )
+                    )
                 except RuntimeError:
+                    self._release_claims(claims[index:], owner, db_now)
                     break
-        return len(claimed_ids)
+        return len(claims)
 
     def _scan_loop(self, generation: int, cancel: threading.Event) -> None:
         while self._active_generation(generation, cancel):
@@ -613,7 +670,11 @@ class DailyWorldProjectionService:
         )
 
     def _reserve_attempt(
-        self, row: Any, now: datetime, owner: Optional[str] = None
+        self,
+        row: Any,
+        now: datetime,
+        owner: Optional[str] = None,
+        cancel: Optional[Any] = None,
     ) -> AttemptReservation:
         owner = owner or self.worker_id
         start, end = self.local_day_bounds_utc(now)
@@ -646,7 +707,13 @@ class DailyWorldProjectionService:
                 attempt_count=row.attempt_count,
             )
 
-        return self._transaction(reserve)
+        return self._transaction(
+            reserve,
+            cancel_guard=cancel,
+            before_guard=(
+                self.before_reservation_guard if cancel is not None else None
+            ),
+        )
 
     def _release_attempt_reservation(
         self, row: Any, attempt_id: int, owner: str, now: datetime
@@ -676,6 +743,122 @@ class DailyWorldProjectionService:
             )
         )
 
+    def _publish_and_finish_attempt(
+        self,
+        repo: Any,
+        row: Any,
+        owner: str,
+        payload: Any,
+        coverage: Mapping[str, Any],
+        attempt_id: Optional[int],
+    ) -> tuple[bool, bool]:
+        """Use the atomic repository transition when the provider slot exists."""
+
+        method = getattr(repo, "mark_ready_and_finish_attempt", None)
+        if method is not None and attempt_id is not None:
+            return (
+                bool(
+                    method(
+                        row.projection_id,
+                        owner,
+                        row.source_hash,
+                        payload,
+                        bool(getattr(payload, "no_change", False)),
+                        coverage=coverage,
+                        attempt_id=attempt_id,
+                        now=self._as_utc_naive(self.now_fn()),
+                    )
+                ),
+                True,
+            )
+        return (
+            bool(
+                repo.mark_ready(
+                    row.projection_id,
+                    owner,
+                    row.source_hash,
+                    payload,
+                    bool(getattr(payload, "no_change", False)),
+                    coverage=coverage,
+                )
+            ),
+            False,
+        )
+
+    def _retry_and_finish_attempt(
+        self,
+        row: Any,
+        now: datetime,
+        error_code: str,
+        outcome: str,
+        owner: str,
+        attempt_id: Optional[int],
+        cancel: Optional[Any],
+    ) -> bool:
+        """Atomically schedule a provider failure retry and close its ledger."""
+
+        if attempt_id is None:
+            return False
+
+        def retry(session: Any, repo: Any) -> tuple[bool, bool]:
+            method = getattr(repo, "mark_retryable_and_finish_attempt", None)
+            if method is not None:
+                return (
+                    bool(
+                        method(
+                            row.projection_id,
+                            owner,
+                            error_code,
+                            self._next_retry_at(row.attempt_count, now),
+                            source_hash=row.source_hash,
+                            attempt_id=attempt_id,
+                            outcome=outcome,
+                            now=self._as_utc_naive(self.now_fn()),
+                        )
+                    ),
+                    True,
+                )
+            return (
+                bool(
+                    repo.mark_retryable(
+                        row.projection_id,
+                        owner,
+                        error_code,
+                        self._next_retry_at(row.attempt_count, now),
+                        source_hash=row.source_hash,
+                    )
+                ),
+                False,
+            )
+
+        _retried, finalized = self._transaction(
+            retry, cancel_guard=cancel if cancel is not None else None
+        )
+        return finalized
+
+    def _cancel_and_finish_attempt(
+        self, row: Any, owner: str, attempt_id: int, now: datetime
+    ) -> bool:
+        """Atomically close a cancelled provider call and release its lease."""
+
+        def cancel_attempt(_session: Any, repo: Any) -> bool:
+            method = getattr(repo, "release_lease_and_finish_attempt", None)
+            if method is None:
+                return False
+            return bool(
+                method(
+                    row.projection_id,
+                    owner,
+                    row.source_hash,
+                    self._as_utc_naive(now),
+                    attempt_id=attempt_id,
+                    outcome="cancelled",
+                    error_code="cancelled",
+                )
+            )
+
+        return bool(self._transaction(cancel_attempt))
+
     def _extract(self, story: str, options: Sequence[Any], tracked_state: Any) -> Any:
         """Construct the model facade only after all DB sessions are closed."""
 
@@ -694,7 +877,12 @@ class DailyWorldProjectionService:
 
         owner = self._owner_for(cancel)
         row = self._claimed_snapshot(projection_id, owner)
-        if row is None or (cancel is not None and cancel.is_set()):
+        if row is None:
+            return
+        if cancel is not None and cancel.is_set():
+            self._release_claims(
+                [(projection_id, row.source_hash)], owner, self._as_utc_naive(now)
+            )
             return
         attempt_id: Optional[int] = None
         provider_called = False
@@ -709,11 +897,14 @@ class DailyWorldProjectionService:
                 outcome, error_code = source_error, source_error
                 return
             if cancel is not None and cancel.is_set():
+                self._release_claims(
+                    [(projection_id, row.source_hash)], owner, self._as_utc_naive(now)
+                )
                 return
             story, options = str(source.get("story", "")), list(
                 source.get("options", [])
             )
-            reservation = self._reserve_attempt(row, now, owner)
+            reservation = self._reserve_attempt(row, now, owner, cancel)
             if reservation.status == AttemptReservationStatus.DAILY_CAP:
                 self._defer_for_daily_cap(row, now, owner, cancel)
                 outcome, error_code = "daily_call_cap", "daily_call_cap"
@@ -725,23 +916,18 @@ class DailyWorldProjectionService:
             assert reservation.attempt_count is not None
             attempt_id = reservation.attempt_id
             row.attempt_count = reservation.attempt_count
-            if cancel is not None and cancel.is_set():
-                self._release_attempt_reservation(row, attempt_id, owner, now)
-                attempt_id = None
-                return
-            with self._lock:
-                self._heartbeat_done.add(done)
-            heartbeat = threading.Thread(
-                target=self._lease_heartbeat,
-                args=(projection_id, row.source_hash, done, owner, cancel),
-                name="daily-world-projection-heartbeat",
-                daemon=True,
-            )
-            heartbeat.start()
-            if cancel is not None and cancel.is_set():
-                self._release_attempt_reservation(row, attempt_id, owner, now)
-                attempt_id = None
-                return
+            if cancel is None or not cancel.is_set():
+                with self._lock:
+                    self._heartbeat_done.add(done)
+                heartbeat = threading.Thread(
+                    target=self._lease_heartbeat,
+                    args=(projection_id, row.source_hash, done, owner, cancel),
+                    name="daily-world-projection-heartbeat",
+                    daemon=True,
+                )
+                heartbeat.start()
+            # The reservation commit permit is the provider-call linearization
+            # point: a stop after that permit still consumes one real call.
             provider_called = True
             payload = self._extract(story, options, source.get("tracked_state"))
             done.set()
@@ -764,7 +950,16 @@ class DailyWorldProjectionService:
             latest_source, source_error = self._validated_canonical_source(row)
             if latest_source is None:
                 assert source_error is not None
-                self._retry(row, now, source_error, owner, cancel, guard_commit=True)
+                if self._retry_and_finish_attempt(
+                    row,
+                    now,
+                    source_error,
+                    source_error,
+                    owner,
+                    attempt_id,
+                    cancel,
+                ):
+                    attempt_id = None
                 outcome, error_code = source_error, source_error
                 return
             if cancel is not None and cancel.is_set():
@@ -773,18 +968,20 @@ class DailyWorldProjectionService:
             coverage = self._coverage_mapping(
                 detect_world_change_signals(story, options, source.get("tracked_state"))
             )
-            published = self._transaction(
-                lambda _session, repo: repo.mark_ready(
-                    row.projection_id,
+            published, attempt_finalized = self._transaction(
+                lambda _session, repo: self._publish_and_finish_attempt(
+                    repo,
+                    row,
                     owner,
-                    row.source_hash,
                     payload,
-                    bool(getattr(payload, "no_change", False)),
-                    coverage=coverage,
+                    coverage,
+                    attempt_id,
                 ),
                 cancel_guard=cancel,
                 after_commit=self.after_final_publish_commit,
             )
+            if attempt_finalized:
+                attempt_id = None
             outcome, error_code = (
                 ("success", None) if published else ("lease_lost", "lease_lost")
             )
@@ -792,20 +989,24 @@ class DailyWorldProjectionService:
             if provider_called:
                 outcome, error_code = "cancelled", "cancelled"
             else:
-                raise
+                return
         except WorldProjectionExtractionError as exc:
             error_code = exc.code
             if cancel is not None and cancel.is_set() and provider_called:
                 outcome, error_code = "cancelled", "cancelled"
             else:
-                self._retry(
+                if provider_called and self._retry_and_finish_attempt(
                     row,
                     now,
                     error_code,
+                    "extraction_error",
                     owner,
+                    attempt_id,
                     cancel,
-                    guard_commit=provider_called,
-                )
+                ):
+                    attempt_id = None
+                elif not provider_called:
+                    self._retry(row, now, error_code, owner, cancel)
                 outcome = "extraction_error"
         except Exception:
             logger.exception(
@@ -815,26 +1016,43 @@ class DailyWorldProjectionService:
             if cancel is not None and cancel.is_set() and provider_called:
                 outcome, error_code = "cancelled", "cancelled"
             else:
-                self._retry(
+                if provider_called and self._retry_and_finish_attempt(
                     row,
                     now,
                     "unexpected_error",
+                    "unexpected_error",
                     owner,
+                    attempt_id,
                     cancel,
-                    guard_commit=provider_called,
-                )
+                ):
+                    attempt_id = None
+                elif not provider_called:
+                    self._retry(row, now, "unexpected_error", owner, cancel)
         finally:
             done.set()
             if heartbeat is not None:
                 heartbeat.join(timeout=0)
             with self._lock:
                 self._heartbeat_done.discard(done)
+            cancel_finalized = False
+            if attempt_id is not None and cancel is not None and cancel.is_set():
+                cancel_finalized = self._cancel_and_finish_attempt(
+                    row, owner, attempt_id, self.now_fn()
+                )
+                if cancel_finalized:
+                    attempt_id = None
             if attempt_id is not None:
                 self._finish_attempt(
                     attempt_id,
                     outcome,
                     error_code,
                     self.now_fn(),
+                )
+            if cancel is not None and cancel.is_set() and not cancel_finalized:
+                self._release_claims(
+                    [(projection_id, row.source_hash)],
+                    owner,
+                    self._as_utc_naive(self.now_fn()),
                 )
 
 
