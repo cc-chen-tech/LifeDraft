@@ -79,7 +79,15 @@ def test_chapter_request_is_idempotent_and_processes_ordered_paragraph_audio() -
         assert ready.segments[0].start_ms == 0
         assert ready.segments[0].end_ms == ready.segments[1].start_ms
         assert ready.segments[1].end_ms == ready.duration_ms
-        assert session.query(GeneratedVoiceAsset).filter_by(user_id=user_id).count() == 1
+        asset = session.query(GeneratedVoiceAsset).filter_by(user_id=user_id).one()
+        assert asset.context_json["paragraph_cues"] == [
+            {
+                "paragraph_index": segment.paragraph_index,
+                "start_ms": segment.start_ms,
+                "end_ms": segment.end_ms,
+            }
+            for segment in ready.segments
+        ]
     finally:
         session.rollback()
         session.close()

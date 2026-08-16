@@ -1035,6 +1035,9 @@ def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
         provider = "minimax"
         model = "speech-02-turbo"
 
+        def __init__(self) -> None:
+            self.synthesize_calls = 0
+
         def metadata(self) -> StoryTTSProviderMetadata:
             return StoryTTSProviderMetadata(
                 provider=self.provider,
@@ -1046,17 +1049,8 @@ def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
             )
 
         def synthesize(self, context, voice_id, speed, on_progress=None) -> GeneratedSpeech:
-            if on_progress is not None:
-                on_progress()
-            return GeneratedSpeech(
-                storage_path="/api/voice-reading/audio/minimax-cache.mp3",
-                duration_ms=2_200,
-                provider=self.provider,
-                model=self.model,
-                media_type="audio/mpeg",
-                playback_mode="audio",
-                paragraph_cues=(ParagraphCue(0, 0, 2_200),),
-            )
+            self.synthesize_calls += 1
+            raise AssertionError("a valid v3 chapter cache must bypass the provider")
 
     init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
@@ -1080,9 +1074,16 @@ def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
             "text_hash": text_hash,
             "text": text,
         }
+        cached_context = {
+            **context,
+            "paragraphs": [text],
+            "paragraph_cues": [
+                {"paragraph_index": 0, "start_ms": 0, "end_ms": 2_200}
+            ],
+        }
         repository.create_asset(
             user_id=int(user.user_id),
-            context=context,
+            context=cached_context,
             voice_id="warm_female",
             speed=1.0,
             provider="minimax",
@@ -1093,7 +1094,8 @@ def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
         )
         session.commit()
 
-        service = StoryVoiceReadingService(repository, provider=CachedMiniMaxProvider())
+        provider = CachedMiniMaxProvider()
+        service = StoryVoiceReadingService(repository, provider=provider)
         request = StoryVoiceReadingRequest(
             context=context,
             voice_id="warm_female",
@@ -1107,6 +1109,7 @@ def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
         assert response.status == "queued"
         assert job.audio_url is not None and job.audio_url.endswith(".mp3")
         assert job.media_type == "audio/mpeg"
+        assert provider.synthesize_calls == 0
     finally:
         session.rollback()
         session.close()
@@ -1204,6 +1207,10 @@ def test_cached_mp3_voice_asset_returns_mpeg_media_type() -> None:
             "attempt_id": "minimax-cache",
             "text_hash": text_hash,
             "text": text,
+            "paragraphs": [text],
+            "paragraph_cues": [
+                {"paragraph_index": 0, "start_ms": 0, "end_ms": 3_200}
+            ],
         }
         repository.create_asset(
             user_id=int(user.user_id),

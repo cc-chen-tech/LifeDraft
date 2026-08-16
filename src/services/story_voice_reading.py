@@ -22,6 +22,7 @@ from src.services.minimax_config import build_minimax_config
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 from src.services.story_tts_provider import (
     DeterministicTTSProvider,
+    ParagraphCue,
     StoryTTSProvider,
     build_deterministic_wav,
     build_story_tts_provider,
@@ -284,7 +285,50 @@ class StoryVoiceReadingService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
         metadata = self.provider.metadata()
+        for segment in job.segments:
+            segment.status = "processing"
+        next_token = self.repository.commit_processing_changes(user_id, job_id, lease_token)
+        if next_token is None:
+            return self.get_job(user_id, job_id)
+        lease_token = next_token
+
+        chapter_context = dict(job.context_json)
+        chapter_context["paragraphs"] = [str(segment.text_content) for segment in job.segments]
+
+        cached_asset, cached_cues = self._find_reusable_asset_with_cues(
+            user_id=user_id,
+            text_hash=str(job.text_hash),
+            voice_id=str(job.voice_id),
+            speed=float(job.speed),
+            provider=metadata.provider,
+            model=metadata.model,
+            paragraph_count=len(job.segments),
+        )
+        if cached_asset is not None and cached_cues is not None:
+            refreshed_job = self.repository.get_job(job_id, user_id)
+            if refreshed_job is None:
+                raise RuntimeError("voice reading job disappeared during cache recovery")
+            self._attach_ready_asset(refreshed_job, cached_asset, cached_cues)
+            if (
+                self.repository.commit_processing_changes(
+                    user_id,
+                    job_id,
+                    lease_token,
+                    primary_asset_id=int(cached_asset.asset_id),
+                    terminal_status="ready",
+                )
+                is None
+            ):
+                return self.get_job(user_id, job_id)
+            return self.get_job(user_id, job_id)
+
         if not metadata.backend_audio_enabled:
+            failed_job = self.repository.get_job(job_id, user_id)
+            if failed_job is not None:
+                for segment in failed_job.segments:
+                    segment.status = "failed"
+                    segment.error_code = "tts_provider_unavailable"
+                    segment.error_message = "High-quality narration is temporarily unavailable"
             if (
                 self.repository.commit_processing_changes(
                     user_id,
@@ -298,16 +342,6 @@ class StoryVoiceReadingService:
             ):
                 return self.get_job(user_id, job_id)
             return self.get_job(user_id, job_id)
-
-        for segment in job.segments:
-            segment.status = "processing"
-        next_token = self.repository.commit_processing_changes(user_id, job_id, lease_token)
-        if next_token is None:
-            return self.get_job(user_id, job_id)
-        lease_token = next_token
-
-        chapter_context = dict(job.context_json)
-        chapter_context["paragraphs"] = [str(segment.text_content) for segment in job.segments]
 
         def refresh_processing_lease() -> None:
             nonlocal lease_token
@@ -336,24 +370,29 @@ class StoryVoiceReadingService:
             if len(speech.paragraph_cues) != len(job.segments):
                 raise RuntimeError("provider returned incomplete paragraph cues")
 
-            ready_asset = self.repository.find_ready_asset(
+            ready_asset, ready_cues = self._find_reusable_asset_with_cues(
+                user_id=user_id,
                 text_hash=str(job.text_hash),
                 voice_id=str(job.voice_id),
                 speed=float(job.speed),
                 provider=metadata.provider,
                 model=metadata.model,
-                user_id=user_id,
+                paragraph_count=len(job.segments),
             )
-            if ready_asset is not None and not self._is_valid_cached_asset(ready_asset):
-                self.repository.invalidate_asset(
-                    ready_asset,
-                    "Generated MiniMax chapter audio is missing or invalid",
-                )
-                ready_asset = None
             if ready_asset is None:
+                ready_cues = speech.paragraph_cues
+                asset_context = dict(chapter_context)
+                asset_context["paragraph_cues"] = [
+                    {
+                        "paragraph_index": cue.paragraph_index,
+                        "start_ms": cue.start_ms,
+                        "end_ms": cue.end_ms,
+                    }
+                    for cue in ready_cues
+                ]
                 ready_asset = self.repository.create_asset(
                     user_id=user_id,
-                    context=chapter_context,
+                    context=asset_context,
                     voice_id=str(job.voice_id),
                     speed=float(job.speed),
                     provider=speech.provider,
@@ -362,21 +401,13 @@ class StoryVoiceReadingService:
                     duration_ms=speech.duration_ms,
                     status="ready",
                 )
+            if ready_cues is None:
+                raise RuntimeError("cached chapter audio did not include paragraph cues")
 
             refreshed_job = self.repository.get_job(job_id, user_id)
             if refreshed_job is None:
                 raise RuntimeError("voice reading job disappeared during synthesis")
-            cues_by_index = {cue.paragraph_index: cue for cue in speech.paragraph_cues}
-            for segment in refreshed_job.segments:
-                cue = cues_by_index.get(int(segment.paragraph_index))
-                if cue is None or cue.start_ms < 0 or cue.end_ms <= cue.start_ms:
-                    raise RuntimeError("provider returned invalid paragraph cues")
-                segment.asset = ready_asset
-                segment.start_ms = cue.start_ms
-                segment.end_ms = cue.end_ms
-                segment.status = "ready"
-                segment.error_code = None
-                segment.error_message = None
+            self._attach_ready_asset(refreshed_job, ready_asset, ready_cues)
 
             if (
                 self.repository.commit_processing_changes(
@@ -409,6 +440,89 @@ class StoryVoiceReadingService:
             ):
                 return self.get_job(user_id, job_id)
         return self.get_job(user_id, job_id)
+
+    def _find_reusable_asset_with_cues(
+        self,
+        *,
+        user_id: int,
+        text_hash: str,
+        voice_id: str,
+        speed: float,
+        provider: str,
+        model: str,
+        paragraph_count: int,
+    ) -> tuple[Optional[Any], Optional[tuple[ParagraphCue, ...]]]:
+        asset = self.repository.find_ready_asset(
+            text_hash=text_hash,
+            voice_id=voice_id,
+            speed=speed,
+            provider=provider,
+            model=model,
+            user_id=user_id,
+        )
+        if asset is None:
+            return None, None
+        if not self._is_valid_cached_asset(asset):
+            self.repository.invalidate_asset(
+                asset,
+                "Generated MiniMax chapter audio is missing or invalid",
+            )
+            return None, None
+        cues = self._paragraph_cues_from_asset(asset, paragraph_count)
+        if cues is None:
+            self.repository.invalidate_asset(
+                asset,
+                "Generated MiniMax chapter audio is missing paragraph cues",
+            )
+            return None, None
+        return asset, cues
+
+    @staticmethod
+    def _paragraph_cues_from_asset(
+        asset: Any,
+        paragraph_count: int,
+    ) -> Optional[tuple[ParagraphCue, ...]]:
+        context = asset.context_json if isinstance(asset.context_json, dict) else {}
+        raw_cues = context.get("paragraph_cues")
+        if not isinstance(raw_cues, list) or len(raw_cues) != paragraph_count:
+            return None
+        cues: list[ParagraphCue] = []
+        previous_end = 0
+        try:
+            for expected_index, raw_cue in enumerate(raw_cues):
+                if not isinstance(raw_cue, dict):
+                    return None
+                cue = ParagraphCue(
+                    paragraph_index=int(raw_cue["paragraph_index"]),
+                    start_ms=int(raw_cue["start_ms"]),
+                    end_ms=int(raw_cue["end_ms"]),
+                )
+                if (
+                    cue.paragraph_index != expected_index
+                    or cue.start_ms < previous_end
+                    or cue.end_ms <= cue.start_ms
+                    or cue.end_ms > int(asset.duration_ms)
+                ):
+                    return None
+                cues.append(cue)
+                previous_end = cue.end_ms
+        except (KeyError, TypeError, ValueError):
+            return None
+        return tuple(cues)
+
+    @staticmethod
+    def _attach_ready_asset(job: Any, asset: Any, cues: tuple[ParagraphCue, ...]) -> None:
+        cues_by_index = {cue.paragraph_index: cue for cue in cues}
+        for segment in job.segments:
+            cue = cues_by_index.get(int(segment.paragraph_index))
+            if cue is None or cue.start_ms < 0 or cue.end_ms <= cue.start_ms:
+                raise RuntimeError("provider returned invalid paragraph cues")
+            segment.asset = asset
+            segment.start_ms = cue.start_ms
+            segment.end_ms = cue.end_ms
+            segment.status = "ready"
+            segment.error_code = None
+            segment.error_message = None
 
     def _is_valid_cached_asset(self, asset: Any) -> bool:
         validator = getattr(self.provider, "is_valid_cached_asset", None)
