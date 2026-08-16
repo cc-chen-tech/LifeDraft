@@ -14,6 +14,8 @@ import os
 import threading
 import time
 import uuid
+from contextlib import ExitStack
+from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -322,10 +324,10 @@ class DailyWorldProjectionService:
 
     def _apply_and_save_contiguous(
         self, session: Any, game_id: int
-    ) -> tuple[int, list[tuple[int, str]]]:
+    ) -> tuple[int, list[tuple[int, str]], Optional[dict[str, Any]]]:
         game = self._lock_projection_game(session, game_id)
         if game is None:
-            return 0, []
+            return 0, [], None
         latest = (
             session.query(GameState)
             .filter(GameState.game_id == game_id)
@@ -334,7 +336,7 @@ class DailyWorldProjectionService:
         )
         state_data = latest.state_json if latest is not None else game.initial_state
         if not isinstance(state_data, Mapping):
-            return 0, []
+            return 0, [], None
 
         from src.game.state import PlayerState
 
@@ -354,7 +356,11 @@ class DailyWorldProjectionService:
         ]
         batch = apply_contiguous_world_projections(state, rows)
         if not batch.state_changed:
-            return batch.applied_count, list(batch.rows_to_mark)
+            return (
+                batch.applied_count,
+                list(batch.rows_to_mark),
+                state.to_dict(),
+            )
 
         expected_state_id = int(latest.state_id) if latest is not None else None
         current_state_id = (
@@ -380,17 +386,77 @@ class DailyWorldProjectionService:
         )
         game.updated_at = self._as_utc_naive(self.now_fn())
         session.flush()
-        return batch.applied_count, list(batch.rows_to_mark)
+        return batch.applied_count, list(batch.rows_to_mark), state.to_dict()
+
+    @staticmethod
+    def _active_game_loops(game_id: int) -> list[Any]:
+        """Snapshot active loops so a durable apply is visible before next use."""
+
+        from src.api.session_store import session_store
+
+        return [
+            session.game_loop for session in session_store.get_game_sessions(game_id)
+        ]
+
+    @staticmethod
+    def _publish_projection_state(
+        loops: Sequence[Any], state_data: Mapping[str, Any]
+    ) -> None:
+        """Merge only derived projection fields into live canonical state."""
+
+        from src.game.state import PlayerState
+
+        persisted = PlayerState.from_dict(dict(state_data))
+        persisted_records = {
+            (
+                record.get("event_id"),
+                record.get("revision"),
+                record.get("day_index"),
+            ): record
+            for record in persisted.day_history
+            if isinstance(record, Mapping)
+        }
+        for loop in loops:
+            live = getattr(loop, "player_state", None)
+            if live is None:
+                continue
+            live.world_projection_state = deepcopy(persisted.world_projection_state)
+            for record in live.day_history:
+                if not isinstance(record, dict):
+                    continue
+                saved = persisted_records.get(
+                    (
+                        record.get("event_id"),
+                        record.get("revision"),
+                        record.get("day_index"),
+                    )
+                )
+                if saved is None:
+                    continue
+                for key in (
+                    "world_projection_id",
+                    "world_projection_identity",
+                    "world_projection_status",
+                ):
+                    if key in saved:
+                        record[key] = deepcopy(saved[key])
 
     def apply_ready_for_game(self, game_id: int) -> int:
         """Apply only the contiguous settled-day prefix, then mark rows applied."""
 
         from src.api.routers.gameplay.sse_helpers import _get_game_state_lock
 
-        with _get_game_state_lock(game_id):
-            applied_count, rows_to_mark = self._transaction(
+        loops = self._active_game_loops(game_id)
+        with _get_game_state_lock(game_id), ExitStack() as loop_locks:
+            for loop in sorted(loops, key=id):
+                mutation_lock = getattr(loop, "_daily_mutation_lock", None)
+                if mutation_lock is not None:
+                    loop_locks.enter_context(mutation_lock)
+            applied_count, rows_to_mark, state_data = self._transaction(
                 lambda session, _repo: self._apply_and_save_contiguous(session, game_id)
             )
+            if state_data is not None:
+                self._publish_projection_state(loops, state_data)
             applied_at = self._as_utc_naive(self.now_fn())
             for projection_id, source_hash in rows_to_mark:
                 self._transaction(

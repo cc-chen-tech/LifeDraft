@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 
 from src.ai.models import EventOption, GameEvent
+from src.api.session_store import session_store
 from src.database.models import DailyWorldProjection, Game, GameState
 from src.game.daily_timeline import build_daily_timeline
 from src.game.game_loop import GameLoop
@@ -330,3 +331,49 @@ def test_concurrent_worker_and_choice_preserve_one_projection_application(
     saved = _latest(Session, game_id)
     assert len(saved["world_projection_state"]["world"]["fact_updates"]) == 1
     assert len(saved["world_projection_state"]["applied_sources"]) == 1
+
+
+def test_serial_applier_updates_live_session_and_uses_its_mutation_lock(
+    temp_db_file,
+) -> None:
+    engine, _ = temp_db_file
+    game_id, Session = _seed_game(engine, days=(5,), statuses=("ready",))
+    loop = object.__new__(GameLoop)
+    loop.player_state = PlayerState.from_dict(_latest(Session, game_id))
+    attempted = threading.Event()
+    underlying_lock = threading.RLock()
+
+    class ObservedLock:
+        def __enter__(self):
+            attempted.set()
+            underlying_lock.acquire()
+            return self
+
+        def __exit__(self, *_args):
+            underlying_lock.release()
+
+    loop._daily_mutation_lock = ObservedLock()
+    session_store.put(game_id, loop, user_id=99156)
+    service = DailyWorldProjectionService(session_factory=Session)
+    finished = threading.Event()
+
+    try:
+        with loop._daily_mutation_lock:
+            attempted.clear()
+            worker = threading.Thread(
+                target=lambda: (service.apply_ready_for_game(game_id), finished.set())
+            )
+            worker.start()
+            assert attempted.wait(timeout=5)
+            assert not finished.is_set()
+        worker.join(timeout=5)
+
+        assert not worker.is_alive()
+        assert (
+            loop.player_state.world_projection_state["applied_through_day_index"] == 5
+        )
+        assert (
+            len(loop.player_state.world_projection_state["world"]["fact_updates"]) == 1
+        )
+    finally:
+        session_store.remove(game_id, user_id=99156)

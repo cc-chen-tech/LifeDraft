@@ -208,8 +208,20 @@ class DailyChoiceProcessor:
         if projection_id is not None and str(
             self._projection_field(projection, "status") or ""
         ) in {"ready", "ready_no_change", "applied"}:
-            apply_world_projection_patch(staged, projection, option_index)
-            record["world_projection_status"] = "applied"
+            try:
+                apply_world_projection_patch(staged, projection, option_index)
+            except Exception:
+                # A projection is derived, repairable state.  Even a ready row
+                # can be temporarily inapplicable when an older day is still a
+                # gap, so it must never turn a valid player choice into a hard
+                # failure.  The serial applier will retry after the gap closes.
+                logger.exception(
+                    "daily world projection apply deferred event_id=%s revision=%s",
+                    event.event_id,
+                    event.revision,
+                )
+            else:
+                record["world_projection_status"] = "applied"
         ledger_fact_updates = []
         for name, change in (applied.get("relationships") or {}).items():
             ledger_fact_updates.append(

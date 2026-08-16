@@ -150,6 +150,32 @@ def test_ready_projection_is_applied_inside_staged_choice_and_rolls_back_on_save
     assert holder["event"] is event
 
 
+def test_ready_projection_sequence_gap_never_blocks_choice_settlement() -> None:
+    state = _state(day_index=1)
+    event = _event()
+    event.event_id = "day-1-event"
+    event.story_date = state.timeline["current_date"]
+    projection = _projection("ready")
+    projection.event_id = event.event_id
+    projection.day_index = 1
+    projection.source_hash = compute_projection_source_hash(
+        event.event_description, event.options
+    )
+    processor, _ = _processor(
+        state, event, projection_lookup=lambda **_identity: projection
+    )
+
+    result = processor.make_choice(
+        event_id=event.event_id,
+        revision=event.revision,
+        option_index=0,
+    )
+
+    assert result["next_timeline"]["day_index"] == 2
+    assert state.day_history[-1]["world_projection_status"] == "pending"
+    assert state.world_projection_state["applied_through_day_index"] == -1
+
+
 def test_duplicate_choice_does_not_lookup_or_reapply_projection() -> None:
     state = _state()
     calls = []
