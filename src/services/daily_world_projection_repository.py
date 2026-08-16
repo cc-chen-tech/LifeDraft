@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Mapping, Optional, Protocol, Union
 
 from sqlalchemy import and_, or_, text
@@ -62,6 +63,23 @@ class ProjectionSourceHashConflict(RuntimeError):
         self.identity = identity
         self.existing_source_hash = existing_source_hash
         self.requested_source_hash = requested_source_hash
+
+
+class AttemptReservationStatus(str, Enum):
+    """The only outcomes of an atomic provider-call slot reservation."""
+
+    RESERVED = "reserved"
+    DAILY_CAP = "daily_cap"
+    FENCED = "fenced"
+
+
+@dataclass(frozen=True)
+class AttemptReservation:
+    """A durable reservation result, including the post-reservation count."""
+
+    status: AttemptReservationStatus
+    attempt_id: Optional[int] = None
+    attempt_count: Optional[int] = None
 
 
 class DailyWorldProjectionRepository:
@@ -150,9 +168,6 @@ class DailyWorldProjectionRepository:
                         DailyWorldProjection.status: "running",
                         DailyWorldProjection.lease_owner: worker_id,
                         DailyWorldProjection.lease_expires_at: now + LEASE_DURATION,
-                        DailyWorldProjection.attempt_count: (
-                            DailyWorldProjection.attempt_count + 1
-                        ),
                         DailyWorldProjection.updated_at: now,
                     },
                     synchronize_session=False,
@@ -383,7 +398,10 @@ class DailyWorldProjectionRepository:
         now: datetime,
         *,
         max_attempts: int,
-    ) -> Optional[int]:
+        worker_id: str,
+        source_hash: str,
+        lease_until: datetime,
+    ) -> AttemptReservation:
         """Atomically reserve one provider-call slot in the caller transaction.
 
         PostgreSQL locks the owning game row. SQLite has no row-level lock, so
@@ -402,6 +420,21 @@ class DailyWorldProjectionRepository:
         else:
             self.db.query(Game).filter(Game.game_id == game_id).with_for_update().one()
 
+        projection = (
+            self.db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.projection_id == projection_id,
+                DailyWorldProjection.game_id == game_id,
+                DailyWorldProjection.status == "running",
+                DailyWorldProjection.lease_owner == worker_id,
+                DailyWorldProjection.lease_expires_at > now,
+                DailyWorldProjection.source_hash == source_hash,
+            )
+            .one_or_none()
+        )
+        if projection is None:
+            return AttemptReservation(AttemptReservationStatus.FENCED)
+
         count = int(
             self.db.query(DailyWorldProjectionAttempt)
             .filter(
@@ -412,8 +445,78 @@ class DailyWorldProjectionRepository:
             .count()
         )
         if count >= max_attempts:
-            return None
-        return self.start_attempt(projection_id, game_id, now)
+            return AttemptReservation(AttemptReservationStatus.DAILY_CAP)
+        updated = (
+            self.db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.projection_id == projection_id,
+                DailyWorldProjection.status == "running",
+                DailyWorldProjection.lease_owner == worker_id,
+                DailyWorldProjection.lease_expires_at > now,
+                DailyWorldProjection.source_hash == source_hash,
+                DailyWorldProjection.attempt_count == projection.attempt_count,
+            )
+            .update(
+                {
+                    DailyWorldProjection.attempt_count: (
+                        DailyWorldProjection.attempt_count + 1
+                    ),
+                    DailyWorldProjection.lease_expires_at: lease_until,
+                    DailyWorldProjection.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
+        if updated != 1:
+            return AttemptReservation(AttemptReservationStatus.FENCED)
+        attempt_id = self.start_attempt(projection_id, game_id, now)
+        return AttemptReservation(
+            AttemptReservationStatus.RESERVED,
+            attempt_id=attempt_id,
+            attempt_count=int(projection.attempt_count) + 1,
+        )
+
+    def release_attempt_reservation(
+        self,
+        projection_id: int,
+        attempt_id: int,
+        worker_id: str,
+        source_hash: str,
+    ) -> bool:
+        """Undo a pre-provider reservation cancelled before any provider call."""
+
+        updated = (
+            self.db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.projection_id == projection_id,
+                DailyWorldProjection.status == "running",
+                DailyWorldProjection.lease_owner == worker_id,
+                DailyWorldProjection.source_hash == source_hash,
+                DailyWorldProjection.attempt_count > 0,
+            )
+            .update(
+                {
+                    DailyWorldProjection.attempt_count: (
+                        DailyWorldProjection.attempt_count - 1
+                    ),
+                },
+                synchronize_session=False,
+            )
+        )
+        deleted = (
+            self.db.query(DailyWorldProjectionAttempt)
+            .filter(
+                DailyWorldProjectionAttempt.attempt_id == attempt_id,
+                DailyWorldProjectionAttempt.projection_id == projection_id,
+                DailyWorldProjectionAttempt.outcome == "running",
+            )
+            .delete(synchronize_session=False)
+        )
+        self.db.flush()
+        # A replacement may already have reset this row to a new source/count.
+        # The old no-provider ledger must still be removed so it cannot consume
+        # the replacement's game/day budget; only the matching old source decrements.
+        return deleted == 1 and updated in (0, 1)
 
     def finish_attempt(
         self,

@@ -29,6 +29,8 @@ from src.game.world_projection_schema import (
 )
 from src.services.daily_world_projection_repository import (
     LEASE_DURATION,
+    AttemptReservation,
+    AttemptReservationStatus,
     DailyWorldProjectionRepository,
     ProjectionIdentity,
 )
@@ -382,16 +384,28 @@ class DailyWorldProjectionService:
 
         return self._transaction(read)
 
-    def _renew_lease(self, projection_id: int, source_hash: str, now: datetime) -> bool:
+    def _renew_lease(
+        self,
+        projection_id: int,
+        source_hash: str,
+        now: datetime,
+        cancel: Optional[Any] = None,
+    ) -> bool:
+        if cancel is not None and cancel.is_set():
+            return False
         db_now = self._as_utc_naive(now)
         return bool(
             self._transaction(
-                lambda _session, repo: repo.renew_lease(
-                    projection_id,
-                    self.worker_id,
-                    db_now,
-                    db_now + LEASE_DURATION,
-                    source_hash=source_hash,
+                lambda _session, repo: (
+                    False
+                    if cancel is not None and cancel.is_set()
+                    else repo.renew_lease(
+                        projection_id,
+                        self.worker_id,
+                        db_now,
+                        db_now + LEASE_DURATION,
+                        source_hash=source_hash,
+                    )
                 )
             )
         )
@@ -408,7 +422,7 @@ class DailyWorldProjectionService:
         try:
             while not done.wait(self.heartbeat_interval):
                 if (cancel is not None and cancel.is_set()) or not self._renew_lease(
-                    projection_id, source_hash, self.now_fn()
+                    projection_id, source_hash, self.now_fn(), cancel
                 ):
                     return
         finally:
@@ -423,37 +437,53 @@ class DailyWorldProjectionService:
             "matched_spans": list(coverage.matched_spans),
         }
 
-    def _retry(self, row: Any, now: datetime, error_code: str) -> bool:
+    def _retry(
+        self, row: Any, now: datetime, error_code: str, cancel: Optional[Any] = None
+    ) -> bool:
+        if cancel is not None and cancel.is_set():
+            return False
         return bool(
             self._transaction(
-                lambda _session, repo: repo.mark_retryable(
-                    row.projection_id,
-                    self.worker_id,
-                    error_code,
-                    self._next_retry_at(row.attempt_count, now),
-                    source_hash=row.source_hash,
+                lambda _session, repo: (
+                    False
+                    if cancel is not None and cancel.is_set()
+                    else repo.mark_retryable(
+                        row.projection_id,
+                        self.worker_id,
+                        error_code,
+                        self._next_retry_at(row.attempt_count, now),
+                        source_hash=row.source_hash,
+                    )
                 )
             )
         )
 
-    def _defer_for_daily_cap(self, row: Any, now: datetime) -> bool:
+    def _defer_for_daily_cap(
+        self, row: Any, now: datetime, cancel: Optional[Any] = None
+    ) -> bool:
+        if cancel is not None and cancel.is_set():
+            return False
         return bool(
             self._transaction(
-                lambda _session, repo: repo.mark_retryable(
-                    row.projection_id,
-                    self.worker_id,
-                    "daily_call_cap",
-                    self.next_local_day(now),
-                    source_hash=row.source_hash,
+                lambda _session, repo: (
+                    False
+                    if cancel is not None and cancel.is_set()
+                    else repo.mark_retryable(
+                        row.projection_id,
+                        self.worker_id,
+                        "daily_call_cap",
+                        self.next_local_day(now),
+                        source_hash=row.source_hash,
+                    )
                 )
             )
         )
 
-    def _reserve_attempt(self, row: Any, now: datetime) -> Optional[int]:
+    def _reserve_attempt(self, row: Any, now: datetime) -> AttemptReservation:
         start, end = self.local_day_bounds_utc(now)
         db_now = self._as_utc_naive(now)
 
-        def reserve(_session: Any, repo: Any) -> Optional[int]:
+        def reserve(_session: Any, repo: Any) -> AttemptReservation:
             method = getattr(repo, "reserve_attempt_slot", None)
             if method is not None:
                 return method(
@@ -463,16 +493,40 @@ class DailyWorldProjectionService:
                     end,
                     db_now,
                     max_attempts=MAX_DAILY_MODEL_CALLS,
+                    worker_id=self.worker_id,
+                    source_hash=row.source_hash,
+                    lease_until=db_now + LEASE_DURATION,
                 )
             # Compatibility only for injected test repositories predating Task 3.
             if (
                 repo.count_game_attempts_between(row.game_id, start, end)
                 >= MAX_DAILY_MODEL_CALLS
             ):
-                return None
-            return repo.start_attempt(row.projection_id, row.game_id, db_now)
+                return AttemptReservation(AttemptReservationStatus.DAILY_CAP)
+            attempt_id = repo.start_attempt(row.projection_id, row.game_id, db_now)
+            return AttemptReservation(
+                AttemptReservationStatus.RESERVED,
+                attempt_id=attempt_id,
+                attempt_count=row.attempt_count,
+            )
 
         return self._transaction(reserve)
+
+    def _release_attempt_reservation(self, row: Any, attempt_id: int) -> bool:
+        def release(_session: Any, repo: Any) -> bool:
+            method = getattr(repo, "release_attempt_reservation", None)
+            if method is None:
+                return False
+            return bool(
+                method(
+                    row.projection_id,
+                    attempt_id,
+                    self.worker_id,
+                    row.source_hash,
+                )
+            )
+
+        return bool(self._transaction(release))
 
     def _finish_attempt(
         self, attempt_id: int, outcome: str, error_code: Optional[str], now: datetime
@@ -503,6 +557,7 @@ class DailyWorldProjectionService:
         if row is None or (cancel is not None and cancel.is_set()):
             return
         attempt_id: Optional[int] = None
+        provider_called = False
         outcome, error_code = "unexpected_error", "unexpected_error"
         done = threading.Event()
         heartbeat: Optional[threading.Thread] = None
@@ -510,19 +565,29 @@ class DailyWorldProjectionService:
             source, source_error = self._validated_canonical_source(row)
             if source is None:
                 assert source_error is not None
-                self._retry(row, now, source_error)
+                self._retry(row, now, source_error, cancel)
                 outcome, error_code = source_error, source_error
+                return
+            if cancel is not None and cancel.is_set():
                 return
             story, options = str(source.get("story", "")), list(
                 source.get("options", [])
             )
-            attempt_id = self._reserve_attempt(row, now)
-            if attempt_id is None:
-                self._defer_for_daily_cap(row, now)
+            reservation = self._reserve_attempt(row, now)
+            if reservation.status == AttemptReservationStatus.DAILY_CAP:
+                self._defer_for_daily_cap(row, now, cancel)
                 outcome, error_code = "daily_call_cap", "daily_call_cap"
                 return
-            if not self._renew_lease(projection_id, row.source_hash, now):
-                outcome, error_code = "lease_lost", "lease_lost"
+            if reservation.status == AttemptReservationStatus.FENCED:
+                outcome, error_code = "fenced", "fenced"
+                return
+            assert reservation.attempt_id is not None
+            assert reservation.attempt_count is not None
+            attempt_id = reservation.attempt_id
+            row.attempt_count = reservation.attempt_count
+            if cancel is not None and cancel.is_set():
+                self._release_attempt_reservation(row, attempt_id)
+                attempt_id = None
                 return
             with self._lock:
                 self._heartbeat_done.add(done)
@@ -533,28 +598,48 @@ class DailyWorldProjectionService:
                 daemon=True,
             )
             heartbeat.start()
+            if cancel is not None and cancel.is_set():
+                self._release_attempt_reservation(row, attempt_id)
+                attempt_id = None
+                return
+            provider_called = True
             payload = self._extract(story, options, source.get("tracked_state"))
             done.set()
-            if not self._renew_lease(projection_id, row.source_hash, self.now_fn()):
+            if cancel is not None and cancel.is_set():
+                outcome, error_code = "cancelled", "cancelled"
+                return
+            if not self._renew_lease(
+                projection_id, row.source_hash, self.now_fn(), cancel
+            ):
                 outcome, error_code = "lease_lost", "lease_lost"
+                return
+            if cancel is not None and cancel.is_set():
+                outcome, error_code = "cancelled", "cancelled"
                 return
             latest_source, source_error = self._validated_canonical_source(row)
             if latest_source is None:
                 assert source_error is not None
-                self._retry(row, now, source_error)
+                self._retry(row, now, source_error, cancel)
                 outcome, error_code = source_error, source_error
+                return
+            if cancel is not None and cancel.is_set():
+                outcome, error_code = "cancelled", "cancelled"
                 return
             coverage = self._coverage_mapping(
                 detect_world_change_signals(story, options, source.get("tracked_state"))
             )
             published = self._transaction(
-                lambda _session, repo: repo.mark_ready(
-                    row.projection_id,
-                    self.worker_id,
-                    row.source_hash,
-                    payload,
-                    bool(getattr(payload, "no_change", False)),
-                    coverage=coverage,
+                lambda _session, repo: (
+                    False
+                    if cancel is not None and cancel.is_set()
+                    else repo.mark_ready(
+                        row.projection_id,
+                        self.worker_id,
+                        row.source_hash,
+                        payload,
+                        bool(getattr(payload, "no_change", False)),
+                        coverage=coverage,
+                    )
                 )
             )
             outcome, error_code = (
@@ -562,14 +647,20 @@ class DailyWorldProjectionService:
             )
         except WorldProjectionExtractionError as exc:
             error_code = exc.code
-            self._retry(row, now, error_code)
-            outcome = "extraction_error"
+            if cancel is not None and cancel.is_set() and provider_called:
+                outcome, error_code = "cancelled", "cancelled"
+            else:
+                self._retry(row, now, error_code, cancel)
+                outcome = "extraction_error"
         except Exception:
             logger.exception(
                 "daily world projection extraction failed projection_id=%s",
                 projection_id,
             )
-            self._retry(row, now, "unexpected_error")
+            if cancel is not None and cancel.is_set() and provider_called:
+                outcome, error_code = "cancelled", "cancelled"
+            else:
+                self._retry(row, now, "unexpected_error", cancel)
         finally:
             done.set()
             if heartbeat is not None:
@@ -577,7 +668,16 @@ class DailyWorldProjectionService:
             with self._lock:
                 self._heartbeat_done.discard(done)
             if attempt_id is not None:
-                self._finish_attempt(attempt_id, outcome, error_code, self.now_fn())
+                self._finish_attempt(
+                    attempt_id,
+                    "cancelled" if cancel is not None and cancel.is_set() else outcome,
+                    (
+                        "cancelled"
+                        if cancel is not None and cancel.is_set()
+                        else error_code
+                    ),
+                    self.now_fn(),
+                )
 
 
 _service: Optional[DailyWorldProjectionService] = None
