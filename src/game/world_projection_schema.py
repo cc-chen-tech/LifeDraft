@@ -7,7 +7,7 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from src.game.world_projection_coverage import detect_world_change_signals
 
@@ -17,6 +17,8 @@ WORLD_PROJECTION_PROMPT_VERSION = "daily-world-projection-v1"
 
 class WorldPatch(BaseModel):
     """Narrative-derived changes in one accepted story branch."""
+
+    model_config = ConfigDict(extra="forbid")
 
     fact_updates: list[dict[str, Any]] = Field(default_factory=list)
     foreshadowing_seeds: list[dict[str, Any]] = Field(default_factory=list)
@@ -33,6 +35,8 @@ class WorldPatch(BaseModel):
 
 class WorldProjectionPayload(BaseModel):
     """One daily story patch plus the conditional patch for every option."""
+
+    model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal[1] = WORLD_PROJECTION_SCHEMA_VERSION
     story_patch: WorldPatch
@@ -95,6 +99,27 @@ def _parse_payload(value: Any) -> WorldProjectionPayload:
         ) from exc
 
 
+def _validate_raw_option_patch_keys(value: Any) -> None:
+    """Reject ambiguous JSON keys before Pydantic can coerce them to integers."""
+    if not isinstance(value, Mapping):
+        return
+    raw_option_patches = value.get("option_patches")
+    if not isinstance(raw_option_patches, Mapping):
+        return
+
+    for raw_index in raw_option_patches:
+        if (
+            not isinstance(raw_index, str)
+            or not raw_index.isascii()
+            or not raw_index.isdecimal()
+            or raw_index != str(int(raw_index))
+        ):
+            raise WorldProjectionExtractionError(
+                "Daily world projection option indexes must be canonical non-negative JSON integers",
+                code="invalid_schema",
+            )
+
+
 def validate_projection_payload(
     value: Any,
     story: str,
@@ -102,6 +127,7 @@ def validate_projection_payload(
     tracked_state: Any = None,
 ) -> WorldProjectionPayload:
     """Validate one extracted payload and reject suspicious all-empty output."""
+    _validate_raw_option_patch_keys(value)
     payload = _parse_payload(value)
     expected_indexes = set(range(len(options)))
     extra_indexes = set(payload.option_patches) - expected_indexes

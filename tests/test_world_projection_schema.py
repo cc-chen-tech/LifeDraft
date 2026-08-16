@@ -86,3 +86,65 @@ def test_source_hash_is_stable_for_equivalent_option_mappings() -> None:
     )
 
     assert first == second
+
+
+@pytest.mark.parametrize(
+    "raw_payload",
+    [
+        {
+            "schema_version": 1,
+            "story_patch": {"unknown_change": []},
+            "option_patches": {},
+        },
+        {
+            "schema_version": 1,
+            "story_patch": {},
+            "option_patches": {"0": {"unknown_change": []}},
+        },
+        {
+            "schema_version": 1,
+            "story_patch": {},
+            "option_patches": {},
+            "unknown_top_level": True,
+        },
+    ],
+)
+def test_unknown_projection_fields_are_invalid_schema_not_no_change(
+    raw_payload: dict[str, object],
+) -> None:
+    with pytest.raises(WorldProjectionExtractionError) as caught:
+        validate_projection_payload(
+            raw_payload,
+            "两人在院中闲谈天气。",
+            [{"text": "继续交谈"}],
+            _tracked_state(),
+        )
+
+    assert caught.value.code == "invalid_schema"
+
+
+@pytest.mark.parametrize(
+    "raw_option_patches",
+    [
+        {"0": {}, "00": {}},
+        {"-1": {}},
+        {"1.0": {}},
+        {" 0": {}},
+    ],
+)
+def test_noncanonical_raw_option_patch_indexes_are_rejected_before_coercion(
+    raw_option_patches: dict[str, object],
+) -> None:
+    with pytest.raises(WorldProjectionExtractionError) as caught:
+        validate_projection_payload(
+            {
+                "schema_version": 1,
+                "story_patch": {},
+                "option_patches": raw_option_patches,
+            },
+            "两人在院中闲谈天气。",
+            [{"text": "继续交谈"}],
+            _tracked_state(),
+        )
+
+    assert caught.value.code == "invalid_schema"
