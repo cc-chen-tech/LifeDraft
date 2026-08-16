@@ -44,6 +44,100 @@ def test_projection_identity_is_unique(db_session) -> None:
     assert db_session.query(DailyWorldProjection).count() == 1
 
 
+def test_ensure_replaces_reprocessable_source_and_never_resurrects_terminal_rows(
+    db_session, frozen_now
+) -> None:
+    """A changed accepted source restarts only a reprocessable projection identity."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    payload = {"story_patch": {"fact_updates": [{"fact": "old"}]}, "option_patches": {}}
+    original = repo.ensure_projection(identity(), source_hash="hash-a")
+    [claimed] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    assert repo.mark_ready(
+        claimed.projection_id,
+        "worker-a",
+        "hash-a",
+        payload,
+        no_change=False,
+    )
+    original.coverage_json = {"categories": ["location_updates"]}
+    original.error_code = "old_error"
+    original.applied_at = frozen_now
+    db_session.flush()
+
+    replacement = repo.ensure_projection(identity(), source_hash="hash-b")
+
+    assert replacement.projection_id == original.projection_id
+    assert replacement.source_hash == "hash-b"
+    assert replacement.status == "pending"
+    assert replacement.attempt_count == 0
+    assert replacement.next_attempt_at <= frozen_now
+    assert replacement.story_patch_json is None
+    assert replacement.option_patches_json is None
+    assert replacement.coverage_json is None
+    assert replacement.error_code is None
+    assert replacement.lease_owner is None
+    assert replacement.lease_expires_at is None
+    assert replacement.applied_at is None
+
+    [replacement_claim] = repo.claim_due(now=frozen_now, worker_id="worker-b", limit=1)
+    assert replacement_claim.source_hash == "hash-b"
+    assert (
+        repo.mark_ready(
+            replacement_claim.projection_id,
+            "worker-b",
+            "hash-a",
+            payload,
+            no_change=False,
+        )
+        is False
+    )
+    assert repo.mark_ready(
+        replacement_claim.projection_id,
+        "worker-b",
+        "hash-b",
+        payload,
+        no_change=False,
+    )
+
+    assert repo.mark_applied(replacement.projection_id, "hash-b", frozen_now)
+    applied = repo.ensure_projection(identity(), source_hash="hash-c")
+    assert applied.source_hash == "hash-b"
+    assert applied.status == "applied"
+    assert repo.supersede(applied.game_id, applied.event_id, before_revision=2) == 1
+    superseded = repo.ensure_projection(identity(), source_hash="hash-d")
+    assert superseded.source_hash == "hash-b"
+    assert superseded.status == "superseded"
+
+
+def test_mark_ready_persists_explicit_coverage_argument(db_session, frozen_now) -> None:
+    """Coverage evidence is stored from its explicit Task 2 boundary argument."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    task = repo.ensure_projection(identity(), source_hash="hash-a")
+    [claimed] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    coverage = {
+        "requires_nonempty_patch": True,
+        "categories": ["location_updates"],
+        "evidence": {"location_updates": ["抵达东海"]},
+    }
+
+    assert repo.mark_ready(
+        claimed.projection_id,
+        "worker-a",
+        "hash-a",
+        {"story_patch": {}, "option_patches": {}},
+        no_change=False,
+        coverage=coverage,
+    )
+
+    db_session.expire_all()
+    assert (
+        db_session.get(DailyWorldProjection, task.projection_id).coverage_json
+        == coverage
+    )
+
+
 def test_claim_due_uses_lease_fencing(db_session, frozen_now) -> None:
     """A live lease prevents another worker from claiming the same due row."""
 

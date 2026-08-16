@@ -4,6 +4,8 @@ Tests the 6 player state mixin submodules via save/load round-trip
 with a real in-memory SQLite database. No mocks.
 """
 
+from copy import deepcopy
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -286,6 +288,52 @@ class TestPlayerDataDB:
         assert state.world_projection_state["projected_through_day_index"] == -1
         assert state.world_projection_state["world"]["location_updates"] == [{"name": "花果山"}]
         assert state.world_projection_state["world"]["commitment_updates"] == []
+
+    def test_loading_malformed_projection_state_keeps_only_safe_typed_values(self):
+        """Malformed legacy projection fields cannot become downstream world inputs."""
+        legacy = {
+            "world_projection_state": {
+                "projected_through_day_index": "not-a-day",
+                "applied_through_day_index": "7",
+                "pending_from_day_index": {"bad": "shape"},
+                "oldest_pending_at": ["not", "a", "scalar"],
+                "applied_sources": [
+                    {"event_id": "evt-7", "revision": 2, "day_index": 7},
+                    "not-a-source",
+                    {"event_id": "evt-bad", "revision": "two", "day_index": 8},
+                ],
+                "world": {
+                    "fact_updates": {"not": "a-list"},
+                    "foreshadowing_seeds": "not-a-list",
+                    "habit_updates": None,
+                    "location_updates": [{"name": "花果山"}],
+                    "career_updates": {"not": "a-list"},
+                    "commitment_updates": "not-a-list",
+                    "causal_updates": 3,
+                },
+            }
+        }
+        before = deepcopy(legacy)
+
+        state = PlayerState.from_dict(legacy)
+
+        assert legacy == before
+        assert state.world_projection_state["projected_through_day_index"] == -1
+        assert state.world_projection_state["applied_through_day_index"] == 7
+        assert state.world_projection_state["pending_from_day_index"] is None
+        assert state.world_projection_state["oldest_pending_at"] is None
+        assert state.world_projection_state["applied_sources"] == [
+            {"event_id": "evt-7", "revision": 2, "day_index": 7}
+        ]
+        assert state.world_projection_state["world"] == {
+            "fact_updates": [],
+            "foreshadowing_seeds": [],
+            "habit_updates": [],
+            "location_updates": [{"name": "花果山"}],
+            "career_updates": [],
+            "commitment_updates": [],
+            "causal_updates": [],
+        }
 
     def test_to_dict_includes_collection_fields(self, repo, sample_game):
         """to_dict should serialize characters, items, landmarks."""

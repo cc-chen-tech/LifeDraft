@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Mapping, Optional, Protocol, Union
 
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +22,16 @@ logger = logging.getLogger(__name__)
 LEASE_DURATION = timedelta(minutes=5)
 CLAIMABLE_STATUSES = ("pending", "failed_retryable")
 READY_STATUSES = ("ready", "ready_no_change")
+REPROCESSABLE_STATUSES = CLAIMABLE_STATUSES + ("running",) + READY_STATUSES
+
+
+class JsonModel(Protocol):
+    """A typed model that can produce JSON-ready persistence data."""
+
+    def model_dump(self, *, mode: str) -> Any: ...
+
+
+CoverageInput = Union[Mapping[str, Any], JsonModel]
 
 
 @dataclass(frozen=True)
@@ -46,7 +56,7 @@ class DailyWorldProjectionRepository:
     ) -> DailyWorldProjection:
         existing = self._find_identity(identity)
         if existing is not None:
-            return existing
+            return self._ensure_existing_source(existing, identity, source_hash)
 
         task = DailyWorldProjection(
             game_id=identity.game_id,
@@ -66,7 +76,7 @@ class DailyWorldProjectionRepository:
             existing = self._find_identity(identity)
             if existing is None:
                 raise
-            return existing
+            return self._ensure_existing_source(existing, identity, source_hash)
         return task
 
     def claim_due(
@@ -177,6 +187,8 @@ class DailyWorldProjectionRepository:
         source_hash: str,
         payload: "WorldProjectionPayload",
         no_change: bool,
+        *,
+        coverage: Optional[CoverageInput] = None,
     ) -> bool:
         data = self._payload_data(payload)
         now = datetime.utcnow()
@@ -198,7 +210,7 @@ class DailyWorldProjectionRepository:
                     DailyWorldProjection.option_patches_json: data.get(
                         "option_patches"
                     ),
-                    DailyWorldProjection.coverage_json: data.get("coverage"),
+                    DailyWorldProjection.coverage_json: self._coverage_data(coverage),
                     DailyWorldProjection.error_code: None,
                     DailyWorldProjection.lease_owner: None,
                     DailyWorldProjection.lease_expires_at: None,
@@ -377,6 +389,63 @@ class DailyWorldProjectionRepository:
             .one_or_none()
         )
 
+    def _ensure_existing_source(
+        self,
+        existing: DailyWorldProjection,
+        identity: ProjectionIdentity,
+        source_hash: str,
+    ) -> DailyWorldProjection:
+        """Reset only a still-reprocessable row whose accepted source changed."""
+
+        for _ in range(3):
+            if existing.source_hash == source_hash:
+                return existing
+            if existing.status not in REPROCESSABLE_STATUSES:
+                return existing
+            now = datetime.utcnow()
+            updated = (
+                self.db.query(DailyWorldProjection)
+                .filter(
+                    DailyWorldProjection.projection_id == existing.projection_id,
+                    DailyWorldProjection.game_id == identity.game_id,
+                    DailyWorldProjection.event_id == identity.event_id,
+                    DailyWorldProjection.revision == identity.revision,
+                    DailyWorldProjection.source_hash == existing.source_hash,
+                    DailyWorldProjection.status.in_(REPROCESSABLE_STATUSES),
+                )
+                .update(
+                    {
+                        DailyWorldProjection.day_index: identity.day_index,
+                        DailyWorldProjection.story_date: identity.story_date,
+                        DailyWorldProjection.source_hash: source_hash,
+                        DailyWorldProjection.status: "pending",
+                        DailyWorldProjection.story_patch_json: None,
+                        DailyWorldProjection.option_patches_json: None,
+                        DailyWorldProjection.coverage_json: None,
+                        DailyWorldProjection.attempt_count: 0,
+                        DailyWorldProjection.next_attempt_at: now,
+                        DailyWorldProjection.lease_owner: None,
+                        DailyWorldProjection.lease_expires_at: None,
+                        DailyWorldProjection.error_code: None,
+                        DailyWorldProjection.applied_at: None,
+                        DailyWorldProjection.updated_at: now,
+                    },
+                    synchronize_session=False,
+                )
+            )
+            self.db.flush()
+            self.db.expire_all()
+            if updated == 1:
+                reset = self.db.get(DailyWorldProjection, existing.projection_id)
+                if reset is not None:
+                    return reset
+            self._log_fenced("ensure_projection", int(existing.projection_id))
+            refreshed = self._find_identity(identity)
+            if refreshed is None:
+                break
+            existing = refreshed
+        return existing
+
     @staticmethod
     def _payload_data(payload: "WorldProjectionPayload") -> dict[str, Any]:
         if hasattr(payload, "model_dump"):
@@ -384,6 +453,17 @@ class DailyWorldProjectionRepository:
         if isinstance(payload, dict):
             return dict(payload)
         raise TypeError("world_projection_payload_must_be_serializable")
+
+    @staticmethod
+    def _coverage_data(coverage: Optional[CoverageInput]) -> Optional[dict[str, Any]]:
+        if coverage is None:
+            return None
+        if isinstance(coverage, Mapping):
+            return dict(coverage)
+        data = coverage.model_dump(mode="json")
+        if isinstance(data, Mapping):
+            return dict(data)
+        raise TypeError("world_projection_coverage_must_be_a_mapping")
 
     def _finish_fenced_update(
         self, action: str, projection_id: int, updated: int

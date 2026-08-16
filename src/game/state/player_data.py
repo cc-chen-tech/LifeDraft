@@ -46,16 +46,90 @@ def _sanitize_world_projection_state(value: Any) -> Dict[str, Any]:
         return normalized
 
     normalized.update(deepcopy(dict(value)))
-    world = value.get("world")
-    if isinstance(world, Mapping):
-        normalized_world = default_world_projection_state()["world"]
-        normalized_world.update(deepcopy(dict(world)))
-        normalized["world"] = normalized_world
-    else:
-        normalized["world"] = default_world_projection_state()["world"]
-    if not isinstance(normalized.get("applied_sources"), list):
-        normalized["applied_sources"] = []
+    normalized["version"] = _coerce_int(value.get("version"), default=1)
+    normalized["projected_through_day_index"] = _coerce_int(
+        value.get("projected_through_day_index"), default=-1
+    )
+    normalized["applied_through_day_index"] = _coerce_int(
+        value.get("applied_through_day_index"), default=-1
+    )
+    normalized["pending_from_day_index"] = _coerce_optional_int(
+        value.get("pending_from_day_index")
+    )
+    oldest_pending_at = value.get("oldest_pending_at")
+    normalized["oldest_pending_at"] = (
+        oldest_pending_at if isinstance(oldest_pending_at, str) else None
+    )
+    normalized["applied_sources"] = _sanitize_applied_sources(
+        value.get("applied_sources")
+    )
+    normalized["world"] = _sanitize_projection_world(value.get("world"))
     return normalized
+
+
+def _coerce_int(value: Any, *, default: int) -> int:
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return default
+    return default
+
+
+def _coerce_optional_int(value: Any) -> Optional[int]:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _sanitize_applied_sources(value: Any) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+    sources: list[Any] = []
+    for source in value:
+        if isinstance(source, Mapping):
+            event_id = source.get("event_id")
+            revision = _coerce_int(source.get("revision"), default=-1)
+            day_index = _coerce_int(source.get("day_index"), default=-1)
+            if isinstance(event_id, str) and event_id and revision >= 0 and day_index >= 0:
+                sanitized = deepcopy(dict(source))
+                sanitized["revision"] = revision
+                sanitized["day_index"] = day_index
+                sources.append(sanitized)
+        elif isinstance(source, (list, tuple)) and len(source) == 3:
+            event_id, revision_value, day_index_value = source
+            revision = _coerce_int(revision_value, default=-1)
+            day_index = _coerce_int(day_index_value, default=-1)
+            if isinstance(event_id, str) and event_id and revision >= 0 and day_index >= 0:
+                sources.append([event_id, revision, day_index])
+    return sources
+
+
+def _sanitize_projection_world(value: Any) -> Dict[str, Any]:
+    defaults = default_world_projection_state()["world"]
+    if not isinstance(value, Mapping):
+        return defaults
+    return {
+        category: deepcopy(value[category])
+        if isinstance(value.get(category), list)
+        else []
+        for category in defaults
+    }
 
 
 class PlayerDataMixin:
