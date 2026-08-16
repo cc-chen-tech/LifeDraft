@@ -7,6 +7,12 @@ import { streamRegenerate, type GenerationFailurePayload } from "@/lib/sse";
 import api from "@/lib/api";
 import type { EventOption } from "@/lib/types";
 import type { Phase } from "./usePhaseManager";
+import {
+  INITIAL_DAILY_GENERATION_COMMAND,
+  isCompleteClientEvent,
+  type DailyGenerationCommandState,
+  type DailyGenerationMode,
+} from "./dailyGenerationCommand";
 
 interface ToastState {
   type: "success" | "error" | "loading";
@@ -31,8 +37,12 @@ interface UseGameStateParams {
   } | null>;
   prefetchingRef: React.MutableRefObject<boolean>;
   setIsPrefetching: (prefetching: boolean) => void;
-  generateEventRef: React.MutableRefObject<(options?: { resume?: boolean }) => Promise<void>>;
+  generateEventRef: React.MutableRefObject<(
+    options?: { resume?: boolean; userInitiated?: boolean }
+  ) => Promise<void>>;
   syncPlayerState: () => Promise<unknown>;
+  dailyGenerationFlightRef?: React.MutableRefObject<Promise<void> | null>;
+  setDailyGenerationCommand?: React.Dispatch<React.SetStateAction<DailyGenerationCommandState>>;
 }
 
 /**
@@ -55,6 +65,8 @@ export function useGameState({
   setIsPrefetching,
   generateEventRef,
   syncPlayerState,
+  dailyGenerationFlightRef,
+  setDailyGenerationCommand,
 }: UseGameStateParams) {
   // Save state
   const [isSaving, setIsSaving] = useState(false);
@@ -74,6 +86,15 @@ export function useGameState({
   // Regenerate abort controller
   const regenerateAbortRef = useRef<AbortController | null>(null);
   const regenerateLastEventIdRef = useRef<number | null>(null);
+  const replacementBufferRef = useRef("");
+  const localDailyGenerationFlightRef = useRef<Promise<void> | null>(null);
+  const [localDailyGenerationCommand, setLocalDailyGenerationCommand] = useState(
+    INITIAL_DAILY_GENERATION_COMMAND,
+  );
+  const activeDailyGenerationFlightRef =
+    dailyGenerationFlightRef || localDailyGenerationFlightRef;
+  const updateDailyGenerationCommand =
+    setDailyGenerationCommand || setLocalDailyGenerationCommand;
 
   const startGenerationAfterSync = useCallback(async () => {
     if (!gameId) return;
@@ -144,12 +165,13 @@ export function useGameState({
   }, [setRoundSummary, prefetchResultRef, setStoryText, setOptions, setCurrentEvent, setPhase, generatingRef, prefetchingRef, prefetchAbortRef, startGenerationAfterSync]);
 
   // Regenerate - now uses SSE streaming
-  const handleRegenerate = useCallback(async () => {
+  const performDailyReplacement = useCallback(async () => {
     console.log("[handleRegenerate] Starting SSE regeneration...");
 
     // Show loading toast
     setRegenerateToast({ type: "loading", message: "正在重新生成..." });
     setRegenerationFailure(null);
+    replacementBufferRef.current = "";
 
     const previousStory = useGameStore.getState().storyText;
     const previousEvent = useGameStore.getState().currentEvent;
@@ -167,6 +189,18 @@ export function useGameState({
       window.sessionStorage.removeItem(cursorStorageKey);
       window.sessionStorage.removeItem(activeStorageKey);
     };
+    const markReplacementFailed = (summary: string) => {
+      updateDailyGenerationCommand((current) => ({
+        ...current,
+        status: "failed",
+        mode: "replace_current",
+        failure: {
+          message: summary,
+          summary,
+          retryable: true,
+        },
+      }));
+    };
     window.sessionStorage.setItem(activeStorageKey, "1");
 
     // Cancel ongoing prefetch
@@ -181,10 +215,6 @@ export function useGameState({
     regenerateAbortRef.current?.abort();
     regenerateAbortRef.current = new AbortController();
 
-    // Clear current state
-    setStoryText("");
-    setOptions([]);
-    setCurrentEvent(null);
     generatingRef.current = true;
     setPhase("generating");
     setProcessing(true, "regenerating");
@@ -196,7 +226,7 @@ export function useGameState({
           gameId!,
           {
             onStory: (text) => {
-              appendStoryText(text);
+              replacementBufferRef.current += text;
             },
             onEventId: (eventId) => {
               regenerateLastEventIdRef.current = eventId;
@@ -209,11 +239,24 @@ export function useGameState({
                 ? `retry:${status.attempt}/${status.max_attempts}`
                 : status.phase;
               setProcessing(true, progressPhase);
+              updateDailyGenerationCommand((current) => ({
+                ...current,
+                status: "running",
+                mode: status.resolved_mode === "generate_missing"
+                  ? "generate_missing"
+                  : "replace_current",
+                operationId: status.operation_id || current.operationId,
+                attempt: typeof status.attempt === "number" ? status.attempt : current.attempt,
+                maxAttempts: typeof status.max_attempts === "number"
+                  ? status.max_attempts
+                  : current.maxAttempts,
+                failure: null,
+              }));
               // ★ 当后端因一致性校验失败触发 retry 时，清空已累积的故事文本
               // 否则旧故事和新故事会被拼接在一起
               if (status.phase === 'retry') {
                 console.log('[handleRegenerate] Retry detected, clearing accumulated story text');
-                setStoryText('');
+                replacementBufferRef.current = "";
               }
             },
             onComplete: (data) => {
@@ -234,7 +277,7 @@ export function useGameState({
                 // ★ CRITICAL: 重新生成时，优先使用后端返回的完整故事
                 // 因为重新生成会创建全新的故事内容，不应该与前端累积的流式文本比较
                 const backendStory = eventData.event_description || eventData.story || "";
-                const frontendStory = useGameStore.getState().storyText;
+                const frontendStory = replacementBufferRef.current;
                 
                 // 如果后端返回了清洗后的完整故事，直接覆盖前端流式累积文本；否则回退到前端累积文本
                 const finalStory = backendStory.trim() ? backendStory : frontendStory;
@@ -245,6 +288,7 @@ export function useGameState({
                   console.error("[handleRegenerate] Complete event contained options but no story text");
                   setPhase("error");
                   setRegenerateToast({ type: "error", message: "生成失败，请重试" });
+                  markReplacementFailed("生成失败，请重试");
                   clearRegenerationCursor();
                   reject(new Error("No story text in complete event"));
                   return;
@@ -262,6 +306,12 @@ export function useGameState({
                 setPhase("options");
                 setRoundSummary(null);
                 setRegenerationFailure(null);
+                updateDailyGenerationCommand((current) => ({
+                  ...current,
+                  status: "succeeded",
+                  mode: "replace_current",
+                  failure: null,
+                }));
                 clearRegenerationCursor();
                 // 后端只会在原子替换成功后删除旧配图；此时再刷新前端图片状态。
                 useSceneImageStore.getState().clearCurrentRoundImages();
@@ -274,6 +324,7 @@ export function useGameState({
               } else {
                 console.error("[handleRegenerate] No options in complete event");
                 setRegenerateToast({ type: "error", message: "生成失败，请重试" });
+                markReplacementFailed("生成失败，请重试");
                 clearRegenerationCursor();
                 reject(new Error("No options in complete event"));
               }
@@ -303,6 +354,7 @@ export function useGameState({
                   generatingRef.current = false;
                   setPhase("error");
                   setRegenerateToast({ type: "error", message: "会话恢复失败，请刷新页面" });
+                  markReplacementFailed("会话恢复失败，请刷新页面");
                   reject(restoreErr);
                 }
                 return;
@@ -329,6 +381,18 @@ export function useGameState({
               if (structuredFailure) {
                 setRegenerationFailure(structuredFailure);
               }
+              const commandFailure: GenerationFailurePayload = structuredFailure || {
+                message: errorMsg,
+                summary: errorMsg,
+                retryable: true,
+              };
+              updateDailyGenerationCommand((current) => ({
+                ...current,
+                status: "failed",
+                mode: "replace_current",
+                operationId: commandFailure.operation_id || current.operationId,
+                failure: commandFailure,
+              }));
               clearRegenerationCursor();
 
               // 后端事务失败时旧故事仍然有效。先从服务端同步；若同步失败，
@@ -378,6 +442,7 @@ export function useGameState({
             generatingRef.current = false;
             setPhase("error");
             setRegenerateToast({ type: "error", message: "重新生成失败" });
+            markReplacementFailed("重新生成失败");
             reject(err);
           }
         });
@@ -390,7 +455,46 @@ export function useGameState({
     } catch {
       // 错误已在 attemptRegenerate 中处理
     }
-  }, [gameId, prefetchingRef, prefetchAbortRef, prefetchResultRef, setIsPrefetching, setStoryText, appendStoryText, setOptions, setCurrentEvent, setPhase, setProcessing, generatingRef, setRoundSummary, syncPlayerState]);
+  }, [gameId, prefetchingRef, prefetchAbortRef, prefetchResultRef, setIsPrefetching, setStoryText, setOptions, setCurrentEvent, setPhase, setProcessing, generatingRef, setRoundSummary, syncPlayerState, updateDailyGenerationCommand]);
+
+  const handleDailyStoryAction = useCallback((): Promise<void> => {
+    if (activeDailyGenerationFlightRef.current) {
+      return activeDailyGenerationFlightRef.current;
+    }
+
+    const currentEvent = useGameStore.getState().currentEvent;
+    const mode: DailyGenerationMode = isCompleteClientEvent(currentEvent)
+      ? "replace_current"
+      : "generate_missing";
+    updateDailyGenerationCommand({
+      ...INITIAL_DAILY_GENERATION_COMMAND,
+      status: "starting",
+      mode,
+    });
+
+    const operation = mode === "replace_current"
+      ? performDailyReplacement()
+      : (async () => {
+          setRegenerationFailure(null);
+          setPhase("loading");
+          await generateEventRef.current({ userInitiated: true });
+        })();
+    const trackedOperation = operation.finally(() => {
+      if (activeDailyGenerationFlightRef.current === trackedOperation) {
+        activeDailyGenerationFlightRef.current = null;
+      }
+    });
+    activeDailyGenerationFlightRef.current = trackedOperation;
+    return trackedOperation;
+  }, [
+    activeDailyGenerationFlightRef,
+    generateEventRef,
+    performDailyReplacement,
+    setPhase,
+    updateDailyGenerationCommand,
+  ]);
+
+  const handleRegenerate = handleDailyStoryAction;
 
   // Fetch ending when game ends
   // Note: ending fetch is handled by the main hook based on phase
@@ -401,6 +505,9 @@ export function useGameState({
     saveToast,
     regenerateToast,
     regenerationFailure,
+    dailyGenerationCommand: setDailyGenerationCommand
+      ? undefined
+      : localDailyGenerationCommand,
     summaryText,
     roundSummary,
     endingData,
@@ -414,5 +521,6 @@ export function useGameState({
     handleContinueAfterSummary,
     handleContinueToNextRound,
     handleRegenerate,
+    handleDailyStoryAction,
   };
 }

@@ -9,6 +9,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_SH = ROOT / "test.sh"
+TURBOPACK_ROOT_RESOLVER = (
+    ROOT / "frontend" / "scripts" / "resolve-turbopack-root.mjs"
+)
 
 
 def _source_and_run(command: str) -> str:
@@ -55,6 +58,38 @@ def _terminate_process_group(process: subprocess.Popen[str]) -> tuple[str, str]:
     if process.poll() is None:
         os.killpg(process.pid, signal.SIGTERM)
     return process.communicate(timeout=5)
+
+
+def test_turbopack_root_contains_linked_worktree_and_real_dependencies(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    project = repository / ".worktrees" / "feature" / "frontend"
+    real_node_modules = repository / "frontend" / "node_modules"
+    project.mkdir(parents=True)
+    real_node_modules.mkdir(parents=True)
+    (project / "node_modules").symlink_to(real_node_modules, target_is_directory=True)
+
+    probe = subprocess.run(
+        [
+            "node",
+            "--input-type=module",
+            "--eval",
+            (
+                "const { resolveTurbopackRoot } = await import(process.argv[1]); "
+                "console.log(resolveTurbopackRoot(process.argv[2]));"
+            ),
+            TURBOPACK_ROOT_RESOLVER.as_uri(),
+            str(project),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert probe.returncode == 0, probe.stderr
+    assert Path(probe.stdout.strip()) == repository
 
 
 def test_live_e2e_owner_blocks_another_worktree_and_reports_owner(tmp_path: Path) -> None:

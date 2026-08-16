@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.api
 
 from src.api.main import app
+from src.api.services.event_generation_operation import EventGenerationCoordinator
+from src.game.daily_timeline import build_daily_timeline
 
 
 @pytest.fixture
@@ -692,6 +694,51 @@ class TestRegenerateStreamSSE:
         # SSE 端点应该返回 200
         assert response.status_code == 200
         # ★ 关键验证：应该调用 generate_round_event，而不是 regenerate_story
+        mock_session.game_loop.generate_round_event.assert_called_once()
+
+    def test_daily_regenerate_without_current_event_generates_missing_story(
+        self, client, auth_headers, mock_auth, mock_session_service, mock_session
+    ):
+        """A mistaken replacement call must repair a missing daily event."""
+        from src.ai.models import EventOption, GameEvent
+
+        generated = GameEvent(
+            event_description="补生成的当天故事",
+            options=[
+                EventOption(text="继续前进", effects={}),
+                EventOption(text="停下观察", effects={}),
+            ],
+        )
+        mock_session.game_loop.current_event = None
+        mock_session.game_loop.player_state.timeline = build_daily_timeline(
+            start_date="2026-08-16",
+            day_index=0,
+        )
+        mock_session.game_loop.player_state.current_event_data = None
+        mock_session.game_loop.generate_round_event.return_value = generated
+        mock_session.event_generation = EventGenerationCoordinator()
+        mock_session_service.get_or_restore.return_value = mock_session
+
+        with (
+            patch(
+                "src.api.routers.gameplay.sse_helpers._set_generation_resume_view"
+            ),
+            patch(
+                "src.api.routers.gameplay.sse_helpers._trigger_round_illustration_generation"
+            ),
+            patch(
+                "src.services.daily_recommended_prefetch.ensure_daily_recommended_prefetch"
+            ),
+        ):
+            response = client.get(
+                "/api/games/1/regenerate-stream",
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        assert "event: complete" in response.text
+        assert "补生成的当天故事" in response.text
+        assert "No current daily event" not in response.text
         mock_session.game_loop.generate_round_event.assert_called_once()
 
     def test_regenerate_stream_handles_empty_result(

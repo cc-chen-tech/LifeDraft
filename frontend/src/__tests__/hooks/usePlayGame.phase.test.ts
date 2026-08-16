@@ -8,6 +8,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { usePlayGame } from '@/hooks/usePlayGame';
 import { useGameStore } from '@/stores/useGameStore';
+import { useEventStore } from '@/stores/useEventStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
@@ -91,7 +92,12 @@ function makeRegenerateResponse(story = 'New regenerated story') {
 function setupGameStore(options: {
   gameId?: number | null;
   storyText?: string;
-  currentEvent?: { story: string; options: Array<{ text: string }> } | null;
+  currentEvent?: {
+    story: string;
+    options: Array<{ text: string }>;
+    event_id?: string;
+    revision?: number;
+  } | null;
   isGameOver?: boolean;
   playerState?: Record<string, unknown> | null;
 } = {}) {
@@ -114,6 +120,10 @@ function setupGameStore(options: {
       currentEvent,
       isGameOver,
       playerState: playerState as never,
+    });
+    useEventStore.setState({
+      storyText,
+      currentEvent,
     });
   });
 }
@@ -781,7 +791,9 @@ describe('usePlayGame - Phase State Machine', () => {
         storyText: 'Old story',
         currentEvent: {
           story: 'Old story',
-          options: [{ text: 'Old option' }],
+          options: [{ text: 'Old option 1' }, { text: 'Old option 2' }],
+          event_id: 'event-old',
+          revision: 1,
         },
       });
 

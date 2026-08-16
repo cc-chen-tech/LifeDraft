@@ -645,6 +645,9 @@ def _run_event_generation_operation(operation, game_loop, game_id: int, session)
                 stream_callback=operation.publish_story,
                 status_callback=operation.publish_phase,
                 session=session,
+                force_regenerate=(
+                    operation.key.resolved_mode == "generate_missing"
+                ),
                 operation_id=operation.operation_id,
             )
             if event is None:
@@ -685,8 +688,23 @@ def _run_event_generation_operation(operation, game_loop, game_id: int, session)
         operation.fail(failure["summary"], failure=failure)
 
 
-def get_or_start_round_event_generation(game_loop, game_id: int, session):
+def get_or_start_round_event_generation(
+    game_loop,
+    game_id: int,
+    session,
+    last_event_id: Optional[int] = None,
+):
     """Return the current operation and start its worker exactly once."""
+    from src.game.daily_timeline import is_daily_timeline
+
+    if is_daily_timeline(game_loop.player_state):
+        return _get_or_start_daily_operation(
+            game_loop,
+            game_id,
+            session,
+            "ensure_current",
+            last_event_id,
+        )
     key = build_event_generation_key(game_id, game_loop)
     operation, should_start = session.event_generation.get_or_create(key)
     if should_start:
@@ -758,7 +776,7 @@ async def stream_round_event(
 
     try:
         operation, should_start = get_or_start_round_event_generation(
-            game_loop, game_id, session
+            game_loop, game_id, session, last_event_id
         )
     except EventGenerationConflict as exc:
         yield make_sse_event("error", {"error": str(exc)})
@@ -768,9 +786,16 @@ async def stream_round_event(
     last_phase_payload: Optional[dict[str, Any]] = None
     last_retry_version = 0
     last_heartbeat = asyncio.get_running_loop().time()
-    yield make_sse_event(
-        "status", {"phase": "preparing" if should_start else "resuming"}
-    )
+    initial_status = {"phase": "preparing" if should_start else "resuming"}
+    if should_start and operation.key.stage == "daily":
+        initial_status.update(
+            {
+                "operation_id": operation.operation_id,
+                "requested_intent": "ensure_current",
+                "resolved_mode": operation.key.resolved_mode,
+            }
+        )
+    yield make_sse_event("status", initial_status)
 
     while True:
         snapshot = operation.snapshot_after(cursor)
@@ -1037,18 +1062,22 @@ async def replay_cached_then_complete(session, last_event_id: int, event):
     yield make_sse_event("complete", event.model_dump())
 
 
-def _build_daily_regeneration_key(game_id: int, game_loop) -> EventGenerationKey:
+def _build_daily_operation_key(
+    game_id: int,
+    game_loop,
+    resolution,
+) -> EventGenerationKey:
     from src.game.daily_timeline import normalize_daily_timeline
 
     timeline = normalize_daily_timeline(game_loop.player_state.timeline)
-    current_event = getattr(game_loop, "current_event", None)
-    event_id = str(getattr(current_event, "event_id", "") or "unknown")
-    revision = int(getattr(current_event, "revision", 0) or 0)
     return EventGenerationKey(
         game_id=game_id,
         week=int(timeline["week_number"] - 1),
         round_number=int(timeline["day_index"]),
-        stage=f"regenerate:{event_id}:{revision}",
+        stage="daily",
+        resolved_mode=resolution.resolved_mode,
+        base_event_id=resolution.base_event_id,
+        base_revision=resolution.base_revision,
     )
 
 
@@ -1111,33 +1140,93 @@ def _run_daily_regeneration_operation(
         operation.fail(failure["summary"], failure=failure)
 
 
-def _get_or_start_daily_regeneration(game_loop, game_id: int, session, last_event_id):
-    key = _build_daily_regeneration_key(game_id, game_loop)
+def _run_daily_operation(operation, game_loop, game_id: int, session) -> None:
+    """Dispatch a resolved daily operation to generation or atomic replacement."""
+
+    operation.publish_phase(
+        {
+            "phase": (
+                "regenerating"
+                if operation.key.resolved_mode == "replace_current"
+                else "generating"
+            ),
+            "operation_id": operation.operation_id,
+            "resolved_mode": operation.key.resolved_mode,
+        }
+    )
+    if operation.key.resolved_mode == "replace_current":
+        _run_daily_regeneration_operation(operation, game_loop, game_id, session)
+    else:
+        _run_event_generation_operation(operation, game_loop, game_id, session)
+
+
+def _daily_slot_matches(operation, key: EventGenerationKey) -> bool:
+    return (
+        operation.key.game_id,
+        operation.key.week,
+        operation.key.round_number,
+    ) == (key.game_id, key.week, key.round_number)
+
+
+def _get_or_start_daily_operation(
+    game_loop,
+    game_id: int,
+    session,
+    requested_intent,
+    last_event_id,
+):
+    """Resolve and coalesce every daily ensure/replacement request."""
+
+    from src.game.daily_generation_intent import resolve_daily_generation_intent
+
+    with _get_game_state_lock(game_id):
+        current_event = getattr(game_loop, "current_event", None)
+        resolution = resolve_daily_generation_intent(
+            requested_intent,
+            current_event,
+        )
+        key = _build_daily_operation_key(game_id, game_loop, resolution)
+
     current = session.event_generation.current()
     if (
         last_event_id is not None
         and current is not None
-        and current.key.game_id == key.game_id
-        and current.key.week == key.week
-        and current.key.round_number == key.round_number
-        and current.key.stage.startswith("regenerate:")
+        and _daily_slot_matches(current, key)
+        and current.key.stage == "daily"
     ):
         return current, False
 
-    operation, should_start = session.event_generation.get_or_create(
+    operation, should_start = session.event_generation.get_or_create_for_slot(
         key,
-        restart_completed=last_event_id is None,
+        restart_completed=(
+            last_event_id is None and resolution.resolved_mode == "replace_current"
+        ),
     )
     if should_start:
         _set_generation_resume_view(game_loop, game_id, "generating")
-        _get_sse_thread_pool().submit(
-            _run_daily_regeneration_operation,
-            operation,
-            game_loop,
-            game_id,
-            session,
-        )
+        if resolution.resolved_mode == "return_existing":
+            operation.complete(current_event)
+        else:
+            _get_sse_thread_pool().submit(
+                _run_daily_operation,
+                operation,
+                game_loop,
+                game_id,
+                session,
+            )
     return operation, should_start
+
+
+def _get_or_start_daily_regeneration(game_loop, game_id: int, session, last_event_id):
+    """Compatibility wrapper for the daily replacement subscriber."""
+
+    return _get_or_start_daily_operation(
+        game_loop,
+        game_id,
+        session,
+        "replace_current",
+        last_event_id,
+    )
 
 
 async def _stream_daily_regeneration_operation(
@@ -1161,7 +1250,27 @@ async def _stream_daily_regeneration_operation(
     last_retry_version = 0
     last_heartbeat = asyncio.get_running_loop().time()
     yield make_sse_event(
-        "status", {"phase": "regenerating" if should_start else "resuming"}
+        "status",
+        {
+            "phase": (
+                "resuming"
+                if not should_start
+                else (
+                    "regenerating"
+                    if operation.key.resolved_mode == "replace_current"
+                    else "generating"
+                )
+            ),
+            **(
+                {
+                    "operation_id": operation.operation_id,
+                    "requested_intent": "replace_current",
+                    "resolved_mode": operation.key.resolved_mode,
+                }
+                if should_start
+                else {}
+            ),
+        },
     )
 
     while True:

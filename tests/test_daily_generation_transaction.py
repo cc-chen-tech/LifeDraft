@@ -158,3 +158,60 @@ def test_sse_operation_id_reaches_story_candidate_generation(
         ai_generator.generate_round_event.call_args.kwargs["operation_id"]
         == "sse-operation-123"
     )
+
+
+def test_daily_generation_uses_soft_history_when_world_projection_is_stale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _daily_state()
+    state.pending_character_introductions = []
+    state.day_history = [
+        {
+            "day_index": 0,
+            "event_description": "孙悟空已经离开花果山，抵达东海。",
+            "choice": "进入龙宫",
+            "postprocessing_status": "pending",
+        }
+    ]
+    state.world_model_data = {
+        "character_locations": {
+            "孙悟空": {"location": "花果山", "region": "傲来国"}
+        },
+        "active_commitments": [
+            {"description": "留在花果山", "parties": ["孙悟空"]}
+        ],
+        "causal_chains": [
+            {
+                "cause": "留守花果山",
+                "expected_consequence": "不能前往东海",
+            }
+        ],
+    }
+    state.established_facts = [
+        {
+            "subject": "孙悟空",
+            "category": "location",
+            "fact": "仍在花果山",
+            "established_week": 0,
+        }
+    ]
+    ai_generator = Mock()
+    ai_generator.generate_round_event.return_value = GameEvent(
+        event_description="孙悟空在东海岸边观察潮汐，思考如何进入龙宫。",
+        options=[
+            EventOption(text="潜入海中", effects={}),
+            EventOption(text="寻找向导", effects={}),
+        ],
+    )
+    generator = _round_generator(state, ai_generator)
+    monkeypatch.setattr("src.game.round.character_introduction.random.random", lambda: 1.0)
+
+    generator.generate_round_event()
+
+    kwargs = ai_generator.generate_round_event.call_args.kwargs
+    assert kwargs["world_model"].character_locations == {}
+    assert kwargs["world_model"].active_commitments == []
+    assert kwargs["world_model"].causal_chains == []
+    assert list(kwargs["established_facts"]) == []
+    assert "孙悟空已经离开花果山，抵达东海。" in kwargs["round_context"]
+    assert "进入龙宫" in kwargs["round_context"]

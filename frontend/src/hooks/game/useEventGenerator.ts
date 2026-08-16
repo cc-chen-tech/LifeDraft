@@ -19,6 +19,7 @@ import {
   invalidateGameplayRun,
   isAbortError,
 } from "./gameplayRun";
+import type { DailyGenerationCommandState } from "./dailyGenerationCommand";
 
 export const EVENT_INACTIVITY_TIMEOUT_MS = 45_000;
 export const EVENT_POLL_INTERVAL_MS = 5_000;
@@ -54,11 +55,13 @@ interface UseEventGeneratorParams {
   } | null>;
   prefetchingRef: React.MutableRefObject<boolean>;
   isRetryingRef: React.MutableRefObject<boolean>;
+  setDailyGenerationCommand?: React.Dispatch<React.SetStateAction<DailyGenerationCommandState>>;
 }
 
 interface GenerateEventOptions {
   resume?: boolean;
   recoveryDepth?: 0 | 1;
+  userInitiated?: boolean;
 }
 
 function isRecoverableEventStreamError(errorMessage: string): boolean {
@@ -104,6 +107,7 @@ export function useEventGenerator({
   prefetchResultRef,
   prefetchingRef,
   isRetryingRef,
+  setDailyGenerationCommand,
 }: UseEventGeneratorParams) {
   const watchdogCleanupRef = useRef<(() => void) | null>(null);
   const eventCursorStorageKey = gameId === null ? null : `story101:event-cursor:${gameId}`;
@@ -138,13 +142,30 @@ export function useEventGenerator({
 
   const generateEvent = useCallback(async (options?: GenerateEventOptions) => {
     const resume = Boolean(options?.resume);
+    const userInitiated = Boolean(options?.userInitiated);
     const recoveryDepth: 0 | 1 = options?.recoveryDepth ?? (resume ? 1 : 0);
     const state = useGameStore.getState();
 
     if (!gameId) return;
     if (generatingRef.current && !resume) return;
     if (isRetryingRef.current && !resume) return;
-    if (phaseRef.current !== "loading" && phaseRef.current !== "error" && !resume) return;
+    if (
+      phaseRef.current !== "loading"
+      && phaseRef.current !== "error"
+      && !resume
+      && !userInitiated
+    ) return;
+
+    if (!resume) {
+      setDailyGenerationCommand?.({
+        status: "starting",
+        mode: "generate_missing",
+        operationId: null,
+        attempt: null,
+        maxAttempts: null,
+        failure: null,
+      });
+    }
 
     setLoadingOperation("event");
     watchdogCleanupRef.current?.();
@@ -165,7 +186,11 @@ export function useEventGenerator({
     const currentEvent = state.currentEvent;
     if (!resume) {
       clearDurableResume();
-      if (currentPhase === "error" || !currentEvent?.options?.length) setStoryText("");
+      if (
+        userInitiated
+        || currentPhase === "error"
+        || !currentEvent?.options?.length
+      ) setStoryText("");
     }
 
     setPhase("generating");
@@ -193,7 +218,7 @@ export function useEventGenerator({
         callback(...args);
       };
 
-    const finishAsFailed = () => {
+    const finishAsFailed = (failure?: GenerationFailurePayload) => {
       if (!isLive()) return;
       terminal = true;
       clearWatchdog();
@@ -206,6 +231,17 @@ export function useEventGenerator({
       setRoundSummary(null);
       setTransport("failed");
       setPhase("error");
+      setDailyGenerationCommand?.((current) => ({
+        ...current,
+        status: "failed",
+        mode: "generate_missing",
+        operationId: failure?.operation_id || current.operationId,
+        failure: failure || {
+          message: "故事生成未能完成",
+          summary: "故事生成未能完成",
+          retryable: true,
+        },
+      }));
     };
 
     const commitPersistedCompletion = (story: string, persistedOptions: EventOption[]) => {
@@ -225,6 +261,12 @@ export function useEventGenerator({
       clearDurableResume();
       setTransport("active");
       setPhase("options");
+      setDailyGenerationCommand?.((current) => ({
+        ...current,
+        status: "succeeded",
+        mode: "generate_missing",
+        failure: null,
+      }));
     };
 
     const commitPersistedGameOver = () => {
@@ -391,7 +433,14 @@ export function useEventGenerator({
         beginRecovery();
         return;
       }
-      finishAsFailed();
+      const failure = !(error instanceof Error) && error && typeof error === "object"
+        ? error as GenerationFailurePayload
+        : {
+            message: errorMessage,
+            summary: errorMessage,
+            retryable: true,
+          };
+      finishAsFailed(failure);
     };
 
     const dispatchStreamError = (error: unknown): Promise<void> => {
@@ -429,6 +478,12 @@ export function useEventGenerator({
           onStory: (text) => {
             if (!isLive() || terminal) return;
             touchActivity();
+            setDailyGenerationCommand?.((current) => ({
+              ...current,
+              status: "running",
+              mode: "generate_missing",
+              failure: null,
+            }));
             appendStoryText(text);
           },
           onEventId: (eventId) => {
@@ -444,6 +499,19 @@ export function useEventGenerator({
           onStatus: (status) => {
             if (!isLive() || terminal) return;
             touchActivity();
+            setDailyGenerationCommand?.((current) => ({
+              ...current,
+              status: "running",
+              mode: status.resolved_mode === "replace_current"
+                ? "replace_current"
+                : "generate_missing",
+              operationId: status.operation_id || current.operationId,
+              attempt: typeof status.attempt === "number" ? status.attempt : current.attempt,
+              maxAttempts: typeof status.max_attempts === "number"
+                ? status.max_attempts
+                : current.maxAttempts,
+              failure: null,
+            }));
             handleStatusUpdate(status, setProcessing, isRetryingRef, () => {
               hadRetryRef.current = true;
               clearDurableResume();
@@ -470,7 +538,15 @@ export function useEventGenerator({
             terminal = true;
             clearWatchdog();
             const valid = handleEventComplete(data, eventHandlers);
-            if (valid && isCurrent()) clearDurableResume();
+            if (valid && isCurrent()) {
+              clearDurableResume();
+              setDailyGenerationCommand?.((current) => ({
+                ...current,
+                status: "succeeded",
+                mode: "generate_missing",
+                failure: null,
+              }));
+            }
           },
           onError: (error) => {
             if (!(error instanceof Error) && error.code) {
@@ -514,6 +590,7 @@ export function useEventGenerator({
     setStoryText,
     setTransport,
     setLoadingOperation,
+    setDailyGenerationCommand,
   ]);
 
   const recoverEventGeneration = useCallback(async () => {

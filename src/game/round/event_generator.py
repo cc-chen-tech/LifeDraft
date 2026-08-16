@@ -610,9 +610,33 @@ class RoundEventGenerator:
                 status_callback("building_world")
             world_model = None
             try:
-                from src.game.world_model import WorldModel
+                if is_daily_timeline(player_state):
+                    from src.game.world_constraint_freshness import (
+                        build_validation_world_model,
+                    )
 
-                world_model = WorldModel.from_player_state(player_state)
+                    validation_view = build_validation_world_model(player_state)
+                    world_model = validation_view.world_model
+                    if validation_view.soft_context:
+                        round_context = (
+                            f"{round_context}\n\n{validation_view.soft_context}"
+                        ).strip()
+                    if not validation_view.freshness.world_derivations_are_fresh:
+                        for category in ("location", "commitment", "causal"):
+                            logger.warning(
+                                "stale_world_constraint_downgraded "
+                                "game_id=%s day_index=%s category=%s reason=%s",
+                                getattr(player_state, "game_id", None),
+                                (getattr(player_state, "timeline", {}) or {}).get(
+                                    "day_index"
+                                ),
+                                category,
+                                validation_view.freshness.reason,
+                            )
+                else:
+                    from src.game.world_model import WorldModel
+
+                    world_model = WorldModel.from_player_state(player_state)
                 logger.info(
                     f"WorldModel built: {len(world_model.character_locations)} locations, "
                     f"{len(world_model.career_records)} careers, "
@@ -638,7 +662,11 @@ class RoundEventGenerator:
                 historical_yearly_summary=historical_yearly,
                 game_date_info=player_state.get_game_date_info(),
                 pending_storylines=player_state.pending_storylines,
-                established_facts=player_state.established_facts,
+                established_facts=getattr(
+                    world_model,
+                    "hard_established_facts",
+                    player_state.established_facts,
+                ),
                 last_event_concluded=player_state.last_event_concluded,
                 last_round_full_story=player_state.last_round_full_story,
                 activated_foreshadowing=NarrativeManager.select_foreshadowing_seed(

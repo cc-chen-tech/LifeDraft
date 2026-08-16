@@ -23,9 +23,7 @@ type ActiveDailyTransition = {
   nextDate: string;
 };
 
-export type DailyTransitionView = ActiveDailyTransition & {
-  failed: boolean;
-};
+export type DailyTransitionView = ActiveDailyTransition;
 
 
 export function useDailyTransition({
@@ -110,6 +108,6 @@ export function useDailyTransition({
   }, []);
 
   return {
-    active: active ? { ...active, failed: phase === "error" } : null,
+    active,
   };
 }

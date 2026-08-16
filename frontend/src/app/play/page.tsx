@@ -31,6 +31,7 @@ import { usePlayGame } from "@/hooks/usePlayGame";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useDailyTransition } from "@/hooks/game/useDailyTransition";
+import { INITIAL_DAILY_GENERATION_COMMAND } from "@/hooks/game/dailyGenerationCommand";
 import { useGameStore } from "@/stores/useGameStore";
 import { useEventStore } from "@/stores/useEventStore";
 import { useSceneImageStore } from "@/stores/useSceneImageStore";
@@ -95,6 +96,7 @@ export default function PlayPage() {
     saveToast,
     regenerateToast,
     regenerationFailure,
+    dailyGenerationCommand,
     transport: gameplayTransport,
     loadingOperation: gameplayOperation,
     loadingIdentity,
@@ -121,6 +123,7 @@ export default function PlayPage() {
     handleContinueToNextRound,
     handleSave,
     handleRegenerate,
+    handleDailyStoryAction,
     generateEvent,
     recoverEventGeneration,
     recoverChoiceGeneration,
@@ -241,7 +244,7 @@ export default function PlayPage() {
   ]);
 
   const pageFeedbackBlocked =
-    shouldRenderGameplayLoading || hasCompetingSurfaceOpen || Boolean(dailyTransition.active);
+    shouldRenderGameplayLoading || hasCompetingSurfaceOpen;
   const loadingPageFeedback = regenerateToast?.type === "loading"
     ? {
         key: `loading:${regenerateToast.message}`,
@@ -323,8 +326,12 @@ export default function PlayPage() {
   }, [recoverEventGeneration]);
 
   const handleRetryGeneration = useCallback(() => {
+    if (isDailyTimeline) {
+      void (handleDailyStoryAction || handleRegenerate)();
+      return;
+    }
     void generateEvent();
-  }, [generateEvent]);
+  }, [generateEvent, handleDailyStoryAction, handleRegenerate, isDailyTimeline]);
 
   const handleRecoverChoice = useCallback(() => {
     void recoverChoiceGeneration();
@@ -498,8 +505,8 @@ export default function PlayPage() {
 
   const handleCoordinatedRegenerate = useCallback(() => {
     closeAssistantAndSound();
-    handleRegenerate();
-  }, [closeAssistantAndSound, handleRegenerate]);
+    void (handleDailyStoryAction || handleRegenerate)();
+  }, [closeAssistantAndSound, handleDailyStoryAction, handleRegenerate]);
 
   const handleHome = useCallback(() => {
     closeAssistantAndSound();
@@ -779,7 +786,7 @@ export default function PlayPage() {
         hideProgress={Boolean(dailyTransition.active)}
         toolsProps={toolsProps}
       >
-        {regenerationFailure && !isViewingHistory && (
+        {regenerationFailure && !dailyTransition.active && !isViewingHistory && (
           <section
             role="alert"
             className="mb-6 rounded-2xl border border-amber-300/50 bg-amber-50/80 p-4 text-sm text-amber-950 shadow-sm dark:border-amber-700/50 dark:bg-amber-950/30 dark:text-amber-100"
@@ -829,7 +836,9 @@ export default function PlayPage() {
           <DailyTransitionLayer
             transitionText={dailyTransition.active.transitionText}
             nextDate={dailyTransition.active.nextDate}
-            failed={dailyTransition.active.failed}
+            generation={
+              dailyGenerationCommand || INITIAL_DAILY_GENERATION_COMMAND
+            }
             onRetry={handleRetryGeneration}
           />
         ) : (

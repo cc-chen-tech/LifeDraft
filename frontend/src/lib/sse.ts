@@ -25,6 +25,9 @@ export interface StreamStatusPayload {
   attempt?: number;
   max_attempts?: number;
   quality_level?: string;
+  operation_id?: string;
+  requested_intent?: "ensure_current" | "replace_current";
+  resolved_mode?: "return_existing" | "generate_missing" | "replace_current";
 }
 
 export interface StreamCallbacks {
