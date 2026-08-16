@@ -243,6 +243,50 @@ class TestPlayerDataDB:
         assert d["week"] == 10
         assert d["current_round"] == 1
 
+    def test_defaults_versioned_world_projection_watermarks(self):
+        """New states begin with an empty, independently-owned projection layer."""
+        state = PlayerState()
+
+        assert state.world_projection_state == {
+            "version": 1,
+            "projected_through_day_index": -1,
+            "applied_through_day_index": -1,
+            "pending_from_day_index": None,
+            "oldest_pending_at": None,
+            "applied_sources": [],
+            "world": {
+                "fact_updates": [],
+                "foreshadowing_seeds": [],
+                "habit_updates": [],
+                "location_updates": [],
+                "career_updates": [],
+                "commitment_updates": [],
+                "causal_updates": [],
+            },
+        }
+
+    def test_loading_legacy_state_adds_missing_projection_keys_without_mutating_input(self):
+        """Old saves retain their projection data while receiving safe v1 defaults."""
+        legacy = {
+            "player_name": "旧存档玩家",
+            "world_projection_state": {
+                "applied_through_day_index": 3,
+                "world": {"location_updates": [{"name": "花果山"}]},
+            },
+        }
+
+        state = PlayerState.from_dict(legacy)
+
+        assert legacy["world_projection_state"] == {
+            "applied_through_day_index": 3,
+            "world": {"location_updates": [{"name": "花果山"}]},
+        }
+        assert state.world_projection_state["version"] == 1
+        assert state.world_projection_state["applied_through_day_index"] == 3
+        assert state.world_projection_state["projected_through_day_index"] == -1
+        assert state.world_projection_state["world"]["location_updates"] == [{"name": "花果山"}]
+        assert state.world_projection_state["world"]["commitment_updates"] == []
+
     def test_to_dict_includes_collection_fields(self, repo, sample_game):
         """to_dict should serialize characters, items, landmarks."""
         state = PlayerState()

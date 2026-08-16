@@ -560,6 +560,69 @@ class DailyRecommendedPrefetch(Base):
     )
 
 
+class DailyWorldProjection(Base):
+    """One revision-fenced world projection for an accepted daily event."""
+
+    __tablename__ = "daily_world_projections"
+
+    projection_id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    event_id = Column(String(96), nullable=False)
+    revision = Column(Integer, nullable=False)
+    day_index = Column(Integer, nullable=False, index=True)
+    story_date = Column(String(10), nullable=True)
+    source_hash = Column(String(128), nullable=False)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    story_patch_json = Column(JSON, nullable=True)
+    option_patches_json = Column(JSON, nullable=True)
+    coverage_json = Column(JSON, nullable=True)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    next_attempt_at = Column(DateTime, nullable=False, index=True)
+    lease_owner = Column(String(96), nullable=True, index=True)
+    lease_expires_at = Column(DateTime, nullable=True)
+    error_code = Column(String(80), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    applied_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_daily_world_projection_identity",
+            "game_id",
+            "event_id",
+            "revision",
+            unique=True,
+        ),
+        Index(
+            "ix_daily_world_projection_due",
+            "status",
+            "next_attempt_at",
+            "lease_expires_at",
+        ),
+    )
+
+
+class DailyWorldProjectionAttempt(Base):
+    """Per-provider-call accounting for a daily world projection."""
+
+    __tablename__ = "daily_world_projection_attempts"
+
+    attempt_id = Column(Integer, primary_key=True, autoincrement=True)
+    projection_id = Column(
+        Integer,
+        ForeignKey("daily_world_projections.projection_id"),
+        nullable=False,
+        index=True,
+    )
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    started_at = Column(DateTime, nullable=False, index=True)
+    finished_at = Column(DateTime, nullable=True)
+    outcome = Column(String(32), nullable=False, default="running", index=True)
+    error_code = Column(String(80), nullable=True, index=True)
+
+
 class GeneratedMusicAsset(Base):
     """Persisted metadata for reusable AI-generated background music."""
 

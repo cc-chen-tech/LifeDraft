@@ -4,6 +4,7 @@
 包含所有 Pydantic 字段定义、验证器和序列化方法。
 """
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional
 
 from pydantic import Field, field_validator
@@ -13,6 +14,48 @@ from config.settings import settings
 # 在 TYPE_CHECKING 中声明 BaseModel 的方法
 if TYPE_CHECKING:
     pass
+
+
+def default_world_projection_state() -> Dict[str, Any]:
+    """Return a fresh v1 projection layer for a player's derived world facts."""
+
+    return {
+        "version": 1,
+        "projected_through_day_index": -1,
+        "applied_through_day_index": -1,
+        "pending_from_day_index": None,
+        "oldest_pending_at": None,
+        "applied_sources": [],
+        "world": {
+            "fact_updates": [],
+            "foreshadowing_seeds": [],
+            "habit_updates": [],
+            "location_updates": [],
+            "career_updates": [],
+            "commitment_updates": [],
+            "causal_updates": [],
+        },
+    }
+
+
+def _sanitize_world_projection_state(value: Any) -> Dict[str, Any]:
+    """Fill missing v1 keys while preserving all valid legacy projection data."""
+
+    normalized = default_world_projection_state()
+    if not isinstance(value, Mapping):
+        return normalized
+
+    normalized.update(deepcopy(dict(value)))
+    world = value.get("world")
+    if isinstance(world, Mapping):
+        normalized_world = default_world_projection_state()["world"]
+        normalized_world.update(deepcopy(dict(world)))
+        normalized["world"] = normalized_world
+    else:
+        normalized["world"] = default_world_projection_state()["world"]
+    if not isinstance(normalized.get("applied_sources"), list):
+        normalized["applied_sources"] = []
+    return normalized
 
 
 class PlayerDataMixin:
@@ -159,6 +202,12 @@ class PlayerDataMixin:
         }
     )
 
+    # Materialized daily world facts are derived from accepted story revisions.
+    # Legacy mixed world_model_data remains intact as a soft prompt hint.
+    world_projection_state: Dict[str, Any] = Field(
+        default_factory=default_world_projection_state
+    )
+
     # P1-7 authoritative continuity ledger. Narrative prose is never the
     # authority for identity, chronology, committed events, health, or
     # relationships; every mutable entry carries its source event.
@@ -240,6 +289,12 @@ class PlayerDataMixin:
     def validate_relationships(cls, v: Dict[str, int]) -> Dict[str, int]:
         """Ensure relationship values are within bounds."""
         return {name: max(0, min(100, affinity)) for name, affinity in v.items()}
+
+    @field_validator("world_projection_state", mode="before")
+    @classmethod
+    def validate_world_projection_state(cls, value: Any) -> Dict[str, Any]:
+        """Make partial pre-projection saves readable without rewriting them."""
+        return _sanitize_world_projection_state(value)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert state to a persistence-safe dictionary."""
