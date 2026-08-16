@@ -43,9 +43,14 @@ AVAILABLE_VOICES = ["warm_female", "calm_male", "clear_neutral"]
 class ReadingContextValidator:
     """Validate reading context without falling back to latest game state."""
 
-    def validate(self, context: ReadingContext) -> Dict[str, Any]:
+    def validate(
+        self,
+        context: ReadingContext,
+        *,
+        allow_recommended_prefetch: bool = False,
+    ) -> Dict[str, Any]:
         source_type = context.source_type
-        if source_type != "current_story":
+        if source_type not in {"current_story", "recommended_prefetch"}:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
@@ -54,7 +59,16 @@ class ReadingContextValidator:
                     "field": "source_type",
                 },
             )
-        if source_type in {"current_story", "history_round"}:
+        if source_type == "recommended_prefetch" and not allow_recommended_prefetch:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error_code": "internal_source_only",
+                    "message": "Recommended prefetch narration is internal only",
+                    "field": "source_type",
+                },
+            )
+        if source_type in {"current_story", "recommended_prefetch"}:
             missing = [
                 field
                 for field, value in (
@@ -156,6 +170,32 @@ class StoryVoiceReadingService:
         user_id: int,
         request: StoryVoiceReadingRequest,
     ) -> StoryVoiceReadingResponse:
+        return self._request_reading(
+            user_id,
+            request,
+            allow_recommended_prefetch=False,
+        )
+
+    def request_recommended_prefetch(
+        self,
+        user_id: int,
+        request: StoryVoiceReadingRequest,
+    ) -> StoryVoiceReadingResponse:
+        """Internal-only path for speculative narration generation."""
+
+        return self._request_reading(
+            user_id,
+            request,
+            allow_recommended_prefetch=True,
+        )
+
+    def _request_reading(
+        self,
+        user_id: int,
+        request: StoryVoiceReadingRequest,
+        *,
+        allow_recommended_prefetch: bool,
+    ) -> StoryVoiceReadingResponse:
         if request.voice_id not in AVAILABLE_VOICES:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -165,7 +205,10 @@ class StoryVoiceReadingService:
                     "field": "voice_id",
                 },
             )
-        context = self.validator.validate(request.context)
+        context = self.validator.validate(
+            request.context,
+            allow_recommended_prefetch=allow_recommended_prefetch,
+        )
         provider = self.provider
         provider_metadata = provider.metadata()
         paragraphs = split_story_paragraphs(str(context["text"]))

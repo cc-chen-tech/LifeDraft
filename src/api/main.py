@@ -270,6 +270,12 @@ async def health_check():
         "active_sessions": session_store.active_count,
         "capabilities": {
             "daily_timeline_v2": get_feature("daily_timeline_v2"),
+            "daily_recommended_prefetch": get_feature(
+                "daily_recommended_prefetch"
+            ),
+            "daily_recommended_tts_prefetch": get_feature(
+                "daily_recommended_tts_prefetch"
+            ),
             "tts_provider": tts_metadata.provider,
             "tts_provider_available": tts_metadata.backend_audio_enabled,
             "tts_audio_transport": "range_v2",

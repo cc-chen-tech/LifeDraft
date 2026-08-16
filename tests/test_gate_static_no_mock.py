@@ -24,6 +24,8 @@ def test_test_script_runs_mypy_in_strict_mode() -> None:
     assert "src/services/story_voice_reading.py" in script
     assert "src/services/story_voice_repository.py" in script
     assert "src/database/models.py" in script
+    assert "src/services/daily_recommended_prefetch.py" in script
+    assert "src/services/daily_recommended_prefetch_repository.py" in script
     assert 'python -m mypy "${MYPY_STRICT_TARGETS[@]}" --strict' in script
 
 

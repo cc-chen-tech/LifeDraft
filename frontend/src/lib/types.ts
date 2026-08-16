@@ -411,6 +411,7 @@ export interface EventOption {
   text: string;
   effects?: EffectValues;
   transition_text?: string;
+  likely_choice?: boolean;
 }
 
 export interface GameStateResponse {

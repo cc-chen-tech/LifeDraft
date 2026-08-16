@@ -439,6 +439,10 @@ run_mypy() {
         src/services/life_summary_grounding.py
         src/ai/generation_budget.py
         src/game/world_fact_safety.py
+        src/game/daily_recommendation.py
+        src/game/round/daily_choice_processor.py
+        src/services/daily_recommended_prefetch.py
+        src/services/daily_recommended_prefetch_repository.py
     )
     python -m mypy "${MYPY_STRICT_TARGETS[@]}" --strict
     local mypy_code=$?

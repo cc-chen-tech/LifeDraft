@@ -47,6 +47,8 @@ def test_daily_option_prompt_requests_hidden_transition_for_every_option() -> No
     )
 
     assert '"transition_text"' in prompt
+    assert '"likely_choice"' in prompt
+    assert "恰好一个选项" in prompt
     assert "12-28个汉字" in prompt
     assert "那份迟疑没有散去" not in prompt
     assert "不预言未发生的结果" in prompt

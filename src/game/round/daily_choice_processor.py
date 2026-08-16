@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Callable, Dict, Optional
 
@@ -11,6 +12,15 @@ from src.ai.models import GameEvent
 from src.game.continuity_ledger import ContinuityLedger
 from src.game.daily_timeline import advance_daily_timeline, normalize_daily_timeline
 from src.game.daily_transition import resolve_daily_transition
+
+
+@dataclass(frozen=True)
+class DailyChoiceProjection:
+    """Pure projected settlement used by speculative generation."""
+
+    state: Any
+    result: Dict[str, Any]
+    record: Dict[str, Any]
 
 
 class DailyChoiceProcessor:
@@ -42,6 +52,7 @@ class DailyChoiceProcessor:
         revision: int,
         option_index: int,
         persist_callback: Optional[Callable[[Any], bool]] = None,
+        prefetched_event: Optional[GameEvent] = None,
     ) -> Dict[str, Any]:
         # Serialize settlement for one live game loop. Without this lock two
         # concurrent requests could both validate the same revision and persist
@@ -52,6 +63,7 @@ class DailyChoiceProcessor:
                 revision=revision,
                 option_index=option_index,
                 persist_callback=persist_callback,
+                prefetched_event=prefetched_event,
             )
 
     def _make_choice_locked(
@@ -61,6 +73,7 @@ class DailyChoiceProcessor:
         revision: int,
         option_index: int,
         persist_callback: Optional[Callable[[Any], bool]],
+        prefetched_event: Optional[GameEvent],
     ) -> Dict[str, Any]:
         state = self._get_player_state()
         if state is None:
@@ -128,6 +141,15 @@ class DailyChoiceProcessor:
             "options": [item.model_dump() for item in event.options],
             "choice_option_index": option_index,
             "choice": option.text,
+            "recommended_option_index": next(
+                (
+                    index
+                    for index, candidate in enumerate(event.options)
+                    if candidate.likely_choice
+                ),
+                None,
+            ),
+            "recommendation_selected": bool(option.likely_choice),
             "transition_text": transition_text,
             "effects_requested": requested,
             "effects_applied": deepcopy(applied),
@@ -148,7 +170,15 @@ class DailyChoiceProcessor:
             "summary_milestones": summary_milestones,
             "next_timeline": deepcopy(next_timeline),
             "game_over": bool(next_timeline.get("game_over")),
+            "prefetch_hit": False,
         }
+        promoted_event = None
+        if (
+            prefetched_event is not None
+            and prefetched_event.story_date == next_timeline.get("current_date")
+        ):
+            promoted_event = prefetched_event.model_copy(deep=True)
+            result["prefetch_hit"] = True
         record["choice_result"] = deepcopy(result)
         staged.day_history.append(record)
         ledger_fact_updates = []
@@ -180,7 +210,9 @@ class DailyChoiceProcessor:
             fact_updates=ledger_fact_updates,
         )
         ledger.persist(staged)
-        staged.current_event_data = None
+        staged.current_event_data = (
+            promoted_event.model_dump() if promoted_event is not None else None
+        )
         staged.resume_view = None
 
         # Persist the staged candidate before exposing it in memory. A failed
@@ -193,7 +225,7 @@ class DailyChoiceProcessor:
         # durable write, this field swap publishes the same candidate in memory.
         for field_name in type(state).model_fields:
             setattr(state, field_name, deepcopy(getattr(staged, field_name)))
-        self._set_current_event(None)
+        self._set_current_event(promoted_event)
         if self.result_callback:
             self.result_callback(result, state)
         if self.postprocess_callback:
@@ -287,3 +319,32 @@ class DailyChoiceProcessor:
             ):
                 raise ValueError("invalid_effect:relationships")
         return applied, warnings
+
+
+def project_daily_choice(
+    state: Any,
+    event: GameEvent,
+    *,
+    option_index: int,
+    language: str = "zh",
+) -> DailyChoiceProjection:
+    """Apply the canonical daily settlement to an isolated state clone."""
+
+    projected_state = state.model_copy(deep=True)
+    holder: Dict[str, Optional[GameEvent]] = {"event": event.model_copy(deep=True)}
+    processor = DailyChoiceProcessor(
+        player_state_getter=lambda: projected_state,
+        current_event_getter=lambda: holder["event"],
+        current_event_setter=lambda value: holder.__setitem__("event", value),
+        language_getter=lambda: language,
+    )
+    result = processor.make_choice(
+        event_id=event.event_id,
+        revision=event.revision,
+        option_index=option_index,
+    )
+    return DailyChoiceProjection(
+        state=projected_state,
+        result=deepcopy(result),
+        record=deepcopy(projected_state.day_history[-1]),
+    )
