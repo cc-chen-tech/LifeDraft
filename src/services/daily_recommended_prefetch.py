@@ -748,7 +748,7 @@ def probe_demanded_prefetch(
                 source_loop=game_loop,
                 projected_state=projected_state,
                 game_id=game_id,
-        )
+            )
         if submitter is not None:
             submitter(callback)
         else:
