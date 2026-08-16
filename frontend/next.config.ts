@@ -1,5 +1,6 @@
 import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
+import { resolveTurbopackRoot } from "./scripts/resolve-turbopack-root.mjs";
 
 const nextConfig: NextConfig = {
   // Disable Strict Mode to prevent double SSE connections in development
@@ -20,7 +21,9 @@ const nextConfig: NextConfig = {
   output: process.env.NEXT_DISABLE_STANDALONE === '1' ? undefined : 'standalone',
   // 显式设置 Turbopack root 以避免多 lockfile 导致的模块解析错误
   turbopack: {
-    root: __dirname,
+    // Linked worktrees share node_modules with the main checkout. Turbopack
+    // requires both the project and the resolved dependency target under root.
+    root: resolveTurbopackRoot(__dirname),
   },
   // ★ API 代理已迁移到 src/app/api/[...path]/route.ts
   // 使用 API Route 可以正确转发 Set-Cookie 头
