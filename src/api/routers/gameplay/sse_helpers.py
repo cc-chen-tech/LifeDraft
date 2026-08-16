@@ -645,6 +645,9 @@ def _run_event_generation_operation(operation, game_loop, game_id: int, session)
                 stream_callback=operation.publish_story,
                 status_callback=operation.publish_phase,
                 session=session,
+                force_regenerate=(
+                    operation.key.resolved_mode == "generate_missing"
+                ),
                 operation_id=operation.operation_id,
             )
             if event is None:

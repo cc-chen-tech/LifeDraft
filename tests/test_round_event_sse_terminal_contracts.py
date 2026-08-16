@@ -375,6 +375,63 @@ def test_daily_replace_without_current_event_starts_missing_generation(
     assert len(submitted) == 1
 
 
+def test_missing_daily_generation_forces_incomplete_event_out_of_resume_path(
+    monkeypatch,
+) -> None:
+    event = GameEvent(
+        event_id="day-7-new",
+        revision=1,
+        story_date="2026-08-15",
+        event_description="补生成后的完整故事。",
+        options=[
+            EventOption(text="新选项一", effects={}),
+            EventOption(text="新选项二", effects={}),
+        ],
+    )
+    received_kwargs = {}
+
+    class _GameLoop:
+        quality_level = "expert"
+
+        def generate_round_event(self, **kwargs):
+            received_kwargs.update(kwargs)
+            return event
+
+    operation = EventGenerationOperation(
+        EventGenerationKey(
+            game_id=156,
+            week=1,
+            round_number=7,
+            stage="daily",
+            resolved_mode="generate_missing",
+        )
+    )
+    monkeypatch.setattr(
+        sse_helpers,
+        "_set_generation_resume_view",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        sse_helpers,
+        "_trigger_round_illustration_generation",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.services.daily_recommended_prefetch.ensure_daily_recommended_prefetch",
+        lambda *args, **kwargs: None,
+    )
+
+    sse_helpers._run_event_generation_operation(
+        operation,
+        _GameLoop(),
+        156,
+        SimpleNamespace(user_id=8),
+    )
+
+    assert received_kwargs["force_regenerate"] is True
+    assert operation.snapshot_after(-1).result is event
+
+
 def test_daily_replace_with_complete_event_starts_atomic_replacement(
     monkeypatch,
 ) -> None:
