@@ -18,11 +18,19 @@ from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
-from config.settings import (SENTRY_DSN, SENTRY_ENVIRONMENT,
-                             SENTRY_TRACES_SAMPLE_RATE)
-from src.api.routers import (auth, character, collection, gameplay, games,
-                             images, presets, story,
-                             voice_reading)
+from config.feature_flags import get_feature
+from config.settings import SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_TRACES_SAMPLE_RATE
+from src.api.routers import (
+    auth,
+    character,
+    collection,
+    gameplay,
+    games,
+    images,
+    presets,
+    story,
+    voice_reading,
+)
 from src.database.models import init_db
 from src.api.input_limits import PUBLIC_INPUT_LIMITS
 
@@ -54,35 +62,51 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
 
-    from src.services.portrait_image_jobs import recover_pending_portrait_image_jobs
+    projection_service = None
+    if get_feature("daily_world_projection_v1"):
+        from src.services.daily_world_projection import (
+            get_daily_world_projection_service,
+        )
 
-    recovered_portrait_job_ids = recover_pending_portrait_image_jobs()
-    if recovered_portrait_job_ids:
-        logger.info("Scheduled durable portrait jobs count=%s", len(recovered_portrait_job_ids))
+        projection_service = get_daily_world_projection_service()
+        projection_service.start()
 
-    import asyncio
-
-    drain_task: Optional[asyncio.Task[None]] = None
+    drain_task = None
     try:
-        from src.api.routers.images import _drain_pending_events
+        from src.services.portrait_image_jobs import recover_pending_portrait_image_jobs
 
-        drain_task = asyncio.create_task(_drain_pending_events())
-    except ImportError:
-        logger.info("Scene image SSE drain task is not configured")
+        recovered_portrait_job_ids = recover_pending_portrait_image_jobs()
+        if recovered_portrait_job_ids:
+            logger.info(
+                "Scheduled durable portrait jobs count=%s",
+                len(recovered_portrait_job_ids),
+            )
 
-    yield
+        import asyncio
 
-    if drain_task:
-        drain_task.cancel()
-    logger.info("FastAPI server shutting down...")
+        try:
+            from src.api.routers.images import _drain_pending_events
 
-    # B-01/B-02: 关闭全局线程池，防止资源泄漏
-    from src.api.routers.gameplay.sse_helpers import shutdown_sse_thread_pool
-    from src.services.image_service import shutdown_image_thread_pool
+            drain_task = asyncio.create_task(_drain_pending_events())
+        except ImportError:
+            logger.info("Scene image SSE drain task is not configured")
 
-    shutdown_sse_thread_pool(wait=False, prevent_new_background_jobs=True)
-    shutdown_image_thread_pool(wait=False)
-    logger.info("Global thread pools shut down")
+        yield
+    finally:
+        if projection_service is not None:
+            projection_service.stop(wait=False)
+
+        if drain_task:
+            drain_task.cancel()
+        logger.info("FastAPI server shutting down...")
+
+        # B-01/B-02: 关闭全局线程池，防止资源泄漏
+        from src.api.routers.gameplay.sse_helpers import shutdown_sse_thread_pool
+        from src.services.image_service import shutdown_image_thread_pool
+
+        shutdown_sse_thread_pool(wait=False, prevent_new_background_jobs=True)
+        shutdown_image_thread_pool(wait=False)
+        logger.info("Global thread pools shut down")
 
 
 app = FastAPI(
@@ -191,7 +215,9 @@ app.add_middleware(AuditLogMiddleware)
 
 
 @app.exception_handler(RequestValidationError)
-async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+async def request_validation_exception_handler(
+    request: Request, exc: RequestValidationError
+):
     """Add actionable measurements to request length failures without echoing text."""
 
     details = []
@@ -212,7 +238,9 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
                 {
                     "field": str(raw_error.get("loc", ("",))[-1]),
                     "limit": int(ctx["max_length"]),
-                    "actual_length": len(input_value) if isinstance(input_value, str) else None,
+                    "actual_length": (
+                        len(input_value) if isinstance(input_value, str) else None
+                    ),
                     "unit": "characters",
                 }
             )
@@ -253,7 +281,9 @@ app.include_router(gameplay.router, prefix="/api/games", tags=["Gameplay"])
 app.include_router(story.router, prefix="/api/games", tags=["Story"])
 app.include_router(images.router, prefix="/api/images", tags=["Images"])
 app.include_router(collection.router, prefix="/api/collection", tags=["Collection"])
-app.include_router(voice_reading.router, prefix="/api/voice-reading", tags=["VoiceReading"])
+app.include_router(
+    voice_reading.router, prefix="/api/voice-reading", tags=["VoiceReading"]
+)
 
 
 @app.get("/api/health")
@@ -270,9 +300,7 @@ async def health_check():
         "active_sessions": session_store.active_count,
         "capabilities": {
             "daily_timeline_v2": get_feature("daily_timeline_v2"),
-            "daily_recommended_prefetch": get_feature(
-                "daily_recommended_prefetch"
-            ),
+            "daily_recommended_prefetch": get_feature("daily_recommended_prefetch"),
             "daily_recommended_tts_prefetch": get_feature(
                 "daily_recommended_tts_prefetch"
             ),

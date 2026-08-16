@@ -3,6 +3,7 @@
 Inspired by Claude Code's feature() gate pattern. Centralizes all
 experimental feature toggles with environment variable mapping.
 """
+
 from __future__ import annotations
 
 import logging
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class FeatureFlags(TypedDict, total=False):
     """All available feature flags."""
+
     constraint_harness: bool
     narrative_style_engine: bool
     creative_enhancement: bool
@@ -33,6 +35,7 @@ class FeatureFlags(TypedDict, total=False):
     daily_timeline_v2: bool
     daily_recommended_prefetch: bool
     daily_recommended_tts_prefetch: bool
+    daily_world_projection_v1: bool
 
 
 # Mapping from feature flag name -> environment variable name
@@ -53,6 +56,7 @@ _ENV_VAR_MAP: Dict[str, str] = {
     "daily_timeline_v2": "ENABLE_DAILY_TIMELINE_V2",
     "daily_recommended_prefetch": "ENABLE_DAILY_RECOMMENDED_PREFETCH",
     "daily_recommended_tts_prefetch": "ENABLE_DAILY_RECOMMENDED_TTS_PREFETCH",
+    "daily_world_projection_v1": "ENABLE_DAILY_WORLD_PROJECTION_V1",
 }
 
 FEATURE_DEFAULTS: FeatureFlags = {
@@ -72,6 +76,7 @@ FEATURE_DEFAULTS: FeatureFlags = {
     "daily_timeline_v2": False,
     "daily_recommended_prefetch": False,
     "daily_recommended_tts_prefetch": False,
+    "daily_world_projection_v1": False,
 }
 
 
