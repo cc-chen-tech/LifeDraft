@@ -544,6 +544,72 @@ def test_choice_save_revalidates_projection_after_lookup_supersede(
     )
 
 
+def test_choice_save_downgrades_incomplete_ready_option_patch_to_pending(
+    temp_db_file, monkeypatch
+) -> None:
+    engine, _ = temp_db_file
+    Session = sessionmaker(bind=engine)
+    record = _record(0)
+    state = PlayerState(
+        timeline=build_daily_timeline(start_date="2026-08-01", day_index=0),
+        timeline_version=2,
+    )
+    with Session.begin() as db:
+        game = Game(language="zh", initial_state=state.to_dict())
+        db.add(game)
+        db.flush()
+        game_id = game.game_id
+        db.add(
+            GameState(
+                game_id=game_id,
+                week=state.week,
+                age=state.age,
+                state_json=state.to_dict(),
+            )
+        )
+        row = _projection(game_id, record, "ready")
+        row.option_patches_json = {"1": {}}
+        db.add(row)
+    event = GameEvent(
+        event_id=record["event_id"],
+        revision=record["revision"],
+        story_date=record["story_date"],
+        event_description=record["event_description"],
+        options=[EventOption(**option) for option in record["options"]],
+    )
+    holder = {"event": event}
+    service = DailyWorldProjectionService(session_factory=Session)
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", Session)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        processor = DailyChoiceProcessor(
+            player_state_getter=lambda: state,
+            current_event_getter=lambda: holder["event"],
+            current_event_setter=lambda value: holder.__setitem__("event", value),
+            game_id_getter=lambda: game_id,
+            projection_lookup=service.lookup_choice_projection,
+        )
+        result = processor.make_choice(
+            event_id=event.event_id,
+            revision=event.revision,
+            option_index=0,
+            persist_callback=lambda candidate: StateRepository().save_game_progress(
+                game_id, candidate
+            ),
+        )
+    finally:
+        reset_features()
+
+    assert result["next_timeline"]["day_index"] == 1
+    assert state.day_history[-1]["world_projection_status"] == "pending"
+    assert state.world_projection_state["world"]["fact_updates"] == []
+    assert _latest(Session, game_id)["day_history"][-1][
+        "world_projection_status"
+    ] == "pending"
+
+
 def test_normal_save_cannot_overwrite_cross_process_projection_apply(
     temp_db_file, monkeypatch
 ) -> None:

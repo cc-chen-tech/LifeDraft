@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,6 +13,9 @@ from typing import Any, Mapping, Sequence
 from src.game.narrative_manager import NarrativeManager
 from src.game.world_model_updater import WorldModelUpdater
 from src.game.world_projection_schema import WorldPatch, compute_projection_source_hash
+
+
+logger = logging.getLogger(__name__)
 
 
 _WORLD_FIELDS = (
@@ -416,7 +420,20 @@ def apply_contiguous_world_projections(
         if row.status not in {"ready", "ready_no_change", "applied"}:
             break
         selected = int(record["choice_option_index"])
-        changed = apply_world_projection_patch(state, row, selected)
+        try:
+            changed = apply_world_projection_patch(state, row, selected)
+        except Exception:
+            # Projection rows are derived and repairable.  A corrupt or
+            # incomplete ready payload is a gap, never a reason to reject the
+            # already-valid canonical choice being persisted.
+            logger.exception(
+                "daily world projection materialization deferred "
+                "event_id=%s revision=%s day_index=%s",
+                row.event_id,
+                row.revision,
+                row.day_index,
+            )
+            break
         expected_identity = {
             "event_id": row.event_id,
             "revision": row.revision,
