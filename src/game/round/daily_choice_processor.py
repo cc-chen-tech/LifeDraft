@@ -6,7 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import logging
 from threading import Lock
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, cast
 
 from config.settings import settings
 from src.ai.models import GameEvent
@@ -318,7 +318,7 @@ class DailyChoiceProcessor:
         projection_id = cls._projection_field(projection, "projection_id")
         if isinstance(projection_id, bool) or not isinstance(projection_id, int):
             return None
-        return projection_id
+        return cast(int, projection_id)
 
     def _find_duplicate(
         self, state: Any, event_id: str, revision: int, option_index: int
