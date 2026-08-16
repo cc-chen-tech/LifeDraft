@@ -1201,3 +1201,119 @@ def test_stop_during_heartbeat_commit_is_nonblocking_and_releases_old_lease(
             .lease_owner
             == "new-worker"
         )
+
+
+@pytest.mark.parametrize(
+    "worker_id",
+    [None, "诊断-worker-" + "用户" * 80],
+)
+def test_generation_owner_fits_persisted_lease_owner_and_is_unique(
+    worker_id: Optional[str],
+) -> None:
+    """Generation owners remain diagnosable without exceeding String(96)."""
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    state = WorkerState(_row(now))
+    service = DailyWorldProjectionService(
+        session_factory=lambda: FakeSession(state),
+        repository_factory=lambda _session: FakeRepository(state),
+        worker_id=worker_id,
+        claim_limit=0,
+    )
+
+    service.start()
+    first_cancel = service._cancel_event
+    assert first_cancel is not None
+    first_owner = service._owner_for(first_cancel)
+    service.stop(wait=False)
+    service.start()
+    second_cancel = service._cancel_event
+    assert second_cancel is not None
+    second_owner = service._owner_for(second_cancel)
+    service.stop(wait=False)
+
+    for owner in (first_owner, second_owner):
+        assert len(owner) <= 96
+        assert len(owner.encode("utf-8")) <= 96
+        assert owner.startswith(service.worker_id[:8])
+    assert first_owner != second_owner
+
+
+def test_stop_before_heartbeat_releases_pre_provider_reservation_lease(
+    tmp_path,
+) -> None:
+    """Cancel after a committed slot leaves no ledger, count, or stale lease."""
+    from src.services.daily_world_projection import DailyWorldProjectionService
+    from src.services.daily_world_projection_repository import (
+        DailyWorldProjectionRepository,
+        ProjectionIdentity,
+    )
+
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'reservation-stop.sqlite'}",
+        connect_args={"check_same_thread": False, "timeout": 1},
+    )
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    with sessions() as session:
+        session.add(Game(game_id=9, initial_state={}))
+        row = DailyWorldProjectionRepository(session).ensure_projection(
+            ProjectionIdentity(game_id=9, event_id="event-1", revision=1, day_index=0),
+            compute_projection_source_hash("故事", ["选项"]),
+        )
+        row.status = "running"
+        row.lease_expires_at = now + timedelta(minutes=5)
+        row_id, source_hash = row.projection_id, row.source_hash
+        session.commit()
+
+    reserved, release_worker = threading.Event(), threading.Event()
+    service = DailyWorldProjectionService(
+        session_factory=sessions,
+        extractor=lambda *_args: pytest.fail("provider must not be called"),
+        canonical_loader=lambda *_args: {
+            "revision": 1,
+            "story": "故事",
+            "options": ["选项"],
+            "tracked_state": {},
+        },
+        now_fn=lambda: now,
+        worker_id="worker-a",
+        claim_limit=0,
+    )
+    service.start()
+    cancel = service._cancel_event
+    assert cancel is not None
+    owner = service._owner_for(cancel)
+    with sessions() as session:
+        stored = session.get(DailyWorldProjection, row_id)
+        stored.lease_owner = owner
+        session.commit()
+
+    reserve_attempt = service._reserve_attempt
+
+    def pause_after_reservation(*args: Any, **kwargs: Any) -> Any:
+        result = reserve_attempt(*args, **kwargs)
+        reserved.set()
+        assert release_worker.wait(1)
+        return result
+
+    service._reserve_attempt = pause_after_reservation  # type: ignore[method-assign]
+    worker = threading.Thread(target=service._process_claim, args=(row_id, now, cancel))
+    worker.start()
+    assert reserved.wait(1)
+    service.stop(wait=False)
+    release_worker.set()
+    worker.join(1)
+    assert not worker.is_alive()
+
+    with sessions() as session:
+        stored = session.get(DailyWorldProjection, row_id)
+        assert stored.attempt_count == 0
+        assert session.query(DailyWorldProjectionAttempt).count() == 0
+        [claimed] = DailyWorldProjectionRepository(session).claim_due(
+            now, "new-worker", 1
+        )
+        assert claimed.lease_owner == "new-worker"
+        assert claimed.source_hash == source_hash

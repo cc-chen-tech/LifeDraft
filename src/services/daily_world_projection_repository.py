@@ -510,8 +510,9 @@ class DailyWorldProjectionRepository:
         attempt_id: int,
         worker_id: str,
         source_hash: str,
+        now: datetime,
     ) -> bool:
-        """Undo a pre-provider reservation cancelled before any provider call."""
+        """Atomically undo a cancelled pre-provider reservation and lease."""
 
         updated = (
             self.db.query(DailyWorldProjection)
@@ -527,6 +528,8 @@ class DailyWorldProjectionRepository:
                     DailyWorldProjection.attempt_count: (
                         DailyWorldProjection.attempt_count - 1
                     ),
+                    DailyWorldProjection.lease_expires_at: now,
+                    DailyWorldProjection.updated_at: now,
                 },
                 synchronize_session=False,
             )

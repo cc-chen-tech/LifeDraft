@@ -8,6 +8,7 @@ model provider.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import threading
@@ -41,6 +42,8 @@ RETRY_DELAYS = (5, 30, 120, 300, 1800, 7200)
 MAX_DAILY_MODEL_CALLS = 8
 DEFAULT_TIME_ZONE = "Asia/Shanghai"
 LOCK_RETRY_ATTEMPTS = 3
+MAX_LEASE_OWNER_BYTES = 96
+_GENERATION_OWNER_SUFFIX_BYTES = 43
 
 
 class GenerationCancelled(RuntimeError):
@@ -173,6 +176,20 @@ class DailyWorldProjectionService:
         with self._lock:
             return self._generation_owners.get(id(cancel), self.worker_id)
 
+    def _generation_owner(self, generation: int) -> str:
+        """Return a unique, diagnosable owner token that fits lease_owner."""
+
+        generation_digest = hashlib.blake2s(
+            str(generation).encode("ascii"), digest_size=4
+        ).hexdigest()
+        suffix = f":g{generation_digest}:{uuid.uuid4().hex}"
+        assert len(suffix.encode("utf-8")) == _GENERATION_OWNER_SUFFIX_BYTES
+        prefix_budget = MAX_LEASE_OWNER_BYTES - _GENERATION_OWNER_SUFFIX_BYTES
+        prefix = self.worker_id.encode("utf-8")[:prefix_budget].decode(
+            "utf-8", errors="ignore"
+        )
+        return f"{prefix}{suffix}"
+
     def start(self) -> None:
         """Start exactly one daemon scanner and a bounded extraction pool."""
 
@@ -183,9 +200,7 @@ class DailyWorldProjectionService:
             generation = self._generation
             cancel = threading.Event()
             self._cancel_event = cancel
-            self._generation_owners[id(cancel)] = (
-                f"{self.worker_id}:generation-{generation}:{uuid.uuid4().hex}"
-            )
+            self._generation_owners[id(cancel)] = self._generation_owner(generation)
             self._pool = ThreadPoolExecutor(
                 max_workers=self.extraction_workers,
                 thread_name_prefix="daily-world-projection",
@@ -608,7 +623,7 @@ class DailyWorldProjectionService:
         return self._transaction(reserve)
 
     def _release_attempt_reservation(
-        self, row: Any, attempt_id: int, owner: str
+        self, row: Any, attempt_id: int, owner: str, now: datetime
     ) -> bool:
         def release(_session: Any, repo: Any) -> bool:
             method = getattr(repo, "release_attempt_reservation", None)
@@ -620,6 +635,7 @@ class DailyWorldProjectionService:
                     attempt_id,
                     owner,
                     row.source_hash,
+                    self._as_utc_naive(now),
                 )
             )
 
@@ -684,7 +700,7 @@ class DailyWorldProjectionService:
             attempt_id = reservation.attempt_id
             row.attempt_count = reservation.attempt_count
             if cancel is not None and cancel.is_set():
-                self._release_attempt_reservation(row, attempt_id, owner)
+                self._release_attempt_reservation(row, attempt_id, owner, now)
                 attempt_id = None
                 return
             with self._lock:
@@ -697,7 +713,7 @@ class DailyWorldProjectionService:
             )
             heartbeat.start()
             if cancel is not None and cancel.is_set():
-                self._release_attempt_reservation(row, attempt_id, owner)
+                self._release_attempt_reservation(row, attempt_id, owner, now)
                 attempt_id = None
                 return
             provider_called = True
