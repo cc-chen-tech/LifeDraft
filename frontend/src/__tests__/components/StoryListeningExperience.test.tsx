@@ -126,9 +126,6 @@ describe("StoryListeningExperience", () => {
       <StoryListeningExperience
         context={context}
         storyText={context.text}
-        dateTitle="公元 2026 年 8 月 15 日"
-        dayNumber={8}
-        totalDays={365}
         options={[{ text: "推开那扇门" }, { text: "留在原地" }]}
         onSelectChoice={onSelectChoice}
       />,
@@ -160,6 +157,32 @@ describe("StoryListeningExperience", () => {
 
     expect(secondParagraph).toHaveAttribute("aria-current", "true");
     await waitFor(() => expect(play).toHaveBeenCalled());
+  });
+
+  it("offers exactly one transcript action in each collapsed or expanded state", async () => {
+    renderExperience();
+
+    const openButtons = await screen.findAllByRole("button", { name: "查看正文" });
+    expect(openButtons).toHaveLength(1);
+    fireEvent.click(openButtons[0]);
+
+    expect(screen.queryByRole("button", { name: "查看正文" })).not.toBeInTheDocument();
+    const closeButtons = screen.getAllByRole("button", { name: "收起正文" });
+    expect(closeButtons).toHaveLength(1);
+    fireEvent.click(closeButtons[0]);
+
+    expect(screen.getAllByRole("button", { name: "查看正文" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "收起正文" })).not.toBeInTheDocument();
+  });
+
+  it("keeps paragraph position separate from the playback status", async () => {
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+    fireEvent.playing(document.querySelector("audio") as HTMLAudioElement);
+
+    expect(screen.getByText("第 1 段")).toBeInTheDocument();
+    expect(screen.getByText("朗读中")).toBeInTheDocument();
+    expect(screen.queryByText("正在朗读第 1 段")).not.toBeInTheDocument();
   });
 
   it("stops narration immediately when a daily choice is selected", async () => {

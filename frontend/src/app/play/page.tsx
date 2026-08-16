@@ -170,10 +170,6 @@ export default function PlayPage() {
     storyText,
     playerState,
   });
-  const dailyDate = isDailyTimeline ? playerState?.timeline?.current_date : null;
-  const dailyDateTitle = typeof dailyDate === "string"
-    ? `公元 ${dailyDate.slice(0, 4)} 年 ${Number(dailyDate.slice(5, 7))} 月 ${Number(dailyDate.slice(8, 10))} 日`
-    : null;
   const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
   const isUnifiedGameplayFailure =
     phase === "error" && gameplayTransport === "failed";
@@ -780,6 +776,7 @@ export default function PlayPage() {
         playerState={playerState}
         progress={progress}
         isViewingHistory={isViewingHistory}
+        hideProgress={Boolean(dailyTransition.active)}
         toolsProps={toolsProps}
       >
         {regenerationFailure && !isViewingHistory && (
@@ -837,16 +834,6 @@ export default function PlayPage() {
           />
         ) : (
         <>
-        {!isViewingHistory && dailyDateTitle && !(isDailyTimeline && phase === "options") && (
-          <div className="mb-6 text-center">
-            <h1 className="font-serif text-xl font-semibold tracking-wide text-[var(--text-primary)]">
-              {dailyDateTitle}
-            </h1>
-            <p className="mt-1 text-xs text-[var(--text-secondary)]">
-              第 {playerState?.timeline?.day_number} 天 · 共 {playerState?.timeline?.total_days} 天
-            </p>
-          </div>
-        )}
         {isDailyTimeline && !isViewingHistory && phase === "options" && displayText.trim() && Number.isFinite(Number(gameId)) ? (
           <StoryListeningExperience
             key={`${playerState?.timeline?.current_date}-${playerState?.timeline?.day_index}`}
@@ -863,9 +850,6 @@ export default function PlayPage() {
               text: displayText,
             }}
             storyText={displayText}
-            dateTitle={dailyDateTitle}
-            dayNumber={playerState?.timeline?.day_number}
-            totalDays={playerState?.timeline?.total_days}
             options={options}
             onSelectChoice={handleChoice}
             media={sceneMedia}

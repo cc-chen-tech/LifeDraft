@@ -273,7 +273,12 @@ test('daily choice settles once and automatically opens the next calendar day', 
   await page.getByRole('button', { name: '拆开信封' }).click();
 
   await expect(page.getByText('信封尚未拆尽沉默，时间已携着余韵走向明日。')).toBeVisible();
-  await expect(page.getByText('公元 2026 年 8 月 14 日')).toBeVisible();
+  await expect(page.getByText('公元 2026 年 8 月 14 日')).toHaveCount(1);
+  await expect(
+    page
+      .getByTestId('daily-transition-layer')
+      .getByText('公元 2026 年 8 月 14 日', { exact: true }),
+  ).toBeVisible();
   await page.waitForTimeout(500);
   expect(narrationCalls).toBe(1);
   await expect(page.getByRole('heading', { name: '听故事' })).toBeVisible();
@@ -412,7 +417,12 @@ test('refresh after a saved choice safely retries generation on the advanced day
 
   await page.goto(`/play?gameId=${gameId}`);
   await expect(page.getByText('今日的回声渐远，明日已从静处缓缓靠近。')).toBeVisible();
-  await expect(page.getByText('公元 2026 年 8 月 14 日')).toBeVisible();
+  await expect(page.getByText('公元 2026 年 8 月 14 日')).toHaveCount(1);
+  await expect(
+    page
+      .getByTestId('daily-transition-layer')
+      .getByText('公元 2026 年 8 月 14 日', { exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: '查看正文' }).first().click();
   await expect(page.getByText('刷新后，第二天故事在正确日期重新生成。')).toBeVisible();
   await expect(page.getByRole('button', { name: '继续调查' })).toBeVisible();
