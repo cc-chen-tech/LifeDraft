@@ -128,6 +128,7 @@ export function StoryListeningExperience({
   const [retryNonce, setRetryNonce] = useState(0);
   const [mediaDurations, setMediaDurations] = useState<Record<number, number>>({});
   const [networkRetryRequired, setNetworkRetryRequired] = useState(false);
+  const [networkRetryVisible, setNetworkRetryVisible] = useState(false);
 
   const currentSegment = segments.find(
     (segment) => segment.paragraph_index === activeParagraph,
@@ -249,6 +250,7 @@ export function StoryListeningExperience({
     finalSegmentEndedRef.current = false;
     setMediaDurations({});
     setNetworkRetryRequired(false);
+    setNetworkRetryVisible(false);
 
     const identity = {
       game_id: context.game_id,
@@ -467,6 +469,7 @@ export function StoryListeningExperience({
     autoPlayRequestedRef.current = true;
     finalSegmentEndedRef.current = false;
     setNetworkRetryRequired(false);
+    setNetworkRetryVisible(false);
     persistProgress(index, 0);
   };
 
@@ -493,16 +496,73 @@ export function StoryListeningExperience({
     persistProgress(activeParagraph, duration, true);
   };
 
+  const armRecoveryWatchdog = (
+    audio: HTMLAudioElement,
+    source: string,
+    restartDeadline = false,
+  ) => {
+    if (!isCurrentAudio(audio, source)) {
+      audio.pause();
+      return;
+    }
+    if (restartDeadline) clearRecoveryWatchdog();
+    if (recoveryTimerRef.current !== null) return;
+    const paragraphIndex = activeParagraph;
+    const playbackGeneration = playbackGenerationRef.current;
+    const resumePositionMs = pendingResumePositionRef.current
+      ?? Math.max(0, audio.currentTime * 1000);
+    recoveryStartPositionMsRef.current = resumePositionMs;
+    recoveryTimerRef.current = window.setTimeout(() => {
+      recoveryTimerRef.current = null;
+      recoveryStartPositionMsRef.current = null;
+      if (
+        playbackGeneration !== playbackGenerationRef.current ||
+        paragraphIndex !== activeParagraphRef.current ||
+        !isCurrentAudio(audio, source)
+      ) {
+        audio.pause();
+        return;
+      }
+      setNetworkRetryVisible(true);
+      if (recoveredParagraphsRef.current.has(paragraphIndex)) {
+        autoPlayRequestedRef.current = false;
+        setStatus("failed");
+        setNetworkRetryRequired(true);
+        setErrorMessage("网络不稳定，继续朗读");
+        recordAudioDiagnostic("recovery_required");
+        return;
+      }
+      recoveredParagraphsRef.current.add(paragraphIndex);
+      pendingResumePositionRef.current = resumePositionMs;
+      autoPlayRequestedRef.current = true;
+      setStatus("ready");
+      setErrorMessage("网络不稳定，正在重新连接朗读");
+      recordAudioDiagnostic("automatic_recovery");
+      if (playRequestRef.current?.audio === audio) playRequestRef.current = null;
+      if (playingAudioRef.current?.audio === audio) playingAudioRef.current = null;
+      audio.load();
+    }, STALL_WATCHDOG_MS);
+  };
+
   const handleTimeUpdate = (audio: HTMLAudioElement, source: string) => {
     if (!isCurrentAudio(audio, source)) return;
     const milliseconds = audio.currentTime * 1000;
     setPositionMs(milliseconds);
-    if (
+    const playbackAdvanced =
       recoveryTimerRef.current !== null &&
       recoveryStartPositionMsRef.current !== null &&
-      milliseconds > recoveryStartPositionMsRef.current
-    ) {
-      clearRecoveryWatchdog();
+      milliseconds > recoveryStartPositionMsRef.current;
+    if (playbackAdvanced) {
+      const playingAudio = playingAudioRef.current;
+      if (
+        playingAudio?.audio === audio &&
+        playingAudio.source === source &&
+        playingAudio.generation === playbackGenerationRef.current
+      ) {
+        armRecoveryWatchdog(audio, source, true);
+      } else {
+        clearRecoveryWatchdog();
+      }
     }
     const now = Date.now();
     if (now - lastProgressWriteRef.current >= 2_000) {
@@ -555,6 +615,7 @@ export function StoryListeningExperience({
         autoPlayRequestedRef.current = wasPlaying;
         finalSegmentEndedRef.current = false;
         setNetworkRetryRequired(false);
+        setNetworkRetryVisible(false);
         persistProgress(segment.paragraph_index, remaining);
         if (canSeekImmediately) {
           audio.currentTime = remaining / 1000;
@@ -609,40 +670,7 @@ export function StoryListeningExperience({
       return;
     }
     recordAudioDiagnostic(mediaState);
-    if (recoveryTimerRef.current !== null) return;
-    const paragraphIndex = activeParagraph;
-    const playbackGeneration = playbackGenerationRef.current;
-    const resumePositionMs = pendingResumePositionRef.current
-      ?? Math.max(0, audio.currentTime * 1000);
-    recoveryStartPositionMsRef.current = resumePositionMs;
-    recoveryTimerRef.current = window.setTimeout(() => {
-      recoveryTimerRef.current = null;
-      recoveryStartPositionMsRef.current = null;
-      if (
-        playbackGeneration !== playbackGenerationRef.current ||
-        paragraphIndex !== activeParagraphRef.current ||
-        !isCurrentAudio(audio, source)
-      ) {
-        audio.pause();
-        return;
-      }
-      if (recoveredParagraphsRef.current.has(paragraphIndex)) {
-        autoPlayRequestedRef.current = false;
-        setStatus("failed");
-        setNetworkRetryRequired(true);
-        setErrorMessage("网络不稳定，继续朗读");
-        recordAudioDiagnostic("recovery_required");
-        return;
-      }
-      recoveredParagraphsRef.current.add(paragraphIndex);
-      pendingResumePositionRef.current = resumePositionMs;
-      autoPlayRequestedRef.current = true;
-      setStatus("ready");
-      recordAudioDiagnostic("automatic_recovery");
-      if (playRequestRef.current?.audio === audio) playRequestRef.current = null;
-      if (playingAudioRef.current?.audio === audio) playingAudioRef.current = null;
-      audio.load();
-    }, STALL_WATCHDOG_MS);
+    armRecoveryWatchdog(audio, source);
   };
 
   const handleLoadedMetadata = (audio: HTMLAudioElement, source: string) => {
@@ -694,6 +722,8 @@ export function StoryListeningExperience({
     setStatus("playing");
     setErrorMessage("");
     setNetworkRetryRequired(false);
+    setNetworkRetryVisible(false);
+    armRecoveryWatchdog(audio, source, true);
   };
 
   const handleNetworkRetry = () => {
@@ -710,6 +740,7 @@ export function StoryListeningExperience({
     setStatus("ready");
     setErrorMessage("");
     setNetworkRetryRequired(false);
+    setNetworkRetryVisible(false);
     recordAudioDiagnostic("manual_recovery");
     audio.load();
     playAudio(audio, source, true);
@@ -862,7 +893,7 @@ export function StoryListeningExperience({
           {errorMessage ? (
             <p role="status" className={cn("mt-4 text-center text-sm", status === "failed" ? "text-[var(--danger-foreground)]" : "text-[var(--text-secondary)]")}>{errorMessage}</p>
           ) : null}
-          {networkRetryRequired ? (
+          {networkRetryVisible ? (
             <Button
               type="button"
               variant="narrative"
