@@ -778,12 +778,15 @@ class RoundEventGenerator:
         """Bound resume-only option generation so recovery never strands the player."""
 
         def call_options_generator() -> GameEvent:
-            return cast(GameEvent, self.ai_generator.generate_options_only(
-                story_description=existing_story,
-                player_state=self._prompt_context(player_state),
-                character_settings=player_state.character_settings,
-                language=self.language,
-            ))
+            return cast(
+                GameEvent,
+                self.ai_generator.generate_options_only(
+                    story_description=existing_story,
+                    player_state=self._prompt_context(player_state),
+                    character_settings=player_state.character_settings,
+                    language=self.language,
+                ),
+            )
 
         executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="options-resume"

@@ -62,7 +62,9 @@ class GameInitializer:
 
         # 提取 constraint_level（从 character_settings 或默认 expert）
         constraint_level = (
-            character_settings.get("constraint_level", "expert") if character_settings else "expert"
+            character_settings.get("constraint_level", "expert")
+            if character_settings
+            else "expert"
         )
 
         # Create initial player state
@@ -113,7 +115,9 @@ class GameInitializer:
         ledger.persist(initial_state)
 
         # 提取 narrative_style_id（从 character_settings 中获取，默认 None）
-        style_id = character_settings.get("narrative_style_id") if character_settings else None
+        style_id = (
+            character_settings.get("narrative_style_id") if character_settings else None
+        )
 
         # 当无 narrative_style_id 时自动匹配风格
         if not style_id and character_settings:
@@ -167,7 +171,7 @@ class GameInitializer:
 
     @staticmethod
     def _normalize_daily_start_date(
-        character_settings: Dict[str, Any]
+        character_settings: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Project the one canonical origin or require legacy conflict review."""
         from src.game.story_origin import (

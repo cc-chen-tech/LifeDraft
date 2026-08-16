@@ -53,13 +53,17 @@ def _make_state_repo(db_session):
     """Create a StateRepository with mocked SessionLocal and get_db."""
     proxy = _NonClosingSessionProxy(db_session)
 
-    session_patcher = patch("src.database.state_repository.SessionLocal", return_value=proxy)
+    session_patcher = patch(
+        "src.database.state_repository.SessionLocal", return_value=proxy
+    )
     session_patcher.start()
 
     mock_context = MagicMock()
     mock_context.__enter__ = MagicMock(return_value=proxy)
     mock_context.__exit__ = MagicMock(return_value=False)
-    db_patcher = patch("src.database.state_repository.get_db", return_value=mock_context)
+    db_patcher = patch(
+        "src.database.state_repository.get_db", return_value=mock_context
+    )
     db_patcher.start()
 
     repo = StateRepository()
@@ -101,7 +105,9 @@ class TestCustomChoicePersistence:
         assert (
             history[0].get("choice") == custom_text
         ), "round_history 必须保存玩家的自定义选择文本 (Bug #26)"
-        assert history[0].get("is_custom") is True, "自定义选择记录必须标记 is_custom=True"
+        assert (
+            history[0].get("is_custom") is True
+        ), "自定义选择记录必须标记 is_custom=True"
 
     def test_custom_choice_preserved_after_save_and_load(self, db_session):
         """save_game_progress + load_saved_game 必须保留自定义选择记录。

@@ -76,7 +76,10 @@ def compact_display_summary(text: str, budget: InformationBudget) -> str:
         if measure_narrative_length(candidate, language) > budget.compression_threshold:
             break
         selected.append(sentence)
-        if measure_narrative_length(candidate, language) >= budget.compression_threshold:
+        if (
+            measure_narrative_length(candidate, language)
+            >= budget.compression_threshold
+        ):
             break
     if selected:
         return separator.join(selected)
@@ -126,7 +129,9 @@ class SummaryGenerator:
             cleaned = self._clean_summary_text(summary)
             return compact_display_summary(cleaned, budget) or fallback
         except Exception as exc:
-            logger.warning("Display summary generation failed for %s: %s", summary_kind, exc)
+            logger.warning(
+                "Display summary generation failed for %s: %s", summary_kind, exc
+            )
             return fallback
 
     # -------------------- Story Compression --------------------
@@ -219,15 +224,17 @@ class SummaryGenerator:
                     }
 
                 # JSON parsed but missing 'summary' field
-                last_error = (
-                    f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
-                )
+                last_error = f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
                 logger.warning(f"Attempt {attempt + 1}/2: {last_error}")
 
                 # On last attempt, try fallback extraction
                 if attempt == 1:
-                    logger.warning(f"Attempting summary-only extraction from: {content[:200]}...")
-                    summary_text = self._extract_summary_from_raw(content, story, language)
+                    logger.warning(
+                        f"Attempting summary-only extraction from: {content[:200]}..."
+                    )
+                    summary_text = self._extract_summary_from_raw(
+                        content, story, language
+                    )
                     summary_text = self._clean_summary_text(summary_text)
                     summary_text = compact_display_summary(
                         summary_text, resolve_information_budget("week", language)
@@ -325,13 +332,13 @@ class SummaryGenerator:
                         "storyline_updates": storyline_updates,
                     }
 
-                last_error = (
-                    f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
-                )
+                last_error = f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
                 logger.warning(f"[Narrative] Attempt {attempt + 1}/2: {last_error}")
 
                 if attempt == 1:
-                    summary_text = self._extract_summary_from_raw(content, story, language)
+                    summary_text = self._extract_summary_from_raw(
+                        content, story, language
+                    )
                     summary_text = self._clean_summary_text(summary_text)
                     summary_text = compact_display_summary(
                         summary_text, resolve_information_budget("week", language)
@@ -422,7 +429,9 @@ class SummaryGenerator:
                     result = {}
                     for key in _empty_result:
                         result[key] = data.get(key, [])
-                    total_items = sum(len(v) for v in result.values() if isinstance(v, list))
+                    total_items = sum(
+                        len(v) for v in result.values() if isinstance(v, list)
+                    )
                     logger.info(
                         f"[WorldExtract] Extracted {total_items} total items across {len(result)} categories"
                     )
@@ -574,14 +583,16 @@ class SummaryGenerator:
                     )
                     return result
 
-                last_error = (
-                    f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
+                last_error = f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
+                logger.warning(
+                    f"[CombinedPostprocess] Attempt {attempt + 1}/2: {last_error}"
                 )
-                logger.warning(f"[CombinedPostprocess] Attempt {attempt + 1}/2: {last_error}")
 
             except Exception as e:
                 last_error = str(e)
-                logger.warning(f"[CombinedPostprocess] Attempt {attempt + 1}/2 failed: {e}")
+                logger.warning(
+                    f"[CombinedPostprocess] Attempt {attempt + 1}/2 failed: {e}"
+                )
 
         logger.error(
             "[CombinedPostprocess] failed after 2 attempts; returning deterministic fallback"
@@ -627,7 +638,9 @@ class SummaryGenerator:
 
         logger.info(f"Generating weekly summary for {len(rounds)} rounds")
 
-        prompt = get_weekly_summary_prompt(rounds, character_settings, language, game_date_info)
+        prompt = get_weekly_summary_prompt(
+            rounds, character_settings, language, game_date_info
+        )
         sys_prompt = get_system_prompt("weekly_summary", language)
 
         last_error: Optional[str] = None
@@ -655,7 +668,11 @@ class SummaryGenerator:
                 if data:
                     summary = data.get(
                         "summary",
-                        ("本周平静地度过了。" if language == "zh" else "This week passed quietly."),
+                        (
+                            "本周平静地度过了。"
+                            if language == "zh"
+                            else "This week passed quietly."
+                        ),
                     )
                     summary = compact_display_summary(
                         self._clean_summary_text(str(summary)),
@@ -685,7 +702,11 @@ class SummaryGenerator:
         # Fallback
         logger.error("generate_weekly_summary failed after 2 attempts, using fallback")
         return {
-            "summary": ("本周平静地度过了。" if language == "zh" else "This week passed quietly."),
+            "summary": (
+                "本周平静地度过了。"
+                if language == "zh"
+                else "This week passed quietly."
+            ),
             "bonus_effects": {},
         }
 
@@ -796,7 +817,9 @@ class SummaryGenerator:
         cleaned = _re.sub(r"^\s*[Jj][Ss][Oo][Nn]\s*[：:]?\s*", "", cleaned)
 
         # Remove JSON structural prefix: {"summary":" or "summary":" or summary:
-        cleaned = _re.sub(r'^\s*\{?\s*["\']?summary["\']?\s*[：:]\s*["\']?', "", cleaned)
+        cleaned = _re.sub(
+            r'^\s*\{?\s*["\']?summary["\']?\s*[：:]\s*["\']?', "", cleaned
+        )
 
         # Remove trailing JSON artifacts: "} or '} or just }
         cleaned = _re.sub(r'["\']?\s*\}\s*$', "", cleaned)
@@ -809,7 +832,9 @@ class SummaryGenerator:
         return apply_professional_risk_guardrail(cleaned.strip(), language="auto")
 
     @staticmethod
-    def _extract_summary_from_raw(content: str, original_story: str, language: str) -> str:
+    def _extract_summary_from_raw(
+        content: str, original_story: str, language: str
+    ) -> str:
         """
         Try to extract a clean summary from raw/malformed AI response.
         Handles cases where JSON parsing fails but summary text exists.
@@ -828,7 +853,9 @@ class SummaryGenerator:
         summary_match = _re.search(r'"summary"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
         if summary_match:
             extracted = summary_match.group(1)
-            extracted = extracted.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
+            extracted = (
+                extracted.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
+            )
             return compact_display_summary(
                 extracted, resolve_information_budget("week", language)
             )

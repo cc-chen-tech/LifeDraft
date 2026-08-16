@@ -117,13 +117,15 @@ def _sanitize_projection_world(value: Any) -> Dict[str, Any]:
     if not isinstance(value, Mapping):
         return defaults
     return {
-        category: [
-            deepcopy(dict(entry))
-            for entry in value.get(category, [])
-            if isinstance(entry, Mapping)
-        ]
-        if isinstance(value.get(category), list)
-        else []
+        category: (
+            [
+                deepcopy(dict(entry))
+                for entry in value.get(category, [])
+                if isinstance(entry, Mapping)
+            ]
+            if isinstance(value.get(category), list)
+            else []
+        )
         for category in defaults
     }
 
@@ -403,7 +405,9 @@ class PlayerDataMixin:
         """
         data = self.to_dict()
         data["round_history"] = (data.get("round_history") or [])[-recent_rounds:]
-        data["decision_history"] = (data.get("decision_history") or [])[-recent_decisions:]
+        data["decision_history"] = (data.get("decision_history") or [])[
+            -recent_decisions:
+        ]
         for key in (
             "story_history",
             "four_week_summaries",

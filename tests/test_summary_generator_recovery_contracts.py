@@ -34,7 +34,9 @@ class _ScriptedProjectionClient:
         return str(response)
 
 
-def test_story_compression_keeps_structured_updates_and_cleans_summary_artifacts() -> None:
+def test_story_compression_keeps_structured_updates_and_cleans_summary_artifacts() -> (
+    None
+):
     client = _DeterministicSummaryClient(
         [
             json.dumps(
@@ -240,9 +242,7 @@ def test_daily_projection_retries_once_then_returns_typed_payload() -> None:
     client = _ScriptedProjectionClient(
         [
             "not json",
-            json.dumps(
-                {"schema_version": 1, "story_patch": {}, "option_patches": {}}
-            ),
+            json.dumps({"schema_version": 1, "story_patch": {}, "option_patches": {}}),
         ]
     )
 
