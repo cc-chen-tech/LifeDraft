@@ -654,11 +654,22 @@ def test_production_deploy_syncs_minimax_secret_to_ecs_env_without_committing_ke
     workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
         encoding="utf-8"
     )
+    model_resolution = (
+        "MINIMAX_TTS_MODEL=\"$(sed -n 's/^MINIMAX_TTS_MODEL=//p' "
+        ".env.example | head -n 1)\""
+    )
 
     assert "MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}" in workflow
     assert "MINIMAX_API_KEY_B64" in workflow
     assert "STORY_TTS_PROVIDER" in workflow
     assert "STORY_TTS_PROVIDER=minimax" in workflow
+    assert model_resolution in workflow
+    assert 'if [ -z "${MINIMAX_TTS_MODEL}" ]; then' in workflow
+    assert "export MINIMAX_TTS_MODEL" in workflow
+    assert '"MINIMAX_TTS_MODEL": os.environ["MINIMAX_TTS_MODEL"]' in workflow
+    assert workflow.index('git reset --hard "${DEPLOY_SHA}"') < workflow.index(
+        model_resolution
+    )
     assert "STORY_TTS_ALLOW_REQUEST_PROVIDER" not in workflow
     assert "STORY_TTS_AUTO_READ_DEFAULT_ENABLED=true" in workflow
     assert "ENABLE_DAILY_TIMELINE_V2=true" in workflow
@@ -710,7 +721,7 @@ def test_env_example_documents_minimax_production_audio_settings() -> None:
 
     required_lines = [
         "MINIMAX_API_KEY=",
-        "MINIMAX_TTS_MODEL=speech-02-turbo",
+        "MINIMAX_TTS_MODEL=speech-2.8-turbo",
         "MINIMAX_TIMEOUT_SECONDS=180",
         "MINIMAX_TTS_MAX_CHARS=50000",
         "STORY_TTS_PROVIDER=minimax",

@@ -510,7 +510,7 @@ def test_expired_prefetch_cleanup_removes_audio_and_subtitle_sidecar(
         voice_id="warm_female",
         speed=1.0,
         provider="minimax",
-        model="speech-02-turbo",
+        model="speech-2.8-turbo",
         storage_path="/api/voice-reading/audio/prefetched-chapter.mp3",
         duration_ms=1_000,
         status="ready",
