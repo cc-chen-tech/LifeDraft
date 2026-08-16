@@ -45,6 +45,25 @@ class ProjectionIdentity:
     story_date: Optional[str] = None
 
 
+class ProjectionSourceHashConflict(RuntimeError):
+    """A caller attempted to ensure an identity with a stale source hash."""
+
+    def __init__(
+        self,
+        identity: ProjectionIdentity,
+        existing_source_hash: str,
+        requested_source_hash: str,
+    ) -> None:
+        super().__init__(
+            "daily_world_projection_source_hash_conflict "
+            f"game_id={identity.game_id} event_id={identity.event_id} "
+            f"revision={identity.revision}"
+        )
+        self.identity = identity
+        self.existing_source_hash = existing_source_hash
+        self.requested_source_hash = requested_source_hash
+
+
 class DailyWorldProjectionRepository:
     """Use compare-and-set updates so stale workers cannot publish projections."""
 
@@ -56,7 +75,7 @@ class DailyWorldProjectionRepository:
     ) -> DailyWorldProjection:
         existing = self._find_identity(identity)
         if existing is not None:
-            return self._ensure_existing_source(existing, identity, source_hash)
+            return self._ensure_matching_source(existing, identity, source_hash)
 
         task = DailyWorldProjection(
             game_id=identity.game_id,
@@ -76,7 +95,7 @@ class DailyWorldProjectionRepository:
             existing = self._find_identity(identity)
             if existing is None:
                 raise
-            return self._ensure_existing_source(existing, identity, source_hash)
+            return self._ensure_matching_source(existing, identity, source_hash)
         return task
 
     def claim_due(
@@ -387,62 +406,69 @@ class DailyWorldProjectionRepository:
             .one_or_none()
         )
 
-    def _ensure_existing_source(
+    def _ensure_matching_source(
         self,
         existing: DailyWorldProjection,
         identity: ProjectionIdentity,
         source_hash: str,
     ) -> DailyWorldProjection:
-        """Reset only a still-reprocessable row whose accepted source changed."""
+        """Return a matching identity or reject a source without ordering authority."""
 
-        for _ in range(3):
-            if existing.source_hash == source_hash:
-                return existing
-            if existing.status not in REPROCESSABLE_STATUSES:
-                return existing
-            now = datetime.utcnow()
-            updated = (
-                self.db.query(DailyWorldProjection)
-                .filter(
-                    DailyWorldProjection.projection_id == existing.projection_id,
-                    DailyWorldProjection.game_id == identity.game_id,
-                    DailyWorldProjection.event_id == identity.event_id,
-                    DailyWorldProjection.revision == identity.revision,
-                    DailyWorldProjection.source_hash == existing.source_hash,
-                    DailyWorldProjection.status.in_(REPROCESSABLE_STATUSES),
-                )
-                .update(
-                    {
-                        DailyWorldProjection.day_index: identity.day_index,
-                        DailyWorldProjection.story_date: identity.story_date,
-                        DailyWorldProjection.source_hash: source_hash,
-                        DailyWorldProjection.status: "pending",
-                        DailyWorldProjection.story_patch_json: None,
-                        DailyWorldProjection.option_patches_json: None,
-                        DailyWorldProjection.coverage_json: None,
-                        DailyWorldProjection.attempt_count: 0,
-                        DailyWorldProjection.next_attempt_at: now,
-                        DailyWorldProjection.lease_owner: None,
-                        DailyWorldProjection.lease_expires_at: None,
-                        DailyWorldProjection.error_code: None,
-                        DailyWorldProjection.applied_at: None,
-                        DailyWorldProjection.updated_at: now,
-                    },
-                    synchronize_session=False,
-                )
+        if existing.source_hash != source_hash:
+            raise ProjectionSourceHashConflict(
+                identity, existing.source_hash, source_hash
             )
-            self.db.flush()
-            self.db.expire_all()
-            if updated == 1:
-                reset = self.db.get(DailyWorldProjection, existing.projection_id)
-                if reset is not None:
-                    return reset
-            self._log_fenced("ensure_projection", int(existing.projection_id))
-            refreshed = self._find_identity(identity)
-            if refreshed is None:
-                break
-            existing = refreshed
         return existing
+
+    def replace_projection_source(
+        self,
+        identity: ProjectionIdentity,
+        *,
+        expected_old_hash: str,
+        new_hash: str,
+    ) -> Optional[DailyWorldProjection]:
+        """Atomically reset a caller-authorized, reprocessable source revision."""
+
+        now = datetime.utcnow()
+        updated = (
+            self.db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == identity.game_id,
+                DailyWorldProjection.event_id == identity.event_id,
+                DailyWorldProjection.revision == identity.revision,
+                DailyWorldProjection.source_hash == expected_old_hash,
+                DailyWorldProjection.status.in_(REPROCESSABLE_STATUSES),
+            )
+            .update(
+                {
+                    DailyWorldProjection.day_index: identity.day_index,
+                    DailyWorldProjection.story_date: identity.story_date,
+                    DailyWorldProjection.source_hash: new_hash,
+                    DailyWorldProjection.status: "pending",
+                    DailyWorldProjection.story_patch_json: None,
+                    DailyWorldProjection.option_patches_json: None,
+                    DailyWorldProjection.coverage_json: None,
+                    DailyWorldProjection.attempt_count: 0,
+                    DailyWorldProjection.next_attempt_at: now,
+                    DailyWorldProjection.lease_owner: None,
+                    DailyWorldProjection.lease_expires_at: None,
+                    DailyWorldProjection.error_code: None,
+                    DailyWorldProjection.applied_at: None,
+                    DailyWorldProjection.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
+        self.db.flush()
+        self.db.expire_all()
+        if updated != 1:
+            existing = self._find_identity(identity)
+            if existing is not None:
+                self._log_fenced(
+                    "replace_projection_source", int(existing.projection_id)
+                )
+            return None
+        return self._find_identity(identity)
 
     @staticmethod
     def _payload_data(payload: "WorldProjectionPayload") -> dict[str, Any]:

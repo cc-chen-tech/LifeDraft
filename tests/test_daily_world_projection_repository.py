@@ -11,6 +11,7 @@ from src.database.models import DailyWorldProjection
 from src.services.daily_world_projection_repository import (
     DailyWorldProjectionRepository,
     ProjectionIdentity,
+    ProjectionSourceHashConflict,
 )
 
 
@@ -44,10 +45,10 @@ def test_projection_identity_is_unique(db_session) -> None:
     assert db_session.query(DailyWorldProjection).count() == 1
 
 
-def test_ensure_replaces_reprocessable_source_and_never_resurrects_terminal_rows(
+def test_controlled_source_replacement_blocks_delayed_generic_ensures_and_terminals(
     db_session, frozen_now
 ) -> None:
-    """A changed accepted source restarts only a reprocessable projection identity."""
+    """Only an ordered source CAS can replace a reprocessable projection row."""
 
     repo = DailyWorldProjectionRepository(db_session)
     payload = {"story_patch": {"fact_updates": [{"fact": "old"}]}, "option_patches": {}}
@@ -65,8 +66,16 @@ def test_ensure_replaces_reprocessable_source_and_never_resurrects_terminal_rows
     original.applied_at = frozen_now
     db_session.flush()
 
-    replacement = repo.ensure_projection(identity(), source_hash="hash-b")
+    with pytest.raises(ProjectionSourceHashConflict):
+        repo.ensure_projection(identity(), source_hash="hash-b")
+    assert original.source_hash == "hash-a"
+    assert original.status == "ready"
 
+    replacement = repo.replace_projection_source(
+        identity(), expected_old_hash="hash-a", new_hash="hash-b"
+    )
+
+    assert replacement is not None
     assert replacement.projection_id == original.projection_id
     assert replacement.source_hash == "hash-b"
     assert replacement.status == "pending"
@@ -79,6 +88,17 @@ def test_ensure_replaces_reprocessable_source_and_never_resurrects_terminal_rows
     assert replacement.lease_owner is None
     assert replacement.lease_expires_at is None
     assert replacement.applied_at is None
+
+    with pytest.raises(ProjectionSourceHashConflict):
+        repo.ensure_projection(identity(), source_hash="hash-a")
+    assert replacement.source_hash == "hash-b"
+    assert replacement.status == "pending"
+    assert (
+        repo.replace_projection_source(
+            identity(), expected_old_hash="hash-a", new_hash="hash-c"
+        )
+        is None
+    )
 
     [replacement_claim] = repo.claim_due(now=frozen_now, worker_id="worker-b", limit=1)
     assert replacement_claim.source_hash == "hash-b"
@@ -101,13 +121,25 @@ def test_ensure_replaces_reprocessable_source_and_never_resurrects_terminal_rows
     )
 
     assert repo.mark_applied(replacement.projection_id, "hash-b", frozen_now)
-    applied = repo.ensure_projection(identity(), source_hash="hash-c")
+    applied = repo.ensure_projection(identity(), source_hash="hash-b")
     assert applied.source_hash == "hash-b"
     assert applied.status == "applied"
+    assert (
+        repo.replace_projection_source(
+            identity(), expected_old_hash="hash-b", new_hash="hash-c"
+        )
+        is None
+    )
     assert repo.supersede(applied.game_id, applied.event_id, before_revision=2) == 1
-    superseded = repo.ensure_projection(identity(), source_hash="hash-d")
+    superseded = repo.ensure_projection(identity(), source_hash="hash-b")
     assert superseded.source_hash == "hash-b"
     assert superseded.status == "superseded"
+    assert (
+        repo.replace_projection_source(
+            identity(), expected_old_hash="hash-b", new_hash="hash-d"
+        )
+        is None
+    )
 
 
 def test_mark_ready_persists_explicit_coverage_argument(db_session, frozen_now) -> None:
@@ -160,7 +192,10 @@ def test_old_source_cannot_renew_or_retry_after_same_worker_reclaims_reset_row(
     [first_claim] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
     old_source_hash = str(first_claim.source_hash)
 
-    replacement = repo.ensure_projection(identity(), source_hash="hash-b")
+    replacement = repo.replace_projection_source(
+        identity(), expected_old_hash="hash-a", new_hash="hash-b"
+    )
+    assert replacement is not None
     [replacement_claim] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
     lease_before = replacement_claim.lease_expires_at
     next_attempt_before = replacement_claim.next_attempt_at

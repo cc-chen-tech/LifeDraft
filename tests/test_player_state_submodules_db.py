@@ -293,20 +293,30 @@ class TestPlayerDataDB:
         """Malformed legacy projection fields cannot become downstream world inputs."""
         legacy = {
             "world_projection_state": {
-                "projected_through_day_index": "not-a-day",
-                "applied_through_day_index": "7",
-                "pending_from_day_index": {"bad": "shape"},
-                "oldest_pending_at": ["not", "a", "scalar"],
+                "version": 2,
+                "projected_through_day_index": -2,
+                "applied_through_day_index": True,
+                "pending_from_day_index": "-1",
+                "oldest_pending_at": {"not": "a scalar"},
                 "applied_sources": [
                     {"event_id": "evt-7", "revision": 2, "day_index": 7},
-                    "not-a-source",
-                    {"event_id": "evt-bad", "revision": "two", "day_index": 8},
+                    ["evt-list", 3, 8],
+                    {
+                        "event_id": "evt-nested",
+                        "revision": {"not": "an integer"},
+                        "day_index": 8,
+                    },
                 ],
                 "world": {
                     "fact_updates": {"not": "a-list"},
                     "foreshadowing_seeds": "not-a-list",
                     "habit_updates": None,
-                    "location_updates": [{"name": "花果山"}],
+                    "location_updates": [
+                        {"name": "花果山"},
+                        "not-a-mapping",
+                        3,
+                        ["nested", "list"],
+                    ],
                     "career_updates": {"not": "a-list"},
                     "commitment_updates": "not-a-list",
                     "causal_updates": 3,
@@ -318,8 +328,9 @@ class TestPlayerDataDB:
         state = PlayerState.from_dict(legacy)
 
         assert legacy == before
+        assert state.world_projection_state["version"] == 1
         assert state.world_projection_state["projected_through_day_index"] == -1
-        assert state.world_projection_state["applied_through_day_index"] == 7
+        assert state.world_projection_state["applied_through_day_index"] == -1
         assert state.world_projection_state["pending_from_day_index"] is None
         assert state.world_projection_state["oldest_pending_at"] is None
         assert state.world_projection_state["applied_sources"] == [
