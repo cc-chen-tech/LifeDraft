@@ -130,7 +130,9 @@ class QuickValidator:
         "此时",
         "紧接着",
     )
-    CHINESE_NAME_CLAUSE_BOUNDARY_CHARS = frozenset("，。；！？：,.;!?:\n\r")
+    CHINESE_NAME_CLAUSE_BOUNDARY_CHARS = frozenset(
+        "，。；！？：,.;!?:\n\r“‘「『（([{【《〈\"'"
+    )
     CHINESE_NAME_GOVERNANCE_PREFIXES = (
         "制定",
         "分配",
@@ -143,6 +145,16 @@ class QuickValidator:
         "谈判",
         "签署",
         "统筹",
+    )
+    CHINESE_NAME_ROLE_TRANSFER_PREFIXES = (
+        "接管",
+        "主导",
+        "推进主线",
+        "决定下一步",
+        "陪她",
+        "陪他",
+        "复盘",
+        "安抚情绪",
     )
     CHINESE_NAME_ACTION_MODIFIERS = (
         "立即",
@@ -675,14 +687,7 @@ class QuickValidator:
             "产品负责人",
             "同事",
             "朋友",
-            "接管",
-            "主导",
-            "推进主线",
-            "决定下一步",
-            "陪她",
-            "陪他",
-            "复盘",
-            "安抚情绪",
+            *self.CHINESE_NAME_ROLE_TRANSFER_PREFIXES,
         ]
         for name in invented_names:
             if self._is_explicitly_identified_non_person(text, name):
@@ -809,16 +814,19 @@ class QuickValidator:
         """Return coordinated Chinese names and the start of their shared action."""
         surname_class = re.escape(self.COMMON_CHINESE_SURNAMES)
         name_token = rf"[{surname_class}][\u4e00-\u9fff]{{1,2}}"
-        action_starts = "|".join(
+        action_modifiers = "|".join(
+            re.escape(prefix) for prefix in self.CHINESE_NAME_ACTION_MODIFIERS
+        )
+        person_action_starts = "|".join(
             re.escape(prefix)
             for prefix in (
-                *self.CHINESE_NAME_ACTION_MODIFIERS,
                 *self.CHINESE_NAME_GOVERNANCE_PREFIXES,
+                *self.CHINESE_NAME_ROLE_TRANSFER_PREFIXES,
             )
         )
         pattern = re.compile(
             rf"(?P<names>{name_token}(?:(?:、|与|和|及){name_token})+)"
-            rf"(?={action_starts})"
+            rf"(?=(?:(?:{action_modifiers})){{0,2}}(?:{person_action_starts}))"
         )
         groups: List[tuple[tuple[str, ...], int]] = []
         for match in pattern.finditer(text):
@@ -828,14 +836,51 @@ class QuickValidator:
                     match.group("names"),
                 )
             )
+            has_person_context = self._coordinated_group_has_person_context(
+                text,
+                match.end(),
+            )
             if all(
-                self._is_plausible_coordinated_person_name(name)
+                self._is_plausible_coordinated_person_name(
+                    name,
+                    allow_ambiguous_particle=has_person_context,
+                )
                 for name in actor_names
             ):
                 groups.append((actor_names, match.end()))
         return groups
 
-    def _is_plausible_coordinated_person_name(self, candidate: str) -> bool:
+    def _coordinated_group_has_person_context(
+        self,
+        text: str,
+        action_start: int,
+    ) -> bool:
+        """Return whether following prose explicitly identifies a human group."""
+        following_text = text[
+            action_start:
+            action_start + self.CHINESE_GOVERNANCE_ACTION_LOOKAHEAD * 3
+        ]
+        following_text = re.split(
+            r"[，。；！？：,.;!?:\n\r]",
+            following_text,
+            maxsplit=1,
+        )[0]
+        return bool(
+            re.search(
+                r"(?:他们|她们|二人|两人|三人|"
+                r"(?:这|那)?(?:两|二|三|四|五|六|七|八|九|几)"
+                r"(?:名|位|个)?[\u4e00-\u9fff]{0,4}"
+                r"(?:人|顾问|同事|伙伴|朋友|成员|导师|投资人))",
+                following_text,
+            )
+        )
+
+    def _is_plausible_coordinated_person_name(
+        self,
+        candidate: str,
+        *,
+        allow_ambiguous_particle: bool = False,
+    ) -> bool:
         """Reject coordinated governance objects before treating the pair as people."""
         if candidate in self.CHINESE_GOVERNANCE_OBJECT_TERMS or any(
             candidate == term or candidate.endswith(term)
@@ -848,13 +893,24 @@ class QuickValidator:
         ):
             return False
         # Coordination delimiters are parsed between complete name tokens, so
-        # 和/与/及 inside a token belong to the given name (for example 马和平).
-        # Keep rejecting other grammatical particles that make a broad match
-        # implausible as a person name.
+        # 和/与/及 can be a one-character given name or appear inside a longer
+        # given name. Other particle-shaped characters need both the shape of
+        # a three-character name and explicit following human-group context.
+        # This keeps names such as 陈可欣 while rejecting open-ended object
+        # compounds such as 方向键 without maintaining an object suffix list.
         non_conjunction_particles = self.CHINESE_NAME_GRAMMATICAL_PARTICLES - set(
             "和与及"
         )
-        if any(char in non_conjunction_particles for char in candidate):
+        particle_indexes = [
+            index
+            for index, char in enumerate(candidate)
+            if char in non_conjunction_particles
+        ]
+        if particle_indexes and not (
+            allow_ambiguous_particle
+            and len(candidate) == 3
+            and particle_indexes == [1]
+        ):
             return False
         return not (
             len(candidate) == 3
