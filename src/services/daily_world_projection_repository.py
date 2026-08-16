@@ -313,6 +313,17 @@ class DailyWorldProjectionRepository:
         now = datetime.utcnow()
         updated_count = 0
         for candidate in candidates:
+            if self._supersede_candidate(candidate, now):
+                updated_count += 1
+        self.db.flush()
+        self.db.expire_all()
+        return updated_count
+
+    def _supersede_candidate(self, candidate: Any, now: datetime) -> bool:
+        """Follow a bounded source replacement race until the old revision is fenced."""
+
+        expected_hash = candidate.source_hash
+        for _ in range(3):
             updated = (
                 self.db.query(DailyWorldProjection)
                 .filter(
@@ -320,7 +331,7 @@ class DailyWorldProjectionRepository:
                     DailyWorldProjection.game_id == candidate.game_id,
                     DailyWorldProjection.event_id == candidate.event_id,
                     DailyWorldProjection.revision == candidate.revision,
-                    DailyWorldProjection.source_hash == candidate.source_hash,
+                    DailyWorldProjection.source_hash == expected_hash,
                     DailyWorldProjection.status != "superseded",
                 )
                 .update(
@@ -333,12 +344,24 @@ class DailyWorldProjectionRepository:
                     synchronize_session=False,
                 )
             )
-            updated_count += int(updated)
-            if updated == 0:
-                self._log_fenced("supersede", int(candidate.projection_id))
-        self.db.flush()
-        self.db.expire_all()
-        return updated_count
+            self.db.flush()
+            self.db.expire_all()
+            if updated == 1:
+                return True
+            current = self.db.get(DailyWorldProjection, candidate.projection_id)
+            if (
+                current is None
+                or current.game_id != candidate.game_id
+                or current.event_id != candidate.event_id
+                or current.revision != candidate.revision
+                or current.status == "superseded"
+            ):
+                return False
+            expected_hash = current.source_hash
+        raise RuntimeError(
+            "daily_world_projection_supersede_source_conflict "
+            f"projection_id={candidate.projection_id}"
+        )
 
     def start_attempt(self, projection_id: int, game_id: int, now: datetime) -> int:
         attempt = DailyWorldProjectionAttempt(
@@ -428,6 +451,12 @@ class DailyWorldProjectionRepository:
         new_hash: str,
     ) -> Optional[DailyWorldProjection]:
         """Atomically reset a caller-authorized, reprocessable source revision."""
+
+        if expected_old_hash == new_hash:
+            existing = self._find_identity(identity)
+            if existing is not None and existing.source_hash == expected_old_hash:
+                return existing
+            return None
 
         now = datetime.utcnow()
         updated = (

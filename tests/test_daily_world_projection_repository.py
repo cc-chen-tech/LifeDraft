@@ -357,10 +357,10 @@ def test_supersede_fences_an_old_revision_that_becomes_ready_during_update(
     )
 
 
-def test_supersede_is_fenced_when_source_hash_changes_during_update(
+def test_supersede_retries_when_source_hash_changes_during_update(
     db_session,
 ) -> None:
-    """A projection whose accepted source changed cannot be superseded by a stale scan."""
+    """A controlled source replacement cannot leave an obsolete revision runnable."""
 
     repo = DailyWorldProjectionRepository(db_session)
     older = repo.ensure_projection(identity(revision=1), source_hash="hash-old")
@@ -388,7 +388,7 @@ def test_supersede_is_fenced_when_source_hash_changes_during_update(
         replace_source_before_supersede,
     )
     try:
-        assert repo.supersede(older.game_id, older.event_id, before_revision=2) == 0
+        assert repo.supersede(older.game_id, older.event_id, before_revision=2) == 1
     finally:
         event.remove(
             db_session.bind,
@@ -400,4 +400,36 @@ def test_supersede_is_fenced_when_source_hash_changes_during_update(
     db_session.expire_all()
     persisted = db_session.get(DailyWorldProjection, older.projection_id)
     assert persisted.source_hash == "hash-new"
-    assert persisted.status == "pending"
+    assert persisted.status == "superseded"
+
+
+def test_identical_source_replacement_does_not_reset_a_ready_projection(
+    db_session, frozen_now
+) -> None:
+    """A no-op replacement retains all completed work for the identical source."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    task = repo.ensure_projection(identity(), source_hash="hash-a")
+    [claimed] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    payload = {
+        "story_patch": {"fact_updates": [{"fact": "kept"}]},
+        "option_patches": {},
+    }
+    assert repo.mark_ready(
+        claimed.projection_id, "worker-a", "hash-a", payload, no_change=False
+    )
+    before = db_session.get(DailyWorldProjection, task.projection_id)
+    before_attempts = before.attempt_count
+    before_updated_at = before.updated_at
+
+    unchanged = repo.replace_projection_source(
+        identity(), expected_old_hash="hash-a", new_hash="hash-a"
+    )
+
+    assert unchanged is not None
+    db_session.expire_all()
+    persisted = db_session.get(DailyWorldProjection, task.projection_id)
+    assert persisted.status == "ready"
+    assert persisted.story_patch_json == payload["story_patch"]
+    assert persisted.attempt_count == before_attempts
+    assert persisted.updated_at == before_updated_at
