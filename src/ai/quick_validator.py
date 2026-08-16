@@ -146,6 +146,16 @@ class QuickValidator:
         "签署",
         "统筹",
     )
+    CHINESE_NAME_ROLE_TRANSFER_PREFIXES = (
+        "接管",
+        "主导",
+        "推进主线",
+        "决定下一步",
+        "陪她",
+        "陪他",
+        "复盘",
+        "安抚情绪",
+    )
     CHINESE_NAME_ACTION_MODIFIERS = (
         "立即",
         "很快",
@@ -677,14 +687,7 @@ class QuickValidator:
             "产品负责人",
             "同事",
             "朋友",
-            "接管",
-            "主导",
-            "推进主线",
-            "决定下一步",
-            "陪她",
-            "陪他",
-            "复盘",
-            "安抚情绪",
+            *self.CHINESE_NAME_ROLE_TRANSFER_PREFIXES,
         ]
         for name in invented_names:
             if self._is_explicitly_identified_non_person(text, name):
@@ -814,12 +817,16 @@ class QuickValidator:
         action_modifiers = "|".join(
             re.escape(prefix) for prefix in self.CHINESE_NAME_ACTION_MODIFIERS
         )
-        governance_starts = "|".join(
-            re.escape(prefix) for prefix in self.CHINESE_NAME_GOVERNANCE_PREFIXES
+        person_action_starts = "|".join(
+            re.escape(prefix)
+            for prefix in (
+                *self.CHINESE_NAME_GOVERNANCE_PREFIXES,
+                *self.CHINESE_NAME_ROLE_TRANSFER_PREFIXES,
+            )
         )
         pattern = re.compile(
             rf"(?P<names>{name_token}(?:(?:、|与|和|及){name_token})+)"
-            rf"(?=(?:(?:{action_modifiers})){{0,2}}(?:{governance_starts}))"
+            rf"(?=(?:(?:{action_modifiers})){{0,2}}(?:{person_action_starts}))"
         )
         groups: List[tuple[tuple[str, ...], int]] = []
         for match in pattern.finditer(text):
@@ -853,6 +860,11 @@ class QuickValidator:
             action_start:
             action_start + self.CHINESE_GOVERNANCE_ACTION_LOOKAHEAD * 3
         ]
+        following_text = re.split(
+            r"[，。；！？：,.;!?:\n\r]",
+            following_text,
+            maxsplit=1,
+        )[0]
         return bool(
             re.search(
                 r"(?:他们|她们|二人|两人|三人|"

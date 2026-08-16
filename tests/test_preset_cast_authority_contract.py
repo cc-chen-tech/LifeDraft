@@ -555,6 +555,25 @@ def test_quick_validator_rejects_coordinated_outside_plot_drivers() -> None:
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
+def test_quick_validator_rejects_coordinated_role_transfer() -> None:
+    """Coordinated outside actors remain visible to role-transfer checks."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然在开场离开。"
+            "赵强与方蕾共同主导项目，接管了下一阶段。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外关键角色替代预设关系网" in issue for issue in result.issues)
+
+
 def test_quick_validator_treats_technical_occupations_as_people() -> None:
     """Technical occupation nouns do not establish an object identity."""
     from src.ai.quick_validator import quick_validate_story
@@ -796,8 +815,8 @@ def test_quick_validator_preserves_particle_shaped_characters_inside_given_names
     result = quick_validate_story(
         story_text=(
             "陆昊然和陈晓雨在开场打过招呼便离开会议室。"
-            f"{given_name}、赵强、方蕾共同制定方案。"
-            "接下来的项目完全按照这三名临时顾问的安排执行。"
+            f"{given_name}、赵强、方蕾共同制定由这三名临时顾问负责的方案。"
+            "接下来的项目完全按照他们的安排执行。"
         ),
         character_settings=settings,
         available_people=["陆昊然", "陈晓雨", "林一凡"],
@@ -871,6 +890,25 @@ def test_quick_validator_ignores_other_particle_shaped_coordinated_objects() -> 
         story_text=(
             "陆昊然与同事复盘项目，"
             "方向键与安全阀共同确定产品策略。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
+def test_quick_validator_does_not_borrow_person_context_from_later_sentence() -> None:
+    """An unrelated later group cannot turn preceding objects into people."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然与同事复盘项目，方向键与安全阀共同确定产品策略。"
+            "随后三名顾问进入会议室。"
         ),
         character_settings=settings,
         available_people=["陆昊然", "陈晓雨", "林一凡"],
