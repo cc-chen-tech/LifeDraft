@@ -461,6 +461,12 @@ class StoryGenerator:
             )
 
         world_model = self._build_world_model_from_state_dict(player_state)
+        if world_model is not None:
+            established_facts = getattr(
+                world_model,
+                "hard_established_facts",
+                established_facts,
+            )
 
         story_prompt = get_story_only_prompt(
             player_state,
@@ -707,6 +713,12 @@ class StoryGenerator:
         style_constraints = _build_style_constraints_text(
             self._prompt_builder, language
         )
+        if world_model is not None:
+            established_facts = getattr(
+                world_model,
+                "hard_established_facts",
+                established_facts,
+            )
 
         # Get round story prompt
         prompt = get_round_event_prompt(
@@ -2060,8 +2072,22 @@ class StoryGenerator:
                 established_facts=player_state.get("established_facts", []),
                 world_model_data=player_state.get("world_model_data", {}),
                 continuity_ledger=player_state.get("continuity_ledger", {}),
+                timeline=player_state.get("timeline"),
+                timeline_version=player_state.get("timeline_version"),
+                day_history=player_state.get("day_history", []),
             )
-            world_model = WorldModel.from_player_state(state_obj)
+            timeline = player_state.get("timeline")
+            if isinstance(timeline, dict) and timeline.get("version") == 2:
+                from src.game.world_constraint_freshness import (
+                    build_validation_world_model,
+                )
+
+                validation_view = build_validation_world_model(state_obj)
+                world_model = validation_view.world_model
+                world_model.soft_context = validation_view.soft_context
+                world_model.constraint_freshness = validation_view.freshness
+            else:
+                world_model = WorldModel.from_player_state(state_obj)
             world_model.continuity_source_state = player_state
             return world_model
         except Exception as exc:
