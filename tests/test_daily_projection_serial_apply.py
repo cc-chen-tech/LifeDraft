@@ -605,9 +605,10 @@ def test_choice_save_downgrades_incomplete_ready_option_patch_to_pending(
     assert result["next_timeline"]["day_index"] == 1
     assert state.day_history[-1]["world_projection_status"] == "pending"
     assert state.world_projection_state["world"]["fact_updates"] == []
-    assert _latest(Session, game_id)["day_history"][-1][
-        "world_projection_status"
-    ] == "pending"
+    assert (
+        _latest(Session, game_id)["day_history"][-1]["world_projection_status"]
+        == "pending"
+    )
 
 
 def test_normal_save_cannot_overwrite_cross_process_projection_apply(
