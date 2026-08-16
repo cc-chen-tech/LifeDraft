@@ -26,8 +26,8 @@ Subsequent behavior-level RED runs established:
 - an absent settled-day row incorrectly cleared `pending_from_day_index`.
 - a failed `mark_applied` was not replayed by the next `run_once()` scan.
 
-Each failure was observed before its production change. The final focused run is
-27 passed, and the Task 1–4 affected run is 275 passed.
+Each failure was observed before its production change. The final independent
+focused run is 35 passed, and the Task 1–4 affected run is 275 passed.
 
 ## Implemented behavior
 
@@ -55,12 +55,20 @@ Each failure was observed before its production change. The final focused run is
 - Worker publication triggers serial application, while choice completion only
   schedules a model-free background apply/wake. No provider session is created
   by the choice path.
+- Choice lookup is scoped by `game_id` as well as event/revision/day/source.
+  Save-time game-row locking rebuilds the derived layer from durable rows, so a
+  superseded detached snapshot or stale cross-process save cannot publish or
+  erase a projection. The same merge repairs history status/id/identity and
+  rejects a genuinely conflicting already-settled option.
+- Active sessions registered during an apply are captured before publication;
+  malformed derived rows stop at the gap and remain pending instead of turning
+  canonical choice persistence into a hard failure.
 
 ## Verification
 
 ```text
 python -m pytest tests/test_world_projection_state.py tests/test_daily_choice_processor.py tests/test_daily_projection_serial_apply.py -q
-27 passed
+35 passed
 
 python -m pytest tests/test_daily_world_projection_service.py tests/test_daily_world_projection_repository.py tests/test_daily_projection_enqueue.py tests/test_daily_recommended_prefetch.py tests/test_daily_event_revision.py tests/test_api_lifespan.py tests/test_player_state_submodules_db.py tests/test_world_constraint_freshness.py tests/test_world_projection_schema.py tests/test_world_projection_coverage.py -q
 275 passed, 1 deprecation warning
