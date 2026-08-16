@@ -40,6 +40,7 @@ def _commit_candidate(
     original: GameEvent,
     candidate: GameEvent,
     persist_callback: Any = None,
+    accepted_callback: Any = None,
 ) -> GameEvent:
     if not candidate.event_description or len(candidate.options) < 2:
         raise ValueError("invalid_daily_event_candidate")
@@ -57,6 +58,8 @@ def _commit_candidate(
     loop.player_state.current_event_data = committed.model_dump()
     if persist_callback is not None and not persist_callback(loop.player_state):
         raise RuntimeError("daily_event_persistence_failed")
+    if accepted_callback is not None:
+        accepted_callback(committed)
     return committed
 
 
@@ -64,6 +67,7 @@ def regenerate_daily_event_atomically(
     loop: Any,
     *,
     persist_callback: Any = None,
+    accepted_callback: Any = None,
     operation_id: str | None = None,
     **generation_kwargs: Any,
 ) -> GameEvent:
@@ -106,6 +110,8 @@ def regenerate_daily_event_atomically(
             loop.player_state.resume_view = None
             if persist_callback is not None and not persist_callback(loop.player_state):
                 raise RuntimeError("daily_event_persistence_failed")
+            if accepted_callback is not None:
+                accepted_callback(committed)
             return committed
         except Exception:
             _restore_state(loop, original_state, original)
@@ -126,6 +132,7 @@ def rewrite_daily_event_atomically(
     user_instruction: str,
     language: str,
     persist_callback: Any = None,
+    accepted_callback: Any = None,
 ) -> GameEvent:
     """Rewrite prose, regenerate matching options, then commit both together."""
     with _mutation_lock(loop):
@@ -148,10 +155,16 @@ def rewrite_daily_event_atomically(
             )
             candidate = GameEvent(
                 event_description=rewritten,
-                options=[option.model_copy(deep=True) for option in options_event.options],
+                options=[
+                    option.model_copy(deep=True) for option in options_event.options
+                ],
             )
             return _commit_candidate(
-                loop, original, candidate, persist_callback=persist_callback
+                loop,
+                original,
+                candidate,
+                persist_callback=persist_callback,
+                accepted_callback=accepted_callback,
             )
         except Exception:
             _restore_state(loop, original_state, original)

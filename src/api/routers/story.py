@@ -10,8 +10,13 @@ from fastapi.responses import StreamingResponse
 
 from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.story_exceptions import StoryRewriteFailure
-from src.api.deps import get_current_user_optional, get_db, require_session as _require_session  # noqa: N813
+from src.api.deps import (
+    get_current_user_optional,
+    get_db,
+    require_session as _require_session,
+)  # noqa: N813
 from src.api.routers.gameplay.sse_helpers import (
+    _enqueue_accepted_daily_projection,
     invalidate_daily_media_after_event_replacement,
     persist_rewritten_current_event,
     stream_regenerate,
@@ -66,6 +71,9 @@ async def rewrite_story(
                 ),
             )
             invalidate_daily_media_after_event_replacement(game_loop, game_id)
+            _enqueue_accepted_daily_projection(
+                game_id, event, game_loop.player_state, replacement=True
+            )
             return {
                 "new_story": event.event_description,
                 "rewritten_story": event.event_description,
@@ -152,6 +160,9 @@ async def regenerate_story(
                 ),
             )
             invalidate_daily_media_after_event_replacement(game_loop, game_id)
+            _enqueue_accepted_daily_projection(
+                game_id, new_event, game_loop.player_state, replacement=True
+            )
             return {
                 "new_story": new_event.event_description,
                 "event": new_event.model_dump(),

@@ -330,6 +330,37 @@ class DailyWorldProjectionService:
     ) -> Any:
         """Persist an idempotent row without starting a model or worker."""
 
+        identity, source_hash = self._projection_identity_and_source(
+            identity_or_game_id, story_or_event, options_or_state
+        )
+        return self._transaction(
+            lambda _session, repo: repo.ensure_projection(identity, source_hash)
+        )
+
+    def ensure_replacement_world_projection(
+        self, game_id: int, event: Any, player_state: Any
+    ) -> Any:
+        """Persist a replacement row and fence every older revision atomically."""
+
+        identity, source_hash = self._projection_identity_and_source(
+            game_id, event, player_state
+        )
+
+        def ensure_and_supersede(_session: Any, repo: Any) -> Any:
+            projection = repo.ensure_projection(identity, source_hash)
+            repo.supersede(
+                identity.game_id, identity.event_id, before_revision=identity.revision
+            )
+            return projection
+
+        return self._transaction(ensure_and_supersede)
+
+    @staticmethod
+    def _projection_identity_and_source(
+        identity_or_game_id: Any, story_or_event: Any, options_or_state: Any
+    ) -> tuple[ProjectionIdentity, str]:
+        """Normalize the frozen enqueue arguments without starting a worker."""
+
         if isinstance(identity_or_game_id, ProjectionIdentity):
             identity = identity_or_game_id
             story = str(story_or_event)
@@ -360,9 +391,7 @@ class DailyWorldProjectionService:
             story = str(field(event, "event_description", field(event, "story", "")))
             options = field(event, "options", [])
         source_hash = compute_projection_source_hash(story, options)
-        return self._transaction(
-            lambda _session, repo: repo.ensure_projection(identity, source_hash)
-        )
+        return identity, source_hash
 
     def _release_claims(
         self, claims: Sequence[tuple[int, str]], owner: str, now: datetime
@@ -1068,3 +1097,38 @@ def get_daily_world_projection_service() -> DailyWorldProjectionService:
         if _service is None:
             _service = DailyWorldProjectionService()
         return _service
+
+
+def enqueue_accepted_daily_world_projection(
+    game_id: int,
+    event: Any,
+    player_state: Any,
+    *,
+    replacement: bool = False,
+) -> bool:
+    """Best-effort durable enqueue after an event's canonical save commits."""
+
+    service: Optional[DailyWorldProjectionService] = None
+    try:
+        service = get_daily_world_projection_service()
+        if replacement:
+            service.ensure_replacement_world_projection(game_id, event, player_state)
+        else:
+            service.ensure_world_projection(game_id, event, player_state)
+        return True
+    except Exception:
+        logger.exception(
+            "accepted daily event projection enqueue failed game_id=%s event_id=%s revision=%s",
+            game_id,
+            getattr(event, "event_id", None),
+            getattr(event, "revision", None),
+        )
+        return False
+    finally:
+        if service is not None:
+            try:
+                service.wake()
+            except Exception:
+                logger.exception(
+                    "daily world projection wake failed game_id=%s", game_id
+                )
