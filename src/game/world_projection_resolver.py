@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Mapping, Optional, Sequence
@@ -13,15 +14,13 @@ from src.game.world_constraint_freshness import WorldConstraintFreshness
 from src.game.world_model import WorldModel
 
 
-_LEGACY_DERIVED_FACT_CATEGORIES = {
-    "location",
-    "role",
-    "career",
-    "commitment",
-    "causal",
-    "cause",
-    "consequence",
-    "habit",
+_IMMUTABLE_BASE_FACT_CATEGORIES = {
+    "identity",
+    "immutable_identity",
+    "base_identity",
+    "origin",
+    "birth",
+    "species",
 }
 
 
@@ -47,96 +46,278 @@ def _valid_day_index(value: Any) -> Optional[int]:
     return value
 
 
-def _projection_world_model_data(layer: Mapping[str, Any]) -> dict[str, Any]:
+def _text(value: Any) -> Optional[str]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()
+
+
+def _text_list(value: Any) -> Optional[list[str]]:
+    if not isinstance(value, list):
+        return None
+    result = []
+    for item in value:
+        text = _text(item)
+        if text is None:
+            return None
+        result.append(text)
+    return result
+
+
+def _is_immutable_base_fact(record: Mapping[str, Any]) -> bool:
+    return str(record.get("category") or "").lower() in (
+        _IMMUTABLE_BASE_FACT_CATEGORIES
+    )
+
+
+@dataclass
+class _ProjectionContextData:
+    world_model_data: dict[str, Any]
+    facts: list[dict[str, Any]]
+    habits: list[dict[str, Any]]
+    foreshadowing_seeds: list[dict[str, Any]]
+    soft_world: dict[str, list[dict[str, Any]]]
+
+
+def _projection_context_data(
+    layer: Mapping[str, Any], *, mutable_is_hard: bool
+) -> _ProjectionContextData:
     world = _mapping(layer.get("world"))
     locations: dict[str, dict[str, Any]] = {}
     careers: dict[str, dict[str, Any]] = {}
+    commitments: list[dict[str, Any]] = []
+    causal_chains: list[dict[str, Any]] = []
+    facts: list[dict[str, Any]] = []
+    habits: list[dict[str, Any]] = []
+    seeds: list[dict[str, Any]] = []
+    soft_world: dict[str, list[dict[str, Any]]] = {}
+
+    def soften(category: str, raw: Any) -> None:
+        if isinstance(raw, Mapping):
+            soft_world.setdefault(category, []).append(deepcopy(dict(raw)))
+
     for raw in _sequence(world.get("location_updates")):
         record = _mapping(raw)
-        character = str(record.get("character") or "").strip()
-        if character:
-            locations[character] = {
-                key: value
-                for key, value in record.items()
-                if key not in {"character", "source"}
-            }
+        character = _text(record.get("character"))
+        location = _text(record.get("location"))
+        if not mutable_is_hard or character is None or location is None:
+            soften("location_updates", raw)
+            continue
+        locations[character] = {
+            "location": location,
+            "region": _text(record.get("region")) or "",
+            "since_week": (
+                record.get("since_week")
+                if isinstance(record.get("since_week"), int)
+                and not isinstance(record.get("since_week"), bool)
+                else 0
+            ),
+            "travel_mode": _text(record.get("travel_mode")) or "resident",
+        }
     for raw in _sequence(world.get("career_updates")):
         record = _mapping(raw)
-        character = str(record.get("character") or "").strip()
-        if character:
-            careers[character] = {
-                key: value
-                for key, value in record.items()
-                if key not in {"character", "source"}
+        character = _text(record.get("character"))
+        job = _text(record.get("current_job"))
+        if not mutable_is_hard or character is None or job is None:
+            soften("career_updates", raw)
+            continue
+        careers[character] = {
+            "current_job": job,
+            "employer": _text(record.get("employer")) or "",
+            "level": _text(record.get("level")) or "mid",
+            "since_week": (
+                record.get("since_week")
+                if isinstance(record.get("since_week"), int)
+                and not isinstance(record.get("since_week"), bool)
+                else 0
+            ),
+            "history": (
+                record.get("history") if isinstance(record.get("history"), list) else []
+            ),
+        }
+    for raw in _sequence(world.get("commitment_updates")):
+        record = _mapping(raw)
+        description = _text(record.get("description"))
+        parties = _text_list(record.get("parties"))
+        if not mutable_is_hard or description is None or parties is None:
+            soften("commitment_updates", raw)
+            continue
+        commitments.append(
+            {
+                "description": description,
+                "parties": parties,
+                "deadline_week": (
+                    record.get("deadline_week")
+                    if isinstance(record.get("deadline_week"), int)
+                    and not isinstance(record.get("deadline_week"), bool)
+                    else -1
+                ),
+                "status": _text(record.get("status")) or "pending",
+                "created_week": (
+                    record.get("created_week")
+                    if isinstance(record.get("created_week"), int)
+                    and not isinstance(record.get("created_week"), bool)
+                    else 0
+                ),
+                "importance": _text(record.get("importance")) or "normal",
             }
-    return {
-        "character_locations": locations,
-        "career_records": careers,
-        "active_commitments": [
-            {key: value for key, value in _mapping(raw).items() if key != "source"}
-            for raw in _sequence(world.get("commitment_updates"))
-            if isinstance(raw, Mapping)
-        ],
-        "causal_chains": [
-            {key: value for key, value in _mapping(raw).items() if key != "source"}
-            for raw in _sequence(world.get("causal_updates"))
-            if isinstance(raw, Mapping)
-        ],
-        "physical_states": {},
-        "dynamic_facts": [],
-        "character_profiles": {},
-    }
+        )
+    for raw in _sequence(world.get("causal_updates")):
+        record = _mapping(raw)
+        cause = _text(record.get("cause"))
+        consequence = _text(record.get("expected_consequence"))
+        characters = _text_list(record.get("characters", []))
+        if (
+            not mutable_is_hard
+            or cause is None
+            or consequence is None
+            or characters is None
+        ):
+            soften("causal_updates", raw)
+            continue
+        causal_chains.append(
+            {
+                "cause": cause,
+                "expected_consequence": consequence,
+                "characters": characters,
+                "created_week": (
+                    record.get("created_week")
+                    if isinstance(record.get("created_week"), int)
+                    and not isinstance(record.get("created_week"), bool)
+                    else 0
+                ),
+                "resolved": (
+                    record.get("resolved")
+                    if isinstance(record.get("resolved"), bool)
+                    else False
+                ),
+            }
+        )
+    for raw in _sequence(world.get("fact_updates")):
+        record = _mapping(raw)
+        valid = all(
+            _text(record.get(field)) is not None
+            for field in ("subject", "category", "fact")
+        )
+        if not valid or (not mutable_is_hard and not _is_immutable_base_fact(record)):
+            soften("fact_updates", raw)
+            continue
+        facts.append(
+            {key: deepcopy(value) for key, value in record.items() if key != "source"}
+        )
+    for raw in _sequence(world.get("habit_updates")):
+        record = _mapping(raw)
+        if (
+            not mutable_is_hard
+            or _text(record.get("character")) is None
+            or _text(record.get("habit")) is None
+        ):
+            soften("habit_updates", raw)
+            continue
+        habits.append(deepcopy(dict(record)))
+    for raw in _sequence(world.get("foreshadowing_seeds")):
+        record = _mapping(raw)
+        valid = (
+            mutable_is_hard
+            and isinstance(raw, dict)
+            and _text(record.get("description")) is not None
+            and isinstance(record.get("planted_week", 0), int)
+            and not isinstance(record.get("planted_week", 0), bool)
+            and isinstance(record.get("maturity_weeks", 8), int)
+            and not isinstance(record.get("maturity_weeks", 8), bool)
+            and isinstance(record.get("obfuscation_level", 0.5), (int, float))
+            and not isinstance(record.get("obfuscation_level", 0.5), bool)
+            and _text_list(record.get("related_characters", [])) is not None
+            and _text_list(record.get("related_storylines", [])) is not None
+        )
+        if not valid:
+            soften("foreshadowing_seeds", raw)
+            continue
+        seeds.append(raw)
+
+    return _ProjectionContextData(
+        world_model_data={
+            "character_locations": locations,
+            "career_records": careers,
+            "active_commitments": commitments,
+            "causal_chains": causal_chains,
+            "physical_states": {},
+            "dynamic_facts": [],
+            "character_profiles": {},
+        },
+        facts=facts,
+        habits=habits,
+        foreshadowing_seeds=seeds,
+        soft_world=soft_world,
+    )
 
 
-def _projection_facts(layer: Mapping[str, Any]) -> list[dict[str, Any]]:
-    world = _mapping(layer.get("world"))
-    return [
-        {key: value for key, value in raw.items() if key != "source"}
-        for raw in _sequence(world.get("fact_updates"))
-        if isinstance(raw, Mapping)
-    ]
-
-
-def _hard_world_model(player_state: Any, layer: Mapping[str, Any]) -> WorldModel:
+def _hard_world_model(
+    player_state: Any,
+    projection: _ProjectionContextData,
+) -> WorldModel:
     base_facts = [
         dict(record)
         for record in _sequence(getattr(player_state, "established_facts", None))
-        if isinstance(record, Mapping)
-        and str(record.get("category") or "").lower()
-        not in _LEGACY_DERIVED_FACT_CATEGORIES
+        if isinstance(record, Mapping) and _is_immutable_base_fact(record)
     ]
-    projection_facts = _projection_facts(layer)
-    hard_facts = [*base_facts, *projection_facts]
+    hard_facts = [*base_facts, *projection.facts]
+    character_settings = deepcopy(
+        dict(_mapping(getattr(player_state, "character_settings", None)))
+    )
+    occupation = _mapping(character_settings.pop("occupation", None))
+    background = _mapping(character_settings.pop("background", None))
+    initial_roles = {
+        value
+        for value in (
+            _text(occupation.get("occupation") or occupation.get("role")),
+            _text(background.get("occupation") or background.get("role")),
+        )
+        if value
+    }
+    continuity_ledger = deepcopy(
+        dict(_mapping(getattr(player_state, "continuity_ledger", None)))
+    )
+    identities = _mapping(continuity_ledger.get("immutable_identities"))
+    player_name = str(getattr(player_state, "player_name", "") or "")
+    player_identity = identities.get(player_name)
+    if isinstance(player_identity, Mapping) and initial_roles:
+        cleaned_identity = deepcopy(dict(player_identity))
+        cleaned_identity["roles"] = [
+            role
+            for role in _sequence(player_identity.get("roles"))
+            if role not in initial_roles
+        ]
+        continuity_ledger["immutable_identities"] = {
+            **dict(identities),
+            player_name: cleaned_identity,
+        }
     proxy = SimpleNamespace(
         week=int(getattr(player_state, "week", 0) or 0),
-        player_name=str(getattr(player_state, "player_name", "") or ""),
-        character_settings=dict(
-            _mapping(getattr(player_state, "character_settings", None))
-        ),
+        age=getattr(player_state, "age", None),
+        player_name=player_name,
+        character_settings=character_settings,
         established_facts=hard_facts,
-        world_model_data=_projection_world_model_data(layer),
-        continuity_ledger=dict(
-            _mapping(getattr(player_state, "continuity_ledger", None))
-        ),
+        world_model_data=projection.world_model_data,
+        continuity_ledger=continuity_ledger,
+        round_history=getattr(player_state, "round_history", None) or [],
     )
     model = WorldModel.from_player_state(proxy)
     model.continuity_source_state = player_state
     model.hard_established_facts = tuple(hard_facts)
-    projection_world = _mapping(layer.get("world"))
-    model.hard_character_habits = [
-        dict(record)
-        for record in _sequence(projection_world.get("habit_updates"))
-        if isinstance(record, Mapping)
-    ]
+    model.hard_character_habits = projection.habits
+    model.hard_foreshadowing_seeds = projection.foreshadowing_seeds
     return model
 
 
-def _legacy_soft_context(player_state: Any) -> str:
+def _soft_context(
+    player_state: Any,
+    projection_soft_world: Mapping[str, Any],
+) -> str:
     legacy_facts = [
         dict(record)
         for record in _sequence(getattr(player_state, "established_facts", None))
-        if isinstance(record, Mapping)
-        and str(record.get("category") or "").lower() in _LEGACY_DERIVED_FACT_CATEGORIES
+        if isinstance(record, Mapping) and not _is_immutable_base_fact(record)
     ]
     legacy_world = _mapping(getattr(player_state, "world_model_data", None))
     derived_world = {
@@ -149,12 +330,16 @@ def _legacy_soft_context(player_state: Any) -> str:
         )
         if legacy_world.get(key)
     }
+    character_settings = _mapping(getattr(player_state, "character_settings", None))
+    legacy_occupation = _mapping(character_settings.get("occupation"))
     payload = {
         "world_model_data": derived_world,
         "established_facts": legacy_facts,
         "character_habits": list(
             _sequence(getattr(player_state, "character_habits", None))
         ),
+        "initial_occupation": dict(legacy_occupation),
+        "stale_or_invalid_projection_world": dict(projection_soft_world),
     }
     if not any(payload.values()):
         return ""
@@ -270,18 +455,21 @@ def _canonical_tail(
         blocks.append(block)
         block_days.append(_valid_day_index(record.get("day_index")))
 
-    rendered = (
-        LongStoryContextBuilder()
-        .fit_dynamic_context(
-            DynamicContextParts(current_request="", recent_events=blocks)
-        )
-        .strip()
+    admitted = LongStoryContextBuilder().fit_dynamic_context(
+        DynamicContextParts(current_request="", recent_events=list(reversed(blocks)))
     )
-    first_day = next(
-        (day for block, day in zip(blocks, block_days) if block in rendered),
-        None,
-    )
-    return rendered, first_day
+    selected = {
+        index
+        for index, block in enumerate(blocks)
+        if f"[RECENT_EVENT]\n{block}\n" in admitted
+    }
+    rendered = "".join(
+        f"[RECENT_EVENT]\n{block}\n"
+        for index, block in enumerate(blocks)
+        if index in selected
+    ).strip()
+    first_eligible_day = next((day for day in block_days if day is not None), None)
+    return rendered, first_eligible_day
 
 
 def resolve_world_context(player_state: Any) -> ResolvedWorldContext:
@@ -313,9 +501,13 @@ def resolve_world_context(player_state: Any) -> ResolvedWorldContext:
         stale_from_day_index=stale_from,
         reason="world_projection_watermark_lag" if stale_from is not None else None,
     )
+    projection = _projection_context_data(
+        layer,
+        mutable_is_hard=stale_from is None,
+    )
     return ResolvedWorldContext(
-        hard_world_model=_hard_world_model(player_state, layer),
-        soft_context=_legacy_soft_context(player_state),
+        hard_world_model=_hard_world_model(player_state, projection),
+        soft_context=_soft_context(player_state, projection.soft_world),
         canonical_tail=canonical_tail,
         freshness=freshness,
     )

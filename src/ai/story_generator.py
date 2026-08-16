@@ -742,12 +742,34 @@ class StoryGenerator:
         style_constraints = _build_style_constraints_text(
             self._prompt_builder, language
         )
+        resolved_world_here = False
+        if daily_mode and world_model is None:
+            world_model = self._build_world_model_from_state_dict(player_state)
+            resolved_world_here = world_model is not None
         if world_model is not None:
             established_facts = getattr(
                 world_model,
                 "hard_established_facts",
                 established_facts,
             )
+            character_habits = getattr(
+                world_model,
+                "hard_character_habits",
+                character_habits,
+            )
+        if resolved_world_here:
+            resolved_prompt_context = "\n\n".join(
+                value
+                for value in (
+                    getattr(world_model, "canonical_tail", ""),
+                    getattr(world_model, "soft_context", ""),
+                )
+                if value
+            )
+            if resolved_prompt_context:
+                round_context = (
+                    f"{round_context}\n\n{resolved_prompt_context}"
+                ).strip()
 
         # Get round story prompt
         prompt = get_round_event_prompt(

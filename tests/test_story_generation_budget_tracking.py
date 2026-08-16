@@ -33,7 +33,7 @@ from src.game.character_creation import CharacterCreator
 from src.game.story_service import StoryService
 
 
-def test_daily_dict_world_model_uses_projection_and_exposes_canonical_tail() -> None:
+def test_daily_dict_world_model_downgrades_stale_projection_and_exposes_tail() -> None:
     set_feature("daily_world_projection_v1", True)
     try:
         model = StoryGenerator._build_world_model_from_state_dict(
@@ -80,7 +80,8 @@ def test_daily_dict_world_model_uses_projection_and_exposes_canonical_tail() -> 
             }
         )
 
-        assert model.character_locations["孙悟空"].location == "花果山"
+        assert model.character_locations == {}
+        assert "花果山" in model.soft_context
         assert "旧东海" in model.soft_context
         assert "孙悟空已经回到花果山。" in model.canonical_tail
         assert "进入水帘洞" in model.canonical_tail
@@ -328,13 +329,128 @@ def test_daily_legacy_story_entry_injects_resolved_tail_and_only_projection_habi
     assert "孙悟空已经回到花果山。" in captured["last_event_description"]
     assert "进入水帘洞" in captured["last_event_description"]
     assert "旧日巡海" in captured["last_event_description"]
-    assert captured["character_habits"] == [
-        {
-            "character": "孙悟空",
-            "habit": "清晨巡视花果山",
-            "source": {"event_id": "event-0", "revision": 1, "day_index": 0},
-        }
+    assert captured["character_habits"] == []
+    assert "清晨巡视花果山" in captured["last_event_description"]
+
+
+def test_direct_daily_round_entry_builds_projection_world_when_model_not_passed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_feature("daily_world_projection_v1", True)
+    captured: dict[str, Any] = {}
+
+    def prompt_builder(*args: Any, **kwargs: Any) -> str:
+        captured["round_context"] = args[3]
+        captured["established_facts"] = kwargs["established_facts"]
+        captured["character_habits"] = kwargs["character_habits"]
+        captured["world_model"] = kwargs["world_model"]
+        return "round prompt"
+
+    monkeypatch.setattr("src.ai.story_generator.get_round_event_prompt", prompt_builder)
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: SimpleNamespace(
+            passed=True,
+            issues=[],
+            warnings=[],
+            findings=[],
+        ),
+    )
+    monkeypatch.setattr(
+        "src.ai.consistency_validator.ConsistencyValidator.validate_story",
+        lambda *_args, **_kwargs: ValidationResult(passed=True, issues=[]),
+    )
+    story = "孙悟空在花果山巡视群猴并核对山中近况。" * 60
+    generator = StoryGenerator(RecordingClient(story), quality_level="expert")
+
+    class Options:
+        def generate_options_only(self, **kwargs: Any) -> Any:
+            return SimpleNamespace(
+                event_description=kwargs["story_description"],
+                options=[SimpleNamespace(text="继续", effects={})] * 3,
+            )
+
+        def validate_and_fix_relationships(self, *_args: Any) -> None:
+            return None
+
+        def validate_options_consistency(self, **_kwargs: Any) -> list:
+            return []
+
+        def ensure_options_consistency(self, **_kwargs: Any) -> None:
+            return None
+
+    source = {"event_id": "event-0", "revision": 1, "day_index": 0}
+    state = {
+        "week": 1,
+        "timeline": build_daily_timeline(start_date="2026-08-01", day_index=1),
+        "timeline_version": 2,
+        "day_history": [],
+        "world_model_data": {
+            "character_locations": {"孙悟空": {"location": "旧东海", "region": "东海"}}
+        },
+        "established_facts": [
+            {
+                "subject": "孙悟空",
+                "category": "situation",
+                "fact": "legacy-situation",
+            }
+        ],
+        "character_habits": [{"character": "孙悟空", "habit": "legacy-habit"}],
+        "world_projection_state": {
+            "version": 1,
+            "applied_through_day_index": 0,
+            "pending_from_day_index": None,
+            "world": {
+                "fact_updates": [
+                    {
+                        "subject": "孙悟空",
+                        "category": "situation",
+                        "fact": "projection-situation",
+                        "source": source,
+                    }
+                ],
+                "habit_updates": [
+                    {
+                        "character": "孙悟空",
+                        "habit": "projection-habit",
+                        "source": source,
+                    }
+                ],
+                "location_updates": [
+                    {
+                        "character": "孙悟空",
+                        "location": "花果山",
+                        "region": "傲来国",
+                        "source": source,
+                    }
+                ],
+            },
+        },
+    }
+    try:
+        generator.generate_round_event(
+            player_state=state,
+            language="zh",
+            round_number=0,
+            round_context="原始上下文",
+            character_settings={},
+            established_facts=state["established_facts"],
+            character_habits=state["character_habits"],
+            world_model=None,
+            option_generator=Options(),
+        )
+    finally:
+        reset_features()
+
+    assert captured["world_model"].character_locations["孙悟空"].location == "花果山"
+    assert [fact["fact"] for fact in captured["established_facts"]] == [
+        "projection-situation"
     ]
+    assert [habit["habit"] for habit in captured["character_habits"]] == [
+        "projection-habit"
+    ]
+    assert "legacy-situation" in captured["round_context"]
+    assert "legacy-habit" in captured["round_context"]
 
 
 def test_option_provider_call_consumes_option_allowance_before_invocation() -> None:

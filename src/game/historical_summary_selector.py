@@ -66,8 +66,10 @@ class HistoricalSummarySelector:
                 parties = getattr(commitment, "parties", [])
             if status == "pending":
                 keywords.add(description)
-                for party in parties:
-                    keywords.add(party)
+                if isinstance(parties, (list, tuple)):
+                    for party in parties:
+                        if isinstance(party, str) and party:
+                            keywords.add(party)
 
         # 从上一轮故事提取人物名
         last_story = player_state.last_round_full_story or ""

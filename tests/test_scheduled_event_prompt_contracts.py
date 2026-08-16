@@ -1,5 +1,6 @@
 """No-provider contracts for scheduled-event prompt field preservation."""
 
+from config.feature_flags import reset_features, set_feature
 from src.game.round.event_generator import RoundEventGenerator
 
 
@@ -86,3 +87,122 @@ def test_daily_scheduled_prompt_uses_daily_opening_and_transition_contract() -> 
     assert '"transition_text"' in prompt
     assert "第1周·周一" not in prompt
     assert "时间线标题约束" not in prompt
+
+
+def test_daily_scheduled_prompt_includes_fresh_projection_hard_world_and_soft_context() -> (
+    None
+):
+    set_feature("daily_world_projection_v1", True)
+    try:
+        state = {
+            "player_name": "孙悟空",
+            "week": 1,
+            "current_round": 0,
+            "timeline": {
+                "version": 2,
+                "day_index": 1,
+                "current_date": "2026-08-02",
+            },
+            "day_history": [
+                {
+                    "day_index": 1,
+                    "event_id": "event-1",
+                    "revision": 1,
+                    "story_date": "2026-08-02",
+                    "event_description": "孙悟空已经返回花果山。",
+                    "choice": "进入水帘洞",
+                }
+            ],
+            "established_facts": [],
+            "character_habits": [],
+            "world_model_data": {
+                "character_locations": {
+                    "孙悟空": {"location": "旧东海", "region": "东海"}
+                }
+            },
+            "world_projection_state": {
+                "version": 1,
+                "applied_through_day_index": 1,
+                "pending_from_day_index": None,
+                "world": {
+                    "location_updates": [
+                        {
+                            "character": "孙悟空",
+                            "location": "花果山",
+                            "region": "傲来国",
+                            "source": {
+                                "event_id": "event-0",
+                                "revision": 1,
+                                "day_index": 0,
+                            },
+                        }
+                    ]
+                },
+            },
+        }
+
+        prompt = _generator("zh")._build_scheduled_event_prompt(
+            [{"description": "召集群猴议事", "parties": ["孙悟空"]}],
+            state,
+            {},
+            "zh",
+        )
+
+        assert "【世界模型约束" in prompt
+        assert "孙悟空 当前位置：花果山" in prompt
+        assert "旧东海" in prompt
+    finally:
+        reset_features()
+
+
+def test_daily_scheduled_prompt_includes_gap_tail_and_immutable_hard_fact() -> None:
+    set_feature("daily_world_projection_v1", True)
+    try:
+        state = {
+            "player_name": "孙悟空",
+            "week": 1,
+            "current_round": 0,
+            "timeline": {
+                "version": 2,
+                "day_index": 1,
+                "current_date": "2026-08-02",
+            },
+            "day_history": [
+                {
+                    "day_index": 1,
+                    "event_id": "event-1",
+                    "revision": 1,
+                    "story_date": "2026-08-02",
+                    "event_description": "孙悟空已经返回花果山。",
+                    "choice": "进入水帘洞",
+                }
+            ],
+            "established_facts": [
+                {
+                    "subject": "孙悟空",
+                    "category": "identity",
+                    "fact": "孙悟空是石猴",
+                }
+            ],
+            "character_habits": [],
+            "world_model_data": {},
+            "world_projection_state": {
+                "version": 1,
+                "applied_through_day_index": 0,
+                "pending_from_day_index": 1,
+                "world": {},
+            },
+        }
+
+        prompt = _generator("zh")._build_scheduled_event_prompt(
+            [{"description": "召集群猴议事", "parties": ["孙悟空"]}],
+            state,
+            {},
+            "zh",
+        )
+
+        assert "孙悟空是石猴" in prompt
+        assert "孙悟空已经返回花果山。" in prompt
+        assert "进入水帘洞" in prompt
+    finally:
+        reset_features()

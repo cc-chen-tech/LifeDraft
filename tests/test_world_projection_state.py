@@ -97,6 +97,17 @@ def test_projection_replay_fences_source_and_selected_option() -> None:
         apply_world_projection_patch(state, _projection(), option_index=0)
 
 
+def test_projection_materialization_skips_malformed_commitment_parties() -> None:
+    state = PlayerState()
+    state.world_projection_state["applied_through_day_index"] = 4
+    projection = _projection()
+    projection.option_patches_json["1"]["commitment_updates"][0]["parties"] = None
+
+    apply_world_projection_patch(state, projection, option_index=1)
+
+    assert state.world_projection_state["world"]["commitment_updates"] == []
+
+
 def test_recompute_watermarks_stops_at_first_non_ready_gap() -> None:
     state = PlayerState()
     state.world_projection_state["applied_through_day_index"] = 4
