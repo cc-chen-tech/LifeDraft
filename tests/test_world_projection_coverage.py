@@ -527,3 +527,34 @@ def test_known_location_before_a_relative_unknown_person_does_not_allow_carry() 
     )
 
     assert "location_updates" not in signals.categories
+
+
+@pytest.mark.parametrize(
+    "ambiguous_noun",
+    ["老道", "掌门", "木门", "村民", "寺人", "门客"],
+)
+def test_ambiguous_single_character_location_endings_fail_closed(
+    ambiguous_noun: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，在东海的{ambiguous_noun}等待，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" not in signals.categories
+
+
+@pytest.mark.parametrize(
+    "strict_place", ["柳巷", "古寺", "石塔", "海岸", "花园", "山洞"]
+)
+def test_strict_multi_character_place_forms_preserve_carry(
+    strict_place: str,
+) -> None:
+    signals = detect_world_change_signals(
+        f"黑袍人收拾行囊，在东海的{strict_place}等待，抵达东海。",
+        [],
+        {"character_locations": {"黑袍人": {"location": "花果山"}}},
+    )
+
+    assert "location_updates" in signals.categories
