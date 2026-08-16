@@ -39,7 +39,9 @@ class TestDurableGenerationLifecycle:
         game_loop.current_event = None
         event = _event()
 
-        def generate_round_event(*, stream_callback, status_callback, session):
+        def generate_round_event(
+            *, stream_callback, status_callback, session, operation_id=None
+        ):
             started.set()
             status_callback("generating_story")
             stream_callback("同一个后台任务")
@@ -56,12 +58,12 @@ class TestDurableGenerationLifecycle:
             patch("src.api.routers.gameplay.sse_helpers._trigger_round_illustration_generation"),
         ):
             first = stream_round_event(game_loop, 91, session=session)
-            await anext(first)
-            next_chunk = asyncio.create_task(anext(first))
+            await first.__anext__()
+            next_chunk = asyncio.create_task(first.__anext__())
             assert await asyncio.to_thread(started.wait, 1)
             chunk = await asyncio.wait_for(next_chunk, timeout=1)
             if "同一个后台任务" not in chunk:
-                chunk = await asyncio.wait_for(anext(first), timeout=1)
+                chunk = await asyncio.wait_for(first.__anext__(), timeout=1)
             assert "同一个后台任务" in chunk
             await first.aclose()
 
@@ -85,7 +87,9 @@ class TestDurableGenerationLifecycle:
         game_loop.current_event = None
         event = _event("共享任务结果")
 
-        def generate_round_event(*, stream_callback, status_callback, session):
+        def generate_round_event(
+            *, stream_callback, status_callback, session, operation_id=None
+        ):
             started.set()
             status_callback("generating_story")
             stream_callback("共享片段")

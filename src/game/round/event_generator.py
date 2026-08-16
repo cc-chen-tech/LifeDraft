@@ -512,20 +512,28 @@ class RoundEventGenerator:
         )
         if scheduled_events:
             logger.info(f"检测到 {len(scheduled_events)} 个预定事件需要触发")
-            event = self._generate_scheduled_event(  # type: ignore[assignment]
-                scheduled_events, player_state, stream_callback, status_callback
-            )
-            if event:
-                apply_daily_event_metadata(event, player_state, language=self.language)
-                self._current_event = event  # type: ignore[assignment]
-                player_state.current_event_data = event.model_dump()
-                # 标记预定事件已触发
-                for se in scheduled_events:
-                    player_state.mark_scheduled_event_triggered(se.get("event_id"))
-                if self.event_callback:
-                    self.event_callback(event, player_state)
+            try:
+                event = self._generate_scheduled_event(  # type: ignore[assignment]
+                    scheduled_events, player_state, stream_callback, status_callback
+                )
+                if event:
+                    apply_daily_event_metadata(
+                        event, player_state, language=self.language
+                    )
+                    self._current_event = event  # type: ignore[assignment]
+                    player_state.current_event_data = event.model_dump()
+                    # 标记预定事件已触发
+                    for se in scheduled_events:
+                        player_state.mark_scheduled_event_triggered(se.get("event_id"))
+                    if self.event_callback:
+                        self.event_callback(event, player_state)
+                    self._clear_generating_flag()
+                    return event
+            except Exception:
+                # This branch precedes the normal generation cleanup scope.
+                # Always release the direct-call guard on terminal failure.
                 self._clear_generating_flag()
-                return event
+                raise
 
         # Get round context from player state
         round_context = player_state.get_round_context()

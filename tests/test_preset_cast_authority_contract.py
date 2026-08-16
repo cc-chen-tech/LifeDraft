@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -1597,6 +1598,44 @@ def test_scheduled_event_fails_closed_when_fallback_omits_required_cast() -> Non
         operation_id="scheduled-op",
     )
     assert failure.code is GenerationFailureCode.REQUIRED_CAST_MISSING
+
+
+def test_scheduled_event_terminal_failure_releases_generation_guard() -> None:
+    class PlayerState:
+        week = 1
+        current_round = 1
+        round_history: list[dict[str, Any]] = []
+        last_round_full_story = ""
+        current_event_data = None
+        timeline = {
+            "version": 2,
+            "day_index": 3,
+            "week_number": 1,
+            "current_date": "2026-08-12",
+        }
+
+        def get_pending_scheduled_events(self, *_args: Any) -> list[dict[str, Any]]:
+            return [{"description": "参加投资会议", "parties": ["陈晓雨"]}]
+
+    state = PlayerState()
+    generator = RoundEventGenerator(
+        player_state_getter=lambda: state,
+        ai_generator=SimpleNamespace(),
+        language_getter=lambda: "zh",
+        character_introduction_service=None,
+        summary_selector=None,
+        relationship_service=None,
+    )
+    generator._generate_scheduled_event = MagicMock(
+        side_effect=StoryGenerationFailure("required cast still missing")
+    )
+
+    for _ in range(2):
+        with pytest.raises(StoryGenerationFailure, match="required cast"):
+            generator.generate_round_event()
+        assert generator._generating is False
+
+    assert generator._generate_scheduled_event.call_count == 2
 
 
 def test_resume_existing_round_story_rejects_preset_cast_drift_before_options_only() -> None:
