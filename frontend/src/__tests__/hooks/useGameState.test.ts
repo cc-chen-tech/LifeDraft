@@ -24,7 +24,9 @@ function setupDefaultState() {
     gameId: 1,
     currentEvent: {
       story: 'Frontend story',
-      options: [{ text: 'Old option' }],
+      options: [{ text: 'Old option' }, { text: 'Other option' }],
+      event_id: 'evt-current',
+      revision: 1,
     },
   } as never);
 }
@@ -221,6 +223,51 @@ describe('useGameState', () => {
   });
 
   describe('handleRegenerate', () => {
+    it('uses event generation when no complete current event exists', async () => {
+      const { streamRegenerate } = require('@/lib/sse');
+      useGameStore.setState({ currentEvent: null } as never);
+      mockGenerateEventRef.current.mockResolvedValueOnce(undefined);
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      await act(async () => {
+        await result.current.handleDailyStoryAction();
+      });
+
+      expect(mockGenerateEventRef.current).toHaveBeenCalledTimes(1);
+      expect(mockGenerateEventRef.current).toHaveBeenCalledWith({ userInitiated: true });
+      expect(streamRegenerate).not.toHaveBeenCalled();
+    });
+
+    it('coalesces two synchronous clicks into one replacement stream', () => {
+      const { streamRegenerate } = require('@/lib/sse');
+      (streamRegenerate as jest.Mock).mockImplementation(() => new Promise(() => {}));
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      act(() => {
+        void result.current.handleDailyStoryAction();
+        void result.current.handleDailyStoryAction();
+      });
+
+      expect(streamRegenerate).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps accepted story visible while replacement prose is streaming', () => {
+      const { streamRegenerate } = require('@/lib/sse');
+      (streamRegenerate as jest.Mock).mockImplementation((_gameId: number, callbacks: any) => {
+        callbacks.onStory('尚未提交的新候选稿');
+        return new Promise(() => {});
+      });
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      act(() => {
+        void result.current.handleDailyStoryAction();
+      });
+
+      expect(mockSetters.setStoryText).not.toHaveBeenCalledWith('');
+      expect(mockSetters.setCurrentEvent).not.toHaveBeenCalledWith(null);
+      expect(mockSetters.setOptions).not.toHaveBeenCalledWith([]);
+    });
+
     it('starts SSE regeneration and calls streamRegenerate', async () => {
       const { streamRegenerate } = require('@/lib/sse');
       const { result } = renderHook(() => useGameState(defaultParams));
@@ -288,7 +335,10 @@ describe('useGameState', () => {
 
       expect(storeSpy.spies.syncState).toHaveBeenCalledWith({ gameId: 1 });
       expect(mockSetters.setStoryText).toHaveBeenLastCalledWith('Frontend story');
-      expect(mockSetters.setOptions).toHaveBeenLastCalledWith([{ text: 'Old option' }]);
+      expect(mockSetters.setOptions).toHaveBeenLastCalledWith([
+        { text: 'Old option' },
+        { text: 'Other option' },
+      ]);
       expect(mockSetters.setPhase).toHaveBeenLastCalledWith('options');
       expect(result.current.regenerationFailure).toEqual(expect.objectContaining({
         code: 'REQUIRED_CAST_MISSING',

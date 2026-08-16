@@ -22,6 +22,10 @@ import { useGameState } from "./game/useGameState";
 import { useHistoryViewer } from "./game/useHistoryViewer";
 import { isAbortError } from "./game/gameplayRun";
 import type { NarrativeLoadingOperation } from "@/components/narrative-loading/NarrativeLoadingState";
+import {
+  INITIAL_DAILY_GENERATION_COMMAND,
+  type DailyGenerationCommandState,
+} from "./game/dailyGenerationCommand";
 
 // Re-export types for backwards compatibility
 export type { Phase, ConnectionStatus };
@@ -84,6 +88,8 @@ export function usePlayGame() {
   const [isPrefetching, setIsPrefetching] = useState(false);
   const [loadingOperation, setLoadingOperation] = useState<NarrativeLoadingOperation>("event");
   const [loadingIdentity, setLoadingIdentity] = useState(0);
+  const [dailyGenerationCommand, setDailyGenerationCommand] =
+    useState<DailyGenerationCommandState>(INITIAL_DAILY_GENERATION_COMMAND);
 
   // Story container ref for scrolling
   const storyContainerRef = useRef<HTMLDivElement>(null);
@@ -101,7 +107,10 @@ export function usePlayGame() {
     event: { story: string; options: EventOption[] } | null;
   } | null>(null);
   const prefetchingRef = useRef(false);
-  const generateEventRef = useRef<(options?: { resume?: boolean }) => Promise<void>>(async () => {});
+  const generateEventRef = useRef<(
+    options?: { resume?: boolean; userInitiated?: boolean }
+  ) => Promise<void>>(async () => {});
+  const dailyGenerationFlightRef = useRef<Promise<void> | null>(null);
 
   // ===== Phase Manager =====
   const {
@@ -133,6 +142,7 @@ export function usePlayGame() {
     handleContinueAfterSummary,
     handleContinueToNextRound,
     handleRegenerate,
+    handleDailyStoryAction,
   } = useGameState({
     gameId,
     isGameOver,
@@ -149,6 +159,8 @@ export function usePlayGame() {
     setIsPrefetching,
     generateEventRef,
     syncPlayerState,
+    dailyGenerationFlightRef,
+    setDailyGenerationCommand,
   });
 
   useEffect(() => {
@@ -188,6 +200,7 @@ export function usePlayGame() {
     abortRef,
     generatingRef,
     isRetryingRef,
+    setDailyGenerationCommand,
     pollingRef,
     prefetchAbortRef,
     prefetchResultRef,
@@ -552,6 +565,7 @@ export function usePlayGame() {
     saveToast,
     regenerateToast,
     regenerationFailure,
+    dailyGenerationCommand,
     isSaving,
     connectionStatus,
     reconnectAttempt,
@@ -573,6 +587,7 @@ export function usePlayGame() {
     handleContinueToNextRound,
     handleSave,
     handleRegenerate,
+    handleDailyStoryAction,
     generateEvent,
     recoverEventGeneration,
     recoverChoiceGeneration,
@@ -639,6 +654,7 @@ export function usePlayGame() {
     saveToast,
     regenerateToast,
     regenerationFailure,
+    dailyGenerationCommand,
     endingData,
     connectionStatus,
     reconnectAttempt,
@@ -671,6 +687,7 @@ export function usePlayGame() {
     handleContinueToNextRound,
     handleSave,
     handleRegenerate,
+    handleDailyStoryAction,
     generateEvent,
     recoverEventGeneration,
     recoverChoiceGeneration,
