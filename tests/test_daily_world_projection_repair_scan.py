@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+import pytest
+
 from src.services.daily_world_projection_repair import (
     GameRepairCandidate,
     RepairReason,
@@ -83,9 +85,7 @@ def legitimate_no_change_fixture() -> dict[str, object]:
             }
         ],
         "current_event_data": {"event_id": "next-day"},
-        "world_model_data": {
-            "character_locations": {"孙悟空": {"location": "花果山"}}
-        },
+        "world_model_data": {"character_locations": {"孙悟空": {"location": "花果山"}}},
         "world_projection_state": {
             "version": 1,
             "applied_through_day_index": 0,
@@ -133,6 +133,17 @@ def test_legitimate_no_change_save_is_not_detected() -> None:
     assert scan_game_state(200, legitimate_no_change_fixture()) is None
 
 
+def test_retryable_generation_failure_does_not_select_a_healthy_projection() -> None:
+    state = legitimate_no_change_fixture()
+    state["current_event_data"] = None
+    state["resume_view"] = {
+        "phase": "failed",
+        "failure": {"code": "RETRY_EXHAUSTED", "retryable": True},
+    }
+
+    assert scan_game_state(200, state) is None
+
+
 def test_digest_ignores_only_projection_state() -> None:
     before = player_state_fixture()
     after = deepcopy(before)
@@ -169,3 +180,20 @@ def test_report_normalizes_candidate_day_indexes_before_hashing() -> None:
 
     assert report.candidates[0].reasons[0].day_indexes == (1, 4)
     assert report.candidates[0].rebuild_day_indexes == [1, 4]
+
+
+def test_report_rejects_duplicate_game_ids_in_any_input_order() -> None:
+    first = GameRepairCandidate(
+        game_id=9,
+        reasons=(RepairReason("first_reason", (1,)),),
+        rebuild_day_indexes=[1],
+    )
+    second = GameRepairCandidate(
+        game_id=9,
+        reasons=(RepairReason("second_reason", (2,)),),
+        rebuild_day_indexes=[2],
+    )
+
+    for candidates in ([first, second], [second, first]):
+        with pytest.raises(ValueError, match="duplicate_game_id_in_scan_report"):
+            build_scan_report(candidates)

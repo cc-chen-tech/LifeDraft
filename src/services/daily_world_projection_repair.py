@@ -199,12 +199,14 @@ def scan_game_state(
 
     history_days = sorted({day_index for day_index, _record in history})
     watermark = _projection_watermark(state)
-    watermark_behind = bool(history_days) and watermark is not None and watermark < max(
-        history_days
+    watermark_behind = (
+        bool(history_days) and watermark is not None and watermark < max(history_days)
     )
     reasons: list[RepairReason] = []
     if suspicious_days:
-        reasons.append(RepairReason(SUSPICIOUS_EMPTY, tuple(sorted(set(suspicious_days)))))
+        reasons.append(
+            RepairReason(SUSPICIOUS_EMPTY, tuple(sorted(set(suspicious_days))))
+        )
     if stuck_days:
         reasons.append(
             RepairReason(POSTPROCESSING_STUCK, tuple(sorted(set(stuck_days))))
@@ -216,7 +218,7 @@ def scan_game_state(
                 tuple(day for day in history_days if day > int(watermark)),
             )
         )
-    if _retryable_generation_failure(state):
+    if reasons and _retryable_generation_failure(state):
         reasons.append(RepairReason(MISSING_EVENT_RETRYABLE_FAILURE))
     if not reasons:
         return None
@@ -236,6 +238,10 @@ def scan_game_state(
 def build_scan_report(rows: Iterable[GameRepairCandidate]) -> RepairScanReport:
     """Return a report whose candidate and rebuild-day ordering is canonical."""
 
+    raw_candidates = list(rows)
+    game_ids = [candidate.game_id for candidate in raw_candidates]
+    if len(game_ids) != len(set(game_ids)):
+        raise ValueError("duplicate_game_id_in_scan_report")
     normalized = [
         GameRepairCandidate(
             game_id=candidate.game_id,
@@ -253,7 +259,7 @@ def build_scan_report(rows: Iterable[GameRepairCandidate]) -> RepairScanReport:
             ),
             rebuild_day_indexes=sorted(set(candidate.rebuild_day_indexes)),
         )
-        for candidate in rows
+        for candidate in raw_candidates
     ]
     candidates = tuple(
         sorted(
