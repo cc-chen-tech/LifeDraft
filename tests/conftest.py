@@ -47,32 +47,51 @@ from src.game.state import PlayerState
 # being initialized; with the redirect above the file starts empty.
 init_db()
 
-_original_response_enter = getattr(httpx.Response, "__enter__", None)
-_original_response_exit = getattr(httpx.Response, "__exit__", None)
-_original_iter_lines = httpx.Response.iter_lines
+# The FastAPI/Starlette TestClient returns `httpx2.Response` when httpx2 is
+# installed (starlette >= 1.x prefers it) and falls back to `httpx.Response`
+# otherwise. Both classes expose the same API, so the SSE patch below must
+# cover whichever class the TestClient actually returns. Collect both when
+# available and patch them identically.
+_RESPONSE_CLASSES = [httpx.Response]
+try:  # pragma: no cover - depends on installed client
+    import httpx2  # type: ignore
+
+    _RESPONSE_CLASSES.append(httpx2.Response)
+except ImportError:  # pragma: no cover - httpx2 not installed
+    pass
+
+_original_response_enter = {cls: getattr(cls, "__enter__", None) for cls in _RESPONSE_CLASSES}
+_original_response_exit = {cls: getattr(cls, "__exit__", None) for cls in _RESPONSE_CLASSES}
+_original_iter_lines = {cls: cls.iter_lines for cls in _RESPONSE_CLASSES}
 
 
 @pytest.fixture(autouse=True)
 def _patch_httpx_response_for_sse():
-    """Apply the httpx.Response context-manager patch per test, then restore.
+    """Apply the response context-manager + bytes iter_lines patch per test.
 
     The patch is applied and rolled back around every test instead of being a
-    permanent import-time mutation of the global httpx.Response class.
+    permanent import-time mutation of the global response classes. It covers
+    both ``httpx.Response`` and ``httpx2.Response`` because the TestClient
+    returns whichever client library is installed (httpx2 preferred).
     """
-    if _original_response_enter is None:
-        httpx.Response.__enter__ = lambda self: self
-        httpx.Response.__exit__ = lambda self, *args: None
+    for cls in _RESPONSE_CLASSES:
+        if _original_response_enter[cls] is None:
+            cls.__enter__ = lambda self: self
+            cls.__exit__ = lambda self, *args: None
 
     def _patched_iter_lines(self):
-        for line in _original_iter_lines(self):
+        original = _original_iter_lines[type(self)]
+        for line in original(self):
             yield line.encode("utf-8")
 
-    httpx.Response.iter_lines = _patched_iter_lines
+    for cls in _RESPONSE_CLASSES:
+        cls.iter_lines = _patched_iter_lines
     yield
-    if _original_response_enter is None:
-        delattr(httpx.Response, "__enter__")
-        delattr(httpx.Response, "__exit__")
-    httpx.Response.iter_lines = _original_iter_lines
+    for cls in _RESPONSE_CLASSES:
+        if _original_response_enter[cls] is None:
+            delattr(cls, "__enter__")
+            delattr(cls, "__exit__")
+        cls.iter_lines = _original_iter_lines[cls]
 
 
 @pytest.fixture(scope="module", autouse=True)
