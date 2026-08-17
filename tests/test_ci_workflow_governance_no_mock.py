@@ -157,6 +157,23 @@ def test_quick_helpers_retain_their_authoritative_commands() -> None:
         assert required_test in jest_body
 
 
+def test_maintained_backend_suite_covers_projection_repair_surfaces() -> None:
+    runner = (ROOT / "scripts" / "run-maintained-backend-tests.sh").read_text(
+        encoding="utf-8"
+    )
+
+    for required_test in (
+        "tests/test_daily_world_projection_repair_scan.py",
+        "tests/test_daily_world_projection_backup.py",
+        "tests/test_daily_world_projection_repair_audit.py",
+        "tests/test_repair_daily_world_projections_cli.py",
+        "tests/test_daily_world_projection_rebuild.py",
+        "tests/test_daily_world_projection_observability.py",
+        "tests/test_world_projection_repair_runbook.py",
+    ):
+        assert required_test in runner
+
+
 def test_frontend_tests_owns_full_jest_coverage_and_artifact() -> None:
     workflows = _non_deploy_workflows()
     workflow_text = "\n".join(

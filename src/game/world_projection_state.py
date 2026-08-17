@@ -8,7 +8,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Any, Mapping, Sequence
+from typing import Any, Collection, Mapping, Sequence
 
 from src.game.narrative_manager import NarrativeManager
 from src.game.world_model_updater import WorldModelUpdater
@@ -357,7 +357,11 @@ def _timestamp(value: Any) -> Any:
     return value if isinstance(value, str) else None
 
 
-def recompute_projection_watermarks(state: Any, rows: Sequence[Any]) -> None:
+def recompute_projection_watermarks(
+    state: Any,
+    rows: Sequence[Any],
+    projection_only_identities: Collection[ProjectionOnlyIdentity] = (),
+) -> None:
     """Recompute contiguous ready/applied and pending projection boundaries."""
 
     layer = _projection_layer(state)
@@ -368,9 +372,46 @@ def recompute_projection_watermarks(state: Any, rows: Sequence[Any]) -> None:
         and isinstance(_field(row, "day_index"), int)
         and str(_field(row, "status") or "") != "superseded"
     }
+    superseded_days = {
+        int(_field(row, "day_index"))
+        for row in rows
+        if not isinstance(_field(row, "day_index"), bool)
+        and isinstance(_field(row, "day_index"), int)
+        and str(_field(row, "status") or "") == "superseded"
+    }
+    history_days = [
+        record.get("day_index")
+        for record in (getattr(state, "day_history", None) or [])
+        if isinstance(record, Mapping)
+        and isinstance(record.get("day_index"), int)
+        and not isinstance(record.get("day_index"), bool)
+    ]
+    accepted_days = set(history_days)
+    canonical_max = max(accepted_days) if accepted_days else -1
     applied = int(layer.get("applied_through_day_index", -1))
+    if applied > canonical_max:
+        proven_days = {
+            source.get("day_index")
+            for source in (layer.get("applied_sources") or [])
+            if isinstance(source, Mapping)
+            and isinstance(source.get("day_index"), int)
+            and not isinstance(source.get("day_index"), bool)
+            and source.get("day_index") in accepted_days
+        }
+        proven_days.update(
+            day_index
+            for day_index, row in active.items()
+            if day_index in accepted_days
+            and str(_field(row, "status") or "") == "applied"
+        )
+        applied = -1
+        while applied + 1 in accepted_days and applied + 1 in proven_days:
+            applied += 1
     while True:
-        row = active.get(applied + 1)
+        next_day = applied + 1
+        if next_day not in accepted_days:
+            break
+        row = active.get(next_day)
         if row is None or str(_field(row, "status") or "") != "applied":
             break
         applied += 1
@@ -378,7 +419,10 @@ def recompute_projection_watermarks(state: Any, rows: Sequence[Any]) -> None:
 
     projected = applied
     while True:
-        row = active.get(projected + 1)
+        next_day = projected + 1
+        if next_day not in accepted_days:
+            break
+        row = active.get(next_day)
         if row is None or str(_field(row, "status") or "") not in {
             "ready",
             "ready_no_change",
@@ -388,16 +432,36 @@ def recompute_projection_watermarks(state: Any, rows: Sequence[Any]) -> None:
         projected += 1
     layer["projected_through_day_index"] = projected
 
-    later_days = sorted(day for day in active if day > applied)
-    settled_days = [
-        record.get("day_index")
-        for record in (getattr(state, "day_history", None) or [])
-        if isinstance(record, Mapping)
-        and isinstance(record.get("day_index"), int)
-        and not isinstance(record.get("day_index"), bool)
-        and isinstance(record.get("choice_option_index"), int)
-        and not isinstance(record.get("choice_option_index"), bool)
-    ]
+    later_days = sorted(day for day in active if day in accepted_days and day > applied)
+    settled_days = []
+    for record in getattr(state, "day_history", None) or []:
+        if not isinstance(record, Mapping):
+            continue
+        day_index = record.get("day_index")
+        selected = record.get("choice_option_index")
+        story = record.get("event_description", record.get("story"))
+        options = record.get("options")
+        if (
+            not isinstance(day_index, int)
+            or isinstance(day_index, bool)
+            or not isinstance(selected, int)
+            or isinstance(selected, bool)
+        ):
+            continue
+        if day_index in superseded_days and day_index not in active:
+            continue
+        if not isinstance(story, str) or not isinstance(options, list):
+            settled_days.append(day_index)
+            continue
+        repair_key = (
+            record.get("event_id"),
+            record.get("revision", 1),
+            day_index,
+            compute_projection_source_hash(story, options),
+            selected,
+        )
+        if repair_key not in projection_only_identities:
+            settled_days.append(day_index)
     has_settled_gap = any(day > applied for day in settled_days)
     first_pending = applied + 1 if later_days or has_settled_gap else None
     layer["pending_from_day_index"] = first_pending
@@ -478,8 +542,23 @@ class ProjectionApplyBatch:
     state_changed: bool
 
 
+ProjectionOnlyIdentity = tuple[str, int, int, str, int]
+
+
+def _projection_only_identity(row: Any, selected: int) -> ProjectionOnlyIdentity:
+    return (
+        row.event_id,
+        row.revision,
+        row.day_index,
+        row.source_hash,
+        selected,
+    )
+
+
 def apply_contiguous_world_projections(
-    state: Any, rows: Sequence[Any]
+    state: Any,
+    rows: Sequence[Any],
+    projection_only_identities: Collection[ProjectionOnlyIdentity] = (),
 ) -> ProjectionApplyBatch:
     """Apply the unique settled/ready prefix without crossing any identity gap."""
 
@@ -543,21 +622,22 @@ def apply_contiguous_world_projections(
                 row.day_index,
             )
             break
-        expected_identity = {
-            "event_id": row.event_id,
-            "revision": row.revision,
-            "day_index": row.day_index,
-            "source_hash": row.source_hash,
-        }
-        if record.get("world_projection_status") != "applied":
-            record["world_projection_status"] = "applied"
-            state_changed = True
-        if record.get("world_projection_id") != row.projection_id:
-            record["world_projection_id"] = row.projection_id
-            state_changed = True
-        if record.get("world_projection_identity") != expected_identity:
-            record["world_projection_identity"] = expected_identity
-            state_changed = True
+        if _projection_only_identity(row, selected) not in projection_only_identities:
+            expected_identity = {
+                "event_id": row.event_id,
+                "revision": row.revision,
+                "day_index": row.day_index,
+                "source_hash": row.source_hash,
+            }
+            if record.get("world_projection_status") != "applied":
+                record["world_projection_status"] = "applied"
+                state_changed = True
+            if record.get("world_projection_id") != row.projection_id:
+                record["world_projection_id"] = row.projection_id
+                state_changed = True
+            if record.get("world_projection_identity") != expected_identity:
+                record["world_projection_identity"] = expected_identity
+                state_changed = True
         if changed:
             applied_count += 1
             state_changed = True
@@ -567,7 +647,7 @@ def apply_contiguous_world_projections(
                 rows_to_mark.append(marker)
 
     before_watermarks = deepcopy(layer)
-    recompute_projection_watermarks(state, rows)
+    recompute_projection_watermarks(state, rows, projection_only_identities)
     state_changed = state_changed or layer != before_watermarks
     return ProjectionApplyBatch(
         applied_count=applied_count,

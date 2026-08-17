@@ -149,7 +149,9 @@ def test_next_day_apply_sanitizes_malformed_stored_world_before_fulfillment() ->
 
 
 def test_recompute_watermarks_stops_at_first_non_ready_gap() -> None:
-    state = PlayerState()
+    state = PlayerState(
+        day_history=[{"day_index": day, "choice_option_index": 0} for day in range(8)]
+    )
     state.world_projection_state["applied_through_day_index"] = 4
     rows = [
         SimpleNamespace(day_index=5, status="applied", created_at=None),
@@ -175,3 +177,80 @@ def test_recompute_watermarks_marks_an_absent_settled_day_pending() -> None:
     assert state.world_projection_state["projected_through_day_index"] == 5
     assert state.world_projection_state["pending_from_day_index"] == 6
     assert state.world_projection_state["oldest_pending_at"] is None
+
+
+def test_recompute_watermarks_clamps_unproved_future_values_to_default() -> None:
+    state = PlayerState(
+        day_history=[
+            {"day_index": 0, "choice_option_index": 0},
+            {"day_index": 1, "choice_option_index": 0},
+        ]
+    )
+    state.world_projection_state["applied_through_day_index"] = 99
+    state.world_projection_state["projected_through_day_index"] = 99
+
+    recompute_projection_watermarks(state, [])
+
+    assert state.world_projection_state["applied_through_day_index"] == -1
+    assert state.world_projection_state["projected_through_day_index"] == -1
+
+
+def test_future_clamp_uses_ledger_then_keeps_ready_next_day_projectable() -> None:
+    state = PlayerState(
+        day_history=[{"day_index": day, "choice_option_index": 0} for day in range(3)]
+    )
+    state.world_projection_state["applied_through_day_index"] = 99
+    state.world_projection_state["projected_through_day_index"] = 99
+    state.world_projection_state["applied_sources"] = [
+        {"day_index": 0},
+        {"day_index": 1},
+    ]
+    rows = [SimpleNamespace(day_index=2, status="ready", created_at=None)]
+
+    recompute_projection_watermarks(state, rows)
+
+    assert state.world_projection_state["applied_through_day_index"] == 1
+    assert state.world_projection_state["projected_through_day_index"] == 2
+    assert state.world_projection_state["pending_from_day_index"] == 2
+
+
+@pytest.mark.parametrize("rogue_status", ["applied", "ready"])
+def test_future_clamp_ignores_rogue_active_row_outside_accepted_history(
+    rogue_status: str,
+) -> None:
+    state = PlayerState(
+        day_history=[
+            {"day_index": 0, "choice_option_index": 0},
+            {"day_index": 1, "choice_option_index": 0},
+        ]
+    )
+    state.world_projection_state["applied_through_day_index"] = 99
+    state.world_projection_state["projected_through_day_index"] = 99
+    state.world_projection_state["applied_sources"] = [
+        {"day_index": 0},
+        {"day_index": 1},
+    ]
+    rows = [SimpleNamespace(day_index=2, status=rogue_status, created_at=None)]
+
+    recompute_projection_watermarks(state, rows)
+
+    assert state.world_projection_state["applied_through_day_index"] == 1
+    assert state.world_projection_state["projected_through_day_index"] == 1
+    assert state.world_projection_state["pending_from_day_index"] is None
+
+
+def test_future_clamp_rejects_non_contiguous_ledger_proof() -> None:
+    state = PlayerState(
+        day_history=[
+            {"day_index": 0, "choice_option_index": 0},
+            {"day_index": 1, "choice_option_index": 0},
+        ]
+    )
+    state.world_projection_state["applied_through_day_index"] = 99
+    state.world_projection_state["projected_through_day_index"] = 99
+    state.world_projection_state["applied_sources"] = [{"day_index": 1}]
+
+    recompute_projection_watermarks(state, [])
+
+    assert state.world_projection_state["applied_through_day_index"] == -1
+    assert state.world_projection_state["projected_through_day_index"] == -1

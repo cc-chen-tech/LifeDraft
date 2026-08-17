@@ -217,6 +217,9 @@ class StateRepository:
             initialize_legacy_projection_baseline,
             projection_row_snapshot,
         )
+        from src.services.daily_world_projection_repair import (
+            repair_projection_only_identities,
+        )
 
         layer = player_state.world_projection_state
         rewind_state_id = layer.pop("rewind_from_state_id", None)
@@ -268,11 +271,10 @@ class StateRepository:
                 .all()
             )
         ]
+        projection_only_identities = repair_projection_only_identities(db, game_id)
         initialize_legacy_projection_baseline(
             player_state,
-            blocked_days=tuple(
-                row.day_index for row in rows if row.status != "superseded"
-            ),
+            blocked_days=tuple(row.day_index for row in rows),
         )
 
         applied_through = int(
@@ -314,6 +316,15 @@ class StateRepository:
             if len(matching_rows) != 1:
                 raise ValueError("world_projection_source_missing")
             row = matching_rows[0]
+            source_key = (
+                row.event_id,
+                row.revision,
+                row.day_index,
+                row.source_hash,
+                source.get("option_index"),
+            )
+            if source_key in projection_only_identities:
+                continue
             matches[0]["world_projection_id"] = row.projection_id
             matches[0]["world_projection_identity"] = {
                 "event_id": row.event_id,
@@ -322,7 +333,11 @@ class StateRepository:
                 "source_hash": row.source_hash,
             }
             matches[0]["world_projection_status"] = "applied"
-        apply_contiguous_world_projections(player_state, rows)
+        apply_contiguous_world_projections(
+            player_state,
+            rows,
+            projection_only_identities=projection_only_identities,
+        )
 
     @staticmethod
     def _prepare_projection_rewind(

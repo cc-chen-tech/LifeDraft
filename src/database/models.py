@@ -632,6 +632,12 @@ class DailyWorldProjection(Base):
     lease_owner = Column(String(96), nullable=True, index=True)
     lease_expires_at = Column(DateTime, nullable=True)
     error_code = Column(String(80), nullable=True)
+    repair_audit_id = Column(
+        Integer,
+        ForeignKey("daily_world_projection_repair_audits.audit_id"),
+        nullable=True,
+    )
+    repair_selected_option_index = Column(Integer, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -651,6 +657,10 @@ class DailyWorldProjection(Base):
             "status",
             "next_attempt_at",
             "lease_expires_at",
+        ),
+        Index(
+            "ix_daily_world_projections_repair_audit_id_runtime",
+            "repair_audit_id",
         ),
     )
 
@@ -672,6 +682,25 @@ class DailyWorldProjectionAttempt(Base):
     finished_at = Column(DateTime, nullable=True)
     outcome = Column(String(32), nullable=False, default="running", index=True)
     error_code = Column(String(80), nullable=True, index=True)
+
+
+class DailyWorldProjectionRepairAudit(Base):
+    """Durable operator audit trail for a projection-only save repair."""
+
+    __tablename__ = "daily_world_projection_repair_audits"
+
+    audit_id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    state_id = Column(Integer, nullable=False)
+    report_hash = Column(String(64), nullable=False, index=True)
+    backup_path = Column(String(700), nullable=False)
+    backup_sha256 = Column(String(64), nullable=False)
+    non_projection_digest_before = Column(String(64), nullable=False)
+    non_projection_digest_after = Column(String(64), nullable=True)
+    status = Column(String(32), nullable=False, index=True)
+    detail_json = Column(JSON, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
 
 
 class GeneratedMusicAsset(Base):
@@ -851,6 +880,10 @@ def _ensure_legacy_columns() -> None:
             "start_ms": "INTEGER",
             "end_ms": "INTEGER",
         },
+        "daily_world_projections": {
+            "repair_audit_id": "INTEGER",
+            "repair_selected_option_index": "INTEGER",
+        },
     }
 
     with engine.begin() as connection:
@@ -880,6 +913,14 @@ def _ensure_legacy_columns() -> None:
                 "ON voice_reading_jobs (dedupe_key)"
             )
         )
+        if "daily_world_projections" in available_tables:
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS "
+                    "ix_daily_world_projections_repair_audit_id_runtime "
+                    "ON daily_world_projections (repair_audit_id)"
+                )
+            )
 
 
 @contextmanager

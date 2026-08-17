@@ -25,7 +25,12 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from src.database.models import DailyWorldProjection, Game, GameState, SessionLocal
+from src.database.models import (
+    DailyWorldProjection,
+    Game,
+    GameState,
+    SessionLocal,
+)
 from src.game.world_projection_coverage import detect_world_change_signals
 from src.game.world_projection_schema import (
     WorldProjectionExtractionError,
@@ -41,6 +46,13 @@ from src.services.daily_world_projection_repository import (
     AttemptReservationStatus,
     DailyWorldProjectionRepository,
     ProjectionIdentity,
+)
+from src.services.daily_world_projection_repair import (
+    repair_projection_only_identities,
+)
+from src.services.daily_world_projection_observability import (
+    emit_projection_health,
+    summarize_projection_health,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,6 +98,11 @@ class DailyWorldProjectionService:
         before_claim_commit: Optional[Callable[[], None]] = None,
         before_reservation_guard: Optional[Callable[[], None]] = None,
         before_projection_state_save: Optional[Callable[[], None]] = None,
+        health_summary_fn: Callable[[Any, datetime], Any] = (
+            summarize_projection_health
+        ),
+        health_emitter: Callable[[Any], Any] = emit_projection_health,
+        health_interval: timedelta = timedelta(seconds=60),
     ) -> None:
         self.session_factory = session_factory
         self.repository_factory = repository_factory
@@ -109,6 +126,9 @@ class DailyWorldProjectionService:
         self.before_claim_commit = before_claim_commit
         self.before_reservation_guard = before_reservation_guard
         self.before_projection_state_save = before_projection_state_save
+        self.health_summary_fn = health_summary_fn
+        self.health_emitter = health_emitter
+        self.health_interval = health_interval
         zone_name = time_zone or os.getenv(
             "WORLD_PROJECTION_TIME_ZONE", DEFAULT_TIME_ZONE
         )
@@ -121,6 +141,7 @@ class DailyWorldProjectionService:
         self._cancel_event: Optional[threading.Event] = None
         self._generation_owners: dict[int, str] = {}
         self._heartbeat_done: set[threading.Event] = set()
+        self._last_health_emitted_at: Optional[datetime] = None
         self.canonical_loader = canonical_loader or self._load_canonical_source
 
     @property
@@ -236,6 +257,10 @@ class DailyWorldProjectionService:
                 max_workers=self.extraction_workers,
                 thread_name_prefix="daily-world-projection",
             )
+            if self._last_health_emitted_at is None:
+                # The scanner emits once per completed minute, rather than
+                # opening a second read session during its startup claim pass.
+                self._last_health_emitted_at = self._as_utc_naive(self.now_fn())
             self._started = True
             self._scanner = threading.Thread(
                 target=self._scan_loop,
@@ -356,12 +381,54 @@ class DailyWorldProjectionService:
                 .all()
             )
         ]
-        batch = apply_contiguous_world_projections(state, rows)
+        projection_only_identities = repair_projection_only_identities(session, game_id)
+        batch = apply_contiguous_world_projections(
+            state, rows, projection_only_identities
+        )
+        state_output = state.to_dict()
+        marked = set(batch.rows_to_mark)
+        repair_marked = False
+        ordinary_marked: list[Any] = []
+        for row in rows:
+            if (row.projection_id, row.source_hash) not in marked:
+                continue
+            record = self._history_record(state.day_history, row)
+            selected = record.get("choice_option_index") if record else None
+            identity = (
+                row.event_id,
+                row.revision,
+                row.day_index,
+                row.source_hash,
+                selected,
+            )
+            if identity in projection_only_identities:
+                repair_marked = True
+            else:
+                ordinary_marked.append(row)
+        if repair_marked:
+            state_output = deepcopy(dict(state_data))
+            state_output["world_projection_state"] = deepcopy(
+                state.world_projection_state
+            )
+            output_history = state_output.get("day_history")
+            if isinstance(output_history, list):
+                for row in ordinary_marked:
+                    source = self._history_record(state.day_history, row)
+                    target = self._history_record(output_history, row)
+                    if source is None or target is None:
+                        continue
+                    for key in (
+                        "world_projection_status",
+                        "world_projection_id",
+                        "world_projection_identity",
+                    ):
+                        if key in source:
+                            target[key] = deepcopy(source[key])
         if not batch.state_changed:
             return (
                 batch.applied_count,
                 list(batch.rows_to_mark),
-                state.to_dict(),
+                state_output,
             )
 
         expected_state_id = int(latest.state_id) if latest is not None else None
@@ -383,12 +450,27 @@ class DailyWorldProjectionService:
                 game_id=game_id,
                 week=state.week,
                 age=state.age,
-                state_json=state.to_dict(),
+                state_json=state_output,
             )
         )
-        game.updated_at = self._as_utc_naive(self.now_fn())
+        if ordinary_marked:
+            game.updated_at = self._as_utc_naive(self.now_fn())
         session.flush()
-        return batch.applied_count, list(batch.rows_to_mark), state.to_dict()
+        return batch.applied_count, list(batch.rows_to_mark), state_output
+
+    @staticmethod
+    def _history_record(history: Any, row: Any) -> Optional[dict[str, Any]]:
+        if not isinstance(history, list):
+            return None
+        matches = [
+            record
+            for record in history
+            if isinstance(record, dict)
+            and record.get("event_id") == row.event_id
+            and record.get("revision", 1) == row.revision
+            and record.get("day_index") == row.day_index
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     @staticmethod
     def _active_game_loops(game_id: int) -> list[Any]:
@@ -806,13 +888,56 @@ class DailyWorldProjectionService:
     def _scan_loop(self, generation: int, cancel: threading.Event) -> None:
         while self._active_generation(generation, cancel):
             try:
-                self.run_once(self.now_fn(), _generation=generation, _cancel=cancel)
+                claim_now = self.now_fn()
+                self.run_once(claim_now, _generation=generation, _cancel=cancel)
             except Exception:
                 logger.exception("daily world projection scan failed")
+            try:
+                health_now = self.now_fn()
+                self._emit_health_if_due(
+                    health_now, generation=generation, cancel=cancel
+                )
+            except Exception:
+                logger.exception("daily world projection health query failed")
             if cancel.is_set():
                 return
             self.wake_event.wait(self.scan_seconds)
             self.wake_event.clear()
+
+    def _emit_health_if_due(
+        self,
+        now: datetime,
+        *,
+        generation: int,
+        cancel: threading.Event,
+    ) -> None:
+        """Read and emit health on the scanner thread after claims are dispatched."""
+
+        db_now = self._as_utc_naive(now)
+        with self._lock:
+            if (
+                not self._started
+                or generation != self._generation
+                or cancel is not self._cancel_event
+                or cancel.is_set()
+            ):
+                return
+            previous = self._last_health_emitted_at
+            if (
+                previous is not None
+                and db_now >= previous
+                and db_now - previous < self.health_interval
+            ):
+                return
+            # Throttle query failures as well as successful logs; a broken DB must
+            # not turn the one-minute health check into a one-second retry storm.
+            self._last_health_emitted_at = db_now
+        session = self.session_factory()
+        try:
+            snapshot = self.health_summary_fn(session, now)
+        finally:
+            session.close()
+        self.health_emitter(snapshot)
 
     def _load_canonical_source(
         self, game_id: int, event_id: str, revision: int

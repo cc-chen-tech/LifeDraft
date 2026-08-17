@@ -12,7 +12,12 @@ from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from src.database.models import DailyWorldProjection, DailyWorldProjectionAttempt, Game
+from src.database.models import (
+    DailyWorldProjection,
+    DailyWorldProjectionAttempt,
+    DailyWorldProjectionRepairAudit,
+    Game,
+)
 
 if TYPE_CHECKING:
     from src.game.world_projection_schema import WorldProjectionPayload
@@ -117,6 +122,154 @@ class DailyWorldProjectionRepository:
                 raise
             return self._ensure_matching_source(existing, identity, source_hash)
         return task
+
+    def reactivate_superseded_projection(
+        self,
+        identity: ProjectionIdentity,
+        source_hash: str,
+        *,
+        repair_audit_id: int,
+        selected_option_index: int,
+    ) -> Optional[DailyWorldProjection]:
+        """CAS-reset one exact restored repair row without weakening ensure()."""
+
+        if not self._repair_authority_matches(
+            identity,
+            source_hash,
+            repair_audit_id=repair_audit_id,
+            selected_option_index=selected_option_index,
+        ):
+            return None
+        now = datetime.utcnow()
+        updated = (
+            self.db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == identity.game_id,
+                DailyWorldProjection.event_id == identity.event_id,
+                DailyWorldProjection.revision == identity.revision,
+                DailyWorldProjection.day_index == identity.day_index,
+                DailyWorldProjection.story_date == identity.story_date,
+                DailyWorldProjection.source_hash == source_hash,
+                DailyWorldProjection.status == "superseded",
+            )
+            .update(
+                {
+                    DailyWorldProjection.status: "pending",
+                    DailyWorldProjection.story_patch_json: None,
+                    DailyWorldProjection.option_patches_json: None,
+                    DailyWorldProjection.coverage_json: None,
+                    DailyWorldProjection.attempt_count: 0,
+                    DailyWorldProjection.next_attempt_at: now,
+                    DailyWorldProjection.lease_owner: None,
+                    DailyWorldProjection.lease_expires_at: None,
+                    DailyWorldProjection.error_code: None,
+                    DailyWorldProjection.applied_at: None,
+                    DailyWorldProjection.repair_audit_id: repair_audit_id,
+                    DailyWorldProjection.repair_selected_option_index: (
+                        selected_option_index
+                    ),
+                    DailyWorldProjection.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
+        self.db.flush()
+        self.db.expire_all()
+        if updated != 1:
+            return None
+        return self._find_identity(identity)
+
+    def bind_repair_authority(
+        self,
+        identity: ProjectionIdentity,
+        source_hash: str,
+        *,
+        repair_audit_id: int,
+        selected_option_index: int,
+    ) -> Optional[DailyWorldProjection]:
+        """Bind a committed repair audit to one exact non-restored projection row."""
+
+        if not self._repair_authority_matches(
+            identity,
+            source_hash,
+            repair_audit_id=repair_audit_id,
+            selected_option_index=selected_option_index,
+        ):
+            return None
+        updated = (
+            self.db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == identity.game_id,
+                DailyWorldProjection.event_id == identity.event_id,
+                DailyWorldProjection.revision == identity.revision,
+                DailyWorldProjection.day_index == identity.day_index,
+                DailyWorldProjection.story_date == identity.story_date,
+                DailyWorldProjection.source_hash == source_hash,
+                DailyWorldProjection.status != "superseded",
+                or_(
+                    DailyWorldProjection.repair_audit_id.is_(None),
+                    DailyWorldProjection.repair_audit_id == repair_audit_id,
+                ),
+            )
+            .update(
+                {
+                    DailyWorldProjection.repair_audit_id: repair_audit_id,
+                    DailyWorldProjection.repair_selected_option_index: (
+                        selected_option_index
+                    ),
+                    DailyWorldProjection.updated_at: datetime.utcnow(),
+                },
+                synchronize_session=False,
+            )
+        )
+        self.db.flush()
+        self.db.expire_all()
+        if updated != 1:
+            return None
+        return self._find_identity(identity)
+
+    def _repair_authority_matches(
+        self,
+        identity: ProjectionIdentity,
+        source_hash: str,
+        *,
+        repair_audit_id: int,
+        selected_option_index: int,
+    ) -> bool:
+        """Validate a one-time DB scope binding without reading the backup file."""
+
+        if (
+            isinstance(repair_audit_id, bool)
+            or not isinstance(repair_audit_id, int)
+            or repair_audit_id < 1
+            or isinstance(selected_option_index, bool)
+            or not isinstance(selected_option_index, int)
+            or selected_option_index < 0
+        ):
+            raise ValueError("repair_projection_authority_invalid")
+        audit = self.db.get(DailyWorldProjectionRepairAudit, repair_audit_id)
+        if (
+            audit is None
+            or int(audit.game_id) != identity.game_id
+            or audit.status != "backed_up"
+        ):
+            return False
+        # Local import avoids a module cycle: repair orchestration imports this
+        # repository, while the strict parser is shared with finalization/restore.
+        from src.services.daily_world_projection_repair import (
+            audit_rebuild_identities,
+        )
+
+        requested = (
+            identity.event_id,
+            identity.revision,
+            identity.day_index,
+            source_hash,
+            selected_option_index,
+        )
+        return requested in {
+            item.projection_key for item in audit_rebuild_identities(audit.detail_json)
+        }
 
     def claim_due(
         self, now: datetime, worker_id: str, limit: int
@@ -368,7 +521,12 @@ class DailyWorldProjectionRepository:
             next_attempt_at,
             source_hash=source_hash,
         )
-        self._finish_attempt_update(attempt_id, outcome, error_code, now)
+        self._finish_attempt_update(
+            attempt_id,
+            outcome if retried else "lease_lost",
+            error_code if retried else "lease_lost",
+            now,
+        )
         return retried
 
     def release_lease_and_finish_attempt(
@@ -387,7 +545,12 @@ class DailyWorldProjectionRepository:
         released = self.release_lease(
             projection_id, worker_id, now, source_hash=source_hash
         )
-        self._finish_attempt_update(attempt_id, outcome, error_code, now)
+        self._finish_attempt_update(
+            attempt_id,
+            outcome if released else "lease_lost",
+            error_code if released else "lease_lost",
+            now,
+        )
         return released
 
     def mark_applied(
@@ -742,6 +905,8 @@ class DailyWorldProjectionRepository:
                     DailyWorldProjection.lease_expires_at: None,
                     DailyWorldProjection.error_code: None,
                     DailyWorldProjection.applied_at: None,
+                    DailyWorldProjection.repair_audit_id: None,
+                    DailyWorldProjection.repair_selected_option_index: None,
                     DailyWorldProjection.updated_at: now,
                 },
                 synchronize_session=False,

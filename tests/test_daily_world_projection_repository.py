@@ -5,14 +5,20 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import event
+from sqlalchemy import create_engine, event, inspect, text
 
-from src.database.models import DailyWorldProjection
+from src.database.models import (
+    DailyWorldProjection,
+    DailyWorldProjectionAttempt,
+    DailyWorldProjectionRepairAudit,
+)
 from src.services.daily_world_projection_repository import (
     DailyWorldProjectionRepository,
     ProjectionIdentity,
     ProjectionSourceHashConflict,
 )
+
+REPAIR_SOURCE_HASH = "a" * 64
 
 
 @pytest.fixture
@@ -32,6 +38,39 @@ def identity(*, revision: int = 1) -> ProjectionIdentity:
     )
 
 
+def add_repair_audit(
+    db_session,
+    *,
+    game_id: int = 73,
+    status: str = "backed_up",
+    source_hash: str = REPAIR_SOURCE_HASH,
+) -> DailyWorldProjectionRepairAudit:
+    audit = DailyWorldProjectionRepairAudit(
+        game_id=game_id,
+        state_id=9001,
+        report_hash="a" * 64,
+        backup_path="/disposable/repair-backup.json",
+        backup_sha256="b" * 64,
+        non_projection_digest_before="c" * 64,
+        status=status,
+        detail_json={
+            "rebuild_day_indexes": [4],
+            "rebuild_identities": [
+                {
+                    "event_id": "daily-event-73",
+                    "revision": 1,
+                    "day_index": 4,
+                    "source_hash": source_hash,
+                    "selected_option_index": 0,
+                }
+            ],
+        },
+    )
+    db_session.add(audit)
+    db_session.flush()
+    return audit
+
+
 def test_projection_identity_is_unique(db_session) -> None:
     """A replayed accepted event must reuse its one durable projection row."""
 
@@ -43,6 +82,180 @@ def test_projection_identity_is_unique(db_session) -> None:
 
     assert first.projection_id == second.projection_id
     assert db_session.query(DailyWorldProjection).count() == 1
+
+
+def test_legacy_database_adds_nullable_repair_authority_columns(
+    tmp_path, monkeypatch
+) -> None:
+    import src.database.models as database_models
+
+    legacy_engine = create_engine(f"sqlite:///{tmp_path / 'legacy-authority.sqlite'}")
+    with legacy_engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE daily_world_projections "
+                "(projection_id INTEGER PRIMARY KEY)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE voice_reading_jobs "
+                "(job_id INTEGER PRIMARY KEY, dedupe_key VARCHAR(128))"
+            )
+        )
+    monkeypatch.setattr(database_models, "engine", legacy_engine)
+
+    database_models._ensure_legacy_columns()
+    database_models._ensure_legacy_columns()
+
+    columns = {
+        column["name"]: column
+        for column in inspect(legacy_engine).get_columns("daily_world_projections")
+    }
+    assert columns["repair_audit_id"]["nullable"] is True
+    assert columns["repair_selected_option_index"]["nullable"] is True
+    assert "ix_daily_world_projections_repair_audit_id_runtime" in {
+        index["name"]
+        for index in inspect(legacy_engine).get_indexes("daily_world_projections")
+    }
+
+
+def test_explicit_repair_reactivation_resets_only_exact_superseded_row(
+    db_session, frozen_now
+) -> None:
+    repo = DailyWorldProjectionRepository(db_session)
+    row = repo.ensure_projection(identity(), source_hash=REPAIR_SOURCE_HASH)
+    row.status = "superseded"
+    row.story_patch_json = {"fact_updates": [{"fact": "stale"}]}
+    row.option_patches_json = {"0": {}}
+    row.coverage_json = {"result": "stale"}
+    row.attempt_count = 3
+    row.lease_owner = "old-worker"
+    row.lease_expires_at = frozen_now
+    row.error_code = "old_error"
+    row.applied_at = frozen_now
+    db_session.flush()
+    audit = add_repair_audit(db_session)
+
+    assert repo.ensure_projection(identity(), REPAIR_SOURCE_HASH).status == "superseded"
+    reactivated = repo.reactivate_superseded_projection(
+        identity(),
+        REPAIR_SOURCE_HASH,
+        repair_audit_id=int(audit.audit_id),
+        selected_option_index=0,
+    )
+
+    assert reactivated is not None
+    assert reactivated.status == "pending"
+    assert reactivated.story_patch_json is None
+    assert reactivated.option_patches_json is None
+    assert reactivated.coverage_json is None
+    assert reactivated.attempt_count == 0
+    assert reactivated.lease_owner is None
+    assert reactivated.lease_expires_at is None
+    assert reactivated.error_code is None
+    assert reactivated.applied_at is None
+    assert reactivated.repair_audit_id == audit.audit_id
+    assert reactivated.repair_selected_option_index == 0
+    assert reactivated.next_attempt_at <= frozen_now
+    replayed = repo.ensure_projection(identity(), REPAIR_SOURCE_HASH)
+    assert replayed.repair_audit_id == audit.audit_id
+    assert replayed.repair_selected_option_index == 0
+    assert (
+        repo.reactivate_superseded_projection(
+            identity(),
+            REPAIR_SOURCE_HASH,
+            repair_audit_id=int(audit.audit_id),
+            selected_option_index=0,
+        )
+        is None
+    )
+    assert (
+        repo.reactivate_superseded_projection(
+            identity(),
+            "b" * 64,
+            repair_audit_id=int(audit.audit_id),
+            selected_option_index=0,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("audit_game_id", "audit_status", "audit_source_hash"),
+    [
+        (74, "backed_up", REPAIR_SOURCE_HASH),
+        (73, "queued", REPAIR_SOURCE_HASH),
+        (73, "backed_up", "b" * 64),
+    ],
+    ids=["wrong-game", "wrong-status", "out-of-scope"],
+)
+@pytest.mark.parametrize("superseded", [False, True], ids=["bind", "reactivate"])
+def test_repair_authority_binding_rejects_unverified_audit_scope_without_writes(
+    db_session,
+    audit_game_id: int,
+    audit_status: str,
+    audit_source_hash: str,
+    superseded: bool,
+) -> None:
+    repo = DailyWorldProjectionRepository(db_session)
+    row = repo.ensure_projection(identity(), source_hash=REPAIR_SOURCE_HASH)
+    if superseded:
+        row.status = "superseded"
+    audit = add_repair_audit(
+        db_session,
+        game_id=audit_game_id,
+        status=audit_status,
+        source_hash=audit_source_hash,
+    )
+    db_session.flush()
+
+    if superseded:
+        result = repo.reactivate_superseded_projection(
+            identity(),
+            REPAIR_SOURCE_HASH,
+            repair_audit_id=int(audit.audit_id),
+            selected_option_index=0,
+        )
+    else:
+        result = repo.bind_repair_authority(
+            identity(),
+            REPAIR_SOURCE_HASH,
+            repair_audit_id=int(audit.audit_id),
+            selected_option_index=0,
+        )
+
+    db_session.expire_all()
+    durable = db_session.get(DailyWorldProjection, row.projection_id)
+    assert result is None
+    assert durable.status == ("superseded" if superseded else "pending")
+    assert durable.repair_audit_id is None
+    assert durable.repair_selected_option_index is None
+
+
+def test_controlled_source_replacement_clears_exact_repair_authority(
+    db_session,
+) -> None:
+    repo = DailyWorldProjectionRepository(db_session)
+    repo.ensure_projection(identity(), source_hash=REPAIR_SOURCE_HASH)
+    audit = add_repair_audit(db_session)
+    bound = repo.bind_repair_authority(
+        identity(),
+        REPAIR_SOURCE_HASH,
+        repair_audit_id=int(audit.audit_id),
+        selected_option_index=0,
+    )
+    assert bound is not None
+
+    replacement = repo.replace_projection_source(
+        identity(),
+        expected_old_hash=REPAIR_SOURCE_HASH,
+        new_hash="b" * 64,
+    )
+
+    assert replacement is not None
+    assert replacement.repair_audit_id is None
+    assert replacement.repair_selected_option_index is None
 
 
 def test_controlled_source_replacement_blocks_delayed_generic_ensures_and_terminals(
@@ -294,6 +507,85 @@ def test_attempt_ledger_counts_only_requested_window(db_session, frozen_now) -> 
         )
         == 1
     )
+
+
+def test_successful_retry_finalization_preserves_source_superseded_outcome(
+    db_session, frozen_now
+) -> None:
+    """A handled source replacement is not a rejected late write."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    task = repo.ensure_projection(identity(), source_hash="hash-a")
+    [claimed] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    attempt_id = repo.start_attempt(task.projection_id, task.game_id, frozen_now)
+
+    assert repo.mark_retryable_and_finish_attempt(
+        claimed.projection_id,
+        "worker-a",
+        "source_superseded",
+        frozen_now + timedelta(minutes=5),
+        source_hash=claimed.source_hash,
+        attempt_id=attempt_id,
+        outcome="source_superseded",
+        now=frozen_now,
+    )
+
+    attempt = db_session.get(DailyWorldProjectionAttempt, attempt_id)
+    assert (attempt.outcome, attempt.error_code) == (
+        "source_superseded",
+        "source_superseded",
+    )
+
+
+def test_fenced_retry_finalization_records_rejected_late_write(
+    db_session, frozen_now
+) -> None:
+    """A retry CAS rejected after supersede must become durable lease_lost."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    task = repo.ensure_projection(identity(), source_hash="hash-a")
+    [claimed] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    attempt_id = repo.start_attempt(task.projection_id, task.game_id, frozen_now)
+    assert repo.supersede(task.game_id, task.event_id, before_revision=2) == 1
+
+    assert not repo.mark_retryable_and_finish_attempt(
+        claimed.projection_id,
+        "worker-a",
+        "suspicious_empty",
+        frozen_now + timedelta(minutes=5),
+        source_hash=claimed.source_hash,
+        attempt_id=attempt_id,
+        outcome="extraction_error",
+        now=frozen_now,
+    )
+
+    attempt = db_session.get(DailyWorldProjectionAttempt, attempt_id)
+    assert (attempt.outcome, attempt.error_code) == ("lease_lost", "lease_lost")
+
+
+def test_fenced_cancel_finalization_records_rejected_late_write(
+    db_session, frozen_now
+) -> None:
+    """A cancel release rejected after lease loss must become durable lease_lost."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    task = repo.ensure_projection(identity(), source_hash="hash-a")
+    [claimed] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    attempt_id = repo.start_attempt(task.projection_id, task.game_id, frozen_now)
+    assert repo.supersede(task.game_id, task.event_id, before_revision=2) == 1
+
+    assert not repo.release_lease_and_finish_attempt(
+        claimed.projection_id,
+        "worker-a",
+        claimed.source_hash,
+        frozen_now,
+        attempt_id=attempt_id,
+        outcome="cancelled",
+        error_code="cancelled",
+    )
+
+    attempt = db_session.get(DailyWorldProjectionAttempt, attempt_id)
+    assert (attempt.outcome, attempt.error_code) == ("lease_lost", "lease_lost")
 
 
 def test_supersede_only_fences_older_revisions(db_session) -> None:

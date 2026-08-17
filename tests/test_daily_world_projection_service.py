@@ -687,6 +687,200 @@ def test_stop_then_immediate_start_fences_the_old_scanner_generation() -> None:
     assert 2 in calls
 
 
+def test_scanner_uses_fresh_post_claim_clock_for_health_interval() -> None:
+    """A claim pass crossing 60 seconds must emit in that same scan iteration."""
+
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    start = datetime(2026, 8, 17, 10, 0, 0)
+    after_claim = start + timedelta(seconds=61)
+    clock = iter((start, after_claim))
+    cancel = threading.Event()
+    claim_times: list[datetime] = []
+    health_times: list[datetime] = []
+
+    class ReadSession:
+        def close(self) -> None:
+            pass
+
+    class OnePassWake:
+        def wait(self, _timeout: float) -> bool:
+            cancel.set()
+            return True
+
+        def clear(self) -> None:
+            pass
+
+    service = DailyWorldProjectionService(
+        session_factory=ReadSession,
+        now_fn=lambda: next(clock),
+        wake_event=OnePassWake(),
+        health_summary_fn=lambda _db, now: now,
+        health_emitter=health_times.append,
+    )
+    service.run_once = (  # type: ignore[method-assign]
+        lambda now, **_kwargs: claim_times.append(now) or 0
+    )
+    with service._lock:
+        service._started = True
+        service._generation = 1
+        service._cancel_event = cancel
+        service._last_health_emitted_at = start
+
+    service._scan_loop(1, cancel)
+
+    assert claim_times == [start]
+    assert health_times == [after_claim]
+
+
+def test_old_scanner_cannot_reserve_health_timestamp_after_restart() -> None:
+    """The lifecycle lock must fence a stale generation at timestamp reservation."""
+
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    start = datetime(2026, 8, 17, 10, 0, 0)
+    old_cancel = threading.Event()
+    new_cancel = threading.Event()
+    attempted = threading.Event()
+    emitted: list[object] = []
+    errors: list[BaseException] = []
+    service = DailyWorldProjectionService(
+        session_factory=lambda: pytest.fail("stale scanner opened a health session"),
+        health_summary_fn=lambda _db, _now: pytest.fail("stale scanner summarized"),
+        health_emitter=emitted.append,
+    )
+    service._started = True
+    service._generation = 1
+    service._cancel_event = old_cancel
+    service._last_health_emitted_at = start
+
+    def old_scanner_health() -> None:
+        attempted.set()
+        try:
+            service._emit_health_if_due(
+                start + timedelta(seconds=61),
+                generation=1,
+                cancel=old_cancel,
+            )
+        except BaseException as exc:
+            errors.append(exc)
+
+    with service._lock:
+        worker = threading.Thread(target=old_scanner_health)
+        worker.start()
+        assert attempted.wait(1)
+        old_cancel.set()
+        service._generation = 2
+        service._cancel_event = new_cancel
+    worker.join(1)
+
+    assert not worker.is_alive()
+    assert errors == []
+    assert emitted == []
+    assert service._last_health_emitted_at == start
+
+
+@pytest.mark.parametrize(
+    ("clock_values", "expected_claims", "expected_health", "expected_log"),
+    [
+        (
+            (
+                RuntimeError("claim clock unavailable"),
+                datetime(2026, 8, 17, 10, 1, 1),
+                datetime(2026, 8, 17, 10, 1, 2),
+                datetime(2026, 8, 17, 10, 1, 2),
+            ),
+            [datetime(2026, 8, 17, 10, 1, 2)],
+            [datetime(2026, 8, 17, 10, 1, 1)],
+            "daily world projection scan failed",
+        ),
+        (
+            (
+                datetime(2026, 8, 17, 10, 0, 0),
+                RuntimeError("health clock unavailable"),
+                datetime(2026, 8, 17, 10, 1, 1),
+                datetime(2026, 8, 17, 10, 1, 1),
+            ),
+            [
+                datetime(2026, 8, 17, 10, 0, 0),
+                datetime(2026, 8, 17, 10, 1, 1),
+            ],
+            [datetime(2026, 8, 17, 10, 1, 1)],
+            "daily world projection health query failed",
+        ),
+    ],
+)
+def test_scanner_survives_clock_failures_and_stops_without_leaking_thread(
+    clock_values: tuple[object, ...],
+    expected_claims: list[datetime],
+    expected_health: list[datetime],
+    expected_log: str,
+    caplog,
+) -> None:
+    """Transient clocks are contained without spinning or killing the scanner."""
+
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    class TwoIterationWake:
+        def __init__(self) -> None:
+            self.wait_calls = 0
+            self.second_wait = threading.Event()
+            self.released = threading.Event()
+
+        def wait(self, _timeout: float) -> bool:
+            self.wait_calls += 1
+            if self.wait_calls == 1:
+                return False
+            self.second_wait.set()
+            return self.released.wait(1)
+
+        def clear(self) -> None:
+            pass
+
+        def set(self) -> None:
+            self.released.set()
+
+    class ReadSession:
+        def close(self) -> None:
+            pass
+
+    values = iter(clock_values)
+
+    def now_fn() -> datetime:
+        value = next(values)
+        if isinstance(value, BaseException):
+            raise value
+        assert isinstance(value, datetime)
+        return value
+
+    wake = TwoIterationWake()
+    claims: list[datetime] = []
+    health: list[datetime] = []
+    service = DailyWorldProjectionService(
+        session_factory=ReadSession,
+        now_fn=now_fn,
+        wake_event=wake,
+        health_summary_fn=lambda _db, now: now,
+        health_emitter=health.append,
+    )
+    service.run_once = (  # type: ignore[method-assign]
+        lambda now, **_kwargs: claims.append(now) or 0
+    )
+    service._last_health_emitted_at = datetime(2026, 8, 17, 10, 0, 0)
+
+    service.start()
+    scanner = service._scanner
+    progressed = wake.second_wait.wait(1)
+    service.stop(wait=True)
+
+    assert progressed is True
+    assert scanner is not None and not scanner.is_alive()
+    assert wake.wait_calls == 2
+    assert claims == expected_claims
+    assert health == expected_health
+    assert expected_log in caplog.text
+
+
 def test_transaction_helper_commits_success_and_rolls_back_failure() -> None:
     now = datetime(2026, 8, 17, 10, 0, 0)
     state = WorkerState(_row(now))

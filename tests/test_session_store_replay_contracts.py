@@ -48,7 +48,9 @@ def test_options_cache_requires_matching_story_and_resets_prefetch_lifecycle() -
     assert session.get_cached_options(4, 2, "first story") is None
 
 
-def test_store_isolates_owner_keys_preserves_cache_and_cleans_expired_sessions() -> None:
+def test_store_isolates_owner_keys_preserves_cache_and_cleans_expired_sessions() -> (
+    None
+):
     store = SessionStore()
     first = store.put(15, object(), user_id=1)
     first.set_cached_options(week=1, round_num=1, options=[{"id": "a"}])
@@ -67,3 +69,18 @@ def test_store_isolates_owner_keys_preserves_cache_and_cleans_expired_sessions()
 
     assert store.get(15, user_id=1) is None
     assert store.active_count == 1
+
+
+def test_remove_game_sessions_invalidates_all_owners_for_one_game() -> None:
+    from types import SimpleNamespace
+
+    from src.api.session_store import SessionStore
+
+    store = SessionStore()
+    store.put(77, SimpleNamespace(), user_id=1)
+    store.put(77, SimpleNamespace(), user_id=2)
+    store.put(78, SimpleNamespace(), user_id=1)
+
+    assert store.remove_game_sessions(77) == 2
+    assert store.get_game_sessions(77) == []
+    assert len(store.get_game_sessions(78)) == 1

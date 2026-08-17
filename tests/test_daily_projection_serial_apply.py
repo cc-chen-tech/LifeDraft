@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from copy import deepcopy
 from datetime import datetime
 
 import pytest
@@ -9,7 +10,12 @@ from sqlalchemy.orm import sessionmaker
 from config.feature_flags import reset_features, set_feature
 from src.ai.models import EventOption, GameEvent
 from src.api.session_store import session_store
-from src.database.models import DailyWorldProjection, Game, GameState
+from src.database.models import (
+    DailyWorldProjection,
+    DailyWorldProjectionRepairAudit,
+    Game,
+    GameState,
+)
 from src.database.state_repository import StateRepository
 from src.game.daily_timeline import build_daily_timeline
 from src.game.game_loop import GameLoop
@@ -17,6 +23,11 @@ from src.game.round.daily_choice_processor import DailyChoiceProcessor
 from src.game.state import PlayerState
 from src.game.world_projection_schema import compute_projection_source_hash
 from src.services.daily_world_projection import DailyWorldProjectionService
+from src.services.daily_world_projection_backup import write_state_backup
+from src.services.daily_world_projection_repair import (
+    finalize_repair_audit,
+    non_projection_state_digest,
+)
 from src.services.daily_world_projection_repository import (
     DailyWorldProjectionRepository,
 )
@@ -644,6 +655,86 @@ def test_normal_save_cannot_overwrite_cross_process_projection_apply(
     assert saved["day_history"][0]["world_projection_identity"]["event_id"] == (
         "event-0"
     )
+
+
+def test_normal_save_before_repair_finalize_preserves_projection_only_history(
+    temp_db_file, tmp_path, monkeypatch
+) -> None:
+    engine, _ = temp_db_file
+    game_id, Session = _seed_game(engine, days=(0,), statuses=("ready",))
+    with Session.begin() as db:
+        latest = (
+            db.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+        )
+        original = deepcopy(latest.state_json)
+        original["day_history"][0].pop("world_projection_status", None)
+        latest.state_json = deepcopy(original)
+        state_id = int(latest.state_id)
+        record = original["day_history"][0]
+        source_hash = compute_projection_source_hash(
+            record["event_description"], record["options"]
+        )
+        backup = write_state_backup(
+            tmp_path,
+            game_id=game_id,
+            state_id=state_id,
+            state_json=original,
+        )
+        audit = DailyWorldProjectionRepairAudit(
+            game_id=game_id,
+            state_id=state_id,
+            report_hash="a" * 64,
+            backup_path=str(backup.path),
+            backup_sha256=backup.sha256,
+            non_projection_digest_before=non_projection_state_digest(original),
+            status="queued",
+            detail_json={
+                "rebuild_day_indexes": [0],
+                "rebuild_identities": [
+                    {
+                        "event_id": record["event_id"],
+                        "revision": record["revision"],
+                        "day_index": 0,
+                        "source_hash": source_hash,
+                        "selected_option_index": 0,
+                    }
+                ],
+            },
+        )
+        db.add(audit)
+        db.flush()
+        audit_id = int(audit.audit_id)
+        projection = db.query(DailyWorldProjection).one()
+        projection.repair_audit_id = audit_id
+        projection.repair_selected_option_index = 0
+
+    stale_candidate = PlayerState.from_dict(original)
+    assert (
+        DailyWorldProjectionService(session_factory=Session).apply_ready_for_game(
+            game_id
+        )
+        == 1
+    )
+
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", Session)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        assert StateRepository().save_game_progress(game_id, stale_candidate) is True
+    finally:
+        reset_features()
+
+    saved = _latest(Session, game_id)
+    assert non_projection_state_digest(saved) == non_projection_state_digest(original)
+    record_after = saved["day_history"][0]
+    assert "world_projection_status" not in record_after
+    assert "world_projection_id" not in record_after
+    assert "world_projection_identity" not in record_after
+    assert finalize_repair_audit(Session, audit_id).status == "complete"
 
 
 def test_normal_save_rejects_choice_conflicting_with_applied_projection(
