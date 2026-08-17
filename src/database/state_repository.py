@@ -73,7 +73,7 @@ class StateRepository:
             state = (
                 db.query(GameState)
                 .filter(GameState.game_id == game_id)
-                .order_by(GameState.week.desc())
+                .order_by(GameState.state_id.desc())
                 .first()
             )
 
@@ -214,38 +214,46 @@ class StateRepository:
         from src.game.state import PlayerState
         from src.game.world_projection_state import (
             apply_contiguous_world_projections,
+            initialize_legacy_projection_baseline,
             projection_row_snapshot,
         )
 
-        latest = (
-            db.query(GameState)
-            .filter(GameState.game_id == game_id)
-            .order_by(GameState.state_id.desc())
-            .first()
-        )
-        state_data = (
-            latest.state_json
-            if latest is not None
-            else getattr(game, "initial_state", None)
-        )
-        if isinstance(state_data, dict):
-            durable = PlayerState.from_dict(dict(state_data))
-            player_state.world_projection_state = deepcopy(
-                durable.world_projection_state
+        layer = player_state.world_projection_state
+        rewind_state_id = layer.pop("rewind_from_state_id", None)
+        rewind = None
+        if (
+            isinstance(rewind_state_id, int)
+            and not isinstance(rewind_state_id, bool)
+            and rewind_state_id > 0
+        ):
+            rewind = (
+                db.query(GameState)
+                .filter(
+                    GameState.state_id == rewind_state_id,
+                    GameState.game_id == game_id,
+                    GameState.is_save_point.is_(True),
+                )
+                .one_or_none()
             )
-
-        applied_through = int(
-            player_state.world_projection_state.get("applied_through_day_index", -1)
-        )
-        for record in player_state.day_history:
-            if (
-                isinstance(record, dict)
-                and isinstance(record.get("day_index"), int)
-                and not isinstance(record.get("day_index"), bool)
-                and record["day_index"] > applied_through
-                and "world_projection_identity" in record
-            ):
-                record["world_projection_status"] = "pending"
+        if rewind is not None:
+            StateRepository._prepare_projection_rewind(db, game_id, player_state)
+        else:
+            latest = (
+                db.query(GameState)
+                .filter(GameState.game_id == game_id)
+                .order_by(GameState.state_id.desc())
+                .first()
+            )
+            state_data = (
+                latest.state_json
+                if latest is not None
+                else getattr(game, "initial_state", None)
+            )
+            if isinstance(state_data, dict):
+                durable = PlayerState.from_dict(dict(state_data))
+                player_state.world_projection_state = deepcopy(
+                    durable.world_projection_state
+                )
 
         rows = [
             projection_row_snapshot(row)
@@ -260,6 +268,26 @@ class StateRepository:
                 .all()
             )
         ]
+        initialize_legacy_projection_baseline(
+            player_state,
+            blocked_days=tuple(
+                row.day_index for row in rows if row.status != "superseded"
+            ),
+        )
+
+        applied_through = int(
+            player_state.world_projection_state.get("applied_through_day_index", -1)
+        )
+        for record in player_state.day_history:
+            if (
+                isinstance(record, dict)
+                and isinstance(record.get("day_index"), int)
+                and not isinstance(record.get("day_index"), bool)
+                and record["day_index"] > applied_through
+                and "world_projection_identity" in record
+            ):
+                record["world_projection_status"] = "pending"
+
         for source in player_state.world_projection_state.get("applied_sources", []):
             if not isinstance(source, dict):
                 continue
@@ -295,6 +323,96 @@ class StateRepository:
             }
             matches[0]["world_projection_status"] = "applied"
         apply_contiguous_world_projections(player_state, rows)
+
+    @staticmethod
+    def _prepare_projection_rewind(
+        db: Any, game_id: int, player_state: "PlayerState"
+    ) -> None:
+        """Truncate derived future rows while retaining the save-point branch."""
+
+        from src.game.world_projection_schema import compute_projection_source_hash
+
+        layer = player_state.world_projection_state
+        boundary = int(layer.get("applied_through_day_index", -1))
+        layer["applied_sources"] = [
+            deepcopy(source)
+            for source in layer.get("applied_sources", [])
+            if isinstance(source, dict)
+            and isinstance(source.get("day_index"), int)
+            and not isinstance(source.get("day_index"), bool)
+            and source["day_index"] <= boundary
+        ]
+        layer["projected_through_day_index"] = min(
+            int(layer.get("projected_through_day_index", boundary)), boundary
+        )
+        layer["pending_from_day_index"] = None
+        layer["oldest_pending_at"] = None
+
+        saved_identities: dict[tuple[str, int, int], str] = {}
+
+        def retain_identity(record: dict[str, Any], fallback_day: Any = None) -> None:
+            event_id = record.get("event_id")
+            revision = record.get("revision", 1)
+            story = record.get("event_description", record.get("story"))
+            options = record.get("options")
+            day_index = record.get("day_index", fallback_day)
+            if (
+                isinstance(event_id, str)
+                and event_id.strip()
+                and isinstance(revision, int)
+                and not isinstance(revision, bool)
+                and revision >= 1
+                and isinstance(day_index, int)
+                and not isinstance(day_index, bool)
+                and day_index > boundary
+                and isinstance(story, str)
+                and isinstance(options, list)
+            ):
+                saved_identities[(event_id, revision, day_index)] = (
+                    compute_projection_source_hash(story, options)
+                )
+
+        for record in player_state.day_history:
+            if (
+                isinstance(record, dict)
+                and record.get("world_projection_status") == "pending"
+            ):
+                retain_identity(record)
+
+        current = player_state.current_event_data
+        if isinstance(current, dict):
+            timeline = (
+                player_state.timeline if isinstance(player_state.timeline, dict) else {}
+            )
+            retain_identity(current, timeline.get("day_index"))
+
+        now = datetime.utcnow()
+        future_rows = (
+            db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == game_id,
+                DailyWorldProjection.day_index > boundary,
+            )
+            .all()
+        )
+        for row in future_rows:
+            row_identity = (row.event_id, row.revision, row.day_index)
+            saved_hash = saved_identities.get(row_identity)
+            if saved_hash is not None:
+                row.source_hash = saved_hash
+                row.status = "pending"
+                row.story_patch_json = None
+                row.option_patches_json = None
+                row.coverage_json = None
+                row.attempt_count = 0
+                row.next_attempt_at = now
+                row.error_code = None
+                row.applied_at = None
+            else:
+                row.status = "superseded"
+            row.lease_owner = None
+            row.lease_expires_at = None
+            row.updated_at = now
 
     def _prune_old_auto_snapshots(self, db, game_id: int) -> int:
         """删除超出保留上限的旧自动快照，手动存档点（is_save_point=True）永不删除。
@@ -450,11 +568,11 @@ class StateRepository:
             if not game:
                 return None
 
-            # 获取最新状态（按创建时间降序，确保返回最新的记录）
+            # state_id is the authoritative append order; timestamps may tie or rewind.
             latest_state = (
                 db.query(GameState)
                 .filter(GameState.game_id == game_id)
-                .order_by(GameState.created_at.desc())
+                .order_by(GameState.state_id.desc())
                 .first()
             )
 

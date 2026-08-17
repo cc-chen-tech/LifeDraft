@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from config.feature_flags import reset_features, set_feature
 from src.game.game_loop import GameLoop
 
 
@@ -34,6 +35,43 @@ def test_load_game_restores_valid_saved_current_event() -> None:
     assert loop.current_event.event_description == "Saved event."
     assert state.current_event_data is not None
     assert loop.last_event_week == 2
+
+
+def test_load_game_carries_verified_save_point_marker_into_projection_layer(
+    monkeypatch,
+) -> None:
+    observed = []
+    monkeypatch.setattr(
+        GameLoop,
+        "_retry_pending_daily_postprocessing",
+        lambda _self: None,
+    )
+    monkeypatch.setattr(
+        GameLoop,
+        "_reconcile_daily_world_projections",
+        lambda self, _state: observed.append(
+            self.player_state.world_projection_state.get("rewind_from_state_id")
+        ),
+    )
+    set_feature("daily_world_projection_v1", True)
+    try:
+        loop = _loop()
+        state = loop.load_game(
+            {
+                "_game_id": 8,
+                "_loaded_save_point_state_id": 73,
+                "timeline_version": 2,
+                "current_event_data": None,
+                "round_history": [],
+                "decision_history": [],
+                "yearly_summaries": [],
+            }
+        )
+    finally:
+        reset_features()
+
+    assert observed == [73]
+    assert state.world_projection_state["rewind_from_state_id"] == 73
 
 
 def test_load_game_clears_stale_current_event_already_in_history() -> None:

@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 import threading
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ from src.database.models import (
     DailyWorldProjection,
     DailyWorldProjectionAttempt,
     Game,
+    GameState,
 )
 from src.game.world_projection_schema import (
     WorldProjectionExtractionError,
@@ -686,8 +688,6 @@ def test_stop_then_immediate_start_fences_the_old_scanner_generation() -> None:
 
 
 def test_transaction_helper_commits_success_and_rolls_back_failure() -> None:
-    from src.services.daily_world_projection import DailyWorldProjectionService
-
     now = datetime(2026, 8, 17, 10, 0, 0)
     state = WorkerState(_row(now))
     service = _service(state, now, pytest.fail)
@@ -2055,3 +2055,212 @@ def test_stop_before_heartbeat_releases_pre_provider_reservation_lease(
         )
         assert claimed.lease_owner == "new-worker"
         assert claimed.source_hash == source_hash
+
+
+def test_canonical_source_uses_highest_state_id_when_timestamps_run_backwards(
+    temp_db_file,
+) -> None:
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    engine, _ = temp_db_file
+    sessions = sessionmaker(bind=engine)
+    old_event = {
+        "event_id": "old",
+        "revision": 1,
+        "event_description": "旧故事",
+        "options": [{"text": "旧选项", "effects": {}}],
+    }
+    current_event = {
+        "event_id": "current",
+        "revision": 1,
+        "event_description": "孙悟空已返回花果山。",
+        "options": [{"text": "休息", "effects": {}}],
+    }
+    with sessions.begin() as session:
+        game = Game(language="zh", initial_state={})
+        session.add(game)
+        session.flush()
+        session.add(
+            GameState(
+                game_id=game.game_id,
+                week=1,
+                age=18,
+                state_json={"current_event_data": old_event},
+                created_at=datetime(2026, 8, 17, 12, 0, 0),
+            )
+        )
+        session.add(
+            GameState(
+                game_id=game.game_id,
+                week=1,
+                age=18,
+                state_json={
+                    "current_event_data": current_event,
+                    "day_history": [{"event_description": "很长的历史正文"}],
+                    "world_model_data": {
+                        "character_locations": {"孙悟空": {"location": "东海"}},
+                        "active_commitments": [
+                            {"description": "守护花果山", "parties": ["孙悟空"]}
+                        ],
+                        "causal_chains": [
+                            {
+                                "cause": "大闹天宫",
+                                "expected_consequence": "天兵追捕",
+                                "characters": ["孙悟空"],
+                            }
+                        ],
+                    },
+                    "landmarks": {"花果山": {"name": "花果山"}},
+                    "world_projection_state": {
+                        "world": {
+                            "location_updates": [
+                                {"character": "孙悟空", "location": "花果山"}
+                            ],
+                            "commitment_updates": [
+                                {"description": "守护花果山", "parties": ["孙悟空"]}
+                            ],
+                            "causal_updates": [
+                                {
+                                    "cause": "大闹天宫",
+                                    "expected_consequence": "天兵追捕",
+                                    "characters": ["孙悟空"],
+                                }
+                            ],
+                        }
+                    },
+                },
+                created_at=datetime(2026, 8, 17, 11, 0, 0),
+            )
+        )
+        game_id = int(game.game_id)
+
+    source = DailyWorldProjectionService(
+        session_factory=sessions
+    )._load_canonical_source(game_id, "current", 1)
+
+    assert source is not None
+    assert source["story"] == "孙悟空已返回花果山。"
+    tracked = source["tracked_state"]
+    assert "day_history" not in tracked
+    assert "current_event_data" not in tracked
+    assert tracked["character_locations"]["孙悟空"]["location"] == "花果山"
+    assert tracked["active_commitments"][0]["description"] == "守护花果山"
+    assert tracked["causal_chains"][0]["cause"] == "大闹天宫"
+
+
+def test_compact_tracked_state_has_a_hard_total_budget() -> None:
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    huge = "\x00\n" * 125_000
+    tracked = DailyWorldProjectionService._compact_tracked_state(
+        {
+            "world_model_data": {
+                "character_locations": {
+                    f"角色{index}": {"location": huge} for index in range(200)
+                },
+                "active_commitments": [
+                    {"description": huge, "parties": [f"角色{index}"]}
+                    for index in range(200)
+                ],
+                "causal_chains": [
+                    {"cause": huge, "expected_consequence": huge}
+                    for _index in range(200)
+                ],
+            },
+            "landmarks": {
+                f"地点{index}": {"description": huge} for index in range(200)
+            },
+            "world_projection_state": {
+                "world": {
+                    "location_updates": [{"character": "孙悟空", "location": "花果山"}]
+                }
+            },
+        }
+    )
+
+    encoded = json.dumps(tracked, ensure_ascii=False, separators=(",", ":"))
+    assert len(encoded) <= 32_000
+    assert "孙悟空" in tracked["character_locations"]
+
+
+def test_compact_tracked_state_prefers_all_projection_world_categories() -> None:
+    from src.game.world_projection_coverage import detect_world_change_signals
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    tracked = DailyWorldProjectionService._compact_tracked_state(
+        {
+            "world_model_data": {
+                "causal_chains": [
+                    {
+                        "cause": "旧日误会",
+                        "expected_consequence": "仍然争吵",
+                    }
+                ]
+            },
+            "world_projection_state": {
+                "world": {
+                    "fact_updates": [{"subject": "孙悟空", "fact": "持有金箍棒"}],
+                    "foreshadowing_seeds": [{"description": "天庭来使"}],
+                    "habit_updates": [{"character": "孙悟空", "habit": "每日练棍"}],
+                    "location_updates": [{"character": "孙悟空", "location": "花果山"}],
+                    "career_updates": [
+                        {"character": "孙悟空", "current_job": "美猴王"}
+                    ],
+                    "commitment_updates": [
+                        {"description": "守护花果山", "parties": ["孙悟空"]}
+                    ],
+                    "causal_updates": [
+                        {
+                            "cause": "偷取金箍棒",
+                            "expected_consequence": "龙宫追责",
+                            "characters": ["孙悟空"],
+                        }
+                    ],
+                }
+            },
+        }
+    )
+
+    signals = detect_world_change_signals("偷取金箍棒引发的后果终于解决。", [], tracked)
+
+    assert signals.requires_nonempty_patch is True
+    assert "causal_updates" in signals.categories
+    assert tracked["active_commitments"][0]["description"] == "守护花果山"
+    assert tracked["fact_updates"][0]["fact"] == "持有金箍棒"
+    assert tracked["habit_updates"][0]["habit"] == "每日练棍"
+    assert tracked["career_updates"][0]["current_job"] == "美猴王"
+    assert tracked["foreshadowing_seeds"][0]["description"] == "天庭来使"
+
+
+def test_compact_tracked_state_reserves_budget_for_each_projection_category() -> None:
+    from src.game.world_projection_coverage import detect_world_change_signals
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    tracked = DailyWorldProjectionService._compact_tracked_state(
+        {
+            "world_projection_state": {
+                "world": {
+                    "location_updates": [
+                        {
+                            "character": f"角色{index}",
+                            "location": "花果山" * 128,
+                            "region": "东胜神洲" * 128,
+                        }
+                        for index in range(32)
+                    ],
+                    "causal_updates": [
+                        {
+                            "cause": "偷取金箍棒",
+                            "expected_consequence": "龙宫追责",
+                            "characters": ["孙悟空"],
+                        }
+                    ],
+                }
+            }
+        }
+    )
+
+    signals = detect_world_change_signals("偷取金箍棒引发的后果终于解决。", [], tracked)
+
+    assert signals.requires_nonempty_patch is True
+    assert "causal_updates" in signals.categories

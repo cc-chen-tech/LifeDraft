@@ -4,11 +4,13 @@ Uses real SQLite in-memory database via monkeypatched SessionLocal.
 No unittest.mock usage.
 """
 
+from datetime import datetime
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.database.models import Base, Game, SessionLocal, User
+from src.database.models import Base, Game, GameState, SessionLocal, User
 from src.database.state_repository import StateRepository
 from src.game.state import PlayerState
 
@@ -85,6 +87,22 @@ class TestStateRepositoryDB:
         latest = repo.load_game_state(sample_game.game_id)
         assert latest.get("player_name") == "New"
 
+    def test_load_game_state_uses_append_order_after_week_rewind(self, sample_game):
+        repo = StateRepository()
+        repo.save_state(
+            sample_game.game_id,
+            PlayerState(week=10, age=25, player_name="Old future"),
+        )
+        repo.save_state(
+            sample_game.game_id,
+            PlayerState(week=2, age=22, player_name="New rewind"),
+        )
+
+        latest = repo.load_game_state(sample_game.game_id)
+
+        assert latest is not None
+        assert latest["player_name"] == "New rewind"
+
     def test_load_game_state_not_found(self):
         """load_game_state for non-existent game should return None."""
         repo = StateRepository()
@@ -141,6 +159,37 @@ class TestStateRepositoryDB:
         state = repo.load_saved_game(sample_game.game_id, sample_user.user_id)
         assert state is not None
         assert state.get("_game_id") == sample_game.game_id
+
+    def test_load_saved_game_uses_append_order_when_timestamps_run_backwards(
+        self, sample_game, sample_user, db
+    ):
+        db.add(
+            GameState(
+                game_id=sample_game.game_id,
+                week=1,
+                age=22,
+                state_json={"player_name": "Old"},
+                created_at=datetime(2026, 8, 17, 12, 0, 0),
+            )
+        )
+        db.flush()
+        db.add(
+            GameState(
+                game_id=sample_game.game_id,
+                week=1,
+                age=22,
+                state_json={"player_name": "New"},
+                created_at=datetime(2026, 8, 17, 11, 0, 0),
+            )
+        )
+        db.commit()
+
+        loaded = StateRepository().load_saved_game(
+            sample_game.game_id, sample_user.user_id
+        )
+
+        assert loaded is not None
+        assert loaded["player_name"] == "New"
 
     def test_load_saved_game_wrong_user(self, sample_game):
         """load_saved_game with wrong user should return None."""

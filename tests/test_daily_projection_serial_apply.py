@@ -244,7 +244,11 @@ def test_absent_choice_projection_is_reconciled_from_reloaded_pending_history(
     loop.player_state = loaded
     loop.current_event = None
 
-    loop._reconcile_daily_world_projections({"_game_id": game_id})
+    set_feature("daily_world_projection_v1", True)
+    try:
+        loop._reconcile_daily_world_projections({"_game_id": game_id})
+    finally:
+        reset_features()
 
     with Session() as db:
         row = db.query(DailyWorldProjection).one()
@@ -664,3 +668,388 @@ def test_normal_save_rejects_choice_conflicting_with_applied_projection(
     saved = _latest(Session, game_id)
     assert saved["day_history"][0]["choice_option_index"] == 0
     assert saved["day_history"][0]["world_projection_status"] == "applied"
+
+
+def test_legacy_daily_history_establishes_projection_migration_baseline(
+    monkeypatch,
+) -> None:
+    state = PlayerState(
+        timeline=build_daily_timeline(start_date="2026-08-01", day_index=2),
+        timeline_version=2,
+        day_history=[_record(0), _record(1)],
+    )
+    for record in state.day_history:
+        record.pop("world_projection_status", None)
+    current = GameEvent(
+        event_id="event-2",
+        revision=1,
+        story_date="2026-08-03",
+        event_description="孙悟空回到花果山。",
+        options=[
+            EventOption(text="休息", effects={}),
+            EventOption(text="巡山", effects={}),
+        ],
+    )
+    state.current_event_data = current.model_dump()
+    loop = object.__new__(GameLoop)
+    loop.player_state = state
+    loop.current_event = current
+    enqueued = []
+    monkeypatch.setattr(
+        "src.services.daily_world_projection.enqueue_accepted_daily_world_projection",
+        lambda *args, **kwargs: enqueued.append((args, kwargs)) or True,
+    )
+    set_feature("daily_world_projection_v1", True)
+    try:
+        loop._reconcile_daily_world_projections({"_game_id": 91})
+    finally:
+        reset_features()
+
+    assert state.world_projection_state["applied_through_day_index"] == 1
+    assert state.world_projection_state["projected_through_day_index"] == 1
+    assert len(enqueued) == 1
+    assert enqueued[0][0][1] is current
+    assert enqueued[0][1] == {"replacement": True}
+
+
+def test_legacy_projection_migration_baseline_survives_first_save(
+    temp_db_file, monkeypatch
+) -> None:
+    engine, _ = temp_db_file
+    Session = sessionmaker(bind=engine)
+    legacy_records = [_record(0), _record(1)]
+    for record in legacy_records:
+        record.pop("world_projection_status", None)
+    pending_record = _record(2)
+    state = PlayerState(
+        week=1,
+        timeline=build_daily_timeline(start_date="2026-08-01", day_index=3),
+        timeline_version=2,
+        day_history=[*legacy_records, pending_record],
+    )
+    with Session.begin() as db:
+        game = Game(language="zh", initial_state={})
+        db.add(game)
+        db.flush()
+        game_id = int(game.game_id)
+        db.add(
+            GameState(
+                game_id=game_id,
+                week=1,
+                age=18,
+                state_json=state.to_dict(),
+            )
+        )
+        db.add(_projection(game_id, pending_record, "ready"))
+
+    loop = object.__new__(GameLoop)
+    loop.player_state = PlayerState.from_dict(state.to_dict())
+    loop._initialize_projection_migration_baseline()
+    assert loop.player_state.world_projection_state["applied_through_day_index"] == 1
+
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", Session)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        assert StateRepository().save_game_progress(game_id, loop.player_state) is True
+    finally:
+        reset_features()
+
+    saved = _latest(Session, game_id)
+    assert saved["world_projection_state"]["applied_through_day_index"] == 2
+    assert saved["world_projection_state"]["pending_from_day_index"] is None
+    assert [
+        item["fact"]
+        for item in saved["world_projection_state"]["world"]["fact_updates"]
+    ] == ["day-2-applied"]
+    assert (
+        DailyWorldProjectionService(session_factory=Session).apply_ready_for_game(
+            game_id
+        )
+        == 0
+    )
+    with Session() as db:
+        assert db.query(DailyWorldProjection).one().status == "applied"
+    replayed = _latest(Session, game_id)
+    assert [
+        item["fact"]
+        for item in replayed["world_projection_state"]["world"]["fact_updates"]
+    ] == ["day-2-applied"]
+
+
+def test_legacy_projection_baseline_does_not_skip_an_existing_ready_row(
+    temp_db_file, monkeypatch
+) -> None:
+    engine, _ = temp_db_file
+    Session = sessionmaker(bind=engine)
+    record = _record(0)
+    record.pop("world_projection_status", None)
+    state = PlayerState(
+        week=1,
+        timeline=build_daily_timeline(start_date="2026-08-01", day_index=1),
+        timeline_version=2,
+        day_history=[record],
+    )
+    with Session.begin() as db:
+        game = Game(language="zh", initial_state={})
+        db.add(game)
+        db.flush()
+        game_id = int(game.game_id)
+        db.add(
+            GameState(
+                game_id=game_id,
+                week=1,
+                age=18,
+                state_json=state.to_dict(),
+            )
+        )
+        db.add(_projection(game_id, record, "ready"))
+
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", Session)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        assert StateRepository().save_game_progress(game_id, state) is True
+    finally:
+        reset_features()
+
+    saved = _latest(Session, game_id)
+    assert saved["world_projection_state"]["applied_through_day_index"] == 0
+    assert [
+        item["fact"]
+        for item in saved["world_projection_state"]["world"]["fact_updates"]
+    ] == ["day-0-applied"]
+
+
+def test_projection_reconciliation_is_a_noop_while_feature_is_disabled(
+    monkeypatch,
+) -> None:
+    state = PlayerState(
+        timeline=build_daily_timeline(start_date="2026-08-01", day_index=1),
+        timeline_version=2,
+        day_history=[_record(0)],
+    )
+    state.day_history[0].pop("world_projection_status", None)
+    loop = object.__new__(GameLoop)
+    loop.player_state = state
+    loop.current_event = None
+    enqueued = []
+    monkeypatch.setattr(
+        "src.services.daily_world_projection.enqueue_accepted_daily_world_projection",
+        lambda *args, **kwargs: enqueued.append((args, kwargs)) or True,
+    )
+    reset_features()
+
+    loop._reconcile_daily_world_projections({"_game_id": 91})
+
+    assert state.world_projection_state["applied_through_day_index"] == -1
+    assert enqueued == []
+
+
+def test_save_point_rewind_preserves_older_projection_layer(
+    temp_db_file, monkeypatch
+) -> None:
+    engine, _ = temp_db_file
+    game_id, Session = _seed_game(engine, days=(0,), statuses=("ready",))
+    service = DailyWorldProjectionService(session_factory=Session)
+    assert service.apply_ready_for_game(game_id) == 1
+    day_zero = _latest(Session, game_id)
+    with Session.begin() as db:
+        save_point = GameState(
+            game_id=game_id,
+            week=1,
+            age=18,
+            state_json=day_zero,
+            is_save_point=True,
+            save_name="day-zero",
+        )
+        db.add(save_point)
+        db.flush()
+        save_point_id = int(save_point.state_id)
+        day_one_state = PlayerState.from_dict(day_zero)
+        day_one_state.day_history.append(_record(1))
+        day_one_state.timeline = build_daily_timeline(
+            start_date="2026-08-01", day_index=2
+        )
+        db.add(
+            GameState(
+                game_id=game_id,
+                week=1,
+                age=18,
+                state_json=day_one_state.to_dict(),
+            )
+        )
+        db.add(_projection(game_id, day_one_state.day_history[-1], "ready"))
+    assert service.apply_ready_for_game(game_id) == 1
+
+    rewound = PlayerState.from_dict(day_zero)
+    rewound.world_projection_state["rewind_from_state_id"] = save_point_id
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", Session)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        assert StateRepository().save_game_progress(game_id, rewound) is True
+    finally:
+        reset_features()
+
+    saved = _latest(Session, game_id)
+    assert saved["world_projection_state"]["applied_through_day_index"] == 0
+    assert [
+        item["fact"]
+        for item in saved["world_projection_state"]["world"]["fact_updates"]
+    ] == ["day-0-applied"]
+    assert "rewind_from_state_id" not in saved["world_projection_state"]
+    with Session() as db:
+        day_one = (
+            db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == game_id,
+                DailyWorldProjection.day_index == 1,
+            )
+            .one()
+        )
+        assert day_one.status == "superseded"
+
+
+def test_save_point_rewind_resets_the_saved_current_event_for_reprojection(
+    temp_db_file, monkeypatch
+) -> None:
+    engine, _ = temp_db_file
+    game_id, Session = _seed_game(engine, days=(0,), statuses=("ready",))
+    service = DailyWorldProjectionService(session_factory=Session)
+    assert service.apply_ready_for_game(game_id) == 1
+    day_zero = _latest(Session, game_id)
+    current_record = _record(1)
+    current_event = GameEvent(
+        event_id=current_record["event_id"],
+        revision=current_record["revision"],
+        story_date=current_record["story_date"],
+        event_description=current_record["event_description"],
+        options=[EventOption(**option) for option in current_record["options"]],
+    )
+    save_point_state = PlayerState.from_dict(day_zero)
+    save_point_state.current_event_data = current_event.model_dump()
+    save_point_state.timeline = build_daily_timeline(
+        start_date="2026-08-01", day_index=1
+    )
+    with Session.begin() as db:
+        save_point = GameState(
+            game_id=game_id,
+            week=1,
+            age=18,
+            state_json=save_point_state.to_dict(),
+            is_save_point=True,
+            save_name="before-day-one-choice",
+        )
+        db.add(save_point)
+        db.flush()
+        save_point_id = int(save_point.state_id)
+        future = PlayerState.from_dict(save_point_state.to_dict())
+        future.current_event_data = None
+        future.day_history.append(current_record)
+        future.timeline = build_daily_timeline(start_date="2026-08-01", day_index=2)
+        db.add(
+            GameState(
+                game_id=game_id,
+                week=1,
+                age=18,
+                state_json=future.to_dict(),
+            )
+        )
+        db.add(_projection(game_id, current_record, "ready"))
+    assert service.apply_ready_for_game(game_id) == 1
+
+    rewound = PlayerState.from_dict(save_point_state.to_dict())
+    rewound.world_projection_state["rewind_from_state_id"] = save_point_id
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", Session)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        assert StateRepository().save_game_progress(game_id, rewound) is True
+    finally:
+        reset_features()
+
+    saved = _latest(Session, game_id)
+    assert saved["current_event_data"]["event_id"] == "event-1"
+    assert saved["world_projection_state"]["applied_through_day_index"] == 0
+    with Session() as db:
+        replay = (
+            db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == game_id,
+                DailyWorldProjection.day_index == 1,
+            )
+            .one()
+        )
+        assert replay.status == "pending"
+        assert replay.story_patch_json is None
+        assert replay.option_patches_json is None
+
+
+def test_save_point_rewind_preserves_pending_settled_days_before_current_event(
+    temp_db_file, monkeypatch
+) -> None:
+    engine, _ = temp_db_file
+    game_id, Session = _seed_game(engine, days=(0,), statuses=("ready",))
+    service = DailyWorldProjectionService(session_factory=Session)
+    assert service.apply_ready_for_game(game_id) == 1
+    save_point_state = PlayerState.from_dict(_latest(Session, game_id))
+    pending_record = _record(1)
+    current_record = _record(2)
+    current_event = GameEvent(
+        event_id=current_record["event_id"],
+        revision=current_record["revision"],
+        story_date=current_record["story_date"],
+        event_description=current_record["event_description"],
+        options=[EventOption(**option) for option in current_record["options"]],
+    )
+    save_point_state.day_history.append(pending_record)
+    save_point_state.current_event_data = current_event.model_dump()
+    save_point_state.timeline = build_daily_timeline(
+        start_date="2026-08-01", day_index=2
+    )
+    with Session.begin() as db:
+        save_point = GameState(
+            game_id=game_id,
+            week=1,
+            age=18,
+            state_json=save_point_state.to_dict(),
+            is_save_point=True,
+            save_name="pending-day-before-current",
+        )
+        db.add(save_point)
+        db.flush()
+        save_point_id = int(save_point.state_id)
+        db.add(_projection(game_id, pending_record, "ready"))
+        db.add(_projection(game_id, current_record, "ready"))
+
+    rewound = PlayerState.from_dict(save_point_state.to_dict())
+    rewound.world_projection_state["rewind_from_state_id"] = save_point_id
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", Session)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        assert StateRepository().save_game_progress(game_id, rewound) is True
+    finally:
+        reset_features()
+
+    saved = _latest(Session, game_id)
+    assert saved["world_projection_state"]["applied_through_day_index"] == 0
+    assert saved["world_projection_state"]["pending_from_day_index"] == 1
+    with Session() as db:
+        rows = (
+            db.query(DailyWorldProjection)
+            .filter(DailyWorldProjection.game_id == game_id)
+            .order_by(DailyWorldProjection.day_index)
+            .all()
+        )
+        assert [(row.day_index, row.status) for row in rows] == [
+            (0, "applied"),
+            (1, "pending"),
+            (2, "pending"),
+        ]

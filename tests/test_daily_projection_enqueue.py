@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, event as sqlalchemy_event
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import sessionmaker
 
+from config.feature_flags import reset_features, set_feature
 from src.ai.models import EventOption, GameEvent
 from src.database.models import Base, DailyWorldProjection, Game
 from src.game.game_loop import GameLoop
@@ -356,9 +357,13 @@ def test_daily_load_reconciles_current_and_explicit_pending_events_only(
         lambda: service,
     )
 
-    loop = GameLoop(language="zh")
-    loop.load_game(state_dict)
-    loop.load_game(state_dict)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        loop = GameLoop(language="zh")
+        loop.load_game(state_dict)
+        loop.load_game(state_dict)
+    finally:
+        reset_features()
 
     with sessions() as session:
         rows = (
@@ -390,7 +395,11 @@ def test_daily_load_reconciles_complete_evt_current_event(
         lambda: service,
     )
 
-    GameLoop(language="zh").load_game(state_dict)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        GameLoop(language="zh").load_game(state_dict)
+    finally:
+        reset_features()
 
     with sessions() as observer:
         assert [row.event_id for row in observer.query(DailyWorldProjection).all()] == [
@@ -417,7 +426,11 @@ def test_daily_load_does_not_enqueue_current_event_with_generated_placeholder_id
         lambda: service,
     )
 
-    GameLoop(language="zh").load_game(state_dict)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        GameLoop(language="zh").load_game(state_dict)
+    finally:
+        reset_features()
 
     with sessions() as observer:
         assert observer.query(DailyWorldProjection).count() == 0

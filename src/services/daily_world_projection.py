@@ -823,7 +823,7 @@ class DailyWorldProjectionService:
             state = (
                 session.query(GameState)
                 .filter(GameState.game_id == game_id)
-                .order_by(GameState.created_at.desc())
+                .order_by(GameState.state_id.desc())
                 .first()
             )
             data = getattr(state, "state_json", None)
@@ -843,11 +843,128 @@ class DailyWorldProjectionService:
                         "revision": revision,
                         "story": story,
                         "options": options,
-                        "tracked_state": dict(data),
+                        "tracked_state": self._compact_tracked_state(data),
                     }
             return None
 
         return self._transaction(load)
+
+    @staticmethod
+    def _compact_tracked_state(data: Mapping[str, Any]) -> dict[str, Any]:
+        """Keep recognition state bounded without serializing narrative history."""
+
+        legacy = data.get("world_model_data")
+        legacy = legacy if isinstance(legacy, Mapping) else {}
+        layer = data.get("world_projection_state")
+        world = layer.get("world") if isinstance(layer, Mapping) else None
+        world = world if isinstance(world, Mapping) else {}
+
+        locations: dict[str, Any] = {}
+        projected_locations = world.get("location_updates")
+        if isinstance(projected_locations, list):
+            for record in projected_locations:
+                if not isinstance(record, Mapping):
+                    continue
+                character = record.get("character")
+                if not isinstance(character, str) or not character.strip():
+                    continue
+                locations[character] = {
+                    key: deepcopy(value)
+                    for key, value in record.items()
+                    if key not in {"character", "source"}
+                }
+        legacy_locations = legacy.get("character_locations")
+        if isinstance(legacy_locations, Mapping):
+            for character, value in legacy_locations.items():
+                locations.setdefault(str(character), deepcopy(value))
+
+        def projected_records(projection_key: str, legacy_key: str) -> list[Any]:
+            projection_value = world.get(projection_key)
+            if isinstance(projection_value, list):
+                return deepcopy(projection_value)
+            legacy_value = legacy.get(legacy_key)
+            return deepcopy(legacy_value) if isinstance(legacy_value, list) else []
+
+        tracked: dict[str, Any] = {
+            "character_locations": locations,
+            "active_commitments": projected_records(
+                "commitment_updates", "active_commitments"
+            ),
+            "causal_chains": projected_records("causal_updates", "causal_chains"),
+            "fact_updates": projected_records("fact_updates", "established_facts"),
+            "foreshadowing_seeds": projected_records(
+                "foreshadowing_seeds", "foreshadowing_seeds"
+            ),
+            "habit_updates": projected_records("habit_updates", "character_habits"),
+            "career_updates": projected_records("career_updates", "career_records"),
+            "landmarks": deepcopy(
+                data.get("landmarks")
+                if isinstance(data.get("landmarks"), Mapping)
+                else {}
+            ),
+        }
+
+        def escaped_character_cost(character: str) -> int:
+            codepoint = ord(character)
+            if character in {'"', "\\", "\b", "\f", "\n", "\r", "\t"}:
+                return 2
+            if codepoint < 0x20 or 0xD800 <= codepoint <= 0xDFFF:
+                return 6
+            return 1
+
+        def bounded_string(value: str, budget: list[int], limit: int) -> str:
+            if budget[0] <= 2:
+                return ""
+            budget[0] -= 2
+            result = []
+            for character in value[:limit]:
+                cost = escaped_character_cost(character)
+                if cost > budget[0]:
+                    break
+                budget[0] -= cost
+                result.append(character)
+            return "".join(result)
+
+        def bounded(value: Any, budget: list[int], depth: int = 0) -> Any:
+            if budget[0] <= 0 or depth > 4:
+                return None
+            if isinstance(value, str):
+                return bounded_string(value, budget, 512)
+            if value is None or isinstance(value, (bool, int, float)):
+                scalar_cost = len(str(value).lower())
+                budget[0] -= min(budget[0], scalar_cost)
+                return value
+            if isinstance(value, Mapping):
+                if budget[0] <= 2:
+                    return {}
+                budget[0] -= 2
+                result: dict[str, Any] = {}
+                for index, (key, nested) in enumerate(value.items()):
+                    if index >= 32:
+                        break
+                    if budget[0] <= 4:
+                        break
+                    budget[0] -= 2
+                    normalized_key = bounded_string(str(key), budget, 128)
+                    if budget[0] <= 2:
+                        break
+                    budget[0] -= 2
+                    result[normalized_key] = bounded(nested, budget, depth + 1)
+                return result
+            if isinstance(value, (list, tuple)):
+                if budget[0] <= 2:
+                    return []
+                budget[0] -= 2
+                result_list = []
+                for nested in value[:32]:
+                    if budget[0] <= 1:
+                        break
+                    budget[0] -= 1
+                    result_list.append(bounded(nested, budget, depth + 1))
+                return result_list
+            return bounded_string(str(value), budget, 512)
+
+        return {key: bounded(value, [2_200]) for key, value in tracked.items()}
 
     def _validated_canonical_source(
         self, row: Any

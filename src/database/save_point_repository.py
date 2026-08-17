@@ -156,6 +156,8 @@ class SavePointRepository:
             state_data = save_point.state_json
             if state_data:
                 state_data["_game_id"] = save_point.game_id
+                if save_point.is_save_point is True:
+                    state_data["_loaded_save_point_state_id"] = save_point.state_id
 
             return state_data  # type: ignore[return-value]
         finally:

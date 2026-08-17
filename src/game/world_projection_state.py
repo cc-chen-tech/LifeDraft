@@ -67,6 +67,65 @@ def _projection_layer(state: Any) -> dict[str, Any]:
     return layer
 
 
+def initialize_legacy_projection_baseline(
+    state: Any, blocked_days: Sequence[int] = ()
+) -> bool:
+    """Advance only across the contiguous settled prefix created before projections."""
+
+    layer = _projection_layer(state)
+    applied = int(layer.get("applied_through_day_index", -1))
+    records_by_day: dict[int, list[Mapping[str, Any]]] = {}
+    history = getattr(state, "day_history", None)
+    if not isinstance(history, list):
+        return False
+    blocked = {
+        day
+        for day in blocked_days
+        if isinstance(day, int) and not isinstance(day, bool) and day >= 0
+    }
+    for record in history:
+        if not isinstance(record, Mapping):
+            continue
+        day_index = record.get("day_index")
+        if (
+            isinstance(day_index, bool)
+            or not isinstance(day_index, int)
+            or day_index < 0
+        ):
+            continue
+        records_by_day.setdefault(day_index, []).append(record)
+
+    while True:
+        if applied + 1 in blocked:
+            break
+        candidates = records_by_day.get(applied + 1, [])
+        if len(candidates) != 1:
+            break
+        record = candidates[0]
+        if "world_projection_status" in record or "world_projection_identity" in record:
+            break
+        choice_index = record.get("choice_option_index")
+        if (
+            isinstance(choice_index, bool)
+            or not isinstance(choice_index, int)
+            or choice_index < 0
+        ):
+            break
+        story = record.get("event_description", record.get("story"))
+        if not isinstance(story, str) or not isinstance(record.get("options"), list):
+            break
+        applied += 1
+
+    previous = int(layer.get("applied_through_day_index", -1))
+    if applied == previous:
+        return False
+    layer["applied_through_day_index"] = applied
+    layer["projected_through_day_index"] = max(
+        int(layer.get("projected_through_day_index", -1)), applied
+    )
+    return True
+
+
 def _record_fingerprint(record: Mapping[str, Any]) -> str:
     value = {key: deepcopy(item) for key, item in record.items() if key != "source"}
     return json.dumps(

@@ -204,6 +204,16 @@ class GameLoop(RoundSystemMixin):
         ):
             self.game_id = stored_game_id
         self.player_state = PlayerState.from_dict(state_dict)
+        rewind_state_id = state_dict.get("_loaded_save_point_state_id")
+        if (
+            get_feature("daily_world_projection_v1")
+            and isinstance(rewind_state_id, int)
+            and not isinstance(rewind_state_id, bool)
+            and rewind_state_id > 0
+        ):
+            self.player_state.world_projection_state["rewind_from_state_id"] = (
+                rewind_state_id
+            )
 
         # 如果characters为空但有character_settings，尝试初始化
         if not self.player_state.characters and self.player_state.character_settings:
@@ -334,9 +344,12 @@ class GameLoop(RoundSystemMixin):
     def _reconcile_daily_world_projections(self, state_dict: Dict[str, Any]) -> None:
         """Restore only explicitly recoverable projection work after a daily load."""
 
+        if not get_feature("daily_world_projection_v1"):
+            return
         game_id = state_dict.get("_game_id")
         if not isinstance(game_id, int) or game_id <= 0:
             return
+        self._initialize_projection_migration_baseline()
         from src.services.daily_world_projection import (
             enqueue_accepted_daily_world_projection,
         )
@@ -363,6 +376,15 @@ class GameLoop(RoundSystemMixin):
             ):
                 continue
             enqueue_accepted_daily_world_projection(game_id, record, self.player_state)
+
+    def _initialize_projection_migration_baseline(self) -> None:
+        """Advance across the contiguous legacy prefix that predates projections."""
+
+        from src.game.world_projection_state import (
+            initialize_legacy_projection_baseline,
+        )
+
+        initialize_legacy_projection_baseline(self.player_state)
 
     @staticmethod
     def _is_complete_persisted_daily_event(
