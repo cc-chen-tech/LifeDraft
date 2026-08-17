@@ -905,13 +905,13 @@ class DailyWorldProjectionService:
 
     def _scan_loop(self, generation: int, cancel: threading.Event) -> None:
         while self._active_generation(generation, cancel):
-            claim_now = self.now_fn()
             try:
+                claim_now = self.now_fn()
                 self.run_once(claim_now, _generation=generation, _cancel=cancel)
             except Exception:
                 logger.exception("daily world projection scan failed")
-            health_now = self.now_fn()
             try:
+                health_now = self.now_fn()
                 self._emit_health_if_due(
                     health_now, generation=generation, cancel=cancel
                 )

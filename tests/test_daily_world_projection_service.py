@@ -780,6 +780,107 @@ def test_old_scanner_cannot_reserve_health_timestamp_after_restart() -> None:
     assert service._last_health_emitted_at == start
 
 
+@pytest.mark.parametrize(
+    ("clock_values", "expected_claims", "expected_health", "expected_log"),
+    [
+        (
+            (
+                RuntimeError("claim clock unavailable"),
+                datetime(2026, 8, 17, 10, 1, 1),
+                datetime(2026, 8, 17, 10, 1, 2),
+                datetime(2026, 8, 17, 10, 1, 2),
+            ),
+            [datetime(2026, 8, 17, 10, 1, 2)],
+            [datetime(2026, 8, 17, 10, 1, 1)],
+            "daily world projection scan failed",
+        ),
+        (
+            (
+                datetime(2026, 8, 17, 10, 0, 0),
+                RuntimeError("health clock unavailable"),
+                datetime(2026, 8, 17, 10, 1, 1),
+                datetime(2026, 8, 17, 10, 1, 1),
+            ),
+            [
+                datetime(2026, 8, 17, 10, 0, 0),
+                datetime(2026, 8, 17, 10, 1, 1),
+            ],
+            [datetime(2026, 8, 17, 10, 1, 1)],
+            "daily world projection health query failed",
+        ),
+    ],
+)
+def test_scanner_survives_clock_failures_and_stops_without_leaking_thread(
+    clock_values: tuple[object, ...],
+    expected_claims: list[datetime],
+    expected_health: list[datetime],
+    expected_log: str,
+    caplog,
+) -> None:
+    """Transient clocks are contained without spinning or killing the scanner."""
+
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    class TwoIterationWake:
+        def __init__(self) -> None:
+            self.wait_calls = 0
+            self.second_wait = threading.Event()
+            self.released = threading.Event()
+
+        def wait(self, _timeout: float) -> bool:
+            self.wait_calls += 1
+            if self.wait_calls == 1:
+                return False
+            self.second_wait.set()
+            return self.released.wait(1)
+
+        def clear(self) -> None:
+            pass
+
+        def set(self) -> None:
+            self.released.set()
+
+    class ReadSession:
+        def close(self) -> None:
+            pass
+
+    values = iter(clock_values)
+
+    def now_fn() -> datetime:
+        value = next(values)
+        if isinstance(value, BaseException):
+            raise value
+        assert isinstance(value, datetime)
+        return value
+
+    wake = TwoIterationWake()
+    claims: list[datetime] = []
+    health: list[datetime] = []
+    service = DailyWorldProjectionService(
+        session_factory=ReadSession,
+        now_fn=now_fn,
+        wake_event=wake,
+        health_summary_fn=lambda _db, now: now,
+        health_emitter=health.append,
+    )
+    service.run_once = (  # type: ignore[method-assign]
+        lambda now, **_kwargs: claims.append(now) or 0
+    )
+    service._last_health_emitted_at = datetime(2026, 8, 17, 10, 0, 0)
+
+    service.start()
+    scanner = service._scanner
+    progressed = wake.second_wait.wait(1)
+    service.stop(wait=True)
+
+    assert progressed is True
+    assert scanner is not None and not scanner.is_alive()
+    assert wake.wait_calls == 2
+    assert claims == expected_claims
+    assert health == expected_health
+    assert expected_log in caplog.text
+
+
 def test_transaction_helper_commits_success_and_rolls_back_failure() -> None:
     now = datetime(2026, 8, 17, 10, 0, 0)
     state = WorkerState(_row(now))
