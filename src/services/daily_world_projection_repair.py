@@ -6,9 +6,20 @@ import hashlib
 import json
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping, Optional, Sequence
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
+from sqlalchemy import and_, func
+
+from src.database.models import (
+    DailyWorldProjection,
+    DailyWorldProjectionRepairAudit,
+    GameState,
+    SessionLocal,
+)
+from src.game.state.player_data import default_world_projection_state
 from src.game.world_projection_coverage import detect_world_change_signals
+from src.game.world_projection_schema import compute_projection_source_hash
+from src.services.daily_world_projection_repository import ProjectionIdentity
 
 
 SUSPICIOUS_EMPTY = "suspicious_empty_world_projection"
@@ -48,12 +59,16 @@ class GameRepairCandidate:
     game_id: int
     reasons: tuple[RepairReason, ...]
     rebuild_day_indexes: list[int]
+    state_id: Optional[int] = None
+    non_projection_digest: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "game_id": self.game_id,
             "reasons": [reason.to_dict() for reason in self.reasons],
             "rebuild_day_indexes": list(self.rebuild_day_indexes),
+            "state_id": self.state_id,
+            "non_projection_digest": self.non_projection_digest,
         }
 
 
@@ -65,6 +80,46 @@ class RepairScanReport:
 
     def to_dict(self) -> dict[str, Any]:
         return {"candidates": [candidate.to_dict() for candidate in self.candidates]}
+
+    @property
+    def hash(self) -> str:
+        return report_hash(self)
+
+
+@dataclass(frozen=True)
+class RebuildIdentity:
+    """One accepted-history source rebuilt by the durable projection worker."""
+
+    event_id: str
+    revision: int
+    day_index: int
+    source_hash: str
+    story_date: Optional[str] = None
+    selected_option_index: Optional[int] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        value: dict[str, Any] = {
+            "event_id": self.event_id,
+            "revision": self.revision,
+            "day_index": self.day_index,
+            "source_hash": self.source_hash,
+        }
+        if self.selected_option_index is not None:
+            value["selected_option_index"] = self.selected_option_index
+        return value
+
+    @property
+    def projection_key(self) -> tuple[str, int, int, str]:
+        return (self.event_id, self.revision, self.day_index, self.source_hash)
+
+
+@dataclass(frozen=True)
+class RepairVerification:
+    """Read-only result of checking one queued repair audit."""
+
+    status: str
+    non_projection_digest_after: str
+    detail: str = ""
 
 
 def _valid_day_index(value: Any) -> Optional[int]:
@@ -223,15 +278,18 @@ def scan_game_state(
     if not reasons:
         return None
 
-    rebuild_days = {
-        day for day in history_days if watermark is not None and day > watermark
-    }
+    rebuild_days = (
+        set(history_days)
+        if watermark is None
+        else {day for day in history_days if day > watermark}
+    )
     rebuild_days.update(suspicious_days)
     rebuild_days.update(stuck_days)
     return GameRepairCandidate(
         game_id=game_id,
         reasons=tuple(reasons),
         rebuild_day_indexes=sorted(rebuild_days),
+        non_projection_digest=non_projection_state_digest(state),
     )
 
 
@@ -258,6 +316,8 @@ def build_scan_report(rows: Iterable[GameRepairCandidate]) -> RepairScanReport:
                 )
             ),
             rebuild_day_indexes=sorted(set(candidate.rebuild_day_indexes)),
+            state_id=candidate.state_id,
+            non_projection_digest=candidate.non_projection_digest,
         )
         for candidate in raw_candidates
     ]
@@ -294,3 +354,333 @@ def non_projection_state_digest(state: Mapping[str, Any]) -> str:
         normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def scan_latest_game_states(
+    session_factory: Callable[[], Any] = SessionLocal,
+    *,
+    game_id: Optional[int] = None,
+) -> RepairScanReport:
+    """Read only the latest persisted snapshot for each selected game."""
+
+    with session_factory() as db:
+        latest = (
+            db.query(
+                GameState.game_id.label("game_id"),
+                func.max(GameState.state_id).label("state_id"),
+            )
+            .group_by(GameState.game_id)
+            .subquery()
+        )
+        query = db.query(GameState).join(
+            latest,
+            and_(
+                GameState.game_id == latest.c.game_id,
+                GameState.state_id == latest.c.state_id,
+            ),
+        )
+        if game_id is not None:
+            query = query.filter(GameState.game_id == game_id)
+        rows = query.order_by(GameState.game_id).all()
+        candidates: list[GameRepairCandidate] = []
+        for row in rows:
+            state = row.state_json
+            if not isinstance(state, Mapping):
+                continue
+            candidate = scan_game_state(int(row.game_id), state)
+            if candidate is None:
+                continue
+            if _candidate_already_materialized(db, candidate, state):
+                continue
+            candidates.append(
+                GameRepairCandidate(
+                    game_id=candidate.game_id,
+                    reasons=candidate.reasons,
+                    rebuild_day_indexes=candidate.rebuild_day_indexes,
+                    state_id=int(row.state_id),
+                    non_projection_digest=non_projection_state_digest(state),
+                )
+            )
+        return build_scan_report(candidates)
+
+
+def _candidate_already_materialized(
+    db: Any, candidate: GameRepairCandidate, state: Mapping[str, Any]
+) -> bool:
+    """Suppress legacy failure markers after their exact sources are rebuilt."""
+
+    try:
+        identities = rebuild_identities(candidate, state)
+    except ValueError:
+        return False
+    if not identities:
+        return False
+    layer = state.get("world_projection_state")
+    max_day = max(identity.day_index for identity in identities)
+    if not isinstance(layer, Mapping) or any(
+        not isinstance(layer.get(name), int)
+        or isinstance(layer.get(name), bool)
+        or int(layer[name]) < max_day
+        for name in (
+            "applied_through_day_index",
+            "projected_through_day_index",
+        )
+    ):
+        return False
+    applied_sources = layer.get("applied_sources")
+    source_keys = {
+        (
+            source.get("event_id"),
+            source.get("revision"),
+            source.get("day_index"),
+            source.get("source_hash"),
+        )
+        for source in (applied_sources if isinstance(applied_sources, list) else [])
+        if isinstance(source, Mapping)
+    }
+    if any(identity.projection_key not in source_keys for identity in identities):
+        return False
+    for identity in identities:
+        count = (
+            db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == candidate.game_id,
+                DailyWorldProjection.event_id == identity.event_id,
+                DailyWorldProjection.revision == identity.revision,
+                DailyWorldProjection.day_index == identity.day_index,
+                DailyWorldProjection.source_hash == identity.source_hash,
+                DailyWorldProjection.status == "applied",
+            )
+            .count()
+        )
+        if count != 1:
+            return False
+    return True
+
+
+def rebuild_identities(
+    candidate: GameRepairCandidate, state: Mapping[str, Any]
+) -> tuple[RebuildIdentity, ...]:
+    """Validate and freeze accepted sources in strict oldest-first order."""
+
+    requested_days = set(candidate.rebuild_day_indexes)
+    records_by_day: dict[int, list[Mapping[str, Any]]] = {}
+    for day_index, record in _history_records(state):
+        if day_index in requested_days:
+            records_by_day.setdefault(day_index, []).append(record)
+
+    identities: list[RebuildIdentity] = []
+    for day_index in sorted(requested_days):
+        records = records_by_day.get(day_index) or []
+        if len(records) != 1:
+            raise ValueError(f"repair_history_identity_ambiguous day_index={day_index}")
+        record = records[0]
+        event_id = record.get("event_id")
+        revision = record.get("revision", 1)
+        story = record.get("event_description", record.get("story"))
+        options = record.get("options")
+        selected = record.get("choice_option_index")
+        if (
+            not isinstance(event_id, str)
+            or not event_id.strip()
+            or isinstance(revision, bool)
+            or not isinstance(revision, int)
+            or revision < 1
+            or not isinstance(story, str)
+            or not story.strip()
+            or not isinstance(options, list)
+            or not options
+            or isinstance(selected, bool)
+            or not isinstance(selected, int)
+            or selected < 0
+            or selected >= len(options)
+        ):
+            raise ValueError(f"repair_history_identity_invalid day_index={day_index}")
+        story_date = record.get("story_date")
+        identities.append(
+            RebuildIdentity(
+                event_id=event_id,
+                revision=revision,
+                day_index=day_index,
+                source_hash=compute_projection_source_hash(story, options),
+                story_date=story_date if isinstance(story_date, str) else None,
+                selected_option_index=selected,
+            )
+        )
+    return tuple(identities)
+
+
+def enqueue_rebuild(
+    candidate: GameRepairCandidate, repo: Any, state: Mapping[str, Any]
+) -> tuple[RebuildIdentity, ...]:
+    """Ensure one ordinary fenced projection row per accepted repair source."""
+
+    identities = rebuild_identities(candidate, state)
+    for identity in identities:
+        repo.ensure_projection(
+            ProjectionIdentity(
+                game_id=candidate.game_id,
+                event_id=identity.event_id,
+                revision=identity.revision,
+                day_index=identity.day_index,
+                story_date=identity.story_date,
+            ),
+            identity.source_hash,
+        )
+    return identities
+
+
+def initialized_projection_state(
+    state: Mapping[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    """Preserve a structurally valid v1 layer or supply isolated defaults."""
+
+    layer = state.get("world_projection_state")
+    valid = (
+        isinstance(layer, Mapping)
+        and layer.get("version") == 1
+        and isinstance(layer.get("world"), Mapping)
+        and isinstance(layer.get("applied_sources"), list)
+        and _valid_watermark(layer.get("applied_through_day_index"))
+        and _valid_watermark(layer.get("projected_through_day_index"))
+    )
+    return (
+        deepcopy(dict(layer)) if valid else default_world_projection_state(),
+        not valid,
+    )
+
+
+def verify_repair_invariants(
+    session_factory: Callable[[], Any], audit_id: int
+) -> RepairVerification:
+    """Check source fences, contiguous watermarks, and the visible-state digest."""
+
+    with session_factory() as db:
+        audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
+        if audit is None:
+            raise ValueError("repair_audit_not_found")
+        latest = (
+            db.query(GameState)
+            .filter(GameState.game_id == audit.game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+        )
+        if latest is None or not isinstance(latest.state_json, Mapping):
+            return RepairVerification("failed_invariant", "", "latest_state_missing")
+        digest_after = non_projection_state_digest(latest.state_json)
+        if digest_after != audit.non_projection_digest_before:
+            return RepairVerification(
+                "failed_invariant", digest_after, "non_projection_state_changed"
+            )
+        identities = audit_rebuild_identities(audit.detail_json)
+        if not identities:
+            return RepairVerification(
+                "failed_invariant", digest_after, "rebuild_identities_missing"
+            )
+        rows: list[DailyWorldProjection] = []
+        for identity in identities:
+            row = (
+                db.query(DailyWorldProjection)
+                .filter(
+                    DailyWorldProjection.game_id == audit.game_id,
+                    DailyWorldProjection.event_id == identity.event_id,
+                    DailyWorldProjection.revision == identity.revision,
+                    DailyWorldProjection.day_index == identity.day_index,
+                    DailyWorldProjection.source_hash == identity.source_hash,
+                )
+                .one_or_none()
+            )
+            if row is None:
+                replacement = (
+                    db.query(DailyWorldProjection)
+                    .filter(
+                        DailyWorldProjection.game_id == audit.game_id,
+                        DailyWorldProjection.event_id == identity.event_id,
+                        DailyWorldProjection.revision == identity.revision,
+                    )
+                    .one_or_none()
+                )
+                if replacement is not None:
+                    return RepairVerification(
+                        "fenced", digest_after, "projection_source_replaced"
+                    )
+                return RepairVerification("pending", digest_after, "projection_missing")
+            rows.append(row)
+        if any(row.status == "superseded" for row in rows):
+            return RepairVerification("fenced", digest_after, "projection_superseded")
+        if any(row.status != "applied" for row in rows):
+            return RepairVerification("pending", digest_after, "projection_pending")
+
+        layer = latest.state_json.get("world_projection_state")
+        max_day = max(identity.day_index for identity in identities)
+        if not isinstance(layer, Mapping) or any(
+            not isinstance(layer.get(name), int)
+            or isinstance(layer.get(name), bool)
+            or int(layer[name]) < max_day
+            for name in (
+                "applied_through_day_index",
+                "projected_through_day_index",
+            )
+        ):
+            return RepairVerification("pending", digest_after, "watermark_incomplete")
+        applied_sources = layer.get("applied_sources")
+        source_keys = {
+            (
+                source.get("event_id"),
+                source.get("revision"),
+                source.get("day_index"),
+                source.get("source_hash"),
+            )
+            for source in (applied_sources if isinstance(applied_sources, list) else [])
+            if isinstance(source, Mapping)
+        }
+        if any(identity.projection_key not in source_keys for identity in identities):
+            return RepairVerification(
+                "pending", digest_after, "source_ledger_incomplete"
+            )
+        return RepairVerification("complete", digest_after)
+
+
+def _valid_watermark(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= -1
+
+
+def audit_rebuild_identities(value: Any) -> tuple[RebuildIdentity, ...]:
+    """Parse only complete source-fenced identities from durable audit metadata."""
+
+    detail = value if isinstance(value, Mapping) else {}
+    identities: list[RebuildIdentity] = []
+    for raw in detail.get("rebuild_identities") or ():
+        if not isinstance(raw, Mapping):
+            continue
+        event_id = raw.get("event_id")
+        revision = raw.get("revision")
+        day_index = raw.get("day_index")
+        source_hash = raw.get("source_hash")
+        if (
+            isinstance(event_id, str)
+            and event_id.strip()
+            and isinstance(revision, int)
+            and not isinstance(revision, bool)
+            and revision >= 1
+            and isinstance(day_index, int)
+            and not isinstance(day_index, bool)
+            and day_index >= 0
+            and isinstance(source_hash, str)
+            and source_hash
+        ):
+            selected = raw.get("selected_option_index")
+            identities.append(
+                RebuildIdentity(
+                    event_id=event_id,
+                    revision=revision,
+                    day_index=day_index,
+                    source_hash=source_hash,
+                    selected_option_index=(
+                        selected
+                        if isinstance(selected, int) and not isinstance(selected, bool)
+                        else None
+                    ),
+                )
+            )
+    return tuple(sorted(identities, key=lambda item: item.day_index))

@@ -144,6 +144,22 @@ def test_retryable_generation_failure_does_not_select_a_healthy_projection() -> 
     assert scan_game_state(200, state) is None
 
 
+def test_affected_legacy_save_without_projection_layer_rebuilds_full_history() -> None:
+    """Initializing v1 at -1 requires every accepted source in oldest-first order."""
+
+    state = sun_wukong_failed_fixture()
+    state.pop("world_projection_state")
+    state["day_history"][0]["postprocessing_status"] = "complete"
+    state["day_history"][0]["postprocessing"] = {
+        "world": {**_empty_world_patch(), "fact_updates": [{"fact": "已完成"}]}
+    }
+
+    candidate = scan_game_state(201, state)
+
+    assert candidate is not None
+    assert candidate.rebuild_day_indexes == [0, 1, 2, 3, 4]
+
+
 def test_digest_ignores_only_projection_state() -> None:
     before = player_state_fixture()
     after = deepcopy(before)

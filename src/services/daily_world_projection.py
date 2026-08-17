@@ -25,7 +25,13 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from src.database.models import DailyWorldProjection, Game, GameState, SessionLocal
+from src.database.models import (
+    DailyWorldProjection,
+    DailyWorldProjectionRepairAudit,
+    Game,
+    GameState,
+    SessionLocal,
+)
 from src.game.world_projection_coverage import detect_world_change_signals
 from src.game.world_projection_schema import (
     WorldProjectionExtractionError,
@@ -356,12 +362,30 @@ class DailyWorldProjectionService:
                 .all()
             )
         ]
-        batch = apply_contiguous_world_projections(state, rows)
+        projection_only_identities = self._repair_projection_only_identities(
+            session, game_id
+        )
+        batch = apply_contiguous_world_projections(
+            state, rows, projection_only_identities
+        )
+        state_output = state.to_dict()
+        marked = set(batch.rows_to_mark)
+        applied_repair_identity = any(
+            (row.projection_id, row.source_hash) in marked
+            and (row.event_id, row.revision, row.day_index, row.source_hash)
+            in projection_only_identities
+            for row in rows
+        )
+        if applied_repair_identity:
+            state_output = deepcopy(dict(state_data))
+            state_output["world_projection_state"] = deepcopy(
+                state.world_projection_state
+            )
         if not batch.state_changed:
             return (
                 batch.applied_count,
                 list(batch.rows_to_mark),
-                state.to_dict(),
+                state_output,
             )
 
         expected_state_id = int(latest.state_id) if latest is not None else None
@@ -383,12 +407,51 @@ class DailyWorldProjectionService:
                 game_id=game_id,
                 week=state.week,
                 age=state.age,
-                state_json=state.to_dict(),
+                state_json=state_output,
             )
         )
-        game.updated_at = self._as_utc_naive(self.now_fn())
+        if not applied_repair_identity:
+            game.updated_at = self._as_utc_naive(self.now_fn())
         session.flush()
-        return batch.applied_count, list(batch.rows_to_mark), state.to_dict()
+        return batch.applied_count, list(batch.rows_to_mark), state_output
+
+    @staticmethod
+    def _repair_projection_only_identities(
+        session: Any, game_id: int
+    ) -> set[tuple[str, int, int, str]]:
+        """Keep repair source fences durable across every audit status."""
+
+        identities: set[tuple[str, int, int, str]] = set()
+        audits = (
+            session.query(DailyWorldProjectionRepairAudit.detail_json)
+            .filter(DailyWorldProjectionRepairAudit.game_id == game_id)
+            .all()
+        )
+        for audit in audits:
+            detail = audit.detail_json
+            if not isinstance(detail, Mapping):
+                continue
+            for identity in detail.get("rebuild_identities") or ():
+                if not isinstance(identity, Mapping):
+                    continue
+                event_id = identity.get("event_id")
+                revision = identity.get("revision")
+                day_index = identity.get("day_index")
+                source_hash = identity.get("source_hash")
+                if (
+                    isinstance(event_id, str)
+                    and event_id.strip()
+                    and isinstance(revision, int)
+                    and not isinstance(revision, bool)
+                    and revision >= 1
+                    and isinstance(day_index, int)
+                    and not isinstance(day_index, bool)
+                    and day_index >= 0
+                    and isinstance(source_hash, str)
+                    and source_hash
+                ):
+                    identities.add((event_id, revision, day_index, source_hash))
+        return identities
 
     @staticmethod
     def _active_game_loops(game_id: int) -> list[Any]:

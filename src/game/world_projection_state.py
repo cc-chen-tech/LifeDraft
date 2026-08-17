@@ -8,7 +8,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Any, Mapping, Sequence
+from typing import Any, Collection, Mapping, Sequence
 
 from src.game.narrative_manager import NarrativeManager
 from src.game.world_model_updater import WorldModelUpdater
@@ -478,8 +478,17 @@ class ProjectionApplyBatch:
     state_changed: bool
 
 
+ProjectionOnlyIdentity = tuple[str, int, int, str]
+
+
+def _projection_only_identity(row: Any) -> ProjectionOnlyIdentity:
+    return (row.event_id, row.revision, row.day_index, row.source_hash)
+
+
 def apply_contiguous_world_projections(
-    state: Any, rows: Sequence[Any]
+    state: Any,
+    rows: Sequence[Any],
+    projection_only_identities: Collection[ProjectionOnlyIdentity] = (),
 ) -> ProjectionApplyBatch:
     """Apply the unique settled/ready prefix without crossing any identity gap."""
 
@@ -543,21 +552,22 @@ def apply_contiguous_world_projections(
                 row.day_index,
             )
             break
-        expected_identity = {
-            "event_id": row.event_id,
-            "revision": row.revision,
-            "day_index": row.day_index,
-            "source_hash": row.source_hash,
-        }
-        if record.get("world_projection_status") != "applied":
-            record["world_projection_status"] = "applied"
-            state_changed = True
-        if record.get("world_projection_id") != row.projection_id:
-            record["world_projection_id"] = row.projection_id
-            state_changed = True
-        if record.get("world_projection_identity") != expected_identity:
-            record["world_projection_identity"] = expected_identity
-            state_changed = True
+        if _projection_only_identity(row) not in projection_only_identities:
+            expected_identity = {
+                "event_id": row.event_id,
+                "revision": row.revision,
+                "day_index": row.day_index,
+                "source_hash": row.source_hash,
+            }
+            if record.get("world_projection_status") != "applied":
+                record["world_projection_status"] = "applied"
+                state_changed = True
+            if record.get("world_projection_id") != row.projection_id:
+                record["world_projection_id"] = row.projection_id
+                state_changed = True
+            if record.get("world_projection_identity") != expected_identity:
+                record["world_projection_identity"] = expected_identity
+                state_changed = True
         if changed:
             applied_count += 1
             state_changed = True
