@@ -185,6 +185,7 @@ jobs:
           export MINIMAX_TTS_MODEL
           export STORY_TTS_AUTO_READ_DEFAULT_ENABLED=true
           export ENABLE_DAILY_TIMELINE_V2=true
+          export ENABLE_DAILY_WORLD_PROJECTION_V1=true
           export MINIMAX_TIMEOUT_SECONDS=180
           export IMAGE_API_KEY="${MINIMAX_API_KEY}"
           export IMAGE_API_BASE_URL=https://api.minimaxi.com/v1
@@ -202,6 +203,7 @@ jobs:
               "MINIMAX_TTS_MODEL": os.environ["MINIMAX_TTS_MODEL"],
               "STORY_TTS_AUTO_READ_DEFAULT_ENABLED": os.environ["STORY_TTS_AUTO_READ_DEFAULT_ENABLED"],
               "ENABLE_DAILY_TIMELINE_V2": os.environ["ENABLE_DAILY_TIMELINE_V2"],
+              "ENABLE_DAILY_WORLD_PROJECTION_V1": os.environ["ENABLE_DAILY_WORLD_PROJECTION_V1"],
               "MINIMAX_TIMEOUT_SECONDS": os.environ["MINIMAX_TIMEOUT_SECONDS"],
               "IMAGE_API_KEY": os.environ["IMAGE_API_KEY"],
               "IMAGE_API_BASE_URL": os.environ["IMAGE_API_BASE_URL"],
@@ -281,6 +283,7 @@ jobs:
 
           capabilities = json.loads(os.environ["HEALTH_JSON"])["capabilities"]
           assert capabilities["daily_timeline_v2"] is True
+          assert capabilities["daily_world_projection_v1"] is True
           assert capabilities["tts_provider"] == "minimax"
           assert capabilities["tts_provider_available"] is True
           assert capabilities["music_runtime_enabled"] is False
