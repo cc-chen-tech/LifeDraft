@@ -435,15 +435,15 @@ class PlayerDataMixin:
         cleaned_data["established_facts"] = sanitize_authoritative_fact_records(
             cleaned_data.get("established_facts")
         )
-        raw_world_model = cleaned_data.get("world_model_data")
-        if raw_world_model:
-            cleaned_data["world_model_data"] = sanitize_world_model_financial_authority(
-                raw_world_model
-            )
-        else:
-            # Legacy saves may omit world_model_data entirely; let the
-            # field's default factory fill the canonical structure.
+        wm_data = sanitize_world_model_financial_authority(
+            cleaned_data.get("world_model_data")
+        )
+        if wm_data == {} and "world_model_data" not in cleaned_data:
+            # 旧档缺少该字段：交给 pydantic 默认结构填充，
+            # 不要用 sanitize 的空结果覆盖默认的 character_locations 等子字段。
             cleaned_data.pop("world_model_data", None)
+        else:
+            cleaned_data["world_model_data"] = wm_data
         if cleaned_data.get("last_round_full_story") is None:
             cleaned_data["last_round_full_story"] = ""
         return cls(**cleaned_data)

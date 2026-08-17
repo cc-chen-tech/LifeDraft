@@ -14,6 +14,9 @@ from src.api.routers.gameplay.sse_helpers import _set_generation_resume_view
 from src.api.routers.games import _mark_orphaned_generation_interrupted
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def test_player_state_serializes_exact_resume_view() -> None:
     state = PlayerState(
@@ -52,7 +55,7 @@ async def test_acknowledge_clears_and_persists_saved_result() -> None:
 
     with (
         patch(
-            "src.api.routers.gameplay.events._require_session",
+            "src.api.deps.session_service.get_or_restore",
             return_value=session,
         ),
         patch("src.api.routers.gameplay.events.get_db", return_value=db),

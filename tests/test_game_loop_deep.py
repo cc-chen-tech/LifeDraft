@@ -8,6 +8,8 @@ from src.ai.models import EventOption, GameEvent
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.unit]
+
 
 def _make_test_event(desc="Test event", options=None):
     """Helper to create test events."""

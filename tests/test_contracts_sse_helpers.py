@@ -3,6 +3,10 @@ from unittest.mock import MagicMock
 
 from src.api.routers.gameplay.sse_helpers import _prefetch_options
 
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 class _SyncThreadPool:
     def __init__(self):
@@ -47,6 +51,7 @@ class TestPrefetchOptionsContracts:
         game_loop.player_state = SimpleNamespace(
             week=5,
             current_round=2,
+            to_dict=lambda: {"foo": "bar"},
             to_prompt_context=lambda: {"foo": "bar"},
             character_settings={},
         )
