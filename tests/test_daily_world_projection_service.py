@@ -23,6 +23,9 @@ from src.game.world_projection_schema import (
     compute_projection_source_hash,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class FakeSession:
     def __init__(self, state: "WorkerState") -> None:

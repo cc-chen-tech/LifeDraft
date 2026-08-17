@@ -5,6 +5,10 @@ No mocks. Uses hand-rolled FakeAIClient stub.
 
 from src.game.state import PlayerState
 from src.game.yearly_summary import YearlySummaryGenerator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class FakeAIClient:

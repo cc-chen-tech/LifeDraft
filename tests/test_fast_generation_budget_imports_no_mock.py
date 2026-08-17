@@ -1,4 +1,8 @@
 """Import reachability for fast-generation production paths."""
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_fast_generation_budget_paths_are_reachable() -> None:

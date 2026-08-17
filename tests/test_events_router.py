@@ -11,6 +11,9 @@ from src.api.routers.gameplay.events import _is_api_contract_probe, _require_ses
 from src.api.services.event_generation_operation import EventGenerationKey
 from src.api.session_store import GameLoopSession
 
+pytestmark = [pytest.mark.api]
+
+
 
 @pytest.fixture
 def client():

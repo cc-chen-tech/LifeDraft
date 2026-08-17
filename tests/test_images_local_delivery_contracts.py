@@ -21,6 +21,9 @@ from src.database.models import Game, User
 from src.database.models import Image as ImageModel
 from src.services.image_storage import ImageStorageService
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _owner_game(db_session) -> tuple[User, Game]:
     owner = User(

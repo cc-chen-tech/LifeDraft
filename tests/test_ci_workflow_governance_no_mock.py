@@ -10,6 +10,9 @@ import subprocess
 import pytest
 import yaml
 
+pytestmark = [pytest.mark.unit]
+
+
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"

@@ -5,6 +5,10 @@ Layer 3: 契约测试。
 """
 
 from unittest.mock import MagicMock, patch
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestSceneEditNegativePrompt:

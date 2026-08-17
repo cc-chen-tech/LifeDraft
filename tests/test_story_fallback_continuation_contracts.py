@@ -1,4 +1,8 @@
 from src.game.story_service import StoryService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_chinese_fallback_preserves_choice_and_effect_consequences() -> None:

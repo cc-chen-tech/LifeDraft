@@ -33,6 +33,10 @@ from src.services.story_tts_provider import (
     UnavailableTTSProvider,
 )
 from src.api.schemas import StoryVoiceReadingRequest
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 
 def test_asset_version_schema_migration_is_additive_and_idempotent(tmp_path, monkeypatch) -> None:

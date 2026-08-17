@@ -1,5 +1,9 @@
 from src.game.game_loop import GameLoop
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _loop_with_state(**updates: int) -> GameLoop:

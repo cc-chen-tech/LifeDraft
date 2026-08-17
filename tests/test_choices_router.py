@@ -11,6 +11,9 @@ from src.api.routers.gameplay.choices import (_require_session,
                                               _restore_current_event_if_needed,
                                               router)
 
+pytestmark = [pytest.mark.api]
+
+
 
 @pytest.fixture
 def app():

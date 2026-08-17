@@ -9,6 +9,9 @@ from src.game.world_projection_state import (
     recompute_projection_watermarks,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _projection(*, source_hash: str = "source-5", status: str = "ready"):
     return SimpleNamespace(

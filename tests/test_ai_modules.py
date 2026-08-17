@@ -12,6 +12,9 @@ from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import _PROMPT_REGISTRY, get_system_prompt
 from src.ai.utils import extract_json
 
+pytestmark = [pytest.mark.unit]
+
+
 # ==================== AI Utils Tests ====================
 
 

@@ -1,4 +1,8 @@
 """Scene SSE scene_id propagation contract tests.
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 验证 SSE scene_image_ready 事件包含 scene_id。
 Layer 3: 契约测试。

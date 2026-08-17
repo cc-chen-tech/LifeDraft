@@ -11,6 +11,9 @@ from sqlalchemy.orm import sessionmaker
 from src.database.game_repository import GameRepository
 from src.database.models import Base, CharacterPreset, Game
 
+pytestmark = [pytest.mark.integration]
+
+
 
 @pytest.fixture(scope="module")
 def db_session():

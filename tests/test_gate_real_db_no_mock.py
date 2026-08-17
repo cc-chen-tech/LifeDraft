@@ -16,6 +16,9 @@ from src.database.models import (Base, Game, GamePlaylist, GameState, SceneImage
                                  SessionLocal, User, engine, init_db)
 from src.database.user_manager import UserManager
 
+pytestmark = [pytest.mark.integration]
+
+
 
 def _persist_completed_choice_state(
     session,

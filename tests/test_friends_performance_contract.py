@@ -5,6 +5,10 @@ but no frontend cache or runtime API is allowed to remain.
 """
 
 import os
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_friends_api_uses_joined_loading():

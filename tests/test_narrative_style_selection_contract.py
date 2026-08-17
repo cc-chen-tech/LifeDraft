@@ -13,6 +13,10 @@ from fastapi.testclient import TestClient
 from src.api.main import app
 from src.api.routers.games import UpdateNarrativeStyleRequest, update_narrative_style
 from src.game.state.player_state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 client = TestClient(app)
 

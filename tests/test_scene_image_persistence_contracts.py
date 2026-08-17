@@ -10,6 +10,10 @@ from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
 from src.services.image.scene_service import SceneImageService
 from src.services.image_storage import ImageStorageService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _session() -> Session:

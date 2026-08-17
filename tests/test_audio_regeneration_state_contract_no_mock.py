@@ -3,6 +3,10 @@
 from pathlib import Path
 
 from src.api.schemas import VoiceReadingSettingsResponse, VoiceReadingSettingsUpdateRequest
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 ROOT = Path(__file__).resolve().parents[1]

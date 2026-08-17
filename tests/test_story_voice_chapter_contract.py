@@ -12,6 +12,9 @@ from src.services.story_tts_provider import DeterministicTTSProvider, Unavailabl
 from src.services.story_voice_reading import StoryVoiceReadingService, normalize_text_hash
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _user(session) -> int:
     user = User(

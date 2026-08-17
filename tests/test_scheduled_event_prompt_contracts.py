@@ -2,6 +2,10 @@
 
 from config.feature_flags import reset_features, set_feature
 from src.game.round.event_generator import RoundEventGenerator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _generator(language: str) -> RoundEventGenerator:

@@ -6,6 +6,10 @@ Layer 3: 契约测试 — 弯引号处理行为约定。
 """
 
 from src.ai.quick_validator import QuickValidator, quick_validate_story
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestQuickValidatorCurlyQuotesContract:

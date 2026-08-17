@@ -4,6 +4,10 @@ No mocks. Tests prompt building and polish loop with stubs.
 """
 
 from src.ai.harness.polish_controller import PolishController
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class FakeAIClient:

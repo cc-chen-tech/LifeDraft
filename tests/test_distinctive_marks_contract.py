@@ -1,4 +1,8 @@
 """Distinctive marks prominence contract tests.
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 验证外貌锚点中的 distinctive_marks 在 prompt 中获得足够高的优先级和可见性。
 """

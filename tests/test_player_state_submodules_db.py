@@ -18,6 +18,9 @@ from src.game.state.character_state import CharacterState
 from src.game.state.item_state import ItemState
 from src.game.state.landmark_state import LandmarkState
 
+pytestmark = [pytest.mark.integration]
+
+
 
 @pytest.fixture(autouse=True)
 def patch_session_local():

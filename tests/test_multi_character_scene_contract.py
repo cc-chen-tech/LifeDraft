@@ -1,4 +1,8 @@
 """Multi-character scene generation contract tests.
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 验证场景生成时正确提取故事中的所有角色并注入提示词。
 """

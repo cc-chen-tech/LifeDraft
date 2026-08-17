@@ -5,6 +5,10 @@
 
 from src.services.image.appearance_anchor import (CharacterAppearanceAnchor,
                                                   merge_anchors)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestCharacterAppearanceAnchor:

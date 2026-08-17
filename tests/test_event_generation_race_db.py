@@ -11,6 +11,9 @@ from src.ai.models import EventOption, GameEvent
 from src.api.routers.gameplay.sse_helpers import stream_round_event
 from src.api.session_store import GameLoopSession
 
+pytestmark = [pytest.mark.integration]
+
+
 
 def _event(story: str = "同一个后台任务完成的故事") -> GameEvent:
     return GameEvent(

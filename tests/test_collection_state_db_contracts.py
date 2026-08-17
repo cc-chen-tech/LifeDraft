@@ -11,6 +11,9 @@ from src.services.collection_service import (
     PermissionDeniedError,
 )
 
+pytestmark = [pytest.mark.integration]
+
+
 
 def _create_game(db_session) -> int:
     game = Game(language="zh", initial_state={"week": 4})

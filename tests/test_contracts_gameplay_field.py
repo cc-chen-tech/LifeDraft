@@ -3,6 +3,10 @@ from unittest.mock import patch
 from src.game.historical_summary_selector import HistoricalSummarySelector
 from src.game.narrative_manager import NarrativeManager
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestHistoricalSummarySelectorFieldContracts:

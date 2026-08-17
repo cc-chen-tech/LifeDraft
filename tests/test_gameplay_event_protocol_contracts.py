@@ -13,6 +13,9 @@ from src.api.routers.gameplay.events import (
     _require_resume_view_acknowledged,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _request(headers: dict[str, str] | None = None) -> Request:
     raw_headers = [

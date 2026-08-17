@@ -1,6 +1,10 @@
 from pathlib import Path
 
 from src.api.main import app
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 ROOT = Path(__file__).resolve().parents[1]

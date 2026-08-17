@@ -5,6 +5,10 @@
 
 from src.ai.harness.quality_level import PROFILES, QualityLevel
 from src.database.models import CharacterPreset, Game
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_fast_profile_contract():

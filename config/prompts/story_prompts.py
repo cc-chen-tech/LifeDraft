@@ -734,7 +734,7 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
    - **Social Relationships**: **All people in the event MUST and ONLY come from the "Available People List"**, cannot create new people
 2. Event must relate to at least two state values (energy, mood, knowledge, or relationships)
 3. Event should fit the "{phase_desc}" life stage and strictly match character settings
-4. Provide exactly 3 options, each clearly listing effects on [energy, mood, knowledge]; target 3-12 words per option and rewrite any option over 16 words
+4. Provide exactly 3 options, each clearly listing effects on [energy, mood, knowledge]; keep each option concise and rewrite any option that is too long
 5. **{length_requirement} - engaging and immersive**:
    - Write it as a compelling scene with depth
    - Include 3-5 meaningful dialogue exchanges
@@ -775,7 +775,7 @@ You MUST return ONLY valid JSON in this exact format:
   "event_description": "{event_schema_description}"
   "options": [
     {{
-      "text": "Option A description (target 3-12 words)",
+      "text": "Option A description (keep it concise)",
       "effects": {{
         "energy": -10,
         "mood": 5,
@@ -785,7 +785,7 @@ You MUST return ONLY valid JSON in this exact format:
       "likely_choice": true
     }},
     {{
-      "text": "Option B description (target 3-12 words)",
+      "text": "Option B description (keep it concise)",
       "effects": {{
         "energy": -20,
         "mood": -10,
@@ -994,7 +994,7 @@ def _get_chinese_prompt(
    - **社会关系**：**事件中出现的所有人物必须且只能来自"可用人物列表"**，不能凭空创造新人物
 2. 事件必须与至少两项状态值相关（精力、情绪、学识或关系）
 3. 事件应贴近"{phase_desc}"人生阶段，并严格符合角色的基本设定
-4. 提供恰好3个选项，每个选项目标8-24字，超过40字必须重写，并明确列出对【精力、情绪、学识】的影响值
+4. 提供恰好3个选项，每个选项保持简洁，过长选项必须重写，并明确列出对【精力、情绪、学识】的影响值
 5. **{length_requirement}，生动有深度**：
    - 写成有吸引力的场景片段，有一定深度
    - 包含3-5轮有意义的对话交流
@@ -1036,7 +1036,7 @@ def _get_chinese_prompt(
   "event_description": "{event_schema_description}"
   "options": [
     {{
-      "text": "选项A描述（目标8-24字）",
+      "text": "选项A描述（保持简洁）",
       "effects": {{
         "energy": -10,
         "mood": 5,
@@ -1046,7 +1046,7 @@ def _get_chinese_prompt(
       "likely_choice": true
     }},
     {{
-      "text": "选项B描述（目标8-24字）",
+      "text": "选项B描述（保持简洁）",
       "effects": {{
         "energy": -20,
         "mood": -10,

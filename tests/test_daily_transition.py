@@ -8,6 +8,10 @@ from src.game.daily_transition import (
     is_valid_daily_transition,
     prepare_daily_option_transitions,
 )
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _options() -> list[EventOption]:

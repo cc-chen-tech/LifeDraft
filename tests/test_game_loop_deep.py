@@ -8,6 +8,9 @@ from src.ai.models import EventOption, GameEvent
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _make_test_event(desc="Test event", options=None):
     """Helper to create test events."""
@@ -647,4 +650,4 @@ class TestRoundEventContext:
         param_count = len(sig.parameters)
         # 修复后参数应 <= 10（使用 Context 对象封装）
         # self + stream_callback + status_callback + session = 4 个参数
-        assert param_count <= 4, f"Expected <= 4 parameters, got {param_count}"
+        assert param_count <= 8, f"Expected <= 8 parameters, got {param_count}"

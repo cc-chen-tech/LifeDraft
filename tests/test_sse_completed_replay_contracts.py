@@ -13,6 +13,9 @@ from src.api.services.event_generation_operation import (
 )
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class CompletedEvent:
     def model_dump(self) -> dict[str, object]:

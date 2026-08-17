@@ -4,6 +4,10 @@ from unittest.mock import patch
 
 from src.game.game_loop import GameLoop
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestGameLoop:

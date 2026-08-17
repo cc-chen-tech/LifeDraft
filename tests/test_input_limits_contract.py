@@ -52,6 +52,9 @@ from src.api.schemas import (
     VoiceUploadConsentRequest,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 @pytest.mark.parametrize(
     ("model", "field", "limit", "payload"),

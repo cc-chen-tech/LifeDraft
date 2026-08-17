@@ -9,6 +9,9 @@ import pytest
 from src.ai.image_exceptions import ContentInspectionError, ImageProviderError
 from src.ai.image_generator import ImageGenerator
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class _Response:
     def __init__(self, status_code: int, payload: object = None) -> None:

@@ -16,6 +16,9 @@ from src.services.story_voice_reading import (
 )
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 
+pytestmark = [pytest.mark.integration]
+
+
 
 def _add_user(session: Session) -> int:
     suffix = uuid4().hex[:12]

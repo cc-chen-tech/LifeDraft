@@ -5,6 +5,10 @@ No mocks. Tests pure logic ending evaluation.
 
 from src.game.endings import EndingEvaluator
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestEndingEvaluatorContract:

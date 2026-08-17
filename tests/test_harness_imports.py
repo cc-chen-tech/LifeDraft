@@ -1,4 +1,8 @@
 """Harness 质量级别模块导入验证测试 (Layer 2)."""
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_quality_level_module_importable():

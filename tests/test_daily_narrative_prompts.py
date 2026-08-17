@@ -10,6 +10,10 @@ from config.prompts.story_prompts import (
 )
 from src.ai.daily_opening import validate_daily_first_opening
 from src.game.world_projection_schema import validate_projection_payload
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _daily_state(day_index: int = 0) -> dict:

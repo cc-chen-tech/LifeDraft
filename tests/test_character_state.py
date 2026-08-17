@@ -1,6 +1,10 @@
 """Tests for CharacterState (NPC attributes system)."""
 
 from src.game.state import CharacterState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestCharacterState:

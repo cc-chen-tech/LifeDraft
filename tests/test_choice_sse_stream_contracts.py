@@ -9,6 +9,9 @@ import pytest
 from src.api.routers.gameplay.sse_helpers import stream_choice
 from src.api.session_store import GameLoopSession
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class _ChoiceLoop:
     def __init__(self, *, fail: bool = False) -> None:

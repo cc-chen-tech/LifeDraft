@@ -6,6 +6,10 @@ Layer 3: 契约测试 — 禁止将 secrets 提交到版本控制。
 
 import ast
 from pathlib import Path
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestNoHardcodedSecretsContract:

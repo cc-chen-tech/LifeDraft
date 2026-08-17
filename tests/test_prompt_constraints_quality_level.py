@@ -1,6 +1,10 @@
 """Prompt 约束三级强度测试."""
 
 from config.prompts._helpers import _build_common_story_constraints
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_fast_constraints_are_minimal():

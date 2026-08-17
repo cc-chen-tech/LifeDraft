@@ -6,6 +6,10 @@ from uuid import uuid4
 
 from src.database.models import Game, GameState, SessionLocal, User, init_db
 from src.services.life_summary_grounding import build_grounded_fallback
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 
 def test_saved_four_week_history_builds_grounded_summary_after_real_read() -> None:

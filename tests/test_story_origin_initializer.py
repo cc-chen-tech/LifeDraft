@@ -4,6 +4,9 @@ import pytest
 
 from src.game.game_initializer import GameInitializer
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def test_initializer_projects_only_the_canonical_origin_time() -> None:
     normalized = GameInitializer._normalize_daily_start_date(

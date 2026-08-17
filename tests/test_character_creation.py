@@ -4,6 +4,10 @@ import random
 from collections import Counter
 
 from src.game.character_creation import assign_sexual_orientation
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestSexualOrientationAssignment:

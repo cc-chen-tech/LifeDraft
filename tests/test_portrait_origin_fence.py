@@ -6,6 +6,10 @@ from sqlalchemy.pool import StaticPool
 
 from src.database.models import Base, Game, PortraitImageGenerationJob, User
 from src.services.portrait_image_jobs import run_portrait_image_job
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_worker_discards_job_from_an_obsolete_origin_revision():

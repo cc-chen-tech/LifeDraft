@@ -4,6 +4,10 @@ No mocks. Uses hand-rolled stub diagnostic reports and validation results.
 """
 
 from src.ai.harness.retry_controller import RetryController
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class FakeValidationResult:

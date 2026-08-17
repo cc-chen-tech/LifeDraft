@@ -1,6 +1,10 @@
 """Provider-free contracts for narrative entity selection in round illustrations."""
 
 from src.game.round.illustration_service import RoundIllustrationService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _service() -> RoundIllustrationService:

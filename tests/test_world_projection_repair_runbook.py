@@ -18,6 +18,10 @@ from src.services.daily_world_projection_repair import (
     rebuild_identities_match_history,
     scan_game_state,
 )
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]

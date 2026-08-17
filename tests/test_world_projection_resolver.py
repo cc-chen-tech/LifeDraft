@@ -4,6 +4,10 @@ from config.feature_flags import reset_features, set_feature
 from src.ai.long_story_context import LongStoryContextBuilder, StoryContextSettings
 from src.game.daily_timeline import build_daily_timeline
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _daily_state(**updates) -> PlayerState:

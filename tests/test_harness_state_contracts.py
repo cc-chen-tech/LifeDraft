@@ -5,6 +5,10 @@ from types import SimpleNamespace
 from src.ai.harness.character_state_validator import CharacterStateContinuityValidator
 from src.ai.harness.commitment_validator import CommitmentFulfillmentValidator
 from src.ai.harness.spatial_validator import SpatialMovementValidator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestCharacterStateContracts:

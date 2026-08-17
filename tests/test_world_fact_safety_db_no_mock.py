@@ -8,6 +8,10 @@ from src.database.db import GameDatabase
 from src.database.models import Game, SessionLocal, User, init_db
 from src.game.game_initializer import GameInitializer
 from src.game.world_fact_safety import qualify_generated_world_facts
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 
 def test_qualified_world_setting_survives_real_database_round_trip() -> None:

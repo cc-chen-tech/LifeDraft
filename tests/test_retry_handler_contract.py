@@ -7,6 +7,9 @@ import pytest
 
 from src.ai.retry_handler import AIRetryHandler, create_retry_handler
 
+pytestmark = [pytest.mark.unit]
+
+
 # ---------------------------------------------------------------------------
 # Stub AI client -- a hand-rolled fake, NOT unittest.mock
 # ---------------------------------------------------------------------------

@@ -2,6 +2,10 @@
 
 from src.ai.image_config import SENSITIVE_WORDS
 from src.ai.image_prompt_builder import DeepSeekPromptEnhancer, ImagePromptBuilder
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_character_prompt_keeps_user_feedback_and_removes_scifi_era_signals():

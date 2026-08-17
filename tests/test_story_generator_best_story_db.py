@@ -16,6 +16,9 @@ from src.ai.models import EventOption, GameEvent
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.ai.story_generator import StoryGenerator
 
+pytestmark = [pytest.mark.integration]
+
+
 
 class TestStoryGeneratorBestStoryFallback:
     """最长 Harness 已接受 best_story_text 的 fallback 行为测试"""

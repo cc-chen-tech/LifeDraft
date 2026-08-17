@@ -1,4 +1,8 @@
 """Import reachability for world fact-safety production paths."""
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_world_fact_safety_lazy_paths_are_reachable() -> None:

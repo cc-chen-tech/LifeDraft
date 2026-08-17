@@ -1,6 +1,10 @@
 """缓存管理测试 - 对应优化 H-07"""
 
 import time
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.slow]
+
 
 
 class TestCacheManagement:

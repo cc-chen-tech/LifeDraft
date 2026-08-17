@@ -11,6 +11,10 @@ from src.ai.summary_generator import SummaryGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.text_quality import normalize_generated_story
 from src.game.weekly_summary import WeeklySummaryGenerator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 UNSAFE_LEGAL_ZH = (
     "律师建议你用母亲名义注册公司来规避竞业限制，称这是合法合规的路径，"

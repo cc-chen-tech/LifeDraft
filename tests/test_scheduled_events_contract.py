@@ -5,6 +5,10 @@ No mocks. Pure logic tests for event scheduling system.
 
 from src.game.scheduled_events import (ScheduledEvent, ScheduledEventManager,
                                        parse_time_reference)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestScheduledEventContract:

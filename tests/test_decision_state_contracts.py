@@ -2,6 +2,10 @@
 
 from src.game.decisions import process_decision
 from src.game.state import CharacterState, PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestDecisionStateContracts:

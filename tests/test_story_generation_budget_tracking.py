@@ -32,6 +32,9 @@ from src.ai.truncation_recovery import TruncationRecovery
 from src.game.character_creation import CharacterCreator
 from src.game.story_service import StoryService
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def test_daily_dict_world_model_downgrades_stale_projection_and_exposes_tail() -> None:
     set_feature("daily_world_projection_v1", True)

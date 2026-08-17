@@ -4,6 +4,10 @@ from types import SimpleNamespace
 
 from config.feature_flags import reset_features, set_feature
 from src.game.game_loop import GameLoop
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _loop() -> GameLoop:

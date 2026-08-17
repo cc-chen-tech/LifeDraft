@@ -1,5 +1,9 @@
 from src.game.narrative_manager import NarrativeManager
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _storyline(description: str, importance: str, last_mentioned_week: int, **extra: object) -> dict[str, object]:

@@ -3,6 +3,10 @@
 from pathlib import Path
 
 from src.services.entity_recognition_service import EntityRecognitionService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _service() -> EntityRecognitionService:

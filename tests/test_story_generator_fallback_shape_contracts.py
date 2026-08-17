@@ -1,6 +1,10 @@
 """Provider-free contracts for player-visible round-story fallback grounding."""
 
 from src.ai.story_generator import StoryGenerator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_chinese_fallback_preserves_era_trait_and_relationship_anchor() -> None:

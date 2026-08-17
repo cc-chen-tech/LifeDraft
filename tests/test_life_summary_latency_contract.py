@@ -8,11 +8,15 @@ from types import SimpleNamespace
 import pytest
 
 from src.api.routers.gameplay import summary
+from src.api import deps as _deps
 from src.api.schemas import GenerateSummaryRequest
 from src.utils.financial_narrative import (
     contains_precise_financial_fact,
     contains_tracked_wealth_state,
 )
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class RecordingSummaryGenerator:
@@ -55,7 +59,7 @@ def test_life_summary_uses_a_short_provider_deadline(monkeypatch) -> None:
     )
     game_loop = SimpleNamespace(player_state=player, ai_generator=generator)
     monkeypatch.setattr(
-        summary.session_service,
+        _deps.session_service,
         "get_or_restore",
         lambda _game_id, _user_id: SimpleNamespace(game_loop=game_loop),
     )

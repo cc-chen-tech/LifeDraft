@@ -13,6 +13,9 @@ from src.game.endings import EndingEvaluator
 from src.game.round.choice_processor import RoundChoiceProcessor
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.unit]
+
+
 # ---------------------------------------------------------------------------
 # Stub services -- no unittest.mock, just hand-rolled fakes
 # ---------------------------------------------------------------------------

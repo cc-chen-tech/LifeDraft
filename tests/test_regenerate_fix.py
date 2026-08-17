@@ -8,6 +8,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestStoryRegeneration:
     """Test story regeneration functionality."""

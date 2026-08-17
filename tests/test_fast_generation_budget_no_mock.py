@@ -2,6 +2,10 @@
 
 from config.prompts.story_prompts import get_round_event_prompt
 from src.ai.generation_budget import get_generation_budget
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_fast_budget_is_materially_smaller_and_has_no_secondary_story_calls() -> None:

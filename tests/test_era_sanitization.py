@@ -1,4 +1,8 @@
 """Era description sanitization tests.
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 验证图像生成前 era 描述中的科幻暗示词被清洗。
 """

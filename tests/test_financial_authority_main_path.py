@@ -6,6 +6,10 @@ from src.game.continuity_ledger import ContinuityLedger
 from src.game.state import PlayerState
 from src.game.world_model import WorldModel
 from src.game.world_model_updater import WorldModelUpdater
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _legacy_authority_state() -> PlayerState:

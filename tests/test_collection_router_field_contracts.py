@@ -16,6 +16,9 @@ from src.api.services.session_service import session_service
 from src.game.game_loop import GameLoop
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.api]
+
+
 
 def _session_loop(player_state: PlayerState) -> GameLoop:
     game_loop = GameLoop(language="zh")

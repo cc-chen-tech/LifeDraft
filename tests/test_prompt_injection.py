@@ -1,4 +1,8 @@
 """提示词注入防护测试 - 对应优化 H-03"""
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestPromptInjectionPrevention:

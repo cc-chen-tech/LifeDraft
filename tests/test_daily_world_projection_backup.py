@@ -18,6 +18,9 @@ from src.services.daily_world_projection_backup import (
     write_state_backup,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def state_fixture() -> dict[str, object]:
     return {

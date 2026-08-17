@@ -7,6 +7,9 @@ import pytest
 from src.ai.image_client import (ContentInspectionError, ImageClient,
                                  ImageGenerationError)
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class MockSettings:
     """Mock settings for testing"""

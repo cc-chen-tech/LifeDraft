@@ -11,6 +11,9 @@ from src.services.image import ImageContentError, ImageServiceError
 from src.services.image.character_service import CharacterImageService
 from src.services.image_storage import ImageStorageService
 
+pytestmark = [pytest.mark.unit]
+
+
 # ---------------------------------------------------------------------------
 # Stub classes -- hand-rolled fakes, NOT unittest.mock
 # ---------------------------------------------------------------------------

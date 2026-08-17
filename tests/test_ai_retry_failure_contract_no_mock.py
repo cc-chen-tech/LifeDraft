@@ -8,6 +8,9 @@ import pytest
 
 from src.ai.retry_handler import AIRetryHandler
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class ScriptedProvider:
     """Small provider fake that records the public AIClient call contract."""

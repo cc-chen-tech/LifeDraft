@@ -4,6 +4,10 @@ from src.ai.story_validation import (
     findings_from_legacy,
 )
 from src.ai.quick_validator import quick_validate_story
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_coverage_diagnostic_is_a_warning_finding() -> None:

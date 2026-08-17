@@ -13,6 +13,10 @@ import sys
 import time
 
 import yaml
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.slow]
+
 
 
 ROOT = Path(__file__).resolve().parents[1]

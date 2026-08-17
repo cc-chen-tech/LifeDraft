@@ -11,6 +11,9 @@ from sqlalchemy.orm import sessionmaker
 from src.database.models import Base, Game, SessionLocal, User
 from src.database.session_repository import SessionRepository
 
+pytestmark = [pytest.mark.integration]
+
+
 
 @pytest.fixture(autouse=True)
 def patch_session_local():

@@ -16,6 +16,9 @@ from src.game.world_model import (CAREER_LEVELS, CareerInfo, CausalChain,
                                   PhysicalState, WorldModel)
 from src.game.world_model_updater import WorldModelUpdater
 
+pytestmark = [pytest.mark.unit]
+
+
 # ==================== Decisions Tests ====================
 
 
@@ -155,7 +158,9 @@ class TestProcessDecision:
             player, "Friend needs help", 0, options, generate_result_text=False
         )
         assert result["success"] is True
-        assert player.relationships["Friend"] == 50
+        # 关系效果现在会被应用（relationship_events 特性），不再被丢弃。
+        assert player.relationships["Friend"] > 50
+        assert player.characters["Friend"]["affinity"] > 50
 
     def test_with_ai_result_generation(self):
         """Test decision with AI-generated result text."""

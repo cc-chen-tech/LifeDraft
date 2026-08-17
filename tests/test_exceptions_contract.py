@@ -11,6 +11,9 @@ from src.exceptions import (AIClientError, AIGenerationError,
                             ImageProcessingError, SSEStreamError,
                             ValidationError)
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestExceptionsContract:
     """Contract tests for exception hierarchy."""

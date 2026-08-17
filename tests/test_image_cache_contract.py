@@ -10,6 +10,9 @@ from src.api.deps import create_token
 from src.api.main import app
 from src.api.routers.images import get_session
 
+pytestmark = [pytest.mark.unit]
+
+
 client = TestClient(app)
 
 

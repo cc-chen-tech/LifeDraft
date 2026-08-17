@@ -2,6 +2,10 @@
 
 from src.ai.harness.constraint_registry import ConstraintRegistry
 from src.ai.harness.preflight_checker import PreflightChecker
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _checker() -> PreflightChecker:

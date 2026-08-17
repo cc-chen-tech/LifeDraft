@@ -5,6 +5,10 @@ Layer 3: 契约测试 — 配置值约定。
 """
 
 from src.ai.harness.quality_level import PROFILES, QualityLevel
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestQualityLevelMasterRetriesContract:

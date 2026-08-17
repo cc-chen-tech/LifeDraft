@@ -14,6 +14,9 @@ from src.ai.story_exceptions import StoryGenerationFailure
 from src.ai.story_generator import StoryGenerator
 from src.ai.story_validation import findings_from_legacy
 
+pytestmark = [pytest.mark.unit]
+
+
 pytestmark = pytest.mark.usefixtures("constraint_harness_disabled")
 
 

@@ -4,6 +4,10 @@ No mocks. Pure logic tests for detect_language_from_state.
 """
 
 from src.utils.language import detect_language_from_state
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestLanguageContract:

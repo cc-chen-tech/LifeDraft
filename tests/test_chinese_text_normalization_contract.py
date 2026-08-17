@@ -1,4 +1,8 @@
 """Chinese Text Normalization Contract Tests
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 验证标点规范化后处理在故事生成管道中正确执行。
 Layer 3: 契约测试 — 输出文本必须规范。

@@ -1,4 +1,8 @@
 """导入验证测试：约束级别持久化相关模块可导入。"""
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_update_game_settings_request_importable():

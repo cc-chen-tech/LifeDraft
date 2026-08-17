@@ -19,6 +19,9 @@ from src.api.services.event_generation_operation import (
 )
 from src.game.daily_timeline import build_daily_timeline
 
+pytestmark = [pytest.mark.unit]
+
+
 
 @dataclass
 class _EventResult:

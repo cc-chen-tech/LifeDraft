@@ -2,6 +2,10 @@
 
 from src.ai.models import EventOption, GameEvent
 from src.ai.option_generator import OptionGenerator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_contextual_fallback_options_select_story_specific_chinese_choices() -> None:
