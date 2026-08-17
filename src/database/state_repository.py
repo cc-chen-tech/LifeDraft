@@ -272,14 +272,9 @@ class StateRepository:
             )
         ]
         projection_only_identities = repair_projection_only_identities(db, game_id)
-        repair_days = {identity[2] for identity in projection_only_identities}
         initialize_legacy_projection_baseline(
             player_state,
-            blocked_days=tuple(
-                row.day_index
-                for row in rows
-                if row.status != "superseded" or row.day_index in repair_days
-            ),
+            blocked_days=tuple(row.day_index for row in rows),
         )
 
         applied_through = int(

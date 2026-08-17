@@ -372,9 +372,46 @@ def recompute_projection_watermarks(
         and isinstance(_field(row, "day_index"), int)
         and str(_field(row, "status") or "") != "superseded"
     }
+    superseded_days = {
+        int(_field(row, "day_index"))
+        for row in rows
+        if not isinstance(_field(row, "day_index"), bool)
+        and isinstance(_field(row, "day_index"), int)
+        and str(_field(row, "status") or "") == "superseded"
+    }
+    history_days = [
+        record.get("day_index")
+        for record in (getattr(state, "day_history", None) or [])
+        if isinstance(record, Mapping)
+        and isinstance(record.get("day_index"), int)
+        and not isinstance(record.get("day_index"), bool)
+    ]
+    accepted_days = set(history_days)
+    canonical_max = max(accepted_days) if accepted_days else -1
     applied = int(layer.get("applied_through_day_index", -1))
+    if applied > canonical_max:
+        proven_days = {
+            source.get("day_index")
+            for source in (layer.get("applied_sources") or [])
+            if isinstance(source, Mapping)
+            and isinstance(source.get("day_index"), int)
+            and not isinstance(source.get("day_index"), bool)
+            and source.get("day_index") in accepted_days
+        }
+        proven_days.update(
+            day_index
+            for day_index, row in active.items()
+            if day_index in accepted_days
+            and str(_field(row, "status") or "") == "applied"
+        )
+        applied = -1
+        while applied + 1 in accepted_days and applied + 1 in proven_days:
+            applied += 1
     while True:
-        row = active.get(applied + 1)
+        next_day = applied + 1
+        if next_day not in accepted_days:
+            break
+        row = active.get(next_day)
         if row is None or str(_field(row, "status") or "") != "applied":
             break
         applied += 1
@@ -382,7 +419,10 @@ def recompute_projection_watermarks(
 
     projected = applied
     while True:
-        row = active.get(projected + 1)
+        next_day = projected + 1
+        if next_day not in accepted_days:
+            break
+        row = active.get(next_day)
         if row is None or str(_field(row, "status") or "") not in {
             "ready",
             "ready_no_change",
@@ -407,6 +447,8 @@ def recompute_projection_watermarks(
             or not isinstance(selected, int)
             or isinstance(selected, bool)
         ):
+            continue
+        if day_index in superseded_days and day_index not in active:
             continue
         if not isinstance(story, str) or not isinstance(options, list):
             settled_days.append(day_index)

@@ -118,6 +118,46 @@ class DailyWorldProjectionRepository:
             return self._ensure_matching_source(existing, identity, source_hash)
         return task
 
+    def reactivate_superseded_projection(
+        self, identity: ProjectionIdentity, source_hash: str
+    ) -> Optional[DailyWorldProjection]:
+        """CAS-reset one exact restored repair row without weakening ensure()."""
+
+        now = datetime.utcnow()
+        updated = (
+            self.db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == identity.game_id,
+                DailyWorldProjection.event_id == identity.event_id,
+                DailyWorldProjection.revision == identity.revision,
+                DailyWorldProjection.day_index == identity.day_index,
+                DailyWorldProjection.story_date == identity.story_date,
+                DailyWorldProjection.source_hash == source_hash,
+                DailyWorldProjection.status == "superseded",
+            )
+            .update(
+                {
+                    DailyWorldProjection.status: "pending",
+                    DailyWorldProjection.story_patch_json: None,
+                    DailyWorldProjection.option_patches_json: None,
+                    DailyWorldProjection.coverage_json: None,
+                    DailyWorldProjection.attempt_count: 0,
+                    DailyWorldProjection.next_attempt_at: now,
+                    DailyWorldProjection.lease_owner: None,
+                    DailyWorldProjection.lease_expires_at: None,
+                    DailyWorldProjection.error_code: None,
+                    DailyWorldProjection.applied_at: None,
+                    DailyWorldProjection.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
+        self.db.flush()
+        self.db.expire_all()
+        if updated != 1:
+            return None
+        return self._find_identity(identity)
+
     def claim_due(
         self, now: datetime, worker_id: str, limit: int
     ) -> list[DailyWorldProjection]:

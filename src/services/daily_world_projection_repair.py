@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
@@ -29,6 +30,7 @@ from src.services.daily_world_projection_repository import ProjectionIdentity
 SUSPICIOUS_EMPTY = "suspicious_empty_world_projection"
 POSTPROCESSING_STUCK = "postprocessing_pending_or_failed"
 WATERMARK_BEHIND = "world_watermark_behind_history"
+WATERMARK_OUT_OF_RANGE = "projection_watermark_out_of_range"
 MISSING_EVENT_RETRYABLE_FAILURE = "missing_current_event_after_retryable_failure"
 
 _WORLD_PATCH_FIELDS = (
@@ -43,6 +45,17 @@ _WORLD_PATCH_FIELDS = (
 _RETRYABLE_FAILURE_CODES = frozenset(
     {"RETRY_EXHAUSTED", "RETRYABLE_FAILURE", "GENERATION_RETRY_EXHAUSTED"}
 )
+_REPAIR_IDENTITY_AUTHORITY_STATUSES = frozenset(
+    {
+        "backed_up",
+        "queued",
+        "complete",
+        "failed_invariant",
+        "failed_fenced",
+        "timed_out",
+    }
+)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -366,8 +379,12 @@ def scan_game_state(
 
     history_days = sorted({day_index for day_index, _record in history})
     watermark = _projection_watermark(state)
+    watermark_out_of_range = _projection_watermark_out_of_range(state, history_days)
     watermark_behind = (
-        bool(history_days) and watermark is not None and watermark < max(history_days)
+        not watermark_out_of_range
+        and bool(history_days)
+        and watermark is not None
+        and watermark < max(history_days)
     )
     reasons: list[RepairReason] = []
     if suspicious_days:
@@ -385,6 +402,8 @@ def scan_game_state(
                 tuple(day for day in history_days if day > int(watermark)),
             )
         )
+    if watermark_out_of_range:
+        reasons.append(RepairReason(WATERMARK_OUT_OF_RANGE))
     if reasons and _retryable_generation_failure(state):
         reasons.append(RepairReason(MISSING_EVENT_RETRYABLE_FAILURE))
     if not reasons:
@@ -392,7 +411,8 @@ def scan_game_state(
 
     rebuild_days = (
         set(history_days)
-        if not is_valid_projection_state(state.get("world_projection_state"))
+        if watermark_out_of_range
+        or not is_valid_projection_state(state.get("world_projection_state"))
         else {day for day in history_days if day > int(watermark)}
     )
     rebuild_days.update(suspicious_days)
@@ -632,16 +652,21 @@ def enqueue_rebuild(
 
     identities = rebuild_identities(candidate, state)
     for identity in identities:
-        repo.ensure_projection(
-            ProjectionIdentity(
-                game_id=candidate.game_id,
-                event_id=identity.event_id,
-                revision=identity.revision,
-                day_index=identity.day_index,
-                story_date=identity.story_date,
-            ),
-            identity.source_hash,
+        projection_identity = ProjectionIdentity(
+            game_id=candidate.game_id,
+            event_id=identity.event_id,
+            revision=identity.revision,
+            day_index=identity.day_index,
+            story_date=identity.story_date,
         )
+        row = repo.ensure_projection(projection_identity, identity.source_hash)
+        if getattr(row, "status", None) == "superseded" and (
+            repo.reactivate_superseded_projection(
+                projection_identity, identity.source_hash
+            )
+            is None
+        ):
+            raise ValueError("repair_projection_reactivation_fenced")
     return identities
 
 
@@ -670,6 +695,9 @@ def _repair_requires_projection_reset(
     layer = state.get("world_projection_state")
     if not is_valid_projection_state(layer):
         return True
+    history_days = [day_index for day_index, _record in _history_records(state)]
+    if _projection_watermark_out_of_range(state, history_days):
+        return True
     watermark = int(layer["applied_through_day_index"])
     days_to_prove = {day for day in rebuild_days if day <= watermark}
     if not days_to_prove:
@@ -697,6 +725,26 @@ def _repair_requires_projection_reset(
     return any(identity.projection_key not in source_keys for identity in expected)
 
 
+def _projection_watermark_out_of_range(
+    state: Mapping[str, Any], history_days: Iterable[int]
+) -> bool:
+    """Reject structurally valid watermarks that exceed accepted history."""
+
+    layer = state.get("world_projection_state")
+    if not is_valid_projection_state(layer):
+        return False
+    days = list(history_days)
+    maximum = max(days) if days else -1
+    applied = int(layer["applied_through_day_index"])
+    projected = int(layer["projected_through_day_index"])
+    pending = layer.get("pending_from_day_index")
+    return (
+        applied > maximum
+        or projected > maximum
+        or (pending is not None and pending <= applied)
+    )
+
+
 def repair_projection_only_identities(
     db: Any, game_id: int
 ) -> set[tuple[str, int, int, str, int]]:
@@ -704,12 +752,32 @@ def repair_projection_only_identities(
 
     identities: set[tuple[str, int, int, str, int]] = set()
     audits = (
-        db.query(DailyWorldProjectionRepairAudit.detail_json)
-        .filter(DailyWorldProjectionRepairAudit.game_id == game_id)
+        db.query(DailyWorldProjectionRepairAudit)
+        .filter(
+            DailyWorldProjectionRepairAudit.game_id == game_id,
+            DailyWorldProjectionRepairAudit.status.in_(
+                _REPAIR_IDENTITY_AUTHORITY_STATUSES
+            ),
+        )
         .all()
     )
     for audit in audits:
-        for identity in audit_rebuild_identities(audit.detail_json):
+        try:
+            verified, _backup_state = verified_audit_rebuild_scope(
+                game_id=int(audit.game_id),
+                state_id=int(audit.state_id),
+                backup_path=str(audit.backup_path),
+                backup_sha256=str(audit.backup_sha256),
+                detail_json=audit.detail_json,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Skipping unverified projection repair audit audit_id=%s error=%s",
+                audit.audit_id,
+                type(exc).__name__,
+            )
+            continue
+        for identity in verified:
             identities.add(identity.projection_key)
     return identities
 

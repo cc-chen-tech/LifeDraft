@@ -45,6 +45,40 @@ def test_projection_identity_is_unique(db_session) -> None:
     assert db_session.query(DailyWorldProjection).count() == 1
 
 
+def test_explicit_repair_reactivation_resets_only_exact_superseded_row(
+    db_session, frozen_now
+) -> None:
+    repo = DailyWorldProjectionRepository(db_session)
+    row = repo.ensure_projection(identity(), source_hash="hash-a")
+    row.status = "superseded"
+    row.story_patch_json = {"fact_updates": [{"fact": "stale"}]}
+    row.option_patches_json = {"0": {}}
+    row.coverage_json = {"result": "stale"}
+    row.attempt_count = 3
+    row.lease_owner = "old-worker"
+    row.lease_expires_at = frozen_now
+    row.error_code = "old_error"
+    row.applied_at = frozen_now
+    db_session.flush()
+
+    assert repo.ensure_projection(identity(), "hash-a").status == "superseded"
+    reactivated = repo.reactivate_superseded_projection(identity(), "hash-a")
+
+    assert reactivated is not None
+    assert reactivated.status == "pending"
+    assert reactivated.story_patch_json is None
+    assert reactivated.option_patches_json is None
+    assert reactivated.coverage_json is None
+    assert reactivated.attempt_count == 0
+    assert reactivated.lease_owner is None
+    assert reactivated.lease_expires_at is None
+    assert reactivated.error_code is None
+    assert reactivated.applied_at is None
+    assert reactivated.next_attempt_at <= frozen_now
+    assert repo.reactivate_superseded_projection(identity(), "hash-a") is None
+    assert repo.reactivate_superseded_projection(identity(), "wrong-hash") is None
+
+
 def test_controlled_source_replacement_blocks_delayed_generic_ensures_and_terminals(
     db_session, frozen_now
 ) -> None:

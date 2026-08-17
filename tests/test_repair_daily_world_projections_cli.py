@@ -103,6 +103,20 @@ class CompletingProjectionWake(WakeRecorder):
         )
 
 
+class ReactivatedProjectionWake(CompletingProjectionWake):
+    def wake(self) -> None:
+        if self.wake_count == 0:
+            with self.sessions() as session:
+                statuses = {
+                    row.status
+                    for row in session.query(DailyWorldProjection).filter(
+                        DailyWorldProjection.game_id == self.game_id
+                    )
+                }
+            assert statuses == {"pending"}
+        super().wake()
+
+
 class RestoreOnSecondWake(WakeRecorder):
     def __init__(self, sessions) -> None:
         super().__init__()
@@ -486,6 +500,219 @@ def test_legacy_unproven_watermark_is_reset_and_rebuilt_from_day_zero(
         for record in state["day_history"]
     ]
     assert layer == expected_layer
+
+
+def test_future_watermark_rebuilds_and_allows_next_day_to_apply(
+    db_engine, tmp_path: Path, capsys
+) -> None:
+    sessions = sessionmaker(bind=db_engine)
+    state = _candidate_state("future-watermark")
+    state["world_projection_state"] = default_world_projection_state()
+    state["world_projection_state"].update(
+        {
+            "applied_through_day_index": 99,
+            "projected_through_day_index": 99,
+            "applied_sources": [
+                {
+                    "event_id": record["event_id"],
+                    "revision": record["revision"],
+                    "day_index": record["day_index"],
+                    "source_hash": compute_projection_source_hash(
+                        record["event_description"], record["options"]
+                    ),
+                    "option_index": record["choice_option_index"],
+                }
+                for record in state["day_history"]
+            ],
+        }
+    )
+    with sessions() as session:
+        game_id = _seed_game(session, state)
+    report = scan_latest_game_states(sessions)
+    assert report.candidates[0].rebuild_day_indexes == [0, 1]
+    assert "projection_watermark_out_of_range" in {
+        reason.code for reason in report.candidates[0].reasons
+    }
+
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+                "--wait",
+            ],
+            session_factory=sessions,
+            projection_service=CompletingProjectionWake(sessions, game_id),
+        )
+        == cli.EXIT_OK
+    )
+    capsys.readouterr()
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        latest = (
+            session.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+        )
+        assert audit.status == "complete"
+        expected_layer = default_world_projection_state()
+        expected_layer["applied_through_day_index"] = 1
+        expected_layer["projected_through_day_index"] = 1
+        expected_layer["applied_sources"] = [
+            {
+                "event_id": record["event_id"],
+                "revision": record["revision"],
+                "day_index": record["day_index"],
+                "source_hash": compute_projection_source_hash(
+                    record["event_description"], record["options"]
+                ),
+                "option_index": record["choice_option_index"],
+            }
+            for record in state["day_history"]
+        ]
+        assert latest.state_json["world_projection_state"] == expected_layer
+        next_state = deepcopy(latest.state_json)
+        day_two = deepcopy(state["day_history"][1])
+        day_two.update(
+            {
+                "event_id": "future-watermark-day-2",
+                "day_index": 2,
+                "story_date": "2026-08-19",
+                "event_description": "第三天继续调查。",
+                "postprocessing_status": "complete",
+            }
+        )
+        next_state["day_history"].append(day_two)
+        next_state["timeline"]["day_index"] = 3
+        session.add(
+            GameState(
+                game_id=game_id,
+                week=latest.week,
+                age=latest.age,
+                state_json=next_state,
+            )
+        )
+        session.add(
+            DailyWorldProjection(
+                game_id=game_id,
+                event_id=day_two["event_id"],
+                revision=day_two["revision"],
+                day_index=2,
+                story_date=day_two["story_date"],
+                source_hash=compute_projection_source_hash(
+                    day_two["event_description"], day_two["options"]
+                ),
+                status="ready_no_change",
+                story_patch_json={},
+                option_patches_json={"0": {}, "1": {}},
+                next_attempt_at=datetime.utcnow(),
+            )
+        )
+        session.commit()
+
+    assert (
+        DailyWorldProjectionService(session_factory=sessions).apply_ready_for_game(
+            game_id
+        )
+        == 1
+    )
+    with sessions() as session:
+        latest = (
+            session.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+        )
+    assert latest.state_json["world_projection_state"]["applied_through_day_index"] == 2
+
+
+def test_repair_can_reactivate_exact_rows_after_guarded_restore(
+    db_engine, tmp_path: Path
+) -> None:
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        game_id = _seed_game(session, _candidate_state("repair-again"))
+    first_report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                first_report.hash,
+                "--backup-dir",
+                str(tmp_path / "first"),
+                "--wait",
+            ],
+            session_factory=sessions,
+            projection_service=CompletingProjectionWake(sessions, game_id),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+    with sessions() as session:
+        first_audit = session.query(DailyWorldProjectionRepairAudit).one()
+        first_audit_id = int(first_audit.audit_id)
+        projection_ids = [
+            row.projection_id
+            for row in session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.day_index)
+            .all()
+        ]
+    assert (
+        cli.run(
+            [
+                "--restore-audit-id",
+                str(first_audit_id),
+                "--expected-report-hash",
+                first_report.hash,
+                "--confirm-writers-stopped",
+            ],
+            session_factory=sessions,
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+
+    second_report = scan_latest_game_states(sessions)
+    assert [candidate.game_id for candidate in second_report.candidates] == [game_id]
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                second_report.hash,
+                "--backup-dir",
+                str(tmp_path / "second"),
+                "--wait",
+            ],
+            session_factory=sessions,
+            projection_service=ReactivatedProjectionWake(sessions, game_id),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+    with sessions() as session:
+        rows = (
+            session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.day_index)
+            .all()
+        )
+        audits = (
+            session.query(DailyWorldProjectionRepairAudit)
+            .order_by(DailyWorldProjectionRepairAudit.audit_id)
+            .all()
+        )
+    assert [row.projection_id for row in rows] == projection_ids
+    assert [row.status for row in rows] == ["applied", "applied"]
+    assert [audit.status for audit in audits] == ["restored", "complete"]
+    assert all(audit.status != "failed_fenced" for audit in audits)
 
 
 def test_apply_requires_exact_report_hash_before_any_write(
