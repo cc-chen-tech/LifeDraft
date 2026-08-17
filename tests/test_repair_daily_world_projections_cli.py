@@ -96,6 +96,30 @@ class CompletingProjectionWake(WakeRecorder):
         )
 
 
+class RestoreOnSecondWake(WakeRecorder):
+    def __init__(self, sessions) -> None:
+        super().__init__()
+        self.sessions = sessions
+
+    def wake(self) -> None:
+        super().wake()
+        if self.wake_count != 2:
+            return
+        with self.sessions() as session:
+            audit_id = int(
+                session.query(DailyWorldProjectionRepairAudit).one().audit_id
+            )
+        assert (
+            cli.run(
+                ["--restore-audit-id", str(audit_id)],
+                session_factory=self.sessions,
+                stdout=StringIO(),
+                stderr=StringIO(),
+            )
+            == 0
+        )
+
+
 class SecondGameFencingWake(WakeRecorder):
     def __init__(self, sessions, game_id: int) -> None:
         super().__init__()
@@ -630,13 +654,111 @@ def test_audit_identity_parser_rejects_partial_and_duplicate_lists() -> None:
         "day_index": 1,
         "source_hash": "b" * 64,
     }
+    second = {**missing_option, "selected_option_index": 0}
+    invalid_hash = {**valid, "source_hash": "not-a-sha256"}
 
     assert (
-        audit_rebuild_identities({"rebuild_identities": [valid, missing_option]}) == ()
+        audit_rebuild_identities(
+            {
+                "rebuild_day_indexes": [0, 1],
+                "rebuild_identities": [valid, missing_option],
+            }
+        )
+        == ()
     )
     assert (
-        audit_rebuild_identities({"rebuild_identities": [valid, deepcopy(valid)]}) == ()
+        audit_rebuild_identities(
+            {
+                "rebuild_day_indexes": [0],
+                "rebuild_identities": [invalid_hash],
+            }
+        )
+        == ()
     )
+    assert (
+        audit_rebuild_identities(
+            {
+                "rebuild_day_indexes": [0],
+                "rebuild_identities": [valid, deepcopy(valid)],
+            }
+        )
+        == ()
+    )
+    assert (
+        audit_rebuild_identities(
+            {
+                "rebuild_day_indexes": [0, 1],
+                "rebuild_identities": [valid],
+            }
+        )
+        == ()
+    )
+    assert [
+        identity.day_index
+        for identity in audit_rebuild_identities(
+            {
+                "rebuild_day_indexes": [0, 1],
+                "rebuild_identities": [valid, second],
+            }
+        )
+    ] == [0, 1]
+
+
+def test_restore_rejects_truncated_two_day_audit_without_writes(
+    db_engine, tmp_path: Path, capsys
+) -> None:
+    """Removing one durable identity cannot authorize a partial restore."""
+
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        _seed_game(session, _candidate_state("truncated-restore"))
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+        )
+        == 0
+    )
+    capsys.readouterr()
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        detail = deepcopy(audit.detail_json)
+        assert detail["rebuild_day_indexes"] == [0, 1]
+        detail["rebuild_identities"] = detail["rebuild_identities"][:1]
+        audit.detail_json = detail
+        session.commit()
+        audit_id = int(audit.audit_id)
+        state_count_before = session.query(GameState).count()
+        projection_statuses_before = [
+            row.status
+            for row in session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.projection_id)
+            .all()
+        ]
+
+    exit_code = cli.run(["--restore-audit-id", str(audit_id)], session_factory=sessions)
+
+    captured = capsys.readouterr()
+    assert exit_code == 3
+    assert "malformed" in captured.err
+    with sessions() as session:
+        audit = session.get(DailyWorldProjectionRepairAudit, audit_id)
+        assert audit.status == "queued"
+        assert session.query(GameState).count() == state_count_before
+        assert [
+            row.status
+            for row in session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.projection_id)
+            .all()
+        ] == projection_statuses_before
 
 
 def test_restore_refuses_when_non_projection_state_changed(
@@ -725,6 +847,85 @@ def test_wait_timeout_is_terminal_but_never_reports_complete(
         audit = session.query(DailyWorldProjectionRepairAudit).one()
         assert audit.status == "timed_out"
         assert audit.completed_at is not None
+
+
+def test_wait_restore_on_wake_never_reports_complete(
+    db_engine, tmp_path: Path, capsys
+) -> None:
+    """A concurrently restored audit is non-complete even when no work remains."""
+
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        _seed_game(session, _candidate_state("restore-on-wake"))
+    report = scan_latest_game_states(sessions)
+
+    exit_code = cli.run(
+        [
+            "--apply",
+            "--expected-report-hash",
+            report.hash,
+            "--backup-dir",
+            str(tmp_path),
+            "--wait",
+            "--timeout-seconds",
+            "1",
+        ],
+        session_factory=sessions,
+        projection_service=RestoreOnSecondWake(sessions),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 4
+    assert '"status":"complete"' not in captured.out
+    with sessions() as session:
+        assert session.query(DailyWorldProjectionRepairAudit).one().status == "restored"
+
+
+def test_wait_cas_miss_maps_durable_restored_status_to_incomplete(
+    db_engine, tmp_path: Path, capsys, monkeypatch
+) -> None:
+    """A failed terminal CAS must map the durable winner, never assume success."""
+
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        game_id = _seed_game(session, _candidate_state("cas-miss-restored"))
+    report = scan_latest_game_states(sessions)
+    original_mark = cli._mark_audit_terminal
+
+    def restore_before_mark(session_factory, audit_id, *, status, digest_after):
+        with sessions() as session:
+            audit = session.get(DailyWorldProjectionRepairAudit, audit_id)
+            audit.status = "restored"
+            session.commit()
+        return original_mark(
+            session_factory,
+            audit_id,
+            status=status,
+            digest_after=digest_after,
+        )
+
+    monkeypatch.setattr(cli, "_mark_audit_terminal", restore_before_mark)
+
+    exit_code = cli.run(
+        [
+            "--apply",
+            "--expected-report-hash",
+            report.hash,
+            "--backup-dir",
+            str(tmp_path),
+            "--wait",
+            "--timeout-seconds",
+            "1",
+        ],
+        session_factory=sessions,
+        projection_service=SecondGameFencingWake(sessions, game_id),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 4
+    assert '"status":"complete"' not in captured.out
+    with sessions() as session:
+        assert session.query(DailyWorldProjectionRepairAudit).one().status == "restored"
 
 
 def test_wait_checks_all_games_for_fences_before_timing_out(

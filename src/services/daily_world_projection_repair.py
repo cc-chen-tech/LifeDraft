@@ -231,14 +231,103 @@ def _projection_watermark(state: Mapping[str, Any]) -> Optional[int]:
 def is_valid_projection_state(value: Any) -> bool:
     """Return whether a v1 layer can be preserved without resetting its ledger."""
 
+    if not isinstance(value, Mapping):
+        return False
+    required = {
+        "version",
+        "projected_through_day_index",
+        "applied_through_day_index",
+        "pending_from_day_index",
+        "oldest_pending_at",
+        "applied_sources",
+        "world",
+    }
+    if not required.issubset(value):
+        return False
+    version = value.get("version")
+    applied = value.get("applied_through_day_index")
+    projected = value.get("projected_through_day_index")
+    pending = value.get("pending_from_day_index")
+    oldest_pending = value.get("oldest_pending_at")
+    if (
+        type(version) is not int
+        or version != 1
+        or not _valid_watermark(applied)
+        or not _valid_watermark(projected)
+        or applied > projected
+        or not (
+            pending is None
+            or (
+                isinstance(pending, int)
+                and not isinstance(pending, bool)
+                and pending >= 0
+            )
+        )
+        or not _valid_oldest_pending_at(oldest_pending)
+    ):
+        return False
+    world = value.get("world")
+    if not isinstance(world, Mapping) or any(
+        category not in world
+        or not isinstance(world[category], list)
+        or any(not isinstance(record, Mapping) for record in world[category])
+        for category in _WORLD_PATCH_FIELDS
+    ):
+        return False
+    applied_sources = value.get("applied_sources")
+    if not isinstance(applied_sources, list):
+        return False
+    source_identities: list[tuple[str, int, int]] = []
+    for source in applied_sources:
+        if not _valid_applied_source(source):
+            return False
+        source_identities.append(
+            (source["event_id"], source["revision"], source["day_index"])
+        )
+    return len(source_identities) == len(set(source_identities))
+
+
+def _valid_oldest_pending_at(value: Any) -> bool:
+    if value is None:
+        return True
+    if not isinstance(value, str):
+        return False
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
+
+
+def _valid_applied_source(value: Any) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    event_id = value.get("event_id")
+    revision = value.get("revision")
+    day_index = value.get("day_index")
+    source_hash = value.get("source_hash")
+    option_index = value.get("option_index")
     return (
-        isinstance(value, Mapping)
-        and value.get("version") == 1
-        and not isinstance(value.get("version"), bool)
-        and isinstance(value.get("world"), Mapping)
-        and isinstance(value.get("applied_sources"), list)
-        and _valid_watermark(value.get("applied_through_day_index"))
-        and _valid_watermark(value.get("projected_through_day_index"))
+        isinstance(event_id, str)
+        and bool(event_id.strip())
+        and isinstance(revision, int)
+        and not isinstance(revision, bool)
+        and revision >= 1
+        and isinstance(day_index, int)
+        and not isinstance(day_index, bool)
+        and day_index >= 0
+        and _valid_source_hash(source_hash)
+        and isinstance(option_index, int)
+        and not isinstance(option_index, bool)
+        and option_index >= 0
+    )
+
+
+def _valid_source_hash(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
     )
 
 
@@ -638,22 +727,10 @@ def _verify_repair_invariants_in_session(
         return RepairVerification(
             "failed_invariant", digest_after, "rebuild_identities_missing"
         )
-    history = _history_records(latest.state_json)
-    for identity in identities:
-        matches = [
-            record
-            for day_index, record in history
-            if day_index == identity.day_index
-            and record.get("event_id") == identity.event_id
-            and record.get("revision", 1) == identity.revision
-        ]
-        if (
-            len(matches) != 1
-            or matches[0].get("choice_option_index") != identity.selected_option_index
-        ):
-            return RepairVerification(
-                "failed_invariant", digest_after, "accepted_option_changed"
-            )
+    if not rebuild_identities_match_history(identities, latest.state_json):
+        return RepairVerification(
+            "failed_invariant", digest_after, "accepted_history_changed"
+        )
 
     rows: list[DailyWorldProjection] = []
     for identity in identities:
@@ -727,6 +804,19 @@ def audit_rebuild_identities(value: Any) -> tuple[RebuildIdentity, ...]:
 
     if not isinstance(value, Mapping):
         return ()
+    rebuild_days = value.get("rebuild_day_indexes")
+    if (
+        not isinstance(rebuild_days, list)
+        or not rebuild_days
+        or any(
+            isinstance(day_index, bool)
+            or not isinstance(day_index, int)
+            or day_index < 0
+            for day_index in rebuild_days
+        )
+        or rebuild_days != sorted(set(rebuild_days))
+    ):
+        return ()
     raw_identities = value.get("rebuild_identities")
     if not isinstance(raw_identities, (list, tuple)) or not raw_identities:
         return ()
@@ -748,8 +838,7 @@ def audit_rebuild_identities(value: Any) -> tuple[RebuildIdentity, ...]:
             and isinstance(day_index, int)
             and not isinstance(day_index, bool)
             and day_index >= 0
-            and isinstance(source_hash, str)
-            and source_hash
+            and _valid_source_hash(source_hash)
             and isinstance(selected, int)
             and not isinstance(selected, bool)
             and selected >= 0
@@ -766,9 +855,49 @@ def audit_rebuild_identities(value: Any) -> tuple[RebuildIdentity, ...]:
         )
     days = [identity.day_index for identity in identities]
     keys = [identity.projection_key for identity in identities]
-    if len(days) != len(set(days)) or len(keys) != len(set(keys)):
+    if (
+        len(days) != len(set(days))
+        or len(keys) != len(set(keys))
+        or rebuild_days != sorted(days)
+    ):
         return ()
     return tuple(sorted(identities, key=lambda item: item.day_index))
+
+
+def rebuild_identities_match_history(
+    identities: Sequence[RebuildIdentity], state: Any
+) -> bool:
+    """Validate every durable source against one unique accepted history record."""
+
+    if not identities or not isinstance(state, Mapping):
+        return False
+    history = _history_records(state)
+    for identity in identities:
+        matches = [
+            record for day_index, record in history if day_index == identity.day_index
+        ]
+        if len(matches) != 1:
+            return False
+        record = matches[0]
+        story = record.get("event_description", record.get("story"))
+        options = record.get("options")
+        selected = record.get("choice_option_index")
+        if (
+            record.get("event_id") != identity.event_id
+            or record.get("revision", 1) != identity.revision
+            or not isinstance(story, str)
+            or not story.strip()
+            or not isinstance(options, list)
+            or not options
+            or isinstance(selected, bool)
+            or not isinstance(selected, int)
+            or selected < 0
+            or selected >= len(options)
+            or selected != identity.selected_option_index
+            or compute_projection_source_hash(story, options) != identity.source_hash
+        ):
+            return False
+    return True
 
 
 def _lock_game(db: Any, game_id: int) -> None:

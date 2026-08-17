@@ -6,6 +6,8 @@ from src.services.daily_world_projection_repair import (
     GameRepairCandidate,
     RepairReason,
     build_scan_report,
+    initialized_projection_state,
+    is_valid_projection_state,
     non_projection_state_digest,
     report_hash,
     scan_game_state,
@@ -176,6 +178,79 @@ def test_invalid_v1_layer_with_high_watermark_rebuilds_full_history() -> None:
 
     assert candidate is not None
     assert candidate.rebuild_day_indexes == [0, 1, 2, 3, 4]
+
+
+def test_canonical_layer_validation_rejects_normalized_data_and_rebuilds_all() -> None:
+    """A layer canonical loading would discard must reset and rebuild from day zero."""
+
+    state = sun_wukong_failed_fixture()
+    state["world_projection_state"] = {
+        "version": 1,
+        "applied_through_day_index": 0,
+        "projected_through_day_index": 0,
+        "pending_from_day_index": None,
+        "oldest_pending_at": None,
+        "applied_sources": [
+            {
+                "event_id": "broken-ledger",
+                "revision": 1,
+                "day_index": 0,
+                "source_hash": "not-a-sha256",
+                "option_index": 0,
+            }
+        ],
+        "world": {},
+    }
+
+    candidate = scan_game_state(203, state)
+    initialized, was_initialized = initialized_projection_state(state)
+
+    assert is_valid_projection_state(state["world_projection_state"]) is False
+    assert candidate is not None
+    assert candidate.rebuild_day_indexes == [0, 1, 2, 3, 4]
+    assert was_initialized is True
+    assert initialized["applied_through_day_index"] == -1
+    assert initialized["applied_sources"] == []
+
+
+def test_canonical_layer_validation_preserves_legacy_baseline_without_sources() -> None:
+    """A migrated baseline watermark does not require synthetic ledger entries."""
+
+    layer = {
+        "version": 1,
+        "applied_through_day_index": 3,
+        "projected_through_day_index": 3,
+        "pending_from_day_index": None,
+        "oldest_pending_at": None,
+        "applied_sources": [],
+        "world": _empty_world_patch(),
+    }
+
+    assert is_valid_projection_state(layer) is True
+
+
+def test_canonical_layer_validation_rejects_non_sha256_applied_source() -> None:
+    """A source entry canonical application cannot safely fence must be rejected."""
+
+    layer = {
+        "version": 1,
+        "applied_through_day_index": 0,
+        "projected_through_day_index": 0,
+        "pending_from_day_index": None,
+        "oldest_pending_at": None,
+        "applied_sources": [
+            {
+                "event_id": "bad-hash-day-0",
+                "revision": 1,
+                "day_index": 0,
+                "source_hash": "not-a-sha256",
+                "option_index": 0,
+            }
+        ],
+        "world": _empty_world_patch(),
+    }
+
+    assert is_valid_projection_state(layer) is False
 
 
 def test_digest_ignores_only_projection_state() -> None:

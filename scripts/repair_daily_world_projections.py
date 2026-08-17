@@ -40,6 +40,7 @@ from src.services.daily_world_projection_repair import (
     initialized_projection_state,
     non_projection_state_digest,
     rebuild_identities,
+    rebuild_identities_match_history,
     scan_latest_game_states,
 )
 from src.services.daily_world_projection_repository import (
@@ -255,9 +256,10 @@ def _wait_for_audits(
         pending: list[tuple[int, str]] = []
         for audit_id in sorted(remaining):
             verification = finalize_repair_audit(session_factory, audit_id)
-            if verification.status == "complete":
-                remaining.remove(audit_id)
+            if verification.status == "pending":
+                pending.append((audit_id, verification.non_projection_digest_after))
                 continue
+            durable_status = verification.status
             if verification.status == "failed_invariant":
                 changed = _mark_audit_terminal(
                     session_factory,
@@ -267,10 +269,10 @@ def _wait_for_audits(
                 )
                 if changed:
                     _print_restore_command(audit_id, stderr)
-                saw_invariant_failure = True
-                remaining.remove(audit_id)
-                continue
-            if verification.status == "fenced":
+                    durable_status = "failed_invariant"
+                else:
+                    durable_status = _read_audit_status(session_factory, audit_id)
+            elif verification.status == "fenced":
                 changed = _mark_audit_terminal(
                     session_factory,
                     audit_id,
@@ -279,20 +281,16 @@ def _wait_for_audits(
                 )
                 if changed:
                     _print_restore_command(audit_id, stderr)
-                    saw_incomplete = True
-                remaining.remove(audit_id)
-                continue
-            if verification.status in {
-                "failed_fenced",
-                "timed_out",
-                "restored",
-                "concurrent_terminal",
-            }:
-                if verification.status in {"failed_fenced", "timed_out"}:
-                    saw_incomplete = True
-                remaining.remove(audit_id)
-                continue
-            pending.append((audit_id, verification.non_projection_digest_after))
+                    durable_status = "failed_fenced"
+                else:
+                    durable_status = _read_audit_status(session_factory, audit_id)
+            elif verification.status == "concurrent_terminal":
+                durable_status = _read_audit_status(session_factory, audit_id)
+            if durable_status == "failed_invariant":
+                saw_invariant_failure = True
+            elif durable_status != "complete":
+                saw_incomplete = True
+            remaining.remove(audit_id)
         if not remaining:
             break
         if monotonic() >= deadline:
@@ -305,6 +303,12 @@ def _wait_for_audits(
                 )
                 if changed:
                     _print_restore_command(audit_id, stderr)
+                    durable_status = "timed_out"
+                else:
+                    durable_status = _read_audit_status(session_factory, audit_id)
+                if durable_status == "failed_invariant":
+                    saw_invariant_failure = True
+                elif durable_status != "complete":
                     saw_incomplete = True
                 remaining.remove(audit_id)
             break
@@ -326,20 +330,25 @@ def _run_restore(
 ) -> int:
     try:
         audit_record = _read_audit(session_factory, audit_id)
-        if not audit_rebuild_identities(audit_record["detail_json"]):
+        identities = audit_rebuild_identities(audit_record["detail_json"])
+        if not identities:
             raise ValueError("malformed repair audit identities")
         backup_state = restore_state_backup(
             audit_record["backup_path"], audit_record["backup_sha256"]
         )
         if not isinstance(backup_state, Mapping):
             raise BackupChecksumMismatch("backup checksum mismatch")
+        if not rebuild_identities_match_history(identities, backup_state):
+            raise ValueError("malformed repair audit history")
         with session_factory() as db, db.begin():
             audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
             if audit is None:
                 raise ValueError("repair audit not found")
             _lock_game(db, int(audit.game_id))
             identities = audit_rebuild_identities(audit.detail_json)
-            if not identities:
+            if not identities or not rebuild_identities_match_history(
+                identities, backup_state
+            ):
                 raise ValueError("malformed repair audit identities")
             latest = _latest_state(db, int(audit.game_id))
             if latest is None or not isinstance(latest.state_json, Mapping):
@@ -347,6 +356,8 @@ def _run_restore(
             current_digest = non_projection_state_digest(latest.state_json)
             if current_digest != audit.non_projection_digest_before:
                 raise NonProjectionStateChanged("non-projection state changed")
+            if not rebuild_identities_match_history(identities, latest.state_json):
+                raise ValueError("malformed repair audit history")
             restored = deepcopy(dict(latest.state_json))
             if "world_projection_state" in backup_state:
                 restored["world_projection_state"] = deepcopy(
@@ -403,6 +414,18 @@ def _read_audit(session_factory: Callable[[], Any], audit_id: int) -> dict[str, 
             "backup_sha256": str(audit.backup_sha256),
             "detail_json": deepcopy(audit.detail_json),
         }
+
+
+def _read_audit_status(session_factory: Callable[[], Any], audit_id: int) -> str:
+    with session_factory() as db:
+        status = (
+            db.query(DailyWorldProjectionRepairAudit.status)
+            .filter(DailyWorldProjectionRepairAudit.audit_id == audit_id)
+            .scalar()
+        )
+        if status is None:
+            raise ValueError("repair audit not found")
+        return str(status)
 
 
 def _latest_state(db: Any, game_id: int) -> Optional[GameState]:

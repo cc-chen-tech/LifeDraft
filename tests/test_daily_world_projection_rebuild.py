@@ -98,6 +98,7 @@ def _seed_ready_projection(session, *, with_audit: bool, audit_status: str = "qu
                 non_projection_digest_before=non_projection_state_digest(state),
                 status=audit_status,
                 detail_json={
+                    "rebuild_day_indexes": [record["day_index"]],
                     "rebuild_identities": [
                         {
                             "event_id": record["event_id"],
@@ -106,7 +107,7 @@ def _seed_ready_projection(session, *, with_audit: bool, audit_status: str = "qu
                             "source_hash": source_hash,
                             "selected_option_index": record["choice_option_index"],
                         }
-                    ]
+                    ],
                 },
             )
         )
@@ -262,6 +263,7 @@ def test_mixed_repair_and_ordinary_batch_preserves_each_history_contract(
                 non_projection_digest_before=non_projection_state_digest(state),
                 status="queued",
                 detail_json={
+                    "rebuild_day_indexes": [repair_record["day_index"]],
                     "rebuild_identities": [
                         {
                             "event_id": repair_record["event_id"],
@@ -272,7 +274,7 @@ def test_mixed_repair_and_ordinary_batch_preserves_each_history_contract(
                                 "choice_option_index"
                             ],
                         }
-                    ]
+                    ],
                 },
             )
         )
