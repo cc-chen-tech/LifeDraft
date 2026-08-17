@@ -2,10 +2,12 @@
 
 import tarfile
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from httpx import Response
 
+from src.services.minimax_config import MiniMaxConfig
 from src.services.minimax_story_tts_provider import (
     _ensure_http_url,
     _extract_audio_file_bytes,
@@ -17,6 +19,7 @@ from src.services.minimax_story_tts_provider import (
     _raise_for_base_resp,
     _safe_token,
 )
+from src.services.story_tts_provider import ParagraphCue
 
 
 def _tar_bytes(member_name: str, data: bytes) -> bytes:
@@ -140,3 +143,172 @@ def test_tts_subtitle_parser_rejects_overlapping_cues() -> None:
 
     with pytest.raises(ValueError, match="invalid timestamps"):
         _parse_srt_cues(subtitles)
+
+
+def test_tts_chapter_bundle_without_subtitle_falls_back_to_proportional_cues() -> None:
+    """Multi-paragraph chapters without SRT subtitles still emit valid cues.
+
+    The MiniMax ``t2a_async_v2`` endpoint historically ships the synthesized
+    audio inside a tar archive together with ``.titles``/``.extra`` JSON
+    metadata.  ``_extract_synthesis_bundle`` only inspects the ``.srt`` member,
+    so ``subtitle_text`` ends up ``None`` for those responses.  ``_paragraph_cues``
+    must not raise on the multi-paragraph chapter in that case; instead it must
+    fall back to a proportional split so gapless playback keeps working.
+
+    Regression: previously ``_paragraph_cues`` raised
+    ``ValueError("MiniMax chapter bundle did not include paragraph subtitles")``
+    for any chapter with two or more paragraphs, which surfaced as
+    ``TTSProviderUnavailableError("MiniMax TTS generation failed")`` and marked
+    every multi-paragraph voice job as ``failed`` in production.
+    """
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_API_KEY": "configured"},
+            voice_asset_dir=_make_asset_dir(),
+        )
+    )
+    # Three paragraphs of distinct weights so a regression that drops a
+    # paragraph, returns a uniform split, or inverts the proportions is
+    # caught immediately.
+    paragraphs = [
+        "雾气比昨日更浓，汴州城南的街巷在灰白中只露出模糊的轮廓。",
+        "狄仁杰从赵府外的巷道离开后，并未径直去李记药铺，而是先拐入一条窄巷。",
+        "他需要理清头绪。",
+    ]
+    cues = provider._paragraph_cues(
+        {"paragraphs": paragraphs},
+        subtitle_text=None,
+        duration_ms=6_000,
+    )
+
+    assert len(cues) == len(paragraphs)
+    assert [cue.paragraph_index for cue in cues] == [0, 1, 2]
+    assert cues[0].start_ms == 0
+    assert cues[-1].end_ms == 6_000
+    widths = [cue.end_ms - cue.start_ms for cue in cues]
+    # Paragraph 1 (index 1) carries the most non-whitespace characters so its
+    # audio slice must be the widest; paragraph 2 (index 2) is the shortest
+    # and must therefore own the narrowest slice.  Paragraph 0 sits between
+    # the two.  This pins the proportional behaviour against accidental
+    # regressions to a uniform split or to silent drops of trailing
+    # paragraphs.
+    assert widths[1] > widths[0] > widths[2]
+    assert sum(widths) == 6_000
+
+
+def test_tts_single_paragraph_without_subtitle_emits_full_duration_cue() -> None:
+    """A one-paragraph chapter must yield a single cue covering the whole audio."""
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_API_KEY": "configured"},
+            voice_asset_dir=_make_asset_dir(),
+        )
+    )
+
+    cues = provider._paragraph_cues(
+        {"paragraphs": ["唯一段落。"]},
+        subtitle_text=None,
+        duration_ms=4_200,
+    )
+
+    assert cues == (
+        ParagraphCue(paragraph_index=0, start_ms=0, end_ms=4_200),
+    )
+
+
+def test_tts_synthesis_succeeds_when_subtitle_text_is_missing(tmp_path) -> None:
+    """End-to-end: synthesize() must succeed when no subtitle text is returned.
+
+    Reproduces the production failure observed on Aug 17 where every
+    multi-paragraph voice job landed in the ``failed`` terminal state because
+    the MiniMax API stopped returning an SRT member inside the audio tar.
+    The stub client writes a tar containing the audio plus ``.titles`` and
+    ``.extra`` metadata (matching the modern MiniMax response shape) and
+    ``subtitle_text`` ends up ``None``.  The audio validation step is
+    monkey-patched so the test does not depend on synthesizing a real MP3.
+    """
+
+    class TarWithoutSubtitleClient:
+        """Simulates the modern MiniMax response: audio + .titles + .extra."""
+
+        def synthesize_to_file(self, payload, output_path, on_progress=None):
+            if on_progress is not None:
+                on_progress()
+            archive = _tar_members(
+                {
+                    "result/chapter.mp3": b"ID3-audio-bytes",
+                    "result/chapter.titles": b'[{"text": "x", "time_begin": 0, "time_end": 100}]',
+                    "result/chapter.extra": b'{"balance": 0}',
+                }
+            )
+            output_path.write_bytes(archive)
+            return None
+
+    from src.services.minimax_story_tts_provider import (
+        MiniMaxTTSProvider,
+        _validated_audio_duration_ms,
+    )
+    import src.services.minimax_story_tts_provider as provider_module
+
+    asset_dir = tmp_path / "voice"
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_API_KEY": "configured"},
+            voice_asset_dir=asset_dir,
+        ),
+        client=TarWithoutSubtitleClient(),
+    )
+
+    # The MiniMax tar carries the audio as one of its members and the tar
+    # itself does not validate as an MP3.  Bypass the upstream validation so
+    # the regression test focuses on the paragraph cue behaviour that
+    # actually broke in production.
+    original_validate = _validated_audio_duration_ms
+
+    def fake_validate(audio_path, extension):
+        del audio_path
+        assert extension == "mp3"
+        return 4_500
+
+    provider_module._validated_audio_duration_ms = fake_validate
+    try:
+        speech = provider.synthesize(
+            {
+                "text_hash": "no-subtitles-chapter",
+                "text": (
+                    "雾气比昨日更浓，汴州城南的街巷在灰白中只露出模糊的轮廓。\n\n"
+                    "狄仁杰从赵府外的巷道离开后，并未径直去李记药铺。"
+                ),
+                "paragraphs": [
+                    "雾气比昨日更浓，汴州城南的街巷在灰白中只露出模糊的轮廓。",
+                    "狄仁杰从赵府外的巷道离开后，并未径直去李记药铺。",
+                ],
+            },
+            "warm_female",
+            1.0,
+        )
+    finally:
+        provider_module._validated_audio_duration_ms = original_validate
+
+    assert speech.playback_mode == "audio"
+    assert speech.duration_ms == 4_500
+    assert len(speech.paragraph_cues) == 2
+    assert speech.paragraph_cues[0].start_ms == 0
+    assert speech.paragraph_cues[-1].end_ms == 4_500
+
+
+def _make_asset_dir() -> "Path":
+    """Return a unique, empty temp directory used by the regression tests.
+
+    Importing ``tmp_path`` from pytest fixtures would require rewriting the
+    tests as functions that take the fixture as an argument; using a helper
+    keeps the contract tests self-contained while still exercising the same
+    filesystem boundaries the real provider relies on.
+    """
+    import tempfile
+
+    return Path(tempfile.mkdtemp(prefix="minimax-tts-paragraph-cues-"))

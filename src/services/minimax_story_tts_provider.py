@@ -400,13 +400,16 @@ class MiniMaxTTSProvider:
                 _parse_srt_cues(subtitle_text),
                 audio_duration_ms=duration_ms,
             )
-        if len(paragraphs) == 1:
-            return (ParagraphCue(paragraph_index=0, start_ms=0, end_ms=duration_ms),)
-        if self.config.local_audio_enabled:
-            from src.services.story_tts_provider import _proportional_paragraph_cues
+        # When the MiniMax response does not ship subtitle metadata we still
+        # need to emit cues for every paragraph we generated so playback does
+        # not pause mid-sentence.  The remote t2a_async_v2 endpoint has
+        # historically returned ``.titles``/``.extra`` JSON alongside the audio
+        # rather than an SRT file, in which case ``subtitle_text`` is None.
+        # The proportional split keeps the audio aligned with the chapter
+        # paragraphs by weighting each segment by its word count.
+        from src.services.story_tts_provider import _proportional_paragraph_cues
 
-            return _proportional_paragraph_cues(paragraphs, duration_ms)
-        raise ValueError("MiniMax chapter bundle did not include paragraph subtitles")
+        return _proportional_paragraph_cues(paragraphs, duration_ms)
 
     def is_valid_cached_asset(self, storage_path: str) -> bool:
         """Return whether a stored MiniMax asset is safe to reuse."""
