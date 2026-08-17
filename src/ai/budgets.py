@@ -146,7 +146,11 @@ _EN_KIND_BANDS = {
     NarrativeKind.OPENING: (200, 350, 700),
     NarrativeKind.CONTINUATION: (250, 450, 900),
 }
-_ROUND_OUTPUT_TOKENS = {"fast": 1024, "expert": 2048, "master": 4096}
+# fast keeps 2048 output tokens (not 1024) so a Chinese daily continuation can
+# still reach its 1400-char compression threshold without truncation. A
+# truncated story fails the constraint harness and, with fast's single-attempt
+# budget, leaves no fallback draft to promote.
+_ROUND_OUTPUT_TOKENS = {"fast": 2048, "expert": 2048, "master": 4096}
 _KIND_OUTPUT_TOKENS = {
     NarrativeKind.OPENING: 1024,
     NarrativeKind.CONTINUATION: 1536,
