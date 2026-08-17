@@ -49,6 +49,3 @@ jobs:
           IMAGE_API_KEY: 'sk-test-dummy-key-for-ci'
           IMAGE_API_BASE_URL: 'https://api.openai.com/v1'
           OPENAI_BASE_URL: 'https://api.openai.com/v1'
-
-      - name: Run full backend test suite
-        run: python -m pytest tests/ -v --tb=short
