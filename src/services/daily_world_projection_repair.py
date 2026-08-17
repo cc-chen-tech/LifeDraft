@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
-from sqlalchemy import and_, func, text
+from sqlalchemy import and_, func, or_, text
 
 from src.database.models import (
     DailyWorldProjection,
@@ -140,6 +140,18 @@ class RepairVerification:
     status: str
     non_projection_digest_after: str
     detail: str = ""
+
+
+class RepairProjectionAuthorityInvalid(RuntimeError):
+    """A marked live projection row no longer matches its durable audit scope."""
+
+    def __init__(self, projection_id: int, reason: str) -> None:
+        super().__init__(
+            "repair_projection_authority_invalid "
+            f"projection_id={projection_id} reason={reason}"
+        )
+        self.projection_id = projection_id
+        self.reason = reason
 
 
 def _valid_day_index(value: Any) -> Optional[int]:
@@ -759,36 +771,68 @@ def _projection_watermark_out_of_range(
 def repair_projection_only_identities(
     db: Any, game_id: int
 ) -> set[tuple[str, int, int, str, int]]:
-    """Resolve exact repair-only identities from durable row/audit bindings."""
+    """Strictly resolve every live marked row from one DB-only joined read."""
 
-    rows = (
-        db.query(DailyWorldProjection)
-        .join(
+    bindings = (
+        db.query(DailyWorldProjection, DailyWorldProjectionRepairAudit)
+        .outerjoin(
             DailyWorldProjectionRepairAudit,
             DailyWorldProjection.repair_audit_id
             == DailyWorldProjectionRepairAudit.audit_id,
         )
         .filter(
             DailyWorldProjection.game_id == game_id,
-            DailyWorldProjectionRepairAudit.game_id == game_id,
-            DailyWorldProjectionRepairAudit.status.in_(
-                _REPAIR_IDENTITY_AUTHORITY_STATUSES
-            ),
             DailyWorldProjection.status != "superseded",
-            DailyWorldProjection.repair_selected_option_index.is_not(None),
+            or_(
+                DailyWorldProjection.repair_audit_id.is_not(None),
+                DailyWorldProjection.repair_selected_option_index.is_not(None),
+            ),
         )
+        .order_by(DailyWorldProjection.projection_id)
         .all()
     )
-    return {
-        (
+    identities: set[tuple[str, int, int, str, int]] = set()
+    parsed_by_audit_id: dict[int, set[tuple[str, int, int, str, int]]] = {}
+    for row, audit in bindings:
+        projection_id = int(row.projection_id)
+        if row.repair_audit_id is None or row.repair_selected_option_index is None:
+            raise RepairProjectionAuthorityInvalid(projection_id, "incomplete_marker")
+        if audit is None:
+            raise RepairProjectionAuthorityInvalid(projection_id, "audit_missing")
+        if int(audit.game_id) != game_id:
+            raise RepairProjectionAuthorityInvalid(projection_id, "audit_game_mismatch")
+        if audit.status not in _REPAIR_IDENTITY_AUTHORITY_STATUSES:
+            raise RepairProjectionAuthorityInvalid(
+                projection_id, "audit_status_not_authoritative"
+            )
+        audit_id = int(audit.audit_id)
+        audit_identities = parsed_by_audit_id.get(audit_id)
+        if audit_identities is None:
+            try:
+                parsed = audit_rebuild_identities(audit.detail_json)
+            except Exception as exc:
+                raise RepairProjectionAuthorityInvalid(
+                    projection_id, "audit_scope_invalid"
+                ) from exc
+            if not parsed:
+                raise RepairProjectionAuthorityInvalid(
+                    projection_id, "audit_scope_invalid"
+                )
+            audit_identities = {item.projection_key for item in parsed}
+            parsed_by_audit_id[audit_id] = audit_identities
+        identity = (
             str(row.event_id),
             int(row.revision),
             int(row.day_index),
             str(row.source_hash),
             int(row.repair_selected_option_index),
         )
-        for row in rows
-    }
+        if identity not in audit_identities:
+            raise RepairProjectionAuthorityInvalid(
+                projection_id, "row_out_of_audit_scope"
+            )
+        identities.add(identity)
+    return identities
 
 
 def _read_audit_binding(

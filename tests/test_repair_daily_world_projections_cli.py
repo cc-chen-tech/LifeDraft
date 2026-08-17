@@ -402,6 +402,196 @@ def _make_backup_unavailable(monkeypatch, backup_path: Path, failure_mode: str) 
     monkeypatch.setattr(Path, "read_bytes", permission_denied)
 
 
+def _repair_authority_write_snapshot(sessions, game_id: int) -> dict[str, object]:
+    with sessions() as session:
+        return {
+            "states": [
+                (row.state_id, deepcopy(row.state_json))
+                for row in session.query(GameState)
+                .filter(GameState.game_id == game_id)
+                .order_by(GameState.state_id)
+                .all()
+            ],
+            "projections": [
+                (
+                    row.projection_id,
+                    row.status,
+                    row.source_hash,
+                    deepcopy(row.story_patch_json),
+                    deepcopy(row.option_patches_json),
+                    row.repair_audit_id,
+                    row.repair_selected_option_index,
+                    row.applied_at,
+                )
+                for row in session.query(DailyWorldProjection)
+                .filter(DailyWorldProjection.game_id == game_id)
+                .order_by(DailyWorldProjection.projection_id)
+                .all()
+            ],
+            "audits": [
+                (row.audit_id, row.status, deepcopy(row.detail_json))
+                for row in session.query(DailyWorldProjectionRepairAudit)
+                .filter(DailyWorldProjectionRepairAudit.game_id == game_id)
+                .order_by(DailyWorldProjectionRepairAudit.audit_id)
+                .all()
+            ],
+        }
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "mutated-detail",
+        "forged-unrelated-marker",
+        "missing-audit",
+        "non-authoritative-status",
+        "malformed-detail",
+        "duplicate-detail",
+        "parser-exception",
+    ],
+)
+@pytest.mark.parametrize("caller", ["service", "state-repository"])
+def test_corrupt_persisted_repair_authority_fails_closed_without_writes(
+    db_engine,
+    tmp_path: Path,
+    monkeypatch,
+    corruption: str,
+    caller: str,
+) -> None:
+    from config.feature_flags import reset_features, set_feature
+    from src.database.state_repository import StateRepository
+
+    sessions = sessionmaker(bind=db_engine)
+    state = PlayerState.from_dict(
+        _candidate_state(f"authority-{corruption}-{caller}")
+    ).to_dict()
+    with sessions() as session:
+        game_id = _seed_game(session, state)
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        rows = (
+            session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.day_index)
+            .all()
+        )
+        for row in rows:
+            row.status = "ready_no_change"
+            row.story_patch_json = {}
+            row.option_patches_json = {"0": {}, "1": {}}
+        if corruption == "mutated-detail":
+            changed = deepcopy(audit.detail_json)
+            changed["rebuild_day_indexes"] = [77, 78]
+            for offset, identity in enumerate(changed["rebuild_identities"]):
+                identity["event_id"] = f"different-event-{offset}"
+                identity["day_index"] = 77 + offset
+                identity["source_hash"] = ("e" if offset == 0 else "f") * 64
+            audit.detail_json = changed
+        elif corruption == "forged-unrelated-marker":
+            forged = DailyWorldProjectionRepairAudit(
+                game_id=game_id,
+                state_id=audit.state_id,
+                report_hash="f" * 64,
+                backup_path=audit.backup_path,
+                backup_sha256=audit.backup_sha256,
+                non_projection_digest_before=audit.non_projection_digest_before,
+                status="queued",
+                detail_json={
+                    "rebuild_day_indexes": [77],
+                    "rebuild_identities": [
+                        {
+                            "event_id": "unrelated-event",
+                            "revision": 1,
+                            "day_index": 77,
+                            "source_hash": "f" * 64,
+                            "selected_option_index": 0,
+                        }
+                    ],
+                },
+            )
+            session.add(forged)
+            session.flush()
+            rows[0].repair_audit_id = forged.audit_id
+        elif corruption == "missing-audit":
+            session.delete(audit)
+        elif corruption == "non-authoritative-status":
+            audit.status = "restored"
+        elif corruption == "malformed-detail":
+            audit.detail_json = {"rebuild_day_indexes": [0]}
+        elif corruption == "duplicate-detail":
+            changed = deepcopy(audit.detail_json)
+            changed["rebuild_identities"].append(
+                deepcopy(changed["rebuild_identities"][0])
+            )
+            audit.detail_json = changed
+        session.commit()
+
+    if corruption == "parser-exception":
+
+        def fail_parse(_value):
+            raise ValueError("simulated strict parser failure")
+
+        monkeypatch.setattr(repair, "audit_rebuild_identities", fail_parse)
+
+    before = _repair_authority_write_snapshot(sessions, game_id)
+    state_before = before["states"][-1][1]
+    if caller == "service":
+        reason = {
+            "mutated-detail": "row_out_of_audit_scope",
+            "forged-unrelated-marker": "row_out_of_audit_scope",
+            "missing-audit": "audit_missing",
+            "non-authoritative-status": "audit_status_not_authoritative",
+            "malformed-detail": "audit_scope_invalid",
+            "duplicate-detail": "audit_scope_invalid",
+            "parser-exception": "audit_scope_invalid",
+        }[corruption]
+        with pytest.raises(
+            RuntimeError,
+            match=rf"repair_projection_authority_invalid .*reason={reason}",
+        ):
+            DailyWorldProjectionService(session_factory=sessions).apply_ready_for_game(
+                game_id
+            )
+    else:
+        import src.database.state_repository as state_repository_module
+
+        monkeypatch.setattr(state_repository_module, "SessionLocal", sessions)
+        set_feature("daily_world_projection_v1", True)
+        try:
+            assert (
+                StateRepository().save_game_progress(
+                    game_id, PlayerState.from_dict(deepcopy(state_before))
+                )
+                is False
+            )
+        finally:
+            reset_features()
+
+    after = _repair_authority_write_snapshot(sessions, game_id)
+    state_after = after["states"][-1][1]
+    assert after == before
+    assert state_after["day_history"] == state_before["day_history"]
+    assert non_projection_state_digest(state_after) == non_projection_state_digest(
+        state_before
+    )
+
+
 @pytest.mark.parametrize("failure_mode", ["deleted", "permission"])
 def test_queued_repair_authority_survives_unavailable_backup(
     db_engine, tmp_path: Path, monkeypatch, failure_mode: str
