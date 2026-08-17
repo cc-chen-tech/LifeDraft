@@ -271,7 +271,10 @@ def _apply_candidate(
             if audit is None or audit.status != "backed_up":
                 raise RuntimeError("repair audit is not backed up")
             rebuilt = enqueue_rebuild(
-                candidate, DailyWorldProjectionRepository(db), latest_state
+                candidate,
+                DailyWorldProjectionRepository(db),
+                latest_state,
+                repair_audit_id=audit_id,
             )
             if tuple(item.projection_key for item in rebuilt) != tuple(
                 item.projection_key for item in identities

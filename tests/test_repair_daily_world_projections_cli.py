@@ -12,6 +12,7 @@ from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy.orm import sessionmaker
 
 from scripts import repair_daily_world_projections as cli
@@ -387,6 +388,175 @@ def _db_snapshot(sessions) -> dict[str, object]:
         }
 
 
+def _make_backup_unavailable(monkeypatch, backup_path: Path, failure_mode: str) -> None:
+    if failure_mode == "deleted":
+        backup_path.unlink()
+        return
+    original_read_bytes = Path.read_bytes
+
+    def permission_denied(path: Path) -> bytes:
+        if path == backup_path:
+            raise PermissionError("simulated repair backup denial")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", permission_denied)
+
+
+@pytest.mark.parametrize("failure_mode", ["deleted", "permission"])
+def test_queued_repair_authority_survives_unavailable_backup(
+    db_engine, tmp_path: Path, monkeypatch, failure_mode: str
+) -> None:
+    sessions = sessionmaker(bind=db_engine)
+    state = PlayerState.from_dict(_candidate_state("queued-authority")).to_dict()
+    with sessions() as session:
+        game_id = _seed_game(session, state)
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        backup_path = Path(audit.backup_path)
+        assert {
+            (row.repair_audit_id, row.repair_selected_option_index)
+            for row in session.query(DailyWorldProjection).all()
+        } == {(audit.audit_id, 0)}
+        before = deepcopy(
+            session.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+            .state_json
+        )
+        for row in session.query(DailyWorldProjection).all():
+            row.status = "ready_no_change"
+            row.story_patch_json = {}
+            row.option_patches_json = {"0": {}, "1": {}}
+        session.commit()
+    _make_backup_unavailable(monkeypatch, backup_path, failure_mode)
+
+    assert (
+        DailyWorldProjectionService(session_factory=sessions).apply_ready_for_game(
+            game_id
+        )
+        == 2
+    )
+    with sessions() as session:
+        after = deepcopy(
+            session.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+            .state_json
+        )
+    assert after["day_history"] == before["day_history"]
+    differing_non_projection_fields = sorted(
+        key
+        for key in set(before) | set(after)
+        if key != "world_projection_state" and before.get(key) != after.get(key)
+    )
+    assert differing_non_projection_fields == []
+    assert non_projection_state_digest(after) == non_projection_state_digest(before)
+
+
+@pytest.mark.parametrize("failure_mode", ["deleted", "permission"])
+@pytest.mark.parametrize("audit_status", ["queued", "complete"])
+def test_repair_authority_survives_unavailable_backup_on_normal_save(
+    db_engine,
+    tmp_path: Path,
+    monkeypatch,
+    failure_mode: str,
+    audit_status: str,
+) -> None:
+    from config.feature_flags import reset_features, set_feature
+    from src.database.state_repository import StateRepository
+
+    sessions = sessionmaker(bind=db_engine)
+    state = PlayerState.from_dict(_candidate_state("complete-authority")).to_dict()
+    with sessions() as session:
+        game_id = _seed_game(session, state)
+    report = scan_latest_game_states(sessions)
+    arguments = [
+        "--apply",
+        "--expected-report-hash",
+        report.hash,
+        "--backup-dir",
+        str(tmp_path),
+    ]
+    if audit_status == "complete":
+        arguments.append("--wait")
+    assert (
+        cli.run(
+            arguments,
+            session_factory=sessions,
+            projection_service=(
+                CompletingProjectionWake(sessions, game_id)
+                if audit_status == "complete"
+                else WakeRecorder()
+            ),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        assert audit.status == audit_status
+        backup_path = Path(audit.backup_path)
+        assert {
+            (row.repair_audit_id, row.repair_selected_option_index)
+            for row in session.query(DailyWorldProjection).all()
+        } == {(audit.audit_id, 0)}
+        before = deepcopy(
+            session.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+            .state_json
+        )
+    _make_backup_unavailable(monkeypatch, backup_path, failure_mode)
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", sessions)
+    set_feature("daily_world_projection_v1", True)
+    try:
+        assert StateRepository().save_game_progress(
+            game_id, PlayerState.from_dict(before)
+        )
+    finally:
+        reset_features()
+
+    with sessions() as session:
+        after = deepcopy(
+            session.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+            .state_json
+        )
+    assert after["day_history"] == before["day_history"]
+    differing_non_projection_fields = sorted(
+        key
+        for key in set(before) | set(after)
+        if key != "world_projection_state" and before.get(key) != after.get(key)
+    )
+    assert differing_non_projection_fields == []
+    assert non_projection_state_digest(after) == non_projection_state_digest(before)
+
+
 def test_cli_defaults_to_read_only_dry_run(db_engine, capsys) -> None:
     """Default invocation must not create a DB row, audit, or backup."""
 
@@ -657,6 +827,10 @@ def test_repair_can_reactivate_exact_rows_after_guarded_restore(
     with sessions() as session:
         first_audit = session.query(DailyWorldProjectionRepairAudit).one()
         first_audit_id = int(first_audit.audit_id)
+        assert {
+            (row.repair_audit_id, row.repair_selected_option_index)
+            for row in session.query(DailyWorldProjection).all()
+        } == {(first_audit_id, 0)}
         projection_ids = [
             row.projection_id
             for row in session.query(DailyWorldProjection)
@@ -678,6 +852,12 @@ def test_repair_can_reactivate_exact_rows_after_guarded_restore(
         )
         == cli.EXIT_OK
     )
+    with sessions() as session:
+        assert repair.repair_projection_only_identities(session, game_id) == set()
+        assert {
+            (row.status, row.repair_audit_id)
+            for row in session.query(DailyWorldProjection).all()
+        } == {("superseded", first_audit_id)}
 
     second_report = scan_latest_game_states(sessions)
     assert [candidate.game_id for candidate in second_report.candidates] == [game_id]
@@ -712,6 +892,9 @@ def test_repair_can_reactivate_exact_rows_after_guarded_restore(
     assert [row.projection_id for row in rows] == projection_ids
     assert [row.status for row in rows] == ["applied", "applied"]
     assert [audit.status for audit in audits] == ["restored", "complete"]
+    assert {
+        (row.repair_audit_id, row.repair_selected_option_index) for row in rows
+    } == {(audits[1].audit_id, 0)}
     assert all(audit.status != "failed_fenced" for audit in audits)
 
 

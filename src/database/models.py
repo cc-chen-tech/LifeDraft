@@ -632,6 +632,12 @@ class DailyWorldProjection(Base):
     lease_owner = Column(String(96), nullable=True, index=True)
     lease_expires_at = Column(DateTime, nullable=True)
     error_code = Column(String(80), nullable=True)
+    repair_audit_id = Column(
+        Integer,
+        ForeignKey("daily_world_projection_repair_audits.audit_id"),
+        nullable=True,
+    )
+    repair_selected_option_index = Column(Integer, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -651,6 +657,10 @@ class DailyWorldProjection(Base):
             "status",
             "next_attempt_at",
             "lease_expires_at",
+        ),
+        Index(
+            "ix_daily_world_projections_repair_audit_id_runtime",
+            "repair_audit_id",
         ),
     )
 
@@ -870,6 +880,10 @@ def _ensure_legacy_columns() -> None:
             "start_ms": "INTEGER",
             "end_ms": "INTEGER",
         },
+        "daily_world_projections": {
+            "repair_audit_id": "INTEGER",
+            "repair_selected_option_index": "INTEGER",
+        },
     }
 
     with engine.begin() as connection:
@@ -899,6 +913,14 @@ def _ensure_legacy_columns() -> None:
                 "ON voice_reading_jobs (dedupe_key)"
             )
         )
+        if "daily_world_projections" in available_tables:
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS "
+                    "ix_daily_world_projections_repair_audit_id_runtime "
+                    "ON daily_world_projections (repair_audit_id)"
+                )
+            )
 
 
 @contextmanager

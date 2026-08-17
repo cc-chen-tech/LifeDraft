@@ -101,29 +101,31 @@ def _seed_ready_projection(
             state_id=snapshot.state_id,
             state_json=state,
         )
-        session.add(
-            DailyWorldProjectionRepairAudit(
-                game_id=game.game_id,
-                state_id=snapshot.state_id,
-                report_hash="a" * 64,
-                backup_path=str(backup.path),
-                backup_sha256=backup.sha256,
-                non_projection_digest_before=non_projection_state_digest(state),
-                status=audit_status,
-                detail_json={
-                    "rebuild_day_indexes": [record["day_index"]],
-                    "rebuild_identities": [
-                        {
-                            "event_id": record["event_id"],
-                            "revision": record["revision"],
-                            "day_index": record["day_index"],
-                            "source_hash": source_hash,
-                            "selected_option_index": record["choice_option_index"],
-                        }
-                    ],
-                },
-            )
+        audit = DailyWorldProjectionRepairAudit(
+            game_id=game.game_id,
+            state_id=snapshot.state_id,
+            report_hash="a" * 64,
+            backup_path=str(backup.path),
+            backup_sha256=backup.sha256,
+            non_projection_digest_before=non_projection_state_digest(state),
+            status=audit_status,
+            detail_json={
+                "rebuild_day_indexes": [record["day_index"]],
+                "rebuild_identities": [
+                    {
+                        "event_id": record["event_id"],
+                        "revision": record["revision"],
+                        "day_index": record["day_index"],
+                        "source_hash": source_hash,
+                        "selected_option_index": record["choice_option_index"],
+                    }
+                ],
+            },
         )
+        session.add(audit)
+        session.flush()
+        projection.repair_audit_id = audit.audit_id
+        projection.repair_selected_option_index = record["choice_option_index"]
     session.commit()
     return game.game_id, deepcopy(state["day_history"])
 
@@ -354,31 +356,39 @@ def test_mixed_repair_and_ordinary_batch_preserves_each_history_contract(
             state_id=snapshot.state_id,
             state_json=repair_backup_state,
         )
-        session.add(
-            DailyWorldProjectionRepairAudit(
-                game_id=game.game_id,
-                state_id=snapshot.state_id,
-                report_hash="a" * 64,
-                backup_path=str(backup.path),
-                backup_sha256=backup.sha256,
-                non_projection_digest_before=non_projection_state_digest(state),
-                status="queued",
-                detail_json={
-                    "rebuild_day_indexes": [repair_record["day_index"]],
-                    "rebuild_identities": [
-                        {
-                            "event_id": repair_record["event_id"],
-                            "revision": repair_record["revision"],
-                            "day_index": repair_record["day_index"],
-                            "source_hash": repair_hash,
-                            "selected_option_index": repair_record[
-                                "choice_option_index"
-                            ],
-                        }
-                    ],
-                },
-            )
+        audit = DailyWorldProjectionRepairAudit(
+            game_id=game.game_id,
+            state_id=snapshot.state_id,
+            report_hash="a" * 64,
+            backup_path=str(backup.path),
+            backup_sha256=backup.sha256,
+            non_projection_digest_before=non_projection_state_digest(state),
+            status="queued",
+            detail_json={
+                "rebuild_day_indexes": [repair_record["day_index"]],
+                "rebuild_identities": [
+                    {
+                        "event_id": repair_record["event_id"],
+                        "revision": repair_record["revision"],
+                        "day_index": repair_record["day_index"],
+                        "source_hash": repair_hash,
+                        "selected_option_index": repair_record["choice_option_index"],
+                    }
+                ],
+            },
         )
+        session.add(audit)
+        session.flush()
+        repair_row = (
+            session.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == game.game_id,
+                DailyWorldProjection.day_index == repair_record["day_index"],
+            )
+            .one()
+        )
+        repair_row.repair_audit_id = audit.audit_id
+        repair_row.repair_selected_option_index = repair_record["choice_option_index"]
         session.commit()
         game_id = int(game.game_id)
         game_updated_before = session.get(Game, game_id).updated_at

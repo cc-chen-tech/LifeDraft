@@ -707,6 +707,9 @@ def test_normal_save_before_repair_finalize_preserves_projection_only_history(
         db.add(audit)
         db.flush()
         audit_id = int(audit.audit_id)
+        projection = db.query(DailyWorldProjection).one()
+        projection.repair_audit_id = audit_id
+        projection.repair_selected_option_index = 0
 
     stale_candidate = PlayerState.from_dict(original)
     assert (

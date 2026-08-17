@@ -236,6 +236,7 @@ def test_future_clamp_ignores_rogue_active_row_outside_accepted_history(
 
     assert state.world_projection_state["applied_through_day_index"] == 1
     assert state.world_projection_state["projected_through_day_index"] == 1
+    assert state.world_projection_state["pending_from_day_index"] is None
 
 
 def test_future_clamp_rejects_non_contiguous_ledger_proof() -> None:

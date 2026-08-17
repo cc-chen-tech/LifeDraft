@@ -432,7 +432,7 @@ def recompute_projection_watermarks(
         projected += 1
     layer["projected_through_day_index"] = projected
 
-    later_days = sorted(day for day in active if day > applied)
+    later_days = sorted(day for day in active if day in accepted_days and day > applied)
     settled_days = []
     for record in getattr(state, "day_history", None) or []:
         if not isinstance(record, Mapping):

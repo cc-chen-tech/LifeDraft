@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
@@ -55,7 +54,6 @@ _REPAIR_IDENTITY_AUTHORITY_STATUSES = frozenset(
         "timed_out",
     }
 )
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -646,9 +644,13 @@ def rebuild_identities(
 
 
 def enqueue_rebuild(
-    candidate: GameRepairCandidate, repo: Any, state: Mapping[str, Any]
+    candidate: GameRepairCandidate,
+    repo: Any,
+    state: Mapping[str, Any],
+    *,
+    repair_audit_id: int,
 ) -> tuple[RebuildIdentity, ...]:
-    """Ensure one ordinary fenced projection row per accepted repair source."""
+    """Ensure and durably bind one repair-only row per accepted source."""
 
     identities = rebuild_identities(candidate, state)
     for identity in identities:
@@ -660,13 +662,22 @@ def enqueue_rebuild(
             story_date=identity.story_date,
         )
         row = repo.ensure_projection(projection_identity, identity.source_hash)
-        if getattr(row, "status", None) == "superseded" and (
-            repo.reactivate_superseded_projection(
-                projection_identity, identity.source_hash
+        if getattr(row, "status", None) == "superseded":
+            bound = repo.reactivate_superseded_projection(
+                projection_identity,
+                identity.source_hash,
+                repair_audit_id=repair_audit_id,
+                selected_option_index=identity.selected_option_index,
             )
-            is None
-        ):
-            raise ValueError("repair_projection_reactivation_fenced")
+        else:
+            bound = repo.bind_repair_authority(
+                projection_identity,
+                identity.source_hash,
+                repair_audit_id=repair_audit_id,
+                selected_option_index=identity.selected_option_index,
+            )
+        if bound is None:
+            raise ValueError("repair_projection_authority_fenced")
     return identities
 
 
@@ -748,38 +759,36 @@ def _projection_watermark_out_of_range(
 def repair_projection_only_identities(
     db: Any, game_id: int
 ) -> set[tuple[str, int, int, str, int]]:
-    """Resolve exact repair-only source identities from durable audit scope."""
+    """Resolve exact repair-only identities from durable row/audit bindings."""
 
-    identities: set[tuple[str, int, int, str, int]] = set()
-    audits = (
-        db.query(DailyWorldProjectionRepairAudit)
+    rows = (
+        db.query(DailyWorldProjection)
+        .join(
+            DailyWorldProjectionRepairAudit,
+            DailyWorldProjection.repair_audit_id
+            == DailyWorldProjectionRepairAudit.audit_id,
+        )
         .filter(
+            DailyWorldProjection.game_id == game_id,
             DailyWorldProjectionRepairAudit.game_id == game_id,
             DailyWorldProjectionRepairAudit.status.in_(
                 _REPAIR_IDENTITY_AUTHORITY_STATUSES
             ),
+            DailyWorldProjection.status != "superseded",
+            DailyWorldProjection.repair_selected_option_index.is_not(None),
         )
         .all()
     )
-    for audit in audits:
-        try:
-            verified, _backup_state = verified_audit_rebuild_scope(
-                game_id=int(audit.game_id),
-                state_id=int(audit.state_id),
-                backup_path=str(audit.backup_path),
-                backup_sha256=str(audit.backup_sha256),
-                detail_json=audit.detail_json,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Skipping unverified projection repair audit audit_id=%s error=%s",
-                audit.audit_id,
-                type(exc).__name__,
-            )
-            continue
-        for identity in verified:
-            identities.add(identity.projection_key)
-    return identities
+    return {
+        (
+            str(row.event_id),
+            int(row.revision),
+            int(row.day_index),
+            str(row.source_hash),
+            int(row.repair_selected_option_index),
+        )
+        for row in rows
+    }
 
 
 def _read_audit_binding(
