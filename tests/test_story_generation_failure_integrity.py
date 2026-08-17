@@ -378,7 +378,7 @@ def test_round_generation_rejects_provider_output_repeated_after_retry(
             last_round_full_story=repeated_story,
         )
 
-    assert client.call.call_count == 2
+    assert client.call.call_count == 3
     option_generator.generate_options_only.assert_not_called()
 
 
@@ -423,7 +423,7 @@ def test_round_generation_rejects_blank_ai_consistency_rewrite(
     constraint_harness_disabled,
 ) -> None:
     story = "林岚和陈越在影院办公室核对预算，并确认本周先请周师傅复核施工报价。" * 20
-    client = SequenceStoryClient([story, "  \n\t"])
+    client = SequenceStoryClient([story, "  \n\t", "  \n\t"])
     option_generator = RecordingOptionGenerator()
     monkeypatch.setattr(
         "src.ai.quick_validator.quick_validate_story",
@@ -460,7 +460,7 @@ def test_round_generation_rejects_blank_ai_consistency_rewrite(
             world_model=object(),
         )
 
-    assert len(client.calls) == 2
+    assert len(client.calls) == 3
     assert all(call["thinking"] is False for call in client.calls)
     assert option_generator.story_descriptions == []
 
@@ -584,7 +584,7 @@ def test_round_generation_rejects_an_overlong_story_after_shape_retry(
     """An overlong retry must not become the persisted fallback event."""
     overlong_story = "林岚和陈越核对影院改造预算，并逐项确认本周的施工安排。" * 50
     client = Mock()
-    client.call.side_effect = [overlong_story, overlong_story]
+    client.call.side_effect = [overlong_story, overlong_story, overlong_story]
     option_generator = Mock()
 
     monkeypatch.setattr(
@@ -601,7 +601,7 @@ def test_round_generation_rejects_an_overlong_story_after_shape_retry(
             option_generator=option_generator,
         )
 
-    assert client.call.call_count == 2
+    assert client.call.call_count == 3
     assert all(call.kwargs["thinking"] is False for call in client.call.call_args_list)
     option_generator.generate_options_only.assert_not_called()
 

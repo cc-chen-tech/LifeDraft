@@ -405,16 +405,17 @@ class DailyWorldProjectionRepository:
         no_change: bool,
         *,
         coverage: Optional[CoverageInput] = None,
+        now: Optional[datetime] = None,
     ) -> bool:
         data = self._payload_data(payload)
-        now = datetime.utcnow()
+        fence_now = now or datetime.utcnow()
         updated = (
             self.db.query(DailyWorldProjection)
             .filter(
                 DailyWorldProjection.projection_id == projection_id,
                 DailyWorldProjection.status == "running",
                 DailyWorldProjection.lease_owner == worker_id,
-                DailyWorldProjection.lease_expires_at > now,
+                DailyWorldProjection.lease_expires_at > fence_now,
                 DailyWorldProjection.source_hash == source_hash,
             )
             .update(
@@ -430,7 +431,7 @@ class DailyWorldProjectionRepository:
                     DailyWorldProjection.error_code: None,
                     DailyWorldProjection.lease_owner: None,
                     DailyWorldProjection.lease_expires_at: None,
-                    DailyWorldProjection.updated_at: now,
+                    DailyWorldProjection.updated_at: fence_now,
                 },
                 synchronize_session=False,
             )
@@ -458,6 +459,7 @@ class DailyWorldProjectionRepository:
             payload,
             no_change,
             coverage=coverage,
+            now=now,
         )
         self._finish_attempt_update(
             attempt_id,
@@ -475,15 +477,16 @@ class DailyWorldProjectionRepository:
         next_attempt_at: datetime,
         *,
         source_hash: str,
+        now: Optional[datetime] = None,
     ) -> bool:
-        now = datetime.utcnow()
+        fence_now = now or datetime.utcnow()
         updated = (
             self.db.query(DailyWorldProjection)
             .filter(
                 DailyWorldProjection.projection_id == projection_id,
                 DailyWorldProjection.status == "running",
                 DailyWorldProjection.lease_owner == worker_id,
-                DailyWorldProjection.lease_expires_at > now,
+                DailyWorldProjection.lease_expires_at > fence_now,
                 DailyWorldProjection.source_hash == source_hash,
             )
             .update(
@@ -493,7 +496,7 @@ class DailyWorldProjectionRepository:
                     DailyWorldProjection.next_attempt_at: next_attempt_at,
                     DailyWorldProjection.lease_owner: None,
                     DailyWorldProjection.lease_expires_at: None,
-                    DailyWorldProjection.updated_at: now,
+                    DailyWorldProjection.updated_at: fence_now,
                 },
                 synchronize_session=False,
             )
@@ -520,6 +523,7 @@ class DailyWorldProjectionRepository:
             error_code,
             next_attempt_at,
             source_hash=source_hash,
+            now=now,
         )
         self._finish_attempt_update(
             attempt_id,

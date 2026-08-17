@@ -42,6 +42,23 @@ def _patched_iter_lines(self):
 httpx.Response.iter_lines = _patched_iter_lines
 
 
+@pytest.fixture(autouse=True)
+def _restore_background_job_admission():
+    """Keep the production shutdown flag from leaking between tests.
+
+    ``TestClient(app)`` context managers run the real FastAPI lifespan, which
+    calls ``shutdown_sse_thread_pool(prevent_new_background_jobs=True)`` and
+    permanently disables background-job admission for the process. That would
+    poison every later test that relies on background pools, so re-arm the
+    flag after each test. Tests that assert the disabled path (e.g. the
+    permanent-shutdown contract) still observe it during their own body.
+    """
+    yield
+    from src.api.routers.gameplay import sse_helpers
+
+    sse_helpers._background_jobs_enabled = True
+
+
 @pytest.fixture
 def constraint_harness_disabled(monkeypatch):
     """Explicitly select the non-Harness production configuration."""

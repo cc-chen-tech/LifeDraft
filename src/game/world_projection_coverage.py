@@ -6,7 +6,7 @@ import re
 import threading
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 _SENTENCE_BOUNDARY = re.compile(r"[。！？!?；;]+")
 _CLAUSE_BOUNDARY = re.compile(r"[，,]+")
@@ -77,8 +77,8 @@ except ImportError:  # The detector must fail closed when the local model is abs
     _JiebaPOSTokenizer = None
 
 _POS_LOCK = threading.RLock()
-_pos_tokenizer: Any | None = None
-_pos_tagger: Any | None = None
+_pos_tokenizer: Optional[Any] = None
+_pos_tagger: Optional[Any] = None
 _LOCATION_TERMS = (
     "抵达",
     "到达",
@@ -132,7 +132,7 @@ class _RelativeSubjectAction(str, Enum):
 @dataclass(frozen=True)
 class _RelativeSubjectBinding:
     action: _RelativeSubjectAction
-    subject: str | None = None
+    subject: Optional[str] = None
 
 
 def _tracked_character_names(tracked_state: Any) -> tuple[str, ...]:
@@ -221,7 +221,7 @@ def _clause_contexts(
     contexts: list[tuple[str, bool]] = []
     for text in source_texts:
         for sentence in _SENTENCE_BOUNDARY.split(text):
-            active_tracked_subject: str | None = None
+            active_tracked_subject: Optional[str] = None
             for clause in _CLAUSE_BOUNDARY.split(sentence):
                 clause = clause.strip()
                 if not clause:
@@ -255,7 +255,7 @@ def _has_tracked_entity(clause: str, tracked_names: Sequence[str]) -> bool:
     return any(name in clause for name in tracked_names)
 
 
-def _get_pos_tagger() -> Any | None:
+def _get_pos_tagger() -> Optional[Any]:
     """Build the package-bundled jieba tokenizer once, without network access."""
     global _pos_tagger, _pos_tokenizer
     with _POS_LOCK:
@@ -309,7 +309,7 @@ def _initial_subject_tokens(
 
 def _joined_known_name(
     tokens: Sequence[tuple[str, str]], tracked_names: Sequence[str]
-) -> str | None:
+) -> Optional[str]:
     joined = ""
     for word, _ in tokens:
         joined += word
@@ -321,7 +321,7 @@ def _joined_known_name(
     return None
 
 
-def _leading_tracked_name(candidate: str, tracked_names: Sequence[str]) -> str | None:
+def _leading_tracked_name(candidate: str, tracked_names: Sequence[str]) -> Optional[str]:
     """Bind an exact leading raw span or a determiner-prefixed token span."""
     direct_match = next(
         (name for name in tracked_names if candidate.startswith(name)), None
@@ -352,7 +352,7 @@ def _relative_noun_span(
     return tuple(tokens)
 
 
-def _relative_predicate(tokens: Sequence[tuple[str, str]]) -> str | None:
+def _relative_predicate(tokens: Sequence[tuple[str, str]]) -> Optional[str]:
     return next((word for word, tag in tokens if tag.startswith("v")), None)
 
 
@@ -382,7 +382,7 @@ def _relative_subject_binding(
     tracked_names: Sequence[str],
     boundary_names: Sequence[str],
     known_location_names: Sequence[str],
-) -> _RelativeSubjectBinding | None:
+) -> Optional[_RelativeSubjectBinding]:
     subject_tokens = _relative_subject_tokens(tokens)
     if not subject_tokens:
         return None

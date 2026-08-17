@@ -23,7 +23,11 @@ from config.prompts._helpers import (
     _format_people_names,
     build_realistic_modern_world_boundary,
 )
-from src.ai.budgets import NarrativeKind, resolve_prompt_length_requirement
+from src.ai.budgets import (
+    NarrativeKind,
+    resolve_option_length_requirement,
+    resolve_prompt_length_requirement,
+)
 from src.ai.prompt_sanitizer import sanitize_persisted_player_name, sanitize_user_choice
 from src.game.relationship_authority import build_required_cast_constraints
 
@@ -695,6 +699,7 @@ def _get_english_prompt(
     length_requirement = resolve_prompt_length_requirement(
         NarrativeKind.ROUND, quality_level, "en"
     )
+    option_length_requirement = resolve_option_length_requirement("en")
     paragraph_rule = (
         "Break the story into coherent paragraphs; do not return one oversized unbroken block"
         if get_feature("unified_narrative_budgets")
@@ -734,7 +739,7 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
    - **Social Relationships**: **All people in the event MUST and ONLY come from the "Available People List"**, cannot create new people
 2. Event must relate to at least two state values (energy, mood, knowledge, or relationships)
 3. Event should fit the "{phase_desc}" life stage and strictly match character settings
-4. Provide exactly 3 options, each clearly listing effects on [energy, mood, knowledge]; target 3-12 words per option and rewrite any option over 16 words
+4. Provide exactly 3 options, each clearly listing effects on [energy, mood, knowledge]; each option should be {option_length_requirement} and rewrite any option over 16 words
 5. **{length_requirement} - engaging and immersive**:
    - Write it as a compelling scene with depth
    - Include 3-5 meaningful dialogue exchanges
@@ -775,7 +780,7 @@ You MUST return ONLY valid JSON in this exact format:
   "event_description": "{event_schema_description}"
   "options": [
     {{
-      "text": "Option A description (target 3-12 words)",
+      "text": "Option A description (concise, within the option length requirement)",
       "effects": {{
         "energy": -10,
         "mood": 5,
@@ -785,7 +790,7 @@ You MUST return ONLY valid JSON in this exact format:
       "likely_choice": true
     }},
     {{
-      "text": "Option B description (target 3-12 words)",
+      "text": "Option B description (concise, within the option length requirement)",
       "effects": {{
         "energy": -20,
         "mood": -10,
@@ -940,6 +945,7 @@ def _get_chinese_prompt(
     length_requirement = resolve_prompt_length_requirement(
         NarrativeKind.ROUND, quality_level, "zh"
     )
+    option_length_requirement = resolve_option_length_requirement("zh")
     paragraph_rule = (
         "按语义适时换段，禁止返回一整块无换行的超长段落"
         if get_feature("unified_narrative_budgets")
@@ -994,7 +1000,7 @@ def _get_chinese_prompt(
    - **社会关系**：**事件中出现的所有人物必须且只能来自"可用人物列表"**，不能凭空创造新人物
 2. 事件必须与至少两项状态值相关（精力、情绪、学识或关系）
 3. 事件应贴近"{phase_desc}"人生阶段，并严格符合角色的基本设定
-4. 提供恰好3个选项，每个选项目标8-24字，超过40字必须重写，并明确列出对【精力、情绪、学识】的影响值
+4. 提供恰好3个选项，每个选项{option_length_requirement}，过长选项必须重写，并明确列出对【精力、情绪、学识】的影响值
 5. **{length_requirement}，生动有深度**：
    - 写成有吸引力的场景片段，有一定深度
    - 包含3-5轮有意义的对话交流
@@ -1036,7 +1042,7 @@ def _get_chinese_prompt(
   "event_description": "{event_schema_description}"
   "options": [
     {{
-      "text": "选项A描述（目标8-24字）",
+      "text": "选项A描述（符合选项长度要求）",
       "effects": {{
         "energy": -10,
         "mood": 5,
@@ -1046,7 +1052,7 @@ def _get_chinese_prompt(
       "likely_choice": true
     }},
     {{
-      "text": "选项B描述（目标8-24字）",
+      "text": "选项B描述（符合选项长度要求）",
       "effects": {{
         "energy": -20,
         "mood": -10,
@@ -1408,6 +1414,7 @@ def get_options_only_prompt(
             if daily_mode
             else ""
         )
+        option_length_requirement = resolve_option_length_requirement("zh")
         return f"""你是一个人生模拟游戏的选项生成器。基于以下故事描述，生成恰好3个用户可以选择的选项。
 
 【故事描述】
@@ -1433,7 +1440,7 @@ def get_options_only_prompt(
 - 不要生成脱离故事情境的独立行动
 
 【其他要求】
-2. 每个选项目标8-24字；超过40字的选项必须重写
+2. 每个选项{option_length_requirement}；过长的选项必须重写
 3. 每个选项明确列出对【精力(energy)、情绪(mood)、学识(knowledge)】的影响值
 4. 选项应呈现真实的权衡取舍，不应有明显最优选项
 5. **关系影响必须指定为"relationships": {{"姓名": +/-数值}}，姓名必须严格来自可用人物列表，禁止使用列表中不存在的名字！**
@@ -1444,7 +1451,7 @@ def get_options_only_prompt(
 {{
   "options": [
     {{
-      "text": "选项A描述（目标8-24字）",
+      "text": "选项A描述（符合选项长度要求）",
       "effects": {{
         "energy": -10,
         "mood": 5,
@@ -1454,7 +1461,7 @@ def get_options_only_prompt(
       "likely_choice": true{daily_transition_json}
     }},
     {{
-      "text": "选项B描述（目标8-24字）",
+      "text": "选项B描述（符合选项长度要求）",
       "effects": {{
         "energy": -5,
         "mood": -5,
@@ -1498,6 +1505,7 @@ def get_options_only_prompt(
             if daily_mode
             else ""
         )
+        option_length_requirement = resolve_option_length_requirement("en")
         return f"""You are an options generator for a life simulation game. Based on the following story description, generate exactly 3 options for the user to choose from.
 
 [Story Description]
@@ -1516,7 +1524,7 @@ def get_options_only_prompt(
    - "Rest", "Study", "Work", "Exercise" etc.
    - "Continue forward", "Think about it", "Keep status quo" etc.
    - Any action detached from the story context
-3. Target 3-12 words per option; any option over 16 words must be rewritten
+3. Each option should be {option_length_requirement}; any option over 16 words must be rewritten
 4. Each option clearly lists effects on [energy, mood, knowledge]
 5. Options should present real trade-offs - no option should be clearly superior
 6. Relationship effects should be specified as "relationships": {{"name": +/-value}}, name must come from Available People List
@@ -1527,7 +1535,7 @@ Return ONLY valid JSON:
 {{
   "options": [
     {{
-      "text": "Option A description (target 3-12 words)",
+      "text": "Option A description (concise, within the option length requirement)",
       "effects": {{
         "energy": -10,
         "mood": 5,
@@ -1537,7 +1545,7 @@ Return ONLY valid JSON:
       "likely_choice": true{daily_transition_json_en}
     }},
     {{
-      "text": "Option B description (target 3-12 words)",
+      "text": "Option B description (concise, within the option length requirement)",
       "effects": {{
         "energy": -5,
         "mood": -5,

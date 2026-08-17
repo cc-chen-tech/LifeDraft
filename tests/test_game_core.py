@@ -144,18 +144,26 @@ class TestProcessDecision:
         with pytest.raises(ValueError):
             process_decision(player, "Test", -1, options, generate_result_text=False)
 
-    def test_non_resource_effects_are_dropped(self):
+    def test_relationship_effects_are_applied_and_synced(self):
         player = PlayerState()
         player.relationships["Friend"] = 50
         char = CharacterState(name="Friend", affinity=50)
         player.characters["Friend"] = char.model_dump()
 
-        options = [{"text": "Help friend", "effects": {"relationships": {"Friend": 10}}}]
+        options = [
+            {
+                "text": "Help friend",
+                "effects": {"relationships": {"Friend": 10}, "unknown_key": 99},
+            }
+        ]
         result = process_decision(
             player, "Friend needs help", 0, options, generate_result_text=False
         )
         assert result["success"] is True
-        assert player.relationships["Friend"] == 50
+        # The relationship change applies once, then character affinity
+        # (with its derived trust/respect/mood) syncs back as canonical.
+        assert player.relationships["Friend"] == 70
+        assert player.characters["Friend"]["affinity"] == 70
 
     def test_with_ai_result_generation(self):
         """Test decision with AI-generated result text."""

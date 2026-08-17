@@ -86,6 +86,25 @@ def game_via_api(client, auth_headers):
     Uses the same pattern as test_constraint_level_api_contract.py.
     Requires: API keys configured for LLM calls (will fail without).
     """
+    # The token patch below maps every request to user_id=1, but registration
+    # is normally a prerequisite for game creation. Ensure the user row exists
+    # on fresh test databases so active-game recovery can resolve it.
+    from src.database.models import SessionLocal, User
+
+    db = SessionLocal()
+    try:
+        if db.query(User).filter(User.user_id == 1).first() is None:
+            db.add(
+                User(
+                    user_id=1,
+                    private_id="test-contract-private-1",
+                    public_id="TESTCON1",
+                )
+            )
+            db.commit()
+    finally:
+        db.close()
+
     with patch("src.api.deps.decode_token", return_value=1):
         create_resp = client.post(
             "/api/games",
@@ -504,11 +523,13 @@ class TestEventGenerationResponseShape:
             )
 
         # The first event generation after game creation should produce an event
-        # But may get 409 if still initializing or 400 if game over
+        # But may get 409 if still initializing, 400 if game over, or 503 when
+        # the story provider is unavailable and the failure is surfaced.
         assert resp.status_code in (
             200,
             409,
             400,
+            503,
         ), f"Unexpected status {resp.status_code}: {resp.text[:200]}"
 
         if resp.status_code == 200:
@@ -523,6 +544,9 @@ class TestEventGenerationResponseShape:
             for opt in data["options"]:
                 assert "text" in opt, "Option missing: text"
                 assert "effects" in opt, "Option missing: effects"
+        elif resp.status_code == 503:
+            data = resp.json()
+            assert "detail" in data, "503 must carry a failure detail for the UI"
 
     def test_event_generation_requires_game(self, client, auth_headers):
         """Event sync endpoint for non-existent game should return 404."""
