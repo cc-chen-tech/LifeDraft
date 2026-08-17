@@ -37,8 +37,24 @@ def test_backup_preserves_complete_state_and_verifies_file_checksum(
 
     assert backup.path.exists()
     assert backup.path.parent == tmp_path
-    assert verify_state_backup(backup.path, backup.sha256) is True
-    assert restore_state_backup(backup.path, backup.sha256) == state
+    assert (
+        verify_state_backup(
+            backup.path,
+            backup.sha256,
+            expected_game_id=23,
+            expected_state_id=9001,
+        )
+        is True
+    )
+    assert (
+        restore_state_backup(
+            backup.path,
+            backup.sha256,
+            expected_game_id=23,
+            expected_state_id=9001,
+        )
+        == state
+    )
 
 
 def test_backup_fsyncs_file_and_parent_directory(monkeypatch, tmp_path: Path) -> None:
@@ -96,7 +112,12 @@ def test_restore_rejects_changed_backup_bytes(tmp_path: Path) -> None:
     backup.path.write_text("corrupt", encoding="utf-8")
 
     with pytest.raises(BackupChecksumMismatch):
-        restore_state_backup(backup.path, backup.sha256)
+        restore_state_backup(
+            backup.path,
+            backup.sha256,
+            expected_game_id=25,
+            expected_state_id=9003,
+        )
 
 
 def test_restore_rejects_state_with_recomputed_file_digest(tmp_path: Path) -> None:
@@ -114,4 +135,44 @@ def test_restore_rejects_state_with_recomputed_file_digest(tmp_path: Path) -> No
     replacement_checksum = hashlib.sha256(tampered_bytes).hexdigest()
 
     with pytest.raises(BackupChecksumMismatch):
-        restore_state_backup(backup.path, replacement_checksum)
+        restore_state_backup(
+            backup.path,
+            replacement_checksum,
+            expected_game_id=26,
+            expected_state_id=9004,
+        )
+
+
+@pytest.mark.parametrize(
+    ("metadata_update", "expected_game_id", "expected_state_id"),
+    [
+        ({}, 999, 9005),
+        ({}, 29, 999),
+        ({"backup_format_version": 0}, 29, 9005),
+        ({"game_id": True}, 29, 9005),
+        ({"state_id": True}, 29, 9005),
+    ],
+)
+def test_backup_rejects_wrong_owner_or_format_even_with_valid_file_checksum(
+    tmp_path: Path,
+    metadata_update: dict[str, object],
+    expected_game_id: int,
+    expected_state_id: int,
+) -> None:
+    backup = write_state_backup(
+        tmp_path, game_id=29, state_id=9005, state_json=state_fixture()
+    )
+    payload = json.loads(backup.path.read_text(encoding="utf-8"))
+    payload["metadata"].update(metadata_update)
+    encoded = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    backup.path.write_bytes(encoded)
+
+    with pytest.raises(BackupChecksumMismatch):
+        restore_state_backup(
+            backup.path,
+            hashlib.sha256(encoded).hexdigest(),
+            expected_game_id=expected_game_id,
+            expected_state_id=expected_state_id,
+        )

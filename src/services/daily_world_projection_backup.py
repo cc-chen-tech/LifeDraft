@@ -78,17 +78,39 @@ def write_state_backup(
     return BackupInfo(path=destination, sha256=_sha256(encoded))
 
 
-def verify_state_backup(path: Union[str, Path], expected_sha256: str) -> bool:
+def verify_state_backup(
+    path: Union[str, Path],
+    expected_sha256: str,
+    *,
+    expected_game_id: int,
+    expected_state_id: int,
+) -> bool:
     """Validate file bytes and embedded complete-state checksum without DB access."""
 
-    _read_verified_payload(Path(path), expected_sha256)
+    _read_verified_payload(
+        Path(path),
+        expected_sha256,
+        expected_game_id=expected_game_id,
+        expected_state_id=expected_state_id,
+    )
     return True
 
 
-def restore_state_backup(path: Union[str, Path], expected_sha256: str) -> Any:
+def restore_state_backup(
+    path: Union[str, Path],
+    expected_sha256: str,
+    *,
+    expected_game_id: int,
+    expected_state_id: int,
+) -> Any:
     """Return a verified complete snapshot without performing database writes."""
 
-    payload = _read_verified_payload(Path(path), expected_sha256)
+    payload = _read_verified_payload(
+        Path(path),
+        expected_sha256,
+        expected_game_id=expected_game_id,
+        expected_state_id=expected_state_id,
+    )
     return payload["state_json"]
 
 
@@ -132,7 +154,13 @@ def _normalized_json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
-def _read_verified_payload(path: Path, expected_sha256: str) -> dict[str, Any]:
+def _read_verified_payload(
+    path: Path,
+    expected_sha256: str,
+    *,
+    expected_game_id: int,
+    expected_state_id: int,
+) -> dict[str, Any]:
     encoded = path.read_bytes()
     if not hmac.compare_digest(_sha256(encoded), expected_sha256):
         raise BackupChecksumMismatch("backup checksum mismatch")
@@ -142,6 +170,27 @@ def _read_verified_payload(path: Path, expected_sha256: str) -> dict[str, Any]:
         raise BackupChecksumMismatch("backup checksum mismatch") from exc
     if not isinstance(payload, dict) or "state_json" not in payload:
         raise BackupChecksumMismatch("backup checksum mismatch")
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, Mapping):
+        raise BackupChecksumMismatch("backup metadata invalid")
+    format_version = metadata.get("backup_format_version")
+    game_id = metadata.get("game_id")
+    state_id = metadata.get("state_id")
+    if (
+        type(format_version) is not int
+        or format_version != 1
+        or type(game_id) is not int
+        or game_id <= 0
+        or type(state_id) is not int
+        or state_id <= 0
+        or type(expected_game_id) is not int
+        or expected_game_id <= 0
+        or type(expected_state_id) is not int
+        or expected_state_id <= 0
+        or game_id != expected_game_id
+        or state_id != expected_state_id
+    ):
+        raise BackupChecksumMismatch("backup metadata binding mismatch")
     state_sha256 = payload.get("state_sha256")
     if not isinstance(state_sha256, str) or not hmac.compare_digest(
         _sha256(_normalized_json_bytes(payload["state_json"])), state_sha256

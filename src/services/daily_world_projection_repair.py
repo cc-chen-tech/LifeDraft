@@ -19,6 +19,7 @@ from src.database.models import (
     SessionLocal,
 )
 from src.game.state.player_data import default_world_projection_state
+from src.game.daily_timeline import is_daily_timeline
 from src.game.world_projection_coverage import detect_world_change_signals
 from src.game.world_projection_schema import compute_projection_source_hash
 from src.services.daily_world_projection_backup import restore_state_backup
@@ -339,6 +340,8 @@ def scan_game_state(
         raise ValueError("invalid_game_id")
     if not isinstance(state, Mapping):
         raise TypeError("game_state_must_be_a_mapping")
+    if not is_daily_timeline(state):
+        return None
 
     history = _history_records(state)
     tracked_state = _tracked_state(state)
@@ -394,6 +397,8 @@ def scan_game_state(
     )
     rebuild_days.update(suspicious_days)
     rebuild_days.update(stuck_days)
+    if _repair_requires_projection_reset(state, rebuild_days):
+        rebuild_days = set(history_days)
     return GameRepairCandidate(
         game_id=game_id,
         reasons=tuple(reasons),
@@ -642,15 +647,71 @@ def enqueue_rebuild(
 
 def initialized_projection_state(
     state: Mapping[str, Any],
+    candidate: Optional[GameRepairCandidate] = None,
 ) -> tuple[dict[str, Any], bool]:
     """Preserve a structurally valid v1 layer or supply isolated defaults."""
 
     layer = state.get("world_projection_state")
-    valid = is_valid_projection_state(layer)
+    valid = is_valid_projection_state(layer) and not (
+        candidate is not None
+        and _repair_requires_projection_reset(state, candidate.rebuild_day_indexes)
+    )
     return (
         deepcopy(dict(layer)) if valid else default_world_projection_state(),
         not valid,
     )
+
+
+def _repair_requires_projection_reset(
+    state: Mapping[str, Any], rebuild_days: Iterable[int]
+) -> bool:
+    """Reject an unprovable legacy baseline before replaying below its watermark."""
+
+    layer = state.get("world_projection_state")
+    if not is_valid_projection_state(layer):
+        return True
+    watermark = int(layer["applied_through_day_index"])
+    days_to_prove = {day for day in rebuild_days if day <= watermark}
+    if not days_to_prove:
+        return False
+    source_keys = {
+        (
+            source.get("event_id"),
+            source.get("revision"),
+            source.get("day_index"),
+            source.get("source_hash"),
+            source.get("option_index"),
+        )
+        for source in layer.get("applied_sources", [])
+        if isinstance(source, Mapping)
+    }
+    probe = GameRepairCandidate(
+        game_id=1,
+        reasons=(),
+        rebuild_day_indexes=sorted(days_to_prove),
+    )
+    try:
+        expected = rebuild_identities(probe, state)
+    except ValueError:
+        return True
+    return any(identity.projection_key not in source_keys for identity in expected)
+
+
+def repair_projection_only_identities(
+    db: Any, game_id: int
+) -> set[tuple[str, int, int, str, int]]:
+    """Resolve exact repair-only source identities from durable audit scope."""
+
+    identities: set[tuple[str, int, int, str, int]] = set()
+    audits = (
+        db.query(DailyWorldProjectionRepairAudit.detail_json)
+        .filter(DailyWorldProjectionRepairAudit.game_id == game_id)
+        .all()
+    )
+    for audit in audits:
+        for identity in audit_rebuild_identities(audit.detail_json):
+            identities.add(identity.projection_key)
+    return identities
 
 
 def _read_audit_binding(
@@ -697,6 +758,7 @@ def verify_repair_invariants(
     try:
         identities, _backup_state = verified_audit_rebuild_scope(
             game_id=binding["game_id"],
+            state_id=binding["state_id"],
             backup_path=binding["backup_path"],
             backup_sha256=binding["backup_sha256"],
             detail_json=binding["detail_json"],
@@ -727,6 +789,7 @@ def finalize_repair_audit(
     try:
         identities, _backup_state = verified_audit_rebuild_scope(
             game_id=binding["game_id"],
+            state_id=binding["state_id"],
             backup_path=binding["backup_path"],
             backup_sha256=binding["backup_sha256"],
             detail_json=binding["detail_json"],
@@ -971,13 +1034,19 @@ def rebuild_identities_match_history(
 def verified_audit_rebuild_scope(
     *,
     game_id: int,
+    state_id: int,
     backup_path: str,
     backup_sha256: str,
     detail_json: Any,
 ) -> tuple[tuple[RebuildIdentity, ...], Mapping[str, Any]]:
     """Bind mutable audit scope to the checksum-verified original save."""
 
-    backup_state = restore_state_backup(backup_path, backup_sha256)
+    backup_state = restore_state_backup(
+        backup_path,
+        backup_sha256,
+        expected_game_id=game_id,
+        expected_state_id=state_id,
+    )
     if not isinstance(backup_state, Mapping):
         raise ValueError("repair_audit_scope_backup_invalid")
     candidate = scan_game_state(game_id, backup_state)

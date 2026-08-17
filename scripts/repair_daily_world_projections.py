@@ -88,6 +88,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--game-id", type=int)
     parser.add_argument("--backup-dir", type=Path)
     parser.add_argument("--wait", action="store_true")
+    parser.add_argument("--confirm-writers-stopped", action="store_true")
     parser.add_argument("--timeout-seconds", type=float, default=1800.0)
     return parser
 
@@ -120,6 +121,12 @@ def run(
             return EXIT_REPORT_CHANGED
         if not args.expected_report_hash:
             print("restore requires --expected-report-hash", file=stderr)
+            return EXIT_REPORT_CHANGED
+        if not args.confirm_writers_stopped:
+            print(
+                "restore requires --confirm-writers-stopped after draining all writers",
+                file=stderr,
+            )
             return EXIT_REPORT_CHANGED
         return _run_restore(
             args.restore_audit_id,
@@ -232,7 +239,12 @@ def _apply_candidate(
             state_id=candidate.state_id,
             state_json=state,
         )
-        verify_state_backup(backup.path, backup.sha256)
+        verify_state_backup(
+            backup.path,
+            backup.sha256,
+            expected_game_id=candidate.game_id,
+            expected_state_id=candidate.state_id,
+        )
         detail = {
             "reasons": [reason.to_dict() for reason in candidate.reasons],
             "rebuild_day_indexes": list(candidate.rebuild_day_indexes),
@@ -265,7 +277,9 @@ def _apply_candidate(
                 item.projection_key for item in identities
             ):
                 raise RuntimeError("repair rebuild identity changed")
-            projection_state, initialized = initialized_projection_state(latest_state)
+            projection_state, initialized = initialized_projection_state(
+                latest_state, candidate
+            )
             if initialized:
                 repaired_state = deepcopy(dict(latest_state))
                 repaired_state["world_projection_state"] = projection_state
@@ -380,6 +394,7 @@ def _run_restore(
         audit_record = _read_audit(session_factory, audit_id)
         identities, backup_state = verified_audit_rebuild_scope(
             game_id=audit_record["game_id"],
+            state_id=audit_record["state_id"],
             backup_path=audit_record["backup_path"],
             backup_sha256=audit_record["backup_sha256"],
             detail_json=audit_record["detail_json"],
@@ -467,6 +482,9 @@ def _run_restore(
             audit.status = "restored"
             audit.non_projection_digest_after = current_digest
             audit.completed_at = datetime.utcnow()
+        from src.api.session_store import session_store
+
+        session_store.remove_game_sessions(audit_record["game_id"])
         _print_json({"audit_id": audit_id, "status": "restored"}, stdout)
         return EXIT_OK
     except NonProjectionStateChanged as exc:
@@ -635,9 +653,15 @@ def _durable_apply_status(
 
 def _print_restore_command(audit_id: int, report_hash: str, stream: TextIO) -> None:
     print(
+        "WARNING: stop and drain API, projection workers, and all writers before restore; "
+        "restart API processes before resuming traffic.",
+        file=stream,
+    )
+    print(
         "verified restore command: "
         "python scripts/repair_daily_world_projections.py "
-        f"--restore-audit-id {audit_id} --expected-report-hash {report_hash}",
+        f"--restore-audit-id {audit_id} --expected-report-hash {report_hash} "
+        "--confirm-writers-stopped",
         file=stream,
     )
 

@@ -357,7 +357,11 @@ def _timestamp(value: Any) -> Any:
     return value if isinstance(value, str) else None
 
 
-def recompute_projection_watermarks(state: Any, rows: Sequence[Any]) -> None:
+def recompute_projection_watermarks(
+    state: Any,
+    rows: Sequence[Any],
+    projection_only_identities: Collection[ProjectionOnlyIdentity] = (),
+) -> None:
     """Recompute contiguous ready/applied and pending projection boundaries."""
 
     layer = _projection_layer(state)
@@ -389,15 +393,33 @@ def recompute_projection_watermarks(state: Any, rows: Sequence[Any]) -> None:
     layer["projected_through_day_index"] = projected
 
     later_days = sorted(day for day in active if day > applied)
-    settled_days = [
-        record.get("day_index")
-        for record in (getattr(state, "day_history", None) or [])
-        if isinstance(record, Mapping)
-        and isinstance(record.get("day_index"), int)
-        and not isinstance(record.get("day_index"), bool)
-        and isinstance(record.get("choice_option_index"), int)
-        and not isinstance(record.get("choice_option_index"), bool)
-    ]
+    settled_days = []
+    for record in getattr(state, "day_history", None) or []:
+        if not isinstance(record, Mapping):
+            continue
+        day_index = record.get("day_index")
+        selected = record.get("choice_option_index")
+        story = record.get("event_description", record.get("story"))
+        options = record.get("options")
+        if (
+            not isinstance(day_index, int)
+            or isinstance(day_index, bool)
+            or not isinstance(selected, int)
+            or isinstance(selected, bool)
+        ):
+            continue
+        if not isinstance(story, str) or not isinstance(options, list):
+            settled_days.append(day_index)
+            continue
+        repair_key = (
+            record.get("event_id"),
+            record.get("revision", 1),
+            day_index,
+            compute_projection_source_hash(story, options),
+            selected,
+        )
+        if repair_key not in projection_only_identities:
+            settled_days.append(day_index)
     has_settled_gap = any(day > applied for day in settled_days)
     first_pending = applied + 1 if later_days or has_settled_gap else None
     layer["pending_from_day_index"] = first_pending
@@ -583,7 +605,7 @@ def apply_contiguous_world_projections(
                 rows_to_mark.append(marker)
 
     before_watermarks = deepcopy(layer)
-    recompute_projection_watermarks(state, rows)
+    recompute_projection_watermarks(state, rows, projection_only_identities)
     state_changed = state_changed or layer != before_watermarks
     return ProjectionApplyBatch(
         applied_count=applied_count,

@@ -2,6 +2,7 @@ from copy import deepcopy
 
 import pytest
 
+from src.game.world_projection_schema import compute_projection_source_hash
 from src.services.daily_world_projection_repair import (
     GameRepairCandidate,
     RepairReason,
@@ -46,7 +47,11 @@ def sun_wukong_failed_fixture() -> dict[str, object]:
     ]
     return {
         "timeline_version": 2,
-        "timeline": {"day_index": 5, "current_date": "2026-08-17"},
+        "timeline": {
+            "version": 2,
+            "day_index": 5,
+            "current_date": "2026-08-17",
+        },
         "day_history": history,
         "current_event_data": None,
         "resume_view": {
@@ -72,7 +77,11 @@ def sun_wukong_failed_fixture() -> dict[str, object]:
 def legitimate_no_change_fixture() -> dict[str, object]:
     return {
         "timeline_version": 2,
-        "timeline": {"day_index": 1, "current_date": "2026-08-13"},
+        "timeline": {
+            "version": 2,
+            "day_index": 1,
+            "current_date": "2026-08-13",
+        },
         "day_history": [
             {
                 "day_index": 0,
@@ -227,6 +236,63 @@ def test_canonical_layer_validation_preserves_legacy_baseline_without_sources() 
     }
 
     assert is_valid_projection_state(layer) is True
+
+
+def test_repair_below_unproven_legacy_watermark_rebuilds_full_history() -> None:
+    state = sun_wukong_failed_fixture()
+    state["world_projection_state"] = {
+        "version": 1,
+        "applied_through_day_index": 4,
+        "projected_through_day_index": 4,
+        "pending_from_day_index": None,
+        "oldest_pending_at": None,
+        "applied_sources": [],
+        "world": _empty_world_patch(),
+    }
+
+    candidate = scan_game_state(204, state)
+    assert candidate is not None
+    assert candidate.rebuild_day_indexes == [0, 1, 2, 3, 4]
+
+    initialized, was_initialized = initialized_projection_state(state, candidate)
+    assert was_initialized is True
+    assert initialized["applied_through_day_index"] == -1
+    assert initialized["applied_sources"] == []
+
+
+def test_exact_source_ledger_preserves_valid_repair_baseline() -> None:
+    state = sun_wukong_failed_fixture()
+    state["world_projection_state"]["applied_through_day_index"] = 4
+    state["world_projection_state"]["projected_through_day_index"] = 4
+    state["world_projection_state"]["pending_from_day_index"] = None
+    state["world_projection_state"]["oldest_pending_at"] = None
+    state["world_projection_state"]["applied_sources"] = [
+        {
+            "event_id": record["event_id"],
+            "revision": record["revision"],
+            "day_index": record["day_index"],
+            "source_hash": compute_projection_source_hash(
+                record["event_description"], record["options"]
+            ),
+            "option_index": record["choice_option_index"],
+        }
+        for record in state["day_history"]
+    ]
+
+    candidate = scan_game_state(205, state)
+    assert candidate is not None
+    assert candidate.rebuild_day_indexes == [4]
+    initialized, was_initialized = initialized_projection_state(state, candidate)
+    assert was_initialized is False
+    assert initialized == state["world_projection_state"]
+
+
+def test_weekly_v1_state_is_never_selected_for_daily_repair() -> None:
+    state = sun_wukong_failed_fixture()
+    state.pop("timeline_version")
+    state.pop("timeline")
+
+    assert scan_game_state(156, state) is None
 
 
 def test_canonical_layer_validation_rejects_non_sha256_applied_source() -> None:

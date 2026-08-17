@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import shlex
 import threading
 from copy import deepcopy
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 
 from sqlalchemy.orm import sessionmaker
 
@@ -23,10 +25,12 @@ from src.database.models import (
 from src.game.state import PlayerState
 from src.game.state.player_data import default_world_projection_state
 from src.game.world_projection_schema import compute_projection_source_hash
+from src.api.session_store import session_store
 from src.services.daily_world_projection import DailyWorldProjectionService
 from src.services.daily_world_projection_backup import (
     restore_state_backup,
     verify_state_backup,
+    write_state_backup,
 )
 from src.services.daily_world_projection_repair import (
     audit_rebuild_identities,
@@ -121,6 +125,7 @@ class RestoreOnSecondWake(WakeRecorder):
                     str(audit_id),
                     "--expected-report-hash",
                     report_hash,
+                    "--confirm-writers-stopped",
                 ],
                 session_factory=self.sessions,
                 stdout=StringIO(),
@@ -128,6 +133,113 @@ class RestoreOnSecondWake(WakeRecorder):
             )
             == 0
         )
+
+
+def test_restore_requires_explicit_offline_confirmation(temp_db_file) -> None:
+    sessions = sessionmaker(bind=temp_db_file, expire_on_commit=False)
+    stderr = StringIO()
+
+    result = cli.run(
+        ["--restore-audit-id", "1", "--expected-report-hash", "deadbeef"],
+        session_factory=sessions,
+        stdout=StringIO(),
+        stderr=stderr,
+    )
+
+    assert result == cli.EXIT_REPORT_CHANGED
+    assert "--confirm-writers-stopped" in stderr.getvalue()
+
+
+def test_restore_rejects_cross_game_wrong_state_and_format_before_writes(
+    db_engine, tmp_path: Path
+) -> None:
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        _seed_game(session, _candidate_state("backup-owner"))
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        audit.status = "complete"
+        audit_id = int(audit.audit_id)
+        game_id = int(audit.game_id)
+        state_id = int(audit.state_id)
+        original_state = restore_state_backup(
+            audit.backup_path,
+            audit.backup_sha256,
+            expected_game_id=game_id,
+            expected_state_id=state_id,
+        )
+        session.commit()
+
+    cross_game = write_state_backup(
+        tmp_path / "cross-game",
+        game_id=game_id + 1000,
+        state_id=state_id,
+        state_json=original_state,
+    )
+    wrong_state = write_state_backup(
+        tmp_path / "wrong-state",
+        game_id=game_id,
+        state_id=state_id + 1000,
+        state_json=original_state,
+    )
+    bad_format = write_state_backup(
+        tmp_path / "bad-format",
+        game_id=game_id,
+        state_id=state_id,
+        state_json=original_state,
+    )
+    payload = json.loads(bad_format.path.read_text(encoding="utf-8"))
+    payload["metadata"]["backup_format_version"] = 0
+    encoded = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    bad_format.path.write_bytes(encoded)
+    cases = [
+        (cross_game.path, cross_game.sha256),
+        (wrong_state.path, wrong_state.sha256),
+        (bad_format.path, hashlib.sha256(encoded).hexdigest()),
+    ]
+
+    for backup_path, backup_sha256 in cases:
+        with sessions() as session:
+            audit = session.get(DailyWorldProjectionRepairAudit, audit_id)
+            audit.backup_path = str(backup_path)
+            audit.backup_sha256 = backup_sha256
+            session.commit()
+        before = _db_snapshot(sessions)
+        assert (
+            cli.run(
+                [
+                    "--restore-audit-id",
+                    str(audit_id),
+                    "--expected-report-hash",
+                    report.hash,
+                    "--confirm-writers-stopped",
+                ],
+                session_factory=sessions,
+                stdout=StringIO(),
+                stderr=StringIO(),
+            )
+            == cli.EXIT_INVARIANT
+        )
+        assert _db_snapshot(sessions) == before
 
 
 class SecondGameFencingWake(WakeRecorder):
@@ -278,6 +390,102 @@ def test_cli_defaults_to_read_only_dry_run(db_engine, capsys) -> None:
     assert output["candidates"][0]["state_id"] > 0
     assert output["candidates"][0]["non_projection_digest"]
     assert _db_snapshot(sessions) == before
+
+
+def test_weekly_v1_dry_run_has_zero_candidates_and_zero_writes(
+    db_engine, capsys
+) -> None:
+    sessions = sessionmaker(bind=db_engine)
+    weekly = _candidate_state("weekly-v1")
+    weekly.pop("timeline")
+    weekly["timeline_version"] = 1
+    with sessions() as session:
+        _seed_game(session, weekly)
+    before = _db_snapshot(sessions)
+
+    assert cli.run(["--dry-run"], session_factory=sessions) == cli.EXIT_OK
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["candidates"] == []
+    assert _db_snapshot(sessions) == before
+
+
+def test_legacy_unproven_watermark_is_reset_and_rebuilt_from_day_zero(
+    db_engine, tmp_path: Path, capsys
+) -> None:
+    sessions = sessionmaker(bind=db_engine)
+    state = _candidate_state("legacy-baseline")
+    state["world_projection_state"] = default_world_projection_state()
+    state["world_projection_state"].update(
+        {
+            "applied_through_day_index": 1,
+            "projected_through_day_index": 1,
+            "applied_sources": [],
+            "world": {
+                **state["world_projection_state"]["world"],
+                "fact_updates": [{"fact": "unprovable legacy derived fact"}],
+            },
+        }
+    )
+    before_digest = non_projection_state_digest(state)
+    with sessions() as session:
+        game_id = _seed_game(session, state)
+    report = scan_latest_game_states(sessions)
+
+    assert report.candidates[0].rebuild_day_indexes == [0, 1]
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+                "--wait",
+            ],
+            session_factory=sessions,
+            projection_service=CompletingProjectionWake(sessions, game_id),
+        )
+        == cli.EXIT_OK
+    )
+    capsys.readouterr()
+
+    with sessions() as session:
+        rows = (
+            session.query(DailyWorldProjection)
+            .filter(DailyWorldProjection.game_id == game_id)
+            .order_by(DailyWorldProjection.day_index)
+            .all()
+        )
+        latest = (
+            session.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+            .state_json
+        )
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+
+    assert [row.status for row in rows] == ["applied", "applied"]
+    assert audit.status == "complete"
+    assert non_projection_state_digest(latest) == before_digest
+    layer = latest["world_projection_state"]
+    expected_layer = default_world_projection_state()
+    expected_layer["applied_through_day_index"] = 1
+    expected_layer["projected_through_day_index"] = 1
+    expected_layer["applied_sources"] = [
+        {
+            "event_id": record["event_id"],
+            "revision": record["revision"],
+            "day_index": record["day_index"],
+            "source_hash": compute_projection_source_hash(
+                record["event_description"], record["options"]
+            ),
+            "option_index": record["choice_option_index"],
+        }
+        for record in state["day_history"]
+    ]
+    assert layer == expected_layer
 
 
 def test_apply_requires_exact_report_hash_before_any_write(
@@ -440,7 +648,12 @@ def test_backup_and_backed_up_audit_hold_the_game_serialization_lock(
         audit = session.query(DailyWorldProjectionRepairAudit).one()
         backup_files = list(tmp_path.glob("*.json"))
         assert backup_files == [Path(audit.backup_path)]
-        assert verify_state_backup(audit.backup_path, audit.backup_sha256)
+        assert verify_state_backup(
+            audit.backup_path,
+            audit.backup_sha256,
+            expected_game_id=audit.game_id,
+            expected_state_id=audit.state_id,
+        )
 
 
 def test_apply_backs_up_and_enqueues_only_reported_games(
@@ -486,7 +699,12 @@ def test_apply_backs_up_and_enqueues_only_reported_games(
         )
         assert [audit.status for audit in audits] == ["queued", "queued"]
         for audit in audits:
-            assert verify_state_backup(audit.backup_path, audit.backup_sha256)
+            assert verify_state_backup(
+                audit.backup_path,
+                audit.backup_sha256,
+                expected_game_id=audit.game_id,
+                expected_state_id=audit.state_id,
+            )
             identities = audit.detail_json["rebuild_identities"]
             assert [identity["day_index"] for identity in identities] == [0, 1]
     assert service.wake_count == 2
@@ -608,7 +826,12 @@ def test_verified_backup_audit_survives_enqueue_conflict(
     with sessions() as session:
         audit = session.query(DailyWorldProjectionRepairAudit).one()
         assert audit.status == "backed_up"
-        assert verify_state_backup(audit.backup_path, audit.backup_sha256)
+        assert verify_state_backup(
+            audit.backup_path,
+            audit.backup_sha256,
+            expected_game_id=audit.game_id,
+            expected_state_id=audit.state_id,
+        )
         assert session.query(GameState).count() == 1
 
 
@@ -761,7 +984,13 @@ def test_restore_rejects_truncated_two_day_audit_without_writes(
         ]
 
     exit_code = cli.run(
-        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        [
+            "--restore-audit-id",
+            str(audit_id),
+            "--expected-report-hash",
+            report.hash,
+            "--confirm-writers-stopped",
+        ],
         session_factory=sessions,
     )
 
@@ -843,7 +1072,13 @@ def test_verify_and_restore_reject_both_lists_truncated_from_verified_backup(
 
     verification = verify_repair_invariants(sessions, audit_id)
     restore_exit = cli.run(
-        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        [
+            "--restore-audit-id",
+            str(audit_id),
+            "--expected-report-hash",
+            report.hash,
+            "--confirm-writers-stopped",
+        ],
         session_factory=sessions,
     )
 
@@ -919,7 +1154,13 @@ def test_restore_rechecks_audit_scope_after_game_lock(
     monkeypatch.setattr(cli, "_lock_game", change_scope_then_lock)
 
     exit_code = cli.run(
-        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        [
+            "--restore-audit-id",
+            str(audit_id),
+            "--expected-report-hash",
+            report.hash,
+            "--confirm-writers-stopped",
+        ],
         session_factory=sessions,
     )
 
@@ -1075,7 +1316,13 @@ def test_restore_refuses_when_non_projection_state_changed(
     before = _db_snapshot(sessions)
 
     exit_code = cli.run(
-        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        [
+            "--restore-audit-id",
+            str(audit_id),
+            "--expected-report-hash",
+            report.hash,
+            "--confirm-writers-stopped",
+        ],
         session_factory=sessions,
     )
 
@@ -1545,7 +1792,13 @@ def test_restore_rejects_malformed_audit_without_writes(
         ]
 
     exit_code = cli.run(
-        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        [
+            "--restore-audit-id",
+            str(audit_id),
+            "--expected-report-hash",
+            report.hash,
+            "--confirm-writers-stopped",
+        ],
         session_factory=sessions,
     )
 
@@ -1590,7 +1843,12 @@ def test_restore_uses_current_visible_fields_and_backup_projection_only(
     capsys.readouterr()
     with sessions() as session:
         audit = session.query(DailyWorldProjectionRepairAudit).one()
-        backup_state = restore_state_backup(audit.backup_path, audit.backup_sha256)
+        backup_state = restore_state_backup(
+            audit.backup_path,
+            audit.backup_sha256,
+            expected_game_id=audit.game_id,
+            expected_state_id=audit.state_id,
+        )
         latest = (
             session.query(GameState)
             .filter(GameState.game_id == game_id)
@@ -1614,14 +1872,29 @@ def test_restore_uses_current_visible_fields_and_backup_projection_only(
         session.commit()
         visible_digest = non_projection_state_digest(projected)
 
+    session_store.remove_game_sessions(game_id)
+    session_store.put(
+        game_id,
+        SimpleNamespace(player_state=PlayerState.from_dict(projected)),
+        user_id=991,
+    )
+    assert session_store.get_game_sessions(game_id)
+
     exit_code = cli.run(
-        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        [
+            "--restore-audit-id",
+            str(audit_id),
+            "--expected-report-hash",
+            report.hash,
+            "--confirm-writers-stopped",
+        ],
         session_factory=sessions,
     )
 
     output = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert output == {"audit_id": audit_id, "status": "restored"}
+    assert session_store.get_game_sessions(game_id) == []
     with sessions() as session:
         audit = session.get(DailyWorldProjectionRepairAudit, audit_id)
         restored = (
@@ -1931,6 +2204,7 @@ def test_restore_requires_the_exact_expected_report_hash_before_any_write(
             str(audit_id),
             "--expected-report-hash",
             "wrong",
+            "--confirm-writers-stopped",
         ],
         session_factory=sessions,
         stdout=StringIO(),
@@ -2023,6 +2297,7 @@ def test_restore_rejects_interleaved_newer_audit_for_the_selected_game(
             "100",
             "--expected-report-hash",
             report_hash,
+            "--confirm-writers-stopped",
         ],
         session_factory=sessions,
         stdout=StringIO(),
@@ -2061,6 +2336,7 @@ def test_restore_allows_interleaved_audit_for_a_different_game(
             "100",
             "--expected-report-hash",
             report_hash,
+            "--confirm-writers-stopped",
         ],
         session_factory=sessions,
         stdout=StringIO(),
@@ -2127,6 +2403,7 @@ def test_restore_fences_a_same_game_audit_created_after_preflight(
                         str(audit_id),
                         "--expected-report-hash",
                         report.hash,
+                        "--confirm-writers-stopped",
                     ],
                     session_factory=sessions,
                     stdout=StringIO(),
@@ -2166,3 +2443,110 @@ def test_restore_fences_a_same_game_audit_created_after_preflight(
             .order_by(DailyWorldProjection.projection_id)
             .all()
         ] == projection_statuses_before
+
+
+def test_restore_then_blocked_state_save_rebases_to_restored_projection(
+    temp_db_file, tmp_path: Path, monkeypatch
+) -> None:
+    from config.feature_flags import reset_features, set_feature
+    from src.database.state_repository import StateRepository
+
+    engine, _database_path = temp_db_file
+    sessions = sessionmaker(bind=engine)
+    with sessions() as session:
+        game_id = _seed_game(session, _candidate_state("restore-save-race"))
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+                "--wait",
+            ],
+            session_factory=sessions,
+            projection_service=CompletingProjectionWake(sessions, game_id),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        audit_id = int(audit.audit_id)
+        stale_repaired = PlayerState.from_dict(
+            session.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+            .state_json
+        )
+        original = restore_state_backup(
+            audit.backup_path,
+            audit.backup_sha256,
+            expected_game_id=game_id,
+            expected_state_id=audit.state_id,
+        )
+
+    entered_locked_restore = threading.Event()
+    release_restore = threading.Event()
+    save_done = threading.Event()
+    results: list[object] = []
+    original_match = cli.rebuild_identities_match_history
+    calls = 0
+
+    def pause_second_history_check(identities, state):
+        nonlocal calls
+        calls += 1
+        result = original_match(identities, state)
+        if calls == 2:
+            entered_locked_restore.set()
+            assert release_restore.wait(5)
+        return result
+
+    monkeypatch.setattr(
+        cli, "rebuild_identities_match_history", pause_second_history_check
+    )
+    import src.database.state_repository as state_repository_module
+
+    monkeypatch.setattr(state_repository_module, "SessionLocal", sessions)
+
+    def restore() -> None:
+        results.append(
+            cli.run(
+                [
+                    "--restore-audit-id",
+                    str(audit_id),
+                    "--expected-report-hash",
+                    report.hash,
+                    "--confirm-writers-stopped",
+                ],
+                session_factory=sessions,
+                stdout=StringIO(),
+                stderr=StringIO(),
+            )
+        )
+
+    def save() -> None:
+        results.append(StateRepository().save_game_progress(game_id, stale_repaired))
+        save_done.set()
+
+    set_feature("daily_world_projection_v1", True)
+    try:
+        restore_thread = threading.Thread(target=restore)
+        restore_thread.start()
+        assert entered_locked_restore.wait(5)
+        save_thread = threading.Thread(target=save)
+        save_thread.start()
+        assert save_done.wait(0.2) is False
+        release_restore.set()
+        restore_thread.join(5)
+        save_thread.join(5)
+    finally:
+        reset_features()
+
+    assert sorted(results, key=str) == [0, True]
+    latest = _db_snapshot(sessions)["states"][-1][2]
+    assert latest["world_projection_state"] == original["world_projection_state"]

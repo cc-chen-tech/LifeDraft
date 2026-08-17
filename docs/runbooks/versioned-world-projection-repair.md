@@ -311,7 +311,12 @@ with SessionLocal() as db:
             "complete", "failed_invariant", "failed_fenced", "timed_out"
         }:
             raise SystemExit("audit is no longer the approved terminal scope")
-        verify_state_backup(audit.backup_path, audit.backup_sha256)
+        verify_state_backup(
+            audit.backup_path,
+            audit.backup_sha256,
+            expected_game_id=int(audit.game_id),
+            expected_state_id=int(audit.state_id),
+        )
 print("exact repair scope and backup checksums verified")
 PY
 ```
@@ -346,6 +351,15 @@ verify its backup as above, and compare the current latest state with the
 audit's non-projection digest. Stop if newer player activity changed the latest
 state: the restore command must refuse that condition, and operators must not
 overwrite it automatically.
+
+Restore is offline-only. Before running the command, use the formal operations
+procedure to stop and drain API processes, the projection worker, and every
+other write path, then confirm that no active writer remains. The CLI's
+`--confirm-writers-stopped` flag records this operator assertion; it does not
+perform or prove the drain. After a successful restore, restart every API
+process before restoring traffic so all in-memory sessions are discarded.
+The CLI also invalidates sessions in its own process as defense in depth, but
+that local invalidation cannot replace the cross-process stop and restart.
 
 An apply can return several audit IDs. Review them one at a time. Set
 `WORLD_REPAIR_AUDIT_ID` explicitly to one ID from the manifest's
@@ -391,7 +405,7 @@ case ",$WORLD_REPAIR_AUDIT_IDS," in
   *",$WORLD_REPAIR_AUDIT_ID,"*) ;;
   *) echo "selected audit is outside the manifest scope" >&2; exit 2 ;;
 esac
-python scripts/repair_daily_world_projections.py --restore-audit-id "$WORLD_REPAIR_AUDIT_ID" --expected-report-hash "$WORLD_REPAIR_REPORT_HASH"
+python scripts/repair_daily_world_projections.py --restore-audit-id "$WORLD_REPAIR_AUDIT_ID" --expected-report-hash "$WORLD_REPAIR_REPORT_HASH" --confirm-writers-stopped
 ```
 
 The restore command validates its stored backup checksum and rechecks the

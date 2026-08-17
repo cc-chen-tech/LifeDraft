@@ -27,7 +27,6 @@ from sqlalchemy.exc import OperationalError
 
 from src.database.models import (
     DailyWorldProjection,
-    DailyWorldProjectionRepairAudit,
     Game,
     GameState,
     SessionLocal,
@@ -48,7 +47,9 @@ from src.services.daily_world_projection_repository import (
     DailyWorldProjectionRepository,
     ProjectionIdentity,
 )
-from src.services.daily_world_projection_repair import audit_rebuild_identities
+from src.services.daily_world_projection_repair import (
+    repair_projection_only_identities,
+)
 from src.services.daily_world_projection_observability import (
     emit_projection_health,
     summarize_projection_health,
@@ -380,9 +381,7 @@ class DailyWorldProjectionService:
                 .all()
             )
         ]
-        projection_only_identities = self._repair_projection_only_identities(
-            session, game_id
-        )
+        projection_only_identities = repair_projection_only_identities(session, game_id)
         batch = apply_contiguous_world_projections(
             state, rows, projection_only_identities
         )
@@ -458,23 +457,6 @@ class DailyWorldProjectionService:
             game.updated_at = self._as_utc_naive(self.now_fn())
         session.flush()
         return batch.applied_count, list(batch.rows_to_mark), state_output
-
-    @staticmethod
-    def _repair_projection_only_identities(
-        session: Any, game_id: int
-    ) -> set[tuple[str, int, int, str, int]]:
-        """Keep repair source fences durable across every audit status."""
-
-        identities: set[tuple[str, int, int, str, int]] = set()
-        audits = (
-            session.query(DailyWorldProjectionRepairAudit.detail_json)
-            .filter(DailyWorldProjectionRepairAudit.game_id == game_id)
-            .all()
-        )
-        for audit in audits:
-            for identity in audit_rebuild_identities(audit.detail_json):
-                identities.add(identity.projection_key)
-        return identities
 
     @staticmethod
     def _history_record(history: Any, row: Any) -> Optional[dict[str, Any]]:

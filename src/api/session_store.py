@@ -262,6 +262,20 @@ class SessionStore:
                 return True
         return False
 
+    def remove_game_sessions(self, game_id: int) -> int:
+        """Invalidate every in-process owner session for one restored game."""
+
+        with self._lock:
+            keys = [
+                key
+                for key, session in self._sessions.items()
+                if session.game_id == game_id
+            ]
+            for key in keys:
+                del self._sessions[key]
+                logger.info(f"Session removed after game restore: {key}")
+            return len(keys)
+
     def get_user_sessions(self, user_id: int) -> list:
         """List all active sessions for a user."""
         prefix = f"user_{user_id}_game_"
