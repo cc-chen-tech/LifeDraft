@@ -151,3 +151,61 @@ def test_noncanonical_raw_option_patch_indexes_are_rejected_before_coercion(
         )
 
     assert caught.value.code == "invalid_schema"
+
+
+def test_string_patch_records_are_coerced_with_protagonist_subject() -> None:
+    payload = validate_projection_payload(
+        {
+            "schema_version": 1,
+            "story_patch": {
+                "fact_updates": ["孙悟空从青石中取出天外石，石面布满金色纹路。"],
+                "foreshadowing_seeds": ["天外石与妖星存在共鸣，或指向天裂。"],
+                "commitment_updates": ["孙悟空决定前往东海渊底寻天裂方位。"],
+                "causal_updates": ["取出天外石触发了孙悟空的行动。"],
+            },
+            "option_patches": {},
+        },
+        "孙悟空劈开青石，取出天外石。",
+        [],
+        {"player_name": "孙悟空"},
+    )
+
+    assert payload.story_patch.fact_updates == [
+        {
+            "action": "new",
+            "subject": "孙悟空",
+            "category": "situation",
+            "fact": "孙悟空从青石中取出天外石，石面布满金色纹路。",
+        }
+    ]
+    assert payload.story_patch.foreshadowing_seeds == [
+        {
+            "description": "天外石与妖星存在共鸣，或指向天裂。",
+            "seed_type": "mystery",
+            "related_characters": [],
+            "related_storylines": [],
+        }
+    ]
+    assert payload.story_patch.commitment_updates == [
+        {"description": "孙悟空决定前往东海渊底寻天裂方位。", "parties": []}
+    ]
+    assert payload.story_patch.causal_updates == [
+        {"cause": "取出天外石触发了孙悟空的行动。", "expected_consequence": "结果未明"}
+    ]
+
+
+def test_string_patch_records_fall_back_to_protagonist_placeholder() -> None:
+    payload = validate_projection_payload(
+        {
+            "schema_version": 1,
+            "story_patch": {"fact_updates": ["某条事实。"]},
+            "option_patches": {},
+        },
+        "某段剧情。",
+        [],
+        {},
+    )
+
+    assert payload.story_patch.fact_updates == [
+        {"action": "new", "subject": "主角", "category": "situation", "fact": "某条事实。"}
+    ]
