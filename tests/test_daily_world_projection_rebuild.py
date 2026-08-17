@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime
 
+import pytest
 from sqlalchemy.orm import sessionmaker
 
 from src.database.models import (
@@ -141,8 +142,9 @@ def _latest_state(session, game_id: int) -> dict[str, object]:
     return deepcopy(row.state_json)
 
 
-def test_failed_repair_audit_keeps_day_history_projection_only(
-    db_engine, tmp_path
+@pytest.mark.parametrize("audit_status", ["failed_invariant", "failed_fenced"])
+def test_bound_failed_repair_audit_keeps_day_history_projection_only(
+    db_engine, tmp_path, audit_status: str
 ) -> None:
     """A late worker must honor a durable repair marker after audit failure."""
 
@@ -151,7 +153,7 @@ def test_failed_repair_audit_keeps_day_history_projection_only(
         game_id, history_before = _seed_ready_projection(
             session,
             with_audit=True,
-            audit_status="failed_invariant",
+            audit_status=audit_status,
             backup_root=tmp_path,
         )
         state_before = _latest_state(session, game_id)
@@ -194,7 +196,7 @@ def test_ordinary_projection_still_writes_pr2_history_metadata(db_engine) -> Non
     assert record["world_projection_identity"]["event_id"] == "repair-day-0"
 
 
-def test_restored_and_unverified_audits_have_no_metadata_authority(
+def test_inactive_unbound_audits_have_no_metadata_authority(
     db_engine, tmp_path
 ) -> None:
     sessions = sessionmaker(bind=db_engine)
@@ -243,7 +245,17 @@ def test_restored_and_unverified_audits_have_no_metadata_authority(
                     backup_path=str(tmp_path / "does-not-exist.json"),
                     backup_sha256="c" * 64,
                     non_projection_digest_before=non_projection_state_digest(state),
-                    status="queued",
+                    status="failed_fenced",
+                    detail_json=deepcopy(detail),
+                ),
+                DailyWorldProjectionRepairAudit(
+                    game_id=game_id,
+                    state_id=snapshot.state_id,
+                    report_hash="d" * 64,
+                    backup_path=str(tmp_path / "pre-bind-does-not-exist.json"),
+                    backup_sha256="e" * 64,
+                    non_projection_digest_before=non_projection_state_digest(state),
+                    status="backed_up",
                     detail_json=deepcopy(detail),
                 ),
             ]
@@ -261,6 +273,25 @@ def test_restored_and_unverified_audits_have_no_metadata_authority(
         record_after = _latest_state(session, game_id)["day_history"][0]
     assert record_after["world_projection_status"] == "applied"
     assert record_after["world_projection_identity"]["event_id"] == "repair-day-0"
+
+
+def test_committed_backed_up_marker_is_corrupt(db_engine, tmp_path) -> None:
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        game_id, _history_before = _seed_ready_projection(
+            session,
+            with_audit=True,
+            audit_status="backed_up",
+            backup_root=tmp_path,
+        )
+        with pytest.raises(
+            RuntimeError,
+            match=(
+                "repair_projection_authority_invalid "
+                ".*reason=backed_up_audit_has_committed_marker"
+            ),
+        ):
+            repair_projection_only_identities(session, game_id)
 
 
 def test_repair_option_mismatch_does_not_suppress_history_metadata(

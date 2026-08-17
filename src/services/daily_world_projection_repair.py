@@ -145,12 +145,22 @@ class RepairVerification:
 class RepairProjectionAuthorityInvalid(RuntimeError):
     """A marked live projection row no longer matches its durable audit scope."""
 
-    def __init__(self, projection_id: int, reason: str) -> None:
-        super().__init__(
-            "repair_projection_authority_invalid "
-            f"projection_id={projection_id} reason={reason}"
-        )
+    def __init__(
+        self,
+        reason: str,
+        *,
+        projection_id: Optional[int] = None,
+        audit_id: Optional[int] = None,
+    ) -> None:
+        context = []
+        if projection_id is not None:
+            context.append(f"projection_id={projection_id}")
+        if audit_id is not None:
+            context.append(f"audit_id={audit_id}")
+        context.append(f"reason={reason}")
+        super().__init__("repair_projection_authority_invalid " + " ".join(context))
         self.projection_id = projection_id
+        self.audit_id = audit_id
         self.reason = reason
 
 
@@ -771,55 +781,105 @@ def _projection_watermark_out_of_range(
 def repair_projection_only_identities(
     db: Any, game_id: int
 ) -> set[tuple[str, int, int, str, int]]:
-    """Strictly resolve every live marked row from one DB-only joined read."""
+    """Resolve live repair scope with forward and reverse DB-only validation."""
 
-    bindings = (
-        db.query(DailyWorldProjection, DailyWorldProjectionRepairAudit)
-        .outerjoin(
-            DailyWorldProjectionRepairAudit,
-            DailyWorldProjection.repair_audit_id
-            == DailyWorldProjectionRepairAudit.audit_id,
-        )
-        .filter(
-            DailyWorldProjection.game_id == game_id,
-            DailyWorldProjection.status != "superseded",
-            or_(
-                DailyWorldProjection.repair_audit_id.is_not(None),
-                DailyWorldProjection.repair_selected_option_index.is_not(None),
-            ),
-        )
+    rows = (
+        db.query(DailyWorldProjection)
+        .filter(DailyWorldProjection.game_id == game_id)
         .order_by(DailyWorldProjection.projection_id)
         .all()
     )
+    marker_audit_ids = {
+        int(row.repair_audit_id) for row in rows if row.repair_audit_id is not None
+    }
+    audit_filter = DailyWorldProjectionRepairAudit.game_id == game_id
+    if marker_audit_ids:
+        audit_filter = or_(
+            audit_filter,
+            DailyWorldProjectionRepairAudit.audit_id.in_(marker_audit_ids),
+        )
+    audits = (
+        db.query(DailyWorldProjectionRepairAudit)
+        .filter(audit_filter)
+        .order_by(DailyWorldProjectionRepairAudit.audit_id)
+        .all()
+    )
+    audits_by_id = {int(audit.audit_id): audit for audit in audits}
+    marked_rows_by_audit_id: dict[int, list[Any]] = {}
+    rows_by_event_revision: dict[tuple[str, int], list[Any]] = {}
+    for row in rows:
+        rows_by_event_revision.setdefault(
+            (str(row.event_id), int(row.revision)), []
+        ).append(row)
+        if row.repair_audit_id is not None:
+            marked_rows_by_audit_id.setdefault(int(row.repair_audit_id), []).append(row)
+
     identities: set[tuple[str, int, int, str, int]] = set()
     parsed_by_audit_id: dict[int, set[tuple[str, int, int, str, int]]] = {}
-    for row, audit in bindings:
+
+    def parsed_scope(
+        audit: Any, *, projection_id: Optional[int] = None
+    ) -> set[tuple[str, int, int, str, int]]:
+        audit_id = int(audit.audit_id)
+        cached = parsed_by_audit_id.get(audit_id)
+        if cached is not None:
+            return cached
+        try:
+            parsed = audit_rebuild_identities(audit.detail_json)
+        except Exception as exc:
+            raise RepairProjectionAuthorityInvalid(
+                "audit_scope_invalid",
+                projection_id=projection_id,
+                audit_id=audit_id,
+            ) from exc
+        if not parsed:
+            raise RepairProjectionAuthorityInvalid(
+                "audit_scope_invalid",
+                projection_id=projection_id,
+                audit_id=audit_id,
+            )
+        scope = {item.projection_key for item in parsed}
+        parsed_by_audit_id[audit_id] = scope
+        return scope
+
+    # Forward validation catches forged, partial, cross-game, or stale markers.
+    for row in rows:
+        if row.status == "superseded" or (
+            row.repair_audit_id is None and row.repair_selected_option_index is None
+        ):
+            continue
         projection_id = int(row.projection_id)
         if row.repair_audit_id is None or row.repair_selected_option_index is None:
-            raise RepairProjectionAuthorityInvalid(projection_id, "incomplete_marker")
+            raise RepairProjectionAuthorityInvalid(
+                "incomplete_marker", projection_id=projection_id
+            )
+        audit_id = int(row.repair_audit_id)
+        audit = audits_by_id.get(audit_id)
         if audit is None:
-            raise RepairProjectionAuthorityInvalid(projection_id, "audit_missing")
+            raise RepairProjectionAuthorityInvalid(
+                "audit_missing",
+                projection_id=projection_id,
+                audit_id=audit_id,
+            )
         if int(audit.game_id) != game_id:
-            raise RepairProjectionAuthorityInvalid(projection_id, "audit_game_mismatch")
+            raise RepairProjectionAuthorityInvalid(
+                "audit_game_mismatch",
+                projection_id=projection_id,
+                audit_id=audit_id,
+            )
         if audit.status not in _REPAIR_IDENTITY_AUTHORITY_STATUSES:
             raise RepairProjectionAuthorityInvalid(
-                projection_id, "audit_status_not_authoritative"
+                "audit_status_not_authoritative",
+                projection_id=projection_id,
+                audit_id=audit_id,
             )
-        audit_id = int(audit.audit_id)
-        audit_identities = parsed_by_audit_id.get(audit_id)
-        if audit_identities is None:
-            try:
-                parsed = audit_rebuild_identities(audit.detail_json)
-            except Exception as exc:
-                raise RepairProjectionAuthorityInvalid(
-                    projection_id, "audit_scope_invalid"
-                ) from exc
-            if not parsed:
-                raise RepairProjectionAuthorityInvalid(
-                    projection_id, "audit_scope_invalid"
-                )
-            audit_identities = {item.projection_key for item in parsed}
-            parsed_by_audit_id[audit_id] = audit_identities
+        if audit.status == "backed_up":
+            raise RepairProjectionAuthorityInvalid(
+                "backed_up_audit_has_committed_marker",
+                projection_id=projection_id,
+                audit_id=audit_id,
+            )
+        audit_identities = parsed_scope(audit, projection_id=projection_id)
         identity = (
             str(row.event_id),
             int(row.revision),
@@ -829,9 +889,83 @@ def repair_projection_only_identities(
         )
         if identity not in audit_identities:
             raise RepairProjectionAuthorityInvalid(
-                projection_id, "row_out_of_audit_scope"
+                "row_out_of_audit_scope",
+                projection_id=projection_id,
+                audit_id=audit_id,
             )
-        identities.add(identity)
+
+    # Reverse validation prevents clearing one or every marker from shrinking
+    # an already-committed repair scope into ordinary projection work.
+    for audit in audits:
+        if (
+            int(audit.game_id) != game_id
+            or audit.status not in _REPAIR_IDENTITY_AUTHORITY_STATUSES
+        ):
+            continue
+        audit_id = int(audit.audit_id)
+        marked_rows = marked_rows_by_audit_id.get(audit_id, [])
+        if audit.status == "backed_up":
+            if marked_rows:
+                first = marked_rows[0]
+                raise RepairProjectionAuthorityInvalid(
+                    "backed_up_audit_has_committed_marker",
+                    projection_id=int(first.projection_id),
+                    audit_id=audit_id,
+                )
+            continue
+        if audit.status == "failed_fenced" and not marked_rows:
+            continue
+        audit_scope = parsed_scope(audit)
+        for identity in sorted(audit_scope, key=lambda item: item[2]):
+            event_id, revision, day_index, source_hash, selected = identity
+            candidates = rows_by_event_revision.get((event_id, revision), [])
+            exact_rows = [
+                row
+                for row in candidates
+                if int(row.day_index) == day_index
+                and str(row.source_hash) == source_hash
+            ]
+            if not exact_rows:
+                projection_id = int(candidates[0].projection_id) if candidates else None
+                reason = (
+                    "audit_scope_row_identity_drift"
+                    if candidates
+                    else "audit_scope_row_missing"
+                )
+                raise RepairProjectionAuthorityInvalid(
+                    reason,
+                    projection_id=projection_id,
+                    audit_id=audit_id,
+                )
+            if len(exact_rows) != 1:
+                raise RepairProjectionAuthorityInvalid(
+                    "audit_scope_row_ambiguous",
+                    projection_id=int(exact_rows[0].projection_id),
+                    audit_id=audit_id,
+                )
+            row = exact_rows[0]
+            if row.status == "superseded":
+                continue
+            projection_id = int(row.projection_id)
+            if row.repair_audit_id is None and row.repair_selected_option_index is None:
+                raise RepairProjectionAuthorityInvalid(
+                    "audit_scope_row_marker_missing",
+                    projection_id=projection_id,
+                    audit_id=audit_id,
+                )
+            if row.repair_audit_id != audit_id:
+                raise RepairProjectionAuthorityInvalid(
+                    "audit_scope_row_marker_mismatch",
+                    projection_id=projection_id,
+                    audit_id=audit_id,
+                )
+            if row.repair_selected_option_index != selected:
+                raise RepairProjectionAuthorityInvalid(
+                    "audit_scope_row_option_mismatch",
+                    projection_id=projection_id,
+                    audit_id=audit_id,
+                )
+            identities.add(identity)
     return identities
 
 

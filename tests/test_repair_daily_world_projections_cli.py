@@ -438,6 +438,100 @@ def _repair_authority_write_snapshot(sessions, game_id: int) -> dict[str, object
         }
 
 
+@pytest.mark.parametrize("cleared_rows", ["one", "all"])
+@pytest.mark.parametrize("caller", ["service", "state-repository"])
+def test_queued_repair_scope_with_cleared_markers_fails_closed_without_writes(
+    db_engine,
+    tmp_path: Path,
+    monkeypatch,
+    cleared_rows: str,
+    caller: str,
+) -> None:
+    from config.feature_flags import reset_features, set_feature
+    from src.database.state_repository import StateRepository
+
+    sessions = sessionmaker(bind=db_engine)
+    state = PlayerState.from_dict(
+        _candidate_state(f"cleared-markers-{cleared_rows}-{caller}")
+    ).to_dict()
+    with sessions() as session:
+        game_id = _seed_game(session, state)
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        assert audit.status == "queued"
+        rows = (
+            session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.day_index)
+            .all()
+        )
+        assert len(rows) == 2
+        assert {
+            (row.repair_audit_id, row.repair_selected_option_index) for row in rows
+        } == {(audit.audit_id, 0)}
+        for row in rows:
+            row.status = "ready_no_change"
+            row.story_patch_json = {}
+            row.option_patches_json = {"0": {}, "1": {}}
+        targets = rows[:1] if cleared_rows == "one" else rows
+        for row in targets:
+            row.repair_audit_id = None
+            row.repair_selected_option_index = None
+        session.commit()
+
+    before = _repair_authority_write_snapshot(sessions, game_id)
+    state_before = before["states"][-1][1]
+    if caller == "service":
+        with pytest.raises(
+            RuntimeError,
+            match=(
+                "repair_projection_authority_invalid "
+                ".*reason=audit_scope_row_marker_missing"
+            ),
+        ):
+            DailyWorldProjectionService(session_factory=sessions).apply_ready_for_game(
+                game_id
+            )
+    else:
+        import src.database.state_repository as state_repository_module
+
+        monkeypatch.setattr(state_repository_module, "SessionLocal", sessions)
+        set_feature("daily_world_projection_v1", True)
+        try:
+            assert (
+                StateRepository().save_game_progress(
+                    game_id, PlayerState.from_dict(deepcopy(state_before))
+                )
+                is False
+            )
+        finally:
+            reset_features()
+
+    after = _repair_authority_write_snapshot(sessions, game_id)
+    state_after = after["states"][-1][1]
+    assert after == before
+    assert state_after["day_history"] == state_before["day_history"]
+    assert non_projection_state_digest(state_after) == non_projection_state_digest(
+        state_before
+    )
+
+
 @pytest.mark.parametrize(
     "corruption",
     [
