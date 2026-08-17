@@ -478,11 +478,17 @@ class ProjectionApplyBatch:
     state_changed: bool
 
 
-ProjectionOnlyIdentity = tuple[str, int, int, str]
+ProjectionOnlyIdentity = tuple[str, int, int, str, int]
 
 
-def _projection_only_identity(row: Any) -> ProjectionOnlyIdentity:
-    return (row.event_id, row.revision, row.day_index, row.source_hash)
+def _projection_only_identity(row: Any, selected: int) -> ProjectionOnlyIdentity:
+    return (
+        row.event_id,
+        row.revision,
+        row.day_index,
+        row.source_hash,
+        selected,
+    )
 
 
 def apply_contiguous_world_projections(
@@ -552,7 +558,7 @@ def apply_contiguous_world_projections(
                 row.day_index,
             )
             break
-        if _projection_only_identity(row) not in projection_only_identities:
+        if _projection_only_identity(row, selected) not in projection_only_identities:
             expected_identity = {
                 "event_id": row.event_id,
                 "revision": row.revision,

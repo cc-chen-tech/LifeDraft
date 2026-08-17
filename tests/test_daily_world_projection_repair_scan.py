@@ -160,6 +160,24 @@ def test_affected_legacy_save_without_projection_layer_rebuilds_full_history() -
     assert candidate.rebuild_day_indexes == [0, 1, 2, 3, 4]
 
 
+def test_invalid_v1_layer_with_high_watermark_rebuilds_full_history() -> None:
+    """A layer reset to -1 cannot trust a watermark from malformed v1 data."""
+
+    state = sun_wukong_failed_fixture()
+    state["world_projection_state"] = {
+        "version": 1,
+        "applied_through_day_index": 99,
+        "projected_through_day_index": 99,
+        "applied_sources": "malformed",
+        "world": _empty_world_patch(),
+    }
+
+    candidate = scan_game_state(202, state)
+
+    assert candidate is not None
+    assert candidate.rebuild_day_indexes == [0, 1, 2, 3, 4]
+
+
 def test_digest_ignores_only_projection_state() -> None:
     before = player_state_fixture()
     after = deepcopy(before)

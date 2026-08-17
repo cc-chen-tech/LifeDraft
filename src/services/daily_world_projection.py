@@ -48,6 +48,7 @@ from src.services.daily_world_projection_repository import (
     DailyWorldProjectionRepository,
     ProjectionIdentity,
 )
+from src.services.daily_world_projection_repair import audit_rebuild_identities
 
 logger = logging.getLogger(__name__)
 
@@ -370,17 +371,43 @@ class DailyWorldProjectionService:
         )
         state_output = state.to_dict()
         marked = set(batch.rows_to_mark)
-        applied_repair_identity = any(
-            (row.projection_id, row.source_hash) in marked
-            and (row.event_id, row.revision, row.day_index, row.source_hash)
-            in projection_only_identities
-            for row in rows
-        )
-        if applied_repair_identity:
+        repair_marked = False
+        ordinary_marked: list[Any] = []
+        for row in rows:
+            if (row.projection_id, row.source_hash) not in marked:
+                continue
+            record = self._history_record(state.day_history, row)
+            selected = record.get("choice_option_index") if record else None
+            identity = (
+                row.event_id,
+                row.revision,
+                row.day_index,
+                row.source_hash,
+                selected,
+            )
+            if identity in projection_only_identities:
+                repair_marked = True
+            else:
+                ordinary_marked.append(row)
+        if repair_marked:
             state_output = deepcopy(dict(state_data))
             state_output["world_projection_state"] = deepcopy(
                 state.world_projection_state
             )
+            output_history = state_output.get("day_history")
+            if isinstance(output_history, list):
+                for row in ordinary_marked:
+                    source = self._history_record(state.day_history, row)
+                    target = self._history_record(output_history, row)
+                    if source is None or target is None:
+                        continue
+                    for key in (
+                        "world_projection_status",
+                        "world_projection_id",
+                        "world_projection_identity",
+                    ):
+                        if key in source:
+                            target[key] = deepcopy(source[key])
         if not batch.state_changed:
             return (
                 batch.applied_count,
@@ -410,7 +437,7 @@ class DailyWorldProjectionService:
                 state_json=state_output,
             )
         )
-        if not applied_repair_identity:
+        if ordinary_marked:
             game.updated_at = self._as_utc_naive(self.now_fn())
         session.flush()
         return batch.applied_count, list(batch.rows_to_mark), state_output
@@ -418,40 +445,33 @@ class DailyWorldProjectionService:
     @staticmethod
     def _repair_projection_only_identities(
         session: Any, game_id: int
-    ) -> set[tuple[str, int, int, str]]:
+    ) -> set[tuple[str, int, int, str, int]]:
         """Keep repair source fences durable across every audit status."""
 
-        identities: set[tuple[str, int, int, str]] = set()
+        identities: set[tuple[str, int, int, str, int]] = set()
         audits = (
             session.query(DailyWorldProjectionRepairAudit.detail_json)
             .filter(DailyWorldProjectionRepairAudit.game_id == game_id)
             .all()
         )
         for audit in audits:
-            detail = audit.detail_json
-            if not isinstance(detail, Mapping):
-                continue
-            for identity in detail.get("rebuild_identities") or ():
-                if not isinstance(identity, Mapping):
-                    continue
-                event_id = identity.get("event_id")
-                revision = identity.get("revision")
-                day_index = identity.get("day_index")
-                source_hash = identity.get("source_hash")
-                if (
-                    isinstance(event_id, str)
-                    and event_id.strip()
-                    and isinstance(revision, int)
-                    and not isinstance(revision, bool)
-                    and revision >= 1
-                    and isinstance(day_index, int)
-                    and not isinstance(day_index, bool)
-                    and day_index >= 0
-                    and isinstance(source_hash, str)
-                    and source_hash
-                ):
-                    identities.add((event_id, revision, day_index, source_hash))
+            for identity in audit_rebuild_identities(audit.detail_json):
+                identities.add(identity.projection_key)
         return identities
+
+    @staticmethod
+    def _history_record(history: Any, row: Any) -> Optional[dict[str, Any]]:
+        if not isinstance(history, list):
+            return None
+        matches = [
+            record
+            for record in history
+            if isinstance(record, dict)
+            and record.get("event_id") == row.event_id
+            and record.get("revision", 1) == row.revision
+            and record.get("day_index") == row.day_index
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     @staticmethod
     def _active_game_loops(game_id: int) -> list[Any]:

@@ -36,11 +36,11 @@ from src.services.daily_world_projection_repair import (
     RepairScanReport,
     audit_rebuild_identities,
     enqueue_rebuild,
+    finalize_repair_audit,
     initialized_projection_state,
     non_projection_state_digest,
     rebuild_identities,
     scan_latest_game_states,
-    verify_repair_invariants,
 )
 from src.services.daily_world_projection_repository import (
     DailyWorldProjectionRepository,
@@ -177,26 +177,23 @@ def _apply_candidate(
 ) -> int:
     if candidate.state_id is None or candidate.non_projection_digest is None:
         raise ValueError("repair candidate is missing exact state identity")
-    state_row = _read_exact_latest_state(session_factory, candidate)
-    state = deepcopy(state_row.state_json)
-    identities = rebuild_identities(candidate, state)
-
-    backup = write_state_backup(
-        backup_dir,
-        game_id=candidate.game_id,
-        state_id=candidate.state_id,
-        state_json=state,
-    )
-    verify_state_backup(backup.path, backup.sha256)
-
-    detail = {
-        "reasons": [reason.to_dict() for reason in candidate.reasons],
-        "rebuild_day_indexes": list(candidate.rebuild_day_indexes),
-        "rebuild_identities": [identity.to_dict() for identity in identities],
-    }
     with session_factory() as db, db.begin():
         _lock_game(db, candidate.game_id)
-        _exact_candidate_state(db, candidate)
+        state_row = _exact_candidate_state(db, candidate)
+        state = deepcopy(state_row.state_json)
+        identities = rebuild_identities(candidate, state)
+        backup = write_state_backup(
+            backup_dir,
+            game_id=candidate.game_id,
+            state_id=candidate.state_id,
+            state_json=state,
+        )
+        verify_state_backup(backup.path, backup.sha256)
+        detail = {
+            "reasons": [reason.to_dict() for reason in candidate.reasons],
+            "rebuild_day_indexes": list(candidate.rebuild_day_indexes),
+            "rebuild_identities": [identity.to_dict() for identity in identities],
+        }
         audit = create_repair_audit(
             db,
             game_id=candidate.game_id,
@@ -252,52 +249,71 @@ def _wait_for_audits(
 ) -> int:
     deadline = monotonic() + timeout_seconds
     remaining = set(audit_ids)
+    saw_invariant_failure = False
+    saw_incomplete = False
     while remaining:
         pending: list[tuple[int, str]] = []
         for audit_id in sorted(remaining):
-            verification = verify_repair_invariants(session_factory, audit_id)
+            verification = finalize_repair_audit(session_factory, audit_id)
             if verification.status == "complete":
-                _mark_audit_terminal(
-                    session_factory,
-                    audit_id,
-                    status="complete",
-                    digest_after=verification.non_projection_digest_after,
-                )
                 remaining.remove(audit_id)
                 continue
             if verification.status == "failed_invariant":
-                _mark_audit_terminal(
+                changed = _mark_audit_terminal(
                     session_factory,
                     audit_id,
                     status="failed_invariant",
                     digest_after=verification.non_projection_digest_after,
                 )
-                _print_restore_command(audit_id, stderr)
-                return EXIT_INVARIANT
+                if changed:
+                    _print_restore_command(audit_id, stderr)
+                saw_invariant_failure = True
+                remaining.remove(audit_id)
+                continue
             if verification.status == "fenced":
-                _mark_audit_terminal(
+                changed = _mark_audit_terminal(
                     session_factory,
                     audit_id,
                     status="failed_fenced",
                     digest_after=verification.non_projection_digest_after,
                 )
-                _print_restore_command(audit_id, stderr)
-                return EXIT_INCOMPLETE
+                if changed:
+                    _print_restore_command(audit_id, stderr)
+                    saw_incomplete = True
+                remaining.remove(audit_id)
+                continue
+            if verification.status in {
+                "failed_fenced",
+                "timed_out",
+                "restored",
+                "concurrent_terminal",
+            }:
+                if verification.status in {"failed_fenced", "timed_out"}:
+                    saw_incomplete = True
+                remaining.remove(audit_id)
+                continue
             pending.append((audit_id, verification.non_projection_digest_after))
         if not remaining:
-            return EXIT_OK
+            break
         if monotonic() >= deadline:
             for audit_id, digest_after in pending:
-                _mark_audit_terminal(
+                changed = _mark_audit_terminal(
                     session_factory,
                     audit_id,
                     status="timed_out",
                     digest_after=digest_after,
                 )
-            _print_restore_command(pending[0][0], stderr)
-            return EXIT_INCOMPLETE
+                if changed:
+                    _print_restore_command(audit_id, stderr)
+                    saw_incomplete = True
+                remaining.remove(audit_id)
+            break
         projection_service.wake()
         sleep(min(0.25, max(0.0, deadline - monotonic())))
+    if saw_invariant_failure:
+        return EXIT_INVARIANT
+    if saw_incomplete:
+        return EXIT_INCOMPLETE
     return EXIT_OK
 
 
@@ -310,6 +326,8 @@ def _run_restore(
 ) -> int:
     try:
         audit_record = _read_audit(session_factory, audit_id)
+        if not audit_rebuild_identities(audit_record["detail_json"]):
+            raise ValueError("malformed repair audit identities")
         backup_state = restore_state_backup(
             audit_record["backup_path"], audit_record["backup_sha256"]
         )
@@ -320,6 +338,9 @@ def _run_restore(
             if audit is None:
                 raise ValueError("repair audit not found")
             _lock_game(db, int(audit.game_id))
+            identities = audit_rebuild_identities(audit.detail_json)
+            if not identities:
+                raise ValueError("malformed repair audit identities")
             latest = _latest_state(db, int(audit.game_id))
             if latest is None or not isinstance(latest.state_json, Mapping):
                 raise NonProjectionStateChanged("non-projection state changed")
@@ -341,7 +362,7 @@ def _run_restore(
                     state_json=restored,
                 )
             )
-            for identity in audit_rebuild_identities(audit.detail_json):
+            for identity in identities:
                 rows = (
                     db.query(DailyWorldProjection)
                     .filter(
@@ -372,15 +393,6 @@ def _run_restore(
         return EXIT_INVARIANT
 
 
-def _read_exact_latest_state(
-    session_factory: Callable[[], Any], candidate: GameRepairCandidate
-) -> GameState:
-    with session_factory() as db:
-        row = _exact_candidate_state(db, candidate)
-        db.expunge(row)
-        return row
-
-
 def _read_audit(session_factory: Callable[[], Any], audit_id: int) -> dict[str, Any]:
     with session_factory() as db:
         audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
@@ -389,6 +401,7 @@ def _read_audit(session_factory: Callable[[], Any], audit_id: int) -> dict[str, 
         return {
             "backup_path": str(audit.backup_path),
             "backup_sha256": str(audit.backup_sha256),
+            "detail_json": deepcopy(audit.detail_json),
         }
 
 
@@ -442,14 +455,29 @@ def _mark_audit_terminal(
     *,
     status: str,
     digest_after: str,
-) -> None:
+) -> bool:
     with session_factory() as db, db.begin():
-        audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
-        if audit is None:
+        exists = db.get(DailyWorldProjectionRepairAudit, audit_id)
+        if exists is None:
             raise ValueError("repair audit not found")
-        audit.status = status
-        audit.non_projection_digest_after = digest_after or None
-        audit.completed_at = datetime.utcnow()
+        updated = (
+            db.query(DailyWorldProjectionRepairAudit)
+            .filter(
+                DailyWorldProjectionRepairAudit.audit_id == audit_id,
+                DailyWorldProjectionRepairAudit.status == "queued",
+            )
+            .update(
+                {
+                    DailyWorldProjectionRepairAudit.status: status,
+                    DailyWorldProjectionRepairAudit.non_projection_digest_after: (
+                        digest_after or None
+                    ),
+                    DailyWorldProjectionRepairAudit.completed_at: datetime.utcnow(),
+                },
+                synchronize_session=False,
+            )
+        )
+        return updated == 1
 
 
 def _report_payload(report: RepairScanReport) -> dict[str, Any]:

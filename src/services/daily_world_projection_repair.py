@@ -6,13 +6,15 @@ import hashlib
 import json
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, text
 
 from src.database.models import (
     DailyWorldProjection,
     DailyWorldProjectionRepairAudit,
+    Game,
     GameState,
     SessionLocal,
 )
@@ -94,8 +96,8 @@ class RebuildIdentity:
     revision: int
     day_index: int
     source_hash: str
+    selected_option_index: int
     story_date: Optional[str] = None
-    selected_option_index: Optional[int] = None
 
     def to_dict(self) -> dict[str, Any]:
         value: dict[str, Any] = {
@@ -104,13 +106,18 @@ class RebuildIdentity:
             "day_index": self.day_index,
             "source_hash": self.source_hash,
         }
-        if self.selected_option_index is not None:
-            value["selected_option_index"] = self.selected_option_index
+        value["selected_option_index"] = self.selected_option_index
         return value
 
     @property
-    def projection_key(self) -> tuple[str, int, int, str]:
-        return (self.event_id, self.revision, self.day_index, self.source_hash)
+    def projection_key(self) -> tuple[str, int, int, str, int]:
+        return (
+            self.event_id,
+            self.revision,
+            self.day_index,
+            self.source_hash,
+            self.selected_option_index,
+        )
 
 
 @dataclass(frozen=True)
@@ -221,6 +228,20 @@ def _projection_watermark(state: Mapping[str, Any]) -> Optional[int]:
     return value
 
 
+def is_valid_projection_state(value: Any) -> bool:
+    """Return whether a v1 layer can be preserved without resetting its ledger."""
+
+    return (
+        isinstance(value, Mapping)
+        and value.get("version") == 1
+        and not isinstance(value.get("version"), bool)
+        and isinstance(value.get("world"), Mapping)
+        and isinstance(value.get("applied_sources"), list)
+        and _valid_watermark(value.get("applied_through_day_index"))
+        and _valid_watermark(value.get("projected_through_day_index"))
+    )
+
+
 def scan_game_state(
     game_id: int, state: Mapping[str, Any]
 ) -> Optional[GameRepairCandidate]:
@@ -280,8 +301,8 @@ def scan_game_state(
 
     rebuild_days = (
         set(history_days)
-        if watermark is None
-        else {day for day in history_days if day > watermark}
+        if not is_valid_projection_state(state.get("world_projection_state"))
+        else {day for day in history_days if day > int(watermark)}
     )
     rebuild_days.update(suspicious_days)
     rebuild_days.update(stuck_days)
@@ -434,6 +455,7 @@ def _candidate_already_materialized(
             source.get("revision"),
             source.get("day_index"),
             source.get("source_hash"),
+            source.get("option_index"),
         )
         for source in (applied_sources if isinstance(applied_sources, list) else [])
         if isinstance(source, Mapping)
@@ -536,14 +558,7 @@ def initialized_projection_state(
     """Preserve a structurally valid v1 layer or supply isolated defaults."""
 
     layer = state.get("world_projection_state")
-    valid = (
-        isinstance(layer, Mapping)
-        and layer.get("version") == 1
-        and isinstance(layer.get("world"), Mapping)
-        and isinstance(layer.get("applied_sources"), list)
-        and _valid_watermark(layer.get("applied_through_day_index"))
-        and _valid_watermark(layer.get("projected_through_day_index"))
-    )
+    valid = is_valid_projection_state(layer)
     return (
         deepcopy(dict(layer)) if valid else default_world_projection_state(),
         not valid,
@@ -559,86 +574,148 @@ def verify_repair_invariants(
         audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
         if audit is None:
             raise ValueError("repair_audit_not_found")
-        latest = (
-            db.query(GameState)
-            .filter(GameState.game_id == audit.game_id)
-            .order_by(GameState.state_id.desc())
-            .first()
+        return _verify_repair_invariants_in_session(db, audit)
+
+
+def finalize_repair_audit(
+    session_factory: Callable[[], Any], audit_id: int
+) -> RepairVerification:
+    """Verify and CAS queued->complete under the game's serialization lock."""
+
+    with session_factory() as db, db.begin():
+        audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
+        if audit is None:
+            raise ValueError("repair_audit_not_found")
+        _lock_game(db, int(audit.game_id))
+        db.expire(audit)
+        if audit.status != "queued":
+            return RepairVerification(
+                str(audit.status), str(audit.non_projection_digest_after or "")
+            )
+        verification = _verify_repair_invariants_in_session(db, audit)
+        if verification.status != "complete":
+            return verification
+        updated = (
+            db.query(DailyWorldProjectionRepairAudit)
+            .filter(
+                DailyWorldProjectionRepairAudit.audit_id == audit_id,
+                DailyWorldProjectionRepairAudit.status == "queued",
+            )
+            .update(
+                {
+                    DailyWorldProjectionRepairAudit.status: "complete",
+                    DailyWorldProjectionRepairAudit.non_projection_digest_after: (
+                        verification.non_projection_digest_after
+                    ),
+                    DailyWorldProjectionRepairAudit.completed_at: datetime.utcnow(),
+                },
+                synchronize_session=False,
+            )
         )
-        if latest is None or not isinstance(latest.state_json, Mapping):
-            return RepairVerification("failed_invariant", "", "latest_state_missing")
-        digest_after = non_projection_state_digest(latest.state_json)
-        if digest_after != audit.non_projection_digest_before:
+        if updated != 1:
+            return RepairVerification("concurrent_terminal", "")
+        return verification
+
+
+def _verify_repair_invariants_in_session(
+    db: Any, audit: DailyWorldProjectionRepairAudit
+) -> RepairVerification:
+    latest = (
+        db.query(GameState)
+        .filter(GameState.game_id == audit.game_id)
+        .order_by(GameState.state_id.desc())
+        .first()
+    )
+    if latest is None or not isinstance(latest.state_json, Mapping):
+        return RepairVerification("failed_invariant", "", "latest_state_missing")
+    digest_after = non_projection_state_digest(latest.state_json)
+    if digest_after != audit.non_projection_digest_before:
+        return RepairVerification(
+            "failed_invariant", digest_after, "non_projection_state_changed"
+        )
+    identities = audit_rebuild_identities(audit.detail_json)
+    if not identities:
+        return RepairVerification(
+            "failed_invariant", digest_after, "rebuild_identities_missing"
+        )
+    history = _history_records(latest.state_json)
+    for identity in identities:
+        matches = [
+            record
+            for day_index, record in history
+            if day_index == identity.day_index
+            and record.get("event_id") == identity.event_id
+            and record.get("revision", 1) == identity.revision
+        ]
+        if (
+            len(matches) != 1
+            or matches[0].get("choice_option_index") != identity.selected_option_index
+        ):
             return RepairVerification(
-                "failed_invariant", digest_after, "non_projection_state_changed"
+                "failed_invariant", digest_after, "accepted_option_changed"
             )
-        identities = audit_rebuild_identities(audit.detail_json)
-        if not identities:
-            return RepairVerification(
-                "failed_invariant", digest_after, "rebuild_identities_missing"
+
+    rows: list[DailyWorldProjection] = []
+    for identity in identities:
+        row = (
+            db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == audit.game_id,
+                DailyWorldProjection.event_id == identity.event_id,
+                DailyWorldProjection.revision == identity.revision,
+                DailyWorldProjection.day_index == identity.day_index,
+                DailyWorldProjection.source_hash == identity.source_hash,
             )
-        rows: list[DailyWorldProjection] = []
-        for identity in identities:
-            row = (
+            .one_or_none()
+        )
+        if row is None:
+            replacement = (
                 db.query(DailyWorldProjection)
                 .filter(
                     DailyWorldProjection.game_id == audit.game_id,
                     DailyWorldProjection.event_id == identity.event_id,
                     DailyWorldProjection.revision == identity.revision,
-                    DailyWorldProjection.day_index == identity.day_index,
-                    DailyWorldProjection.source_hash == identity.source_hash,
                 )
                 .one_or_none()
             )
-            if row is None:
-                replacement = (
-                    db.query(DailyWorldProjection)
-                    .filter(
-                        DailyWorldProjection.game_id == audit.game_id,
-                        DailyWorldProjection.event_id == identity.event_id,
-                        DailyWorldProjection.revision == identity.revision,
-                    )
-                    .one_or_none()
+            if replacement is not None:
+                return RepairVerification(
+                    "fenced", digest_after, "projection_source_replaced"
                 )
-                if replacement is not None:
-                    return RepairVerification(
-                        "fenced", digest_after, "projection_source_replaced"
-                    )
-                return RepairVerification("pending", digest_after, "projection_missing")
-            rows.append(row)
-        if any(row.status == "superseded" for row in rows):
-            return RepairVerification("fenced", digest_after, "projection_superseded")
-        if any(row.status != "applied" for row in rows):
-            return RepairVerification("pending", digest_after, "projection_pending")
+            return RepairVerification("pending", digest_after, "projection_missing")
+        rows.append(row)
+    if any(row.status == "superseded" for row in rows):
+        return RepairVerification("fenced", digest_after, "projection_superseded")
+    if any(row.status != "applied" for row in rows):
+        return RepairVerification("pending", digest_after, "projection_pending")
 
-        layer = latest.state_json.get("world_projection_state")
-        max_day = max(identity.day_index for identity in identities)
-        if not isinstance(layer, Mapping) or any(
-            not isinstance(layer.get(name), int)
-            or isinstance(layer.get(name), bool)
-            or int(layer[name]) < max_day
-            for name in (
-                "applied_through_day_index",
-                "projected_through_day_index",
-            )
-        ):
-            return RepairVerification("pending", digest_after, "watermark_incomplete")
-        applied_sources = layer.get("applied_sources")
-        source_keys = {
-            (
-                source.get("event_id"),
-                source.get("revision"),
-                source.get("day_index"),
-                source.get("source_hash"),
-            )
-            for source in (applied_sources if isinstance(applied_sources, list) else [])
-            if isinstance(source, Mapping)
-        }
-        if any(identity.projection_key not in source_keys for identity in identities):
-            return RepairVerification(
-                "pending", digest_after, "source_ledger_incomplete"
-            )
-        return RepairVerification("complete", digest_after)
+    layer = latest.state_json.get("world_projection_state")
+    max_day = max(identity.day_index for identity in identities)
+    if not isinstance(layer, Mapping) or any(
+        not isinstance(layer.get(name), int)
+        or isinstance(layer.get(name), bool)
+        or int(layer[name]) < max_day
+        for name in (
+            "applied_through_day_index",
+            "projected_through_day_index",
+        )
+    ):
+        return RepairVerification("pending", digest_after, "watermark_incomplete")
+    applied_sources = layer.get("applied_sources")
+    source_keys = {
+        (
+            source.get("event_id"),
+            source.get("revision"),
+            source.get("day_index"),
+            source.get("source_hash"),
+            source.get("option_index"),
+        )
+        for source in (applied_sources if isinstance(applied_sources, list) else [])
+        if isinstance(source, Mapping)
+    }
+    if any(identity.projection_key not in source_keys for identity in identities):
+        return RepairVerification("pending", digest_after, "source_ledger_incomplete")
+    return RepairVerification("complete", digest_after)
 
 
 def _valid_watermark(value: Any) -> bool:
@@ -646,18 +723,23 @@ def _valid_watermark(value: Any) -> bool:
 
 
 def audit_rebuild_identities(value: Any) -> tuple[RebuildIdentity, ...]:
-    """Parse only complete source-fenced identities from durable audit metadata."""
+    """Strictly parse one complete, unambiguous durable repair identity list."""
 
-    detail = value if isinstance(value, Mapping) else {}
+    if not isinstance(value, Mapping):
+        return ()
+    raw_identities = value.get("rebuild_identities")
+    if not isinstance(raw_identities, (list, tuple)) or not raw_identities:
+        return ()
     identities: list[RebuildIdentity] = []
-    for raw in detail.get("rebuild_identities") or ():
+    for raw in raw_identities:
         if not isinstance(raw, Mapping):
-            continue
+            return ()
         event_id = raw.get("event_id")
         revision = raw.get("revision")
         day_index = raw.get("day_index")
         source_hash = raw.get("source_hash")
-        if (
+        selected = raw.get("selected_option_index")
+        if not (
             isinstance(event_id, str)
             and event_id.strip()
             and isinstance(revision, int)
@@ -668,19 +750,38 @@ def audit_rebuild_identities(value: Any) -> tuple[RebuildIdentity, ...]:
             and day_index >= 0
             and isinstance(source_hash, str)
             and source_hash
+            and isinstance(selected, int)
+            and not isinstance(selected, bool)
+            and selected >= 0
         ):
-            selected = raw.get("selected_option_index")
-            identities.append(
-                RebuildIdentity(
-                    event_id=event_id,
-                    revision=revision,
-                    day_index=day_index,
-                    source_hash=source_hash,
-                    selected_option_index=(
-                        selected
-                        if isinstance(selected, int) and not isinstance(selected, bool)
-                        else None
-                    ),
-                )
+            return ()
+        identities.append(
+            RebuildIdentity(
+                event_id=event_id,
+                revision=revision,
+                day_index=day_index,
+                source_hash=source_hash,
+                selected_option_index=selected,
             )
+        )
+    days = [identity.day_index for identity in identities]
+    keys = [identity.projection_key for identity in identities]
+    if len(days) != len(set(days)) or len(keys) != len(set(keys)):
+        return ()
     return tuple(sorted(identities, key=lambda item: item.day_index))
+
+
+def _lock_game(db: Any, game_id: int) -> None:
+    if db.get_bind().dialect.name == "sqlite":
+        updated = db.execute(
+            text("UPDATE games SET updated_at = updated_at WHERE game_id = :game_id"),
+            {"game_id": game_id},
+        )
+        if updated.rowcount != 1:
+            raise ValueError("game_not_found")
+        return
+    if (
+        db.query(Game).filter(Game.game_id == game_id).with_for_update().one_or_none()
+        is None
+    ):
+        raise ValueError("game_not_found")
