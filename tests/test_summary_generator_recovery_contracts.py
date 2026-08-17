@@ -7,6 +7,9 @@ import pytest
 from src.ai.summary_generator import SummaryGenerator
 from src.game.world_projection_schema import WorldProjectionExtractionError
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class _DeterministicSummaryClient:
     def __init__(self, responses: list[str]):

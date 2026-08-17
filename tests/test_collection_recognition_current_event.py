@@ -1,6 +1,10 @@
 """Collection recognition history tests."""
 
 from types import SimpleNamespace
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_entity_recognition_history_includes_current_unresolved_event() -> None:

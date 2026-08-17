@@ -22,6 +22,9 @@ from src.api.session_store import session_store
 from src.database.models import Game, GameState, SessionLocal, User, init_db
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.integration]
+
+
 
 def _create_owned_game() -> tuple[int, int]:
     init_db()

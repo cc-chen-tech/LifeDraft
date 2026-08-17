@@ -5,6 +5,10 @@ Layer 3: 契约测试 — 字段注入/恢复契约。
 """
 
 from typing import Any, Dict
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestNarrativeStyleIdRestoration:

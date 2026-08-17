@@ -8,6 +8,10 @@ from src.database.models import GeneratedVoiceAsset, SessionLocal, User, VoiceRe
 from src.services.story_tts_provider import DeterministicTTSProvider
 from src.services.story_voice_reading import StoryVoiceReadingService, normalize_text_hash
 from src.services.story_voice_repository import StoryVoiceReadingRepository
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _request(text: str) -> StoryVoiceReadingRequest:

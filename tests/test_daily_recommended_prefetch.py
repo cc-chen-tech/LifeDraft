@@ -46,6 +46,9 @@ from src.services.story_voice_reading import (
 )
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _state() -> PlayerState:
     return PlayerState(

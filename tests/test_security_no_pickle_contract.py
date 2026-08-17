@@ -5,6 +5,10 @@ Layer 3: 契约测试 — pickle 可导致任意代码执行，必须禁止。
 """
 
 from pathlib import Path
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestNoPickleContract:

@@ -6,6 +6,10 @@ from src.api.services.session_service import SessionService
 from src.database.models import Game, SceneImage
 from src.game.state import PlayerState
 from src.services.image_storage import ImageStorageService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class RecordingSessionService(SessionService):

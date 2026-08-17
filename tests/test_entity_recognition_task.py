@@ -11,6 +11,9 @@ from src.services.entity_recognition_task import (EntityRecognitionTask,
                                                   TaskStatus, get_task_manager,
                                                   reset_task_manager)
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestEntityRecognitionTask:
     """测试 EntityRecognitionTask 类"""

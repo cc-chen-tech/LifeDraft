@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from src.database.models import Game, Image
 from src.services.image.scene_service import SceneImageService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _RecordingImageClient:

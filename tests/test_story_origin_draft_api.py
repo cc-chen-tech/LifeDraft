@@ -12,6 +12,9 @@ from src.api.main import app
 from src.api.routers import games as games_router
 from src.database.models import Base, Game, GameState, User
 
+pytestmark = [pytest.mark.api]
+
+
 
 def _origin(revision=1, start_date="0960-01-01", age=20):
     return {

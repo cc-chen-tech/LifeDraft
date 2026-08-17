@@ -11,6 +11,9 @@ import re
 
 import pytest
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestSSERetryMechanismContract:
     """验证前端 SSE 流具备 502/504 重试机制。"""

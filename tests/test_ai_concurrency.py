@@ -3,6 +3,10 @@
 import asyncio
 import threading
 import time
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.slow]
+
 
 
 class TestAIConcurrencyControl:

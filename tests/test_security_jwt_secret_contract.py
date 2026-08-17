@@ -7,6 +7,10 @@ Layer 3: 契约测试 — 生产代码不能有硬编码的 fallback secret。
 import ast
 import os
 from pathlib import Path
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 # ★ 必须在导入 src.api.deps 之前设置环境变量，因为模块导入时会验证
 os.environ.setdefault("JWT_SECRET", "test-secret-for-contract-tests")

@@ -3,6 +3,10 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
+import pytest
+
+pytestmark = [pytest.mark.e2e]
+
 
 
 ROOT = Path(__file__).resolve().parents[1]

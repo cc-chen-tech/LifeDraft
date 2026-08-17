@@ -3,6 +3,10 @@
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 
 class TestConstraintLevelPersistence:

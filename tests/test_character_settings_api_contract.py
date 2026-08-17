@@ -9,6 +9,10 @@ from fastapi.testclient import TestClient
 
 from src.api.main import app
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.api]
+
 
 
 client = TestClient(app)

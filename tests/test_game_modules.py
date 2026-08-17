@@ -15,6 +15,9 @@ from src.game.story_service import StoryService
 from src.game.weekly_summary import WeeklySummaryGenerator
 from src.game.yearly_summary import YearlySummaryGenerator
 
+pytestmark = [pytest.mark.unit]
+
+
 # ==================== Achievement Tests ====================
 
 

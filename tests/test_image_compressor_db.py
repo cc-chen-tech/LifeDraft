@@ -10,6 +10,9 @@ from PIL import Image
 
 from src.utils.image_compressor import compress_image
 
+pytestmark = [pytest.mark.integration]
+
+
 
 def _create_test_image(mode="RGB", size=(100, 100), format="PNG"):
     """Create a test image in memory."""

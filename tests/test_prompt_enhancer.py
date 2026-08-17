@@ -10,6 +10,10 @@ from datetime import datetime
 from src.services.image.prompt_enhancer import (EnhancementRule,
                                                 PromptEnhancer, PromptFeedback,
                                                 prompt_enhancer)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestPromptFeedback:

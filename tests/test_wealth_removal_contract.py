@@ -15,6 +15,9 @@ from src.game.life_review import LifeReviewGenerator
 from src.game.state import PlayerState
 from src.game.weekly_summary import WeeklySummaryGenerator
 
+pytestmark = [pytest.mark.unit]
+
+
 LEGACY_KEYS = {"wealth", "wealth_ledger", "_active_wealth_transaction_id"}
 
 

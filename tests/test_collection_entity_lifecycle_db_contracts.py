@@ -14,6 +14,9 @@ from src.services.collection_service import (
     PermissionDeniedError,
 )
 
+pytestmark = [pytest.mark.integration]
+
+
 
 def _session() -> Session:
     engine = create_engine("sqlite://")

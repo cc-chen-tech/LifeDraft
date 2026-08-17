@@ -1,6 +1,10 @@
 """Focused feature-flag contracts for newly introduced gates."""
 
 from config.feature_flags import get_feature, reset_features, set_feature
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_daily_world_projection_flag_defaults_off_and_can_be_enabled() -> None:

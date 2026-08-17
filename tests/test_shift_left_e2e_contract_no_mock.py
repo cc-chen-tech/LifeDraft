@@ -5,6 +5,10 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import pytest
+
+pytestmark = [pytest.mark.e2e]
+
 
 
 ROOT = Path(__file__).resolve().parents[1]

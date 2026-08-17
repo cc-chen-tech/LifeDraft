@@ -1,4 +1,8 @@
 """Era Validator Production Contract Tests
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 验证时代一致性验证器在生产环境中的正确行为。
 Layer 3: 契约测试 — 验证器必须正确识别古代背景、不误报、能检测真实错位。

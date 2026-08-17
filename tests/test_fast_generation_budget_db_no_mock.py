@@ -4,6 +4,10 @@ from uuid import uuid4
 
 from src.database.db import GameDatabase
 from src.database.models import SessionLocal, User, init_db
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 
 def test_fast_constraint_level_survives_real_database_save_read() -> None:

@@ -11,6 +11,9 @@ from src.api.services.event_generation_operation import (
     EventGenerationKey,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestEventGenerationCoordinator:
     """One operation key has one producer and any number of subscribers."""

@@ -10,6 +10,9 @@ from src.game.achievements import Achievement, AchievementEngine
 from src.game.life_review import LifeReviewGenerator
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.integration]
+
+
 
 class TestAchievementPersistence:
     """测试成就数据的数据库持久化"""

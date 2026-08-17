@@ -8,6 +8,10 @@ Or run directly:
 """
 
 from unittest.mock import MagicMock
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_regenerate_uses_backend_story():

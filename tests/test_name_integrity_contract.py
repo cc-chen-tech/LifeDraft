@@ -5,6 +5,10 @@ Layer 3: 契约测试 — 玩家名称从输入到 prompt 必须完全一致。
 """
 
 from config.prompts import get_result_generation_prompt, get_story_only_prompt
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestNameIntegrityContract:

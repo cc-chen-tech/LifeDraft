@@ -4,6 +4,10 @@ from uuid import uuid4
 
 from src.database.models import Game, SessionLocal, User, init_db
 from src.database.session_repository import SessionRepository
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 
 def test_cross_user_active_game_pointer_is_rejected_and_cleared_durably() -> None:

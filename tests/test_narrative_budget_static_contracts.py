@@ -11,6 +11,10 @@ from config.prompts.story_prompts import (get_event_generation_prompt,
                                           get_result_generation_prompt,
                                           get_story_only_prompt)
 from src.ai.narrative.style_manifest import StyleLoader
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CRITICAL_PROVIDER_FILES = (

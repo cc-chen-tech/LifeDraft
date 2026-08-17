@@ -5,6 +5,10 @@
 
 from src.services.image.style_manager import (ColorPalette, MoodType,
                                               SceneStyleManager, style_manager)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestMoodType:

@@ -10,6 +10,9 @@ from src.game.round.character_introduction import CharacterIntroductionService
 from src.game.round.event_generator import RoundEventGenerator
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _pending_character(name: str = "玄奘") -> dict:
     return {

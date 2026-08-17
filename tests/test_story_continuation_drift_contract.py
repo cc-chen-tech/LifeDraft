@@ -4,6 +4,10 @@ from typing import Any
 
 from src.game.story_service import StoryService
 from src.ai.story_rewriter import StoryRewriter
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _modern_product_manager_settings() -> dict[str, Any]:

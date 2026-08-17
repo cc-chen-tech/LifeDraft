@@ -12,6 +12,10 @@ from src.database.models import Game, GameState
 from src.database.models import Image as ImageModel
 from src.services.image_service import ImageService
 from src.services.image_storage import ImageStorageService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _service(db_session, storage_root: Path) -> ImageService:

@@ -8,6 +8,10 @@ from src.ai.narrative.style_manifest import (
     TechniqueConfig,
 )
 from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _complete_style() -> StyleManifest:

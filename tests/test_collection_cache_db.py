@@ -12,6 +12,9 @@ from sqlalchemy.orm import sessionmaker
 from src.api.services.session_service import SessionService
 from src.database.models import Base, User
 
+pytestmark = [pytest.mark.integration]
+
+
 
 @pytest.fixture(scope="module")
 def db_session():

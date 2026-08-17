@@ -8,6 +8,9 @@ from fastapi.testclient import TestClient
 from src.api.main import app
 from src.game.character_creation import CharacterCreator
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class DeterministicOriginGenerator:
     def __init__(self, results: List[Dict[str, Any]]) -> None:

@@ -5,6 +5,9 @@ Tests that all new module paths are reachable and export expected symbols.
 
 import pytest
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestDirectImports:
     """Test that each new module can be directly imported."""

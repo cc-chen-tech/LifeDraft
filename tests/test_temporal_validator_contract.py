@@ -6,6 +6,10 @@ No mocks. Pure logic tests for time consistency validation.
 from src.ai.harness.temporal_validator import (TemporalConsistencyValidator,
                                                _chinese_to_int,
                                                validate_temporal_consistency)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestChineseToIntContract:

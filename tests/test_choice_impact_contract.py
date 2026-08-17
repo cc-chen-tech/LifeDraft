@@ -5,6 +5,10 @@ Layer 3: 契约测试 — 结果生成提示词必须要求选择产生独特影
 """
 
 from config.prompts import get_result_generation_prompt
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestChoiceImpactContract:

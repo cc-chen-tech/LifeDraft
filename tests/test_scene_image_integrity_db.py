@@ -12,6 +12,9 @@ from sqlalchemy.exc import IntegrityError
 from src.database.models import SceneImage
 from src.services.image.scene_service import SceneImageService
 
+pytestmark = [pytest.mark.integration]
+
+
 
 class TestSceneImageIntegrityDb:
     """SceneImage 并发写入完整性测试。"""

@@ -15,6 +15,9 @@ from sqlalchemy.exc import IntegrityError
 from src.database.models import SceneImage
 from src.services.image.scene_service import SceneImageService
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestSceneImageIntegrityNarrowContract:
     """IntegrityError 捕获范围契约测试。"""

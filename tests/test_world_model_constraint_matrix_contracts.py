@@ -10,6 +10,10 @@ from src.game.world_model import (
     PhysicalState,
     WorldModel,
 )
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _populated_world_model() -> WorldModel:

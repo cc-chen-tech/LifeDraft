@@ -7,6 +7,9 @@ import pytest
 
 from src.ai.models import EventOption, GameEvent
 
+pytestmark = [pytest.mark.unit]
+
+
 pytestmark = pytest.mark.usefixtures("constraint_harness_disabled")
 
 # ==================== OptionGenerator Tests ====================

@@ -15,6 +15,9 @@ from src.game.daily_timeline import build_daily_timeline
 from src.game.state import PlayerState
 from src.services.daily_world_projection import DailyWorldProjectionService
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _event(revision: int = 1) -> GameEvent:
     return GameEvent(

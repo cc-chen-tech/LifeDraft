@@ -13,6 +13,9 @@ from src.api.routers.gameplay.sse_helpers import (
     return_sse_error,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class RecordingSession:
     def __init__(self):

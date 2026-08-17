@@ -1,4 +1,8 @@
 """Import validation for all narrative system lazy imports.
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 These modules are imported lazily inside StoryGenerator._init_narrative_systems().
 If any import path breaks, the system silently fails at runtime.

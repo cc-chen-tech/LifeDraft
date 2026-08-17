@@ -12,6 +12,9 @@ from src.game.state import PlayerState
 from src.services.collection_service import CollectionService, EntityNotFoundError
 from src.services.image_storage import ImageStorageService
 
+pytestmark = [pytest.mark.integration]
+
+
 
 def _image(game_id, image_type, entity_name, path, active, created_at):
     return Image(game_id=game_id, image_type=image_type, entity_name=entity_name, prompt_text="test", storage_path=path, storage_type="local", is_active=active, created_at=created_at)

@@ -3,6 +3,10 @@
 from src.database.models import Game, GameState, SessionLocal, User
 from src.database.save_point_repository import SavePointRepository
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 
 def _owned_game(player_name: str) -> tuple[int, int, int]:

@@ -10,6 +10,9 @@ import pytest
 from src.services.image_service import (ImageContentError, ImageService,
                                         ImageServiceError)
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class MockImageClient:
     """Mock ImageClient"""

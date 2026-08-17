@@ -9,6 +9,9 @@ import pytest
 
 from src.ai.model_fallback import FallbackChain, ModelFallbackConfig
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class FakeAIClient:
     """Stub AIClient for testing fallback chains."""

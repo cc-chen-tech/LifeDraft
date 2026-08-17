@@ -7,6 +7,10 @@ from src.ai.models import EventOption
 from src.ai.models import GameEvent
 from src.game.game_loop import GameLoop
 from src.game.round.event_generator import RoundEventGenerator
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.slow]
+
 
 
 def test_loaded_current_event_survives_round_service_initialization() -> None:

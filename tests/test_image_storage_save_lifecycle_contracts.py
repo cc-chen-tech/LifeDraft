@@ -3,6 +3,10 @@
 from pathlib import Path
 
 from src.services.image_storage import ImageStorageService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_round_scene_save_preserves_bytes_and_encodes_visible_time_coordinates(

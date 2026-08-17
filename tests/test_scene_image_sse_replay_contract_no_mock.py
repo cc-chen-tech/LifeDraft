@@ -16,6 +16,10 @@ from src.api.main import app
 from src.api.routers.images import (_get_event_key, _publish_scene_image_event,
                                     _scene_image_latest)
 from src.database.models import Game, SessionLocal, User, init_db
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _event(

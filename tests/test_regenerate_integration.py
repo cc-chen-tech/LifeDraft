@@ -8,6 +8,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+pytestmark = [pytest.mark.integration]
+
+
 
 class TestRegenerateIntegration:
     """Integration test for regenerate functionality."""

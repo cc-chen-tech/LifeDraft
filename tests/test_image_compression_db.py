@@ -6,6 +6,10 @@ import os
 from PIL import Image
 
 from src.services.image_storage import ImageStorageService
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 
 class TestImageCompressionDB:

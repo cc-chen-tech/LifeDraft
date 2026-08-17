@@ -5,6 +5,10 @@ specialized round services and exposes the expected interface.
 """
 
 from src.game.round.system_mixin import RoundSystemMixin
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 # ---------------------------------------------------------------------------
 # Concrete class that mixes in RoundSystemMixin

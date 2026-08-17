@@ -2,6 +2,10 @@
 
 import json
 from unittest.mock import Mock
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 # ==================== assign_sexual_orientation Tests ====================
 

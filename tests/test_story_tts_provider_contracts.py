@@ -13,6 +13,9 @@ from src.services.story_tts_provider import (
     read_generated_voice_file,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def test_unavailable_provider_cannot_synthesize() -> None:
     provider = UnavailableTTSProvider()

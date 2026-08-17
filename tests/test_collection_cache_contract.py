@@ -1,4 +1,8 @@
 """契约测试：收集面板缓存机制。"""
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_collection_store_has_cache_mechanism():

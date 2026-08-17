@@ -15,6 +15,9 @@ from src.services.daily_world_projection_repair import (
     scan_game_state,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _empty_world_patch() -> dict[str, list[object]]:
     return {

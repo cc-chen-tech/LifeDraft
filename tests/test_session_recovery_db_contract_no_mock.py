@@ -13,6 +13,9 @@ from src.database.models import Game, GameState, SessionLocal, User, init_db
 from src.database.state_repository import StateRepository
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.integration]
+
+
 
 def _state(*, player_name: str, life_vision: str, week: int, round_number: int) -> dict:
     state = PlayerState(

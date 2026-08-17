@@ -10,6 +10,9 @@ import requests
 from src.ai.image_exceptions import ImageProviderError
 from src.ai.image_generator import ImageGenerator
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class FakeResponse:
     text = ""

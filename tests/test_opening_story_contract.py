@@ -14,6 +14,10 @@ from fastapi.testclient import TestClient
 from src.api.main import app
 from src.api.routers.character import _build_opening_story_cache_key
 from src.api.schemas import OpeningStoryRequest
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.slow]
+
 
 client = TestClient(app)
 

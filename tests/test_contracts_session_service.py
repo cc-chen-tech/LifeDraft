@@ -2,6 +2,10 @@ from unittest.mock import MagicMock, patch
 from types import SimpleNamespace
 
 from src.api.services.session_service import SessionService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _FakeQuery:

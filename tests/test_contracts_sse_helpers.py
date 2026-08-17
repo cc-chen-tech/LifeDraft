@@ -2,6 +2,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from src.api.routers.gameplay.sse_helpers import _prefetch_options
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 import pytest
 

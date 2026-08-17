@@ -9,6 +9,9 @@ from src.api.routers import images
 from src.api.schemas import GenerateImageRequest
 from src.database.models import Game, User
 
+pytestmark = [pytest.mark.api]
+
+
 
 def _request(game_id: int) -> GenerateImageRequest:
     return GenerateImageRequest(

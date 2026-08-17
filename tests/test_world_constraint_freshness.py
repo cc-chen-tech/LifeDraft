@@ -5,6 +5,10 @@ from src.game.world_constraint_freshness import (
     derive_legacy_freshness,
 )
 from src.ai.story_generator import StoryGenerator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _empty_world_patch() -> dict:

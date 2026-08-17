@@ -4,6 +4,10 @@ import json
 
 from src.ai.client import AIClient
 from src.ai.system_prompts import get_system_prompt
+import pytest
+
+pytestmark = [pytest.mark.e2e]
+
 
 
 def test_e2e_provider_returns_story_and_options_without_openai_client(

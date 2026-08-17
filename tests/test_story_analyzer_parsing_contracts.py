@@ -3,6 +3,10 @@
 import json
 
 from src.ai.story_analyzer import DynamicFact, StoryAnalyzer
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_analysis_parser_deduplicates_new_fact_ids_and_preserves_provenance() -> None:

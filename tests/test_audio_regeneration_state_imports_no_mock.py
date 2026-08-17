@@ -1,4 +1,8 @@
 """Import reachability for audio regeneration state paths."""
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_audio_regeneration_backend_paths_are_reachable() -> None:

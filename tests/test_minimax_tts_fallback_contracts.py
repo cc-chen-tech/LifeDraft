@@ -10,6 +10,9 @@ from src.services.minimax_config import MiniMaxConfig
 from src.services.minimax_story_tts_provider import MiniMaxAsyncTTSClient, MiniMaxTTSProvider
 from src.services.story_tts_provider import TTSProviderUnavailableError, build_deterministic_wav
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _config(tmp_path: Path, env: dict[str, str]) -> MiniMaxConfig:
     return MiniMaxConfig.from_env(

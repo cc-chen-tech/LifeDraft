@@ -8,6 +8,9 @@ import pytest
 from src.ai.narrative.style_matcher import (StyleMatcher, StyleMatchResult,
                                             auto_match_style)
 
+pytestmark = [pytest.mark.unit]
+
+
 # ==================== Fixtures ====================
 
 

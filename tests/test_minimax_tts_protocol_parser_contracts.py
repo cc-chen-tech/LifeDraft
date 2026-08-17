@@ -21,6 +21,9 @@ from src.services.minimax_story_tts_provider import (
 )
 from src.services.story_tts_provider import ParagraphCue
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _tar_bytes(member_name: str, data: bytes) -> bytes:
     stream = BytesIO()

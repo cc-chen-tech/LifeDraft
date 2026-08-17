@@ -1,6 +1,10 @@
 """Story continuation prompt contract tests."""
 
 from config.prompts.story_prompts import get_result_generation_prompt
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_chinese_choice_continuation_prompt_requires_third_person():

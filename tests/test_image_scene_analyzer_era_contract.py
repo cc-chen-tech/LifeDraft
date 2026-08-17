@@ -5,6 +5,10 @@ from types import SimpleNamespace
 import openai
 
 from src.ai.image_prompt_builder import DeepSeekPromptEnhancer
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _FakeChatCompletions:

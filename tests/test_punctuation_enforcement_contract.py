@@ -7,6 +7,10 @@ Layer 3: 契约测试 — prompt 输出必须包含标点使用规范要求。
 from config.prompts import (get_event_generation_prompt,
                             get_result_generation_prompt,
                             get_round_event_prompt, get_story_only_prompt)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestPunctuationEnforcementInPrompts:

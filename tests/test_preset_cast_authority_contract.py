@@ -23,6 +23,9 @@ from src.ai.story_exceptions import (
 from src.game.round.event_generator import RoundEventGenerator
 from src.game.world_model import WorldModel
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _modern_product_manager_settings() -> dict[str, Any]:
     return {

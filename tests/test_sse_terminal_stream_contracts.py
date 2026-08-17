@@ -14,6 +14,9 @@ from src.api.services.event_generation_operation import (
     EventGenerationKey,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class _Event:
     def __init__(self, payload):

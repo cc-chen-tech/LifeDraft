@@ -8,6 +8,10 @@ from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 from src.api.routers.gameplay import sse_helpers
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestSSEThreadPoolLifecycle:

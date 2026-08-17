@@ -7,6 +7,9 @@ import pytest
 from src.ai.story_exceptions import StoryContinuationFailure
 from src.game.story_service import StoryService
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class _RecordingStoryProvider:
     def __init__(self, json_results: list[Any] | None = None):

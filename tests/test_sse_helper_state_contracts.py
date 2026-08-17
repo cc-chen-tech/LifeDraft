@@ -8,6 +8,10 @@ from src.api.routers.gameplay.sse_helpers import (
     make_sse_event,
 )
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _CacheSession:

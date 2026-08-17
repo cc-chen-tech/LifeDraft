@@ -1,6 +1,10 @@
 """Preset compatibility contracts for canonical story origins."""
 
 from src.game.story_origin import normalize_preset_story_origin
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_legacy_preset_prefers_legal_start_date_and_marks_era_conflict():

@@ -5,6 +5,9 @@ import pytest  # noqa: F401
 from src.ai.quick_validator import (QuickValidationResult, QuickValidator,
                                     quick_validate_story)
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestQuickValidator:
     """Test QuickValidator class."""

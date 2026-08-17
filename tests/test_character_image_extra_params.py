@@ -1,4 +1,8 @@
 """Character image generation extra_params propagation tests.
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 验证 generate_character_images() 正确传递 extra_params 到底层 API 调用。
 """

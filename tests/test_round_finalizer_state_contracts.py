@@ -5,6 +5,10 @@ from typing import Any
 
 from src.game.round.finalizer import RoundFinalizer
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _SummaryGenerator:

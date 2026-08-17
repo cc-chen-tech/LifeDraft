@@ -10,6 +10,10 @@ from config.prompts import (
     get_story_only_prompt,
 )
 from src.ai.story_generator import StoryGenerator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestPlayerNameInPrompts:

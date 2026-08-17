@@ -2,6 +2,10 @@
 
 from src.game.round.choice_processor import RoundChoiceProcessor
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class RecordingEffectsService:

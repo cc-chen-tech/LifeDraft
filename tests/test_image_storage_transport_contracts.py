@@ -6,6 +6,10 @@ from io import BytesIO
 from pathlib import Path
 
 from src.services.image_storage import ImageStorageService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _ObjectClient:

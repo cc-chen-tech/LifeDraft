@@ -4,6 +4,10 @@
 """
 
 from src.database.models import SceneImage
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestSceneImageConstraintContract:

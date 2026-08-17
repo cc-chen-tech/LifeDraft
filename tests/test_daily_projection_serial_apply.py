@@ -32,6 +32,9 @@ from src.services.daily_world_projection_repository import (
     DailyWorldProjectionRepository,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _record(day: int, *, status: str = "pending") -> dict:
     story = f"第 {day} 天，孙悟空从花果山前往第 {day} 号地点。"

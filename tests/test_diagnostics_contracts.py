@@ -2,6 +2,10 @@
 
 from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
 from src.ai.harness.validation_pipeline import ConstraintCheckResult, ValidationResult
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_unknown_person_failure_has_evidence_and_critical_fix():

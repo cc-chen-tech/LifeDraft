@@ -1,4 +1,8 @@
 """契约测试：故事风格 API 端点和前端 UI。"""
+import pytest
+
+pytestmark = [pytest.mark.api]
+
 
 
 def test_games_router_has_narrative_style_list_endpoint():

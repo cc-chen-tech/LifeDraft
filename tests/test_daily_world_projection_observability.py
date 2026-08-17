@@ -29,6 +29,9 @@ from src.services.daily_world_projection_observability import (
 )
 from scripts.world_projection_status import run as run_status
 
+pytestmark = [pytest.mark.unit]
+
+
 
 NOW = datetime(2026, 8, 17, 10, 0, tzinfo=timezone.utc)
 

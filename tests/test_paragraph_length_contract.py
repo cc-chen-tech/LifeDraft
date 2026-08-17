@@ -5,6 +5,10 @@ Layer 3: 契约测试 — 提示词必须要求合理分段。
 """
 
 from config.prompts import get_event_generation_prompt
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestParagraphLengthContract:

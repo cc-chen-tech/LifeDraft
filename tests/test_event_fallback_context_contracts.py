@@ -3,6 +3,10 @@
 from typing import Any
 
 from src.game.round.event_generator import RoundEventGenerator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _PlayerState:

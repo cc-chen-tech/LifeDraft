@@ -7,6 +7,10 @@ from src.game.relationship_events import (EventCategory, RelationshipEventDef,
                                           get_all_event_types,
                                           get_event_by_type,
                                           get_events_by_category)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestRelationshipEventsContract:

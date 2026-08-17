@@ -6,6 +6,10 @@
 
 import inspect
 from typing import get_type_hints
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 # ============================================================
 # 模型降级契约

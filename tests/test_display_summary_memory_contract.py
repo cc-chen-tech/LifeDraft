@@ -8,6 +8,9 @@ from src.ai.summary_generator import SummaryGenerator, compact_display_summary
 from src.game.game_loop import GameLoop
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.unit]
+
+
 
 @pytest.mark.parametrize(
     ("kind", "language", "target_min", "target_max", "unit"),

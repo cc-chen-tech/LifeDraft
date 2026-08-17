@@ -13,6 +13,9 @@ import pytest
 from src.ai.image_exceptions import ImageProviderError
 from src.ai.image_generator import ImageGenerator
 
+pytestmark = [pytest.mark.unit]
+
+
 
 PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"

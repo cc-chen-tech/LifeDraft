@@ -1,6 +1,10 @@
 """No-provider contracts for deterministic image prompt fallbacks."""
 
 from src.ai.image_prompt_builder import DeepSeekPromptEnhancer, ImagePromptBuilder
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_era_sanitization_falls_back_when_only_scifi_visual_cues_remain() -> None:

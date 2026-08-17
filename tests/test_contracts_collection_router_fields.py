@@ -3,6 +3,10 @@ from typing import Any
 from src.api.schemas import CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem
 from src.game.state import PlayerState
 from src.services.collection_service import CollectionService
+import pytest
+
+pytestmark = [pytest.mark.api]
+
 
 
 class _EmptyQuery:

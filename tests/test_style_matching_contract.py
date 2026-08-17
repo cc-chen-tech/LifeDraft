@@ -5,6 +5,10 @@ Layer 3: 契约测试 — 不同角色设定应匹配到不同叙事风格。
 """
 
 from src.ai.narrative.style_matcher import auto_match_style
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestStyleMatchingContract:

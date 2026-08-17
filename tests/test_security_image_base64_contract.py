@@ -7,6 +7,10 @@ Layer 3: 契约测试 — 图片响应必须包含正确的 Content-Type 头。
 from fastapi.testclient import TestClient
 
 from src.api.main import app
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 client = TestClient(app)
 

@@ -1,4 +1,8 @@
 """Import reachability for life-summary grounding production paths."""
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_life_summary_grounding_paths_are_reachable() -> None:

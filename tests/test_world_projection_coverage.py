@@ -9,6 +9,9 @@ import pytest
 import src.game.world_projection_coverage as world_projection_coverage
 from src.game.world_projection_coverage import detect_world_change_signals
 
+pytestmark = [pytest.mark.unit, pytest.mark.slow]
+
+
 
 def test_detects_tracked_movement_commitment_and_causal_signals() -> None:
     signals = detect_world_change_signals(

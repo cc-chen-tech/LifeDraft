@@ -6,6 +6,10 @@
 
 from src.database.models import Game, GameState, Image, SceneImage, User
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestGameModelContract:

@@ -4,6 +4,10 @@ No mocks. Pure logic tests for emotion detection.
 """
 
 from src.ai.creative.emotional_arc import EmotionalArcAnalyzer
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestEmotionalArcAnalyzerContract:

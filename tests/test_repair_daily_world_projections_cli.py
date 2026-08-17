@@ -41,6 +41,9 @@ from src.services.daily_world_projection_repair import (
     verify_repair_invariants,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class WakeRecorder:
     def __init__(self) -> None:

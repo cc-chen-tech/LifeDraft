@@ -6,6 +6,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.slow]
+
+
 
 class TestThreadPoolManagement:
     """线程池管理测试"""

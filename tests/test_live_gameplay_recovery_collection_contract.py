@@ -7,6 +7,9 @@ import pytest
 from config.prompts.character_prompts import get_opening_story_prompt
 from src.services.entity_recognition_service import EntityRecognitionService
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class _FakeAIClient:
     def __init__(self, response: str) -> None:
