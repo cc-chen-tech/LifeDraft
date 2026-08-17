@@ -8,57 +8,79 @@
   },
   "day_history": [
     {
+      "event_id": "sanitized-journey-0",
+      "revision": 1,
       "day_index": 0,
-      "event_id": "sanitized-accepted-day-0",
-      "revision": 1,
-      "accepted": true,
+      "story_date": "2026-08-13",
       "event_description": "旅行者整理行装，准备前往海港。",
-      "options": [{"text": "继续前进"}],
+      "options": [
+        {"text": "沿海岸前进", "effects": {}},
+        {"text": "检查补给", "effects": {}}
+      ],
       "choice_option_index": 0,
+      "choice": "沿海岸前进",
       "postprocessing_status": "complete",
       "postprocessing": {"world": {"fact_updates": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": [], "foreshadowing_seeds": []}}
     },
     {
+      "event_id": "sanitized-journey-1",
+      "revision": 1,
       "day_index": 1,
-      "event_id": "sanitized-accepted-day-1",
-      "revision": 1,
-      "accepted": true,
+      "story_date": "2026-08-14",
       "event_description": "旅行者沿着海岸继续前进。",
-      "options": [{"text": "保持路线"}],
-      "choice_option_index": 0,
+      "options": [
+        {"text": "保持路线", "effects": {}},
+        {"text": "短暂停留", "effects": {}},
+        {"text": "询问潮汐", "effects": {}}
+      ],
+      "choice_option_index": 2,
+      "choice": "询问潮汐",
       "postprocessing_status": "complete",
       "postprocessing": {"world": {"fact_updates": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": [], "foreshadowing_seeds": []}}
     },
     {
+      "event_id": "sanitized-journey-2",
+      "revision": 2,
       "day_index": 2,
-      "event_id": "sanitized-accepted-day-2",
-      "revision": 1,
-      "accepted": true,
+      "story_date": "2026-08-15",
       "event_description": "旅行者与向导确认同行的约定。",
-      "options": [{"text": "按约启程"}],
+      "options": [
+        {"text": "按约启程", "effects": {}},
+        {"text": "重新约定时间", "effects": {}}
+      ],
       "choice_option_index": 0,
+      "choice": "按约启程",
       "postprocessing_status": "complete",
       "postprocessing": {"world": {"fact_updates": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": [], "foreshadowing_seeds": []}}
     },
     {
+      "event_id": "sanitized-journey-3",
+      "revision": 1,
       "day_index": 3,
-      "event_id": "sanitized-accepted-day-3",
-      "revision": 1,
-      "accepted": true,
+      "story_date": "2026-08-16",
       "event_description": "旅行者继续向海港赶路。",
-      "options": [{"text": "不改变计划"}],
-      "choice_option_index": 0,
+      "options": [
+        {"text": "不改变计划", "effects": {}},
+        {"text": "绕开浅滩", "effects": {}}
+      ],
+      "choice_option_index": 1,
+      "choice": "绕开浅滩",
       "postprocessing_status": "complete",
       "postprocessing": {"world": {"fact_updates": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": [], "foreshadowing_seeds": []}}
     },
     {
+      "event_id": "sanitized-journey-4",
+      "revision": 3,
       "day_index": 4,
-      "event_id": "sanitized-accepted-day-4",
-      "revision": 1,
-      "accepted": true,
+      "story_date": "2026-08-17",
       "event_description": "旅行者抵达海港，完成了与向导同行的约定。",
-      "options": [{"text": "继续旅程"}],
-      "choice_option_index": 0,
+      "options": [
+        {"text": "继续旅程", "effects": {}},
+        {"text": "在港口休整", "effects": {}},
+        {"text": "记录约定完成", "effects": {}}
+      ],
+      "choice_option_index": 2,
+      "choice": "记录约定完成",
       "postprocessing_status": "complete",
       "postprocessing": {"world": {"fact_updates": [], "habit_updates": [], "location_updates": [], "career_updates": [], "commitment_updates": [], "causal_updates": [], "foreshadowing_seeds": []}}
     }
