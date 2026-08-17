@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from io import StringIO
+from pathlib import Path
 from typing import Any, Iterator
 
 import pytest
@@ -159,7 +164,7 @@ def test_health_snapshot_reports_exact_read_only_aggregates(db_session) -> None:
         "suspicious_empty_count": 2,
         "suspicious_empty_rate": pytest.approx(2 / 42),
         "ready_no_change_count": 1,
-        "fenced_late_writes": 2,
+        "fenced_late_writes": 1,
         "superseded_rows": 1,
         "incomplete_repair_audits": 2,
         "latest_completed_repair_audit_id": completed.audit_id,
@@ -254,7 +259,7 @@ def test_alerts_are_thresholded_redacted_and_rate_limited(db_session) -> None:
         _attempt(
             db_session,
             pending,
-            outcome="source_superseded",
+            outcome="lease_lost",
             age=timedelta(minutes=5),
         )
     failed = _audit(db_session, game_id, "failed_invariant")
@@ -364,6 +369,51 @@ def test_status_cli_returns_nonzero_only_for_query_failure() -> None:
     assert "projection health query failed" in errors.getvalue()
 
 
+def test_status_cli_redacts_session_close_failure() -> None:
+    class CloseFailureSession:
+        def close(self) -> None:
+            raise RuntimeError("postgresql://operator:raw-password@database/prod")
+
+    class Snapshot:
+        def to_dict(self) -> dict[str, object]:
+            return {"oldest_pending_seconds": None}
+
+    output = StringIO()
+    errors = StringIO()
+
+    result = run_status(
+        ["--json"],
+        session_factory=CloseFailureSession,
+        summarizer=lambda _db, _now: Snapshot(),
+        now_fn=lambda: NOW,
+        stdout=output,
+        stderr=errors,
+    )
+
+    assert result == 1
+    assert output.getvalue() == ""
+    assert errors.getvalue() == "projection health query failed\n"
+
+
+def test_status_cli_redacts_malformed_database_url_without_traceback() -> None:
+    root = Path(__file__).resolve().parents[1]
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = "secret-driver://operator:raw-password@database/prod"
+
+    result = subprocess.run(
+        [sys.executable, "scripts/world_projection_status.py", "--json"],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == "projection health query failed\n"
+
+
 def test_service_health_interval_reuses_scanner_without_claim_mutation() -> None:
     from src.services.daily_world_projection import DailyWorldProjectionService
 
@@ -394,9 +444,18 @@ def test_service_health_interval_reuses_scanner_without_claim_mutation() -> None
         health_emitter=emitted.append,
     )
 
-    service._emit_health_if_due(NOW)
-    service._emit_health_if_due(NOW + timedelta(seconds=59))
-    service._emit_health_if_due(NOW + timedelta(seconds=60))
+    cancel = threading.Event()
+    service._started = True
+    service._generation = 1
+    service._cancel_event = cancel
+
+    service._emit_health_if_due(NOW, generation=1, cancel=cancel)
+    service._emit_health_if_due(
+        NOW + timedelta(seconds=59), generation=1, cancel=cancel
+    )
+    service._emit_health_if_due(
+        NOW + timedelta(seconds=60), generation=1, cancel=cancel
+    )
 
     assert snapshots == [NOW, NOW + timedelta(seconds=60)]
     assert emitted == snapshots

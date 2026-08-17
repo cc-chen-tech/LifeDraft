@@ -905,26 +905,41 @@ class DailyWorldProjectionService:
 
     def _scan_loop(self, generation: int, cancel: threading.Event) -> None:
         while self._active_generation(generation, cancel):
-            now = self.now_fn()
+            claim_now = self.now_fn()
             try:
-                self.run_once(now, _generation=generation, _cancel=cancel)
+                self.run_once(claim_now, _generation=generation, _cancel=cancel)
             except Exception:
                 logger.exception("daily world projection scan failed")
-            if self._active_generation(generation, cancel):
-                try:
-                    self._emit_health_if_due(now)
-                except Exception:
-                    logger.exception("daily world projection health query failed")
+            health_now = self.now_fn()
+            try:
+                self._emit_health_if_due(
+                    health_now, generation=generation, cancel=cancel
+                )
+            except Exception:
+                logger.exception("daily world projection health query failed")
             if cancel.is_set():
                 return
             self.wake_event.wait(self.scan_seconds)
             self.wake_event.clear()
 
-    def _emit_health_if_due(self, now: datetime) -> None:
+    def _emit_health_if_due(
+        self,
+        now: datetime,
+        *,
+        generation: int,
+        cancel: threading.Event,
+    ) -> None:
         """Read and emit health on the scanner thread after claims are dispatched."""
 
         db_now = self._as_utc_naive(now)
         with self._lock:
+            if (
+                not self._started
+                or generation != self._generation
+                or cancel is not self._cancel_event
+                or cancel.is_set()
+            ):
+                return
             previous = self._last_health_emitted_at
             if (
                 previous is not None

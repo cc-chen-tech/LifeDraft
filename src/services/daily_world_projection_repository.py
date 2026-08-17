@@ -368,7 +368,12 @@ class DailyWorldProjectionRepository:
             next_attempt_at,
             source_hash=source_hash,
         )
-        self._finish_attempt_update(attempt_id, outcome, error_code, now)
+        self._finish_attempt_update(
+            attempt_id,
+            outcome if retried else "lease_lost",
+            error_code if retried else "lease_lost",
+            now,
+        )
         return retried
 
     def release_lease_and_finish_attempt(
@@ -387,7 +392,12 @@ class DailyWorldProjectionRepository:
         released = self.release_lease(
             projection_id, worker_id, now, source_hash=source_hash
         )
-        self._finish_attempt_update(attempt_id, outcome, error_code, now)
+        self._finish_attempt_update(
+            attempt_id,
+            outcome if released else "lease_lost",
+            error_code if released else "lease_lost",
+            now,
+        )
         return released
 
     def mark_applied(

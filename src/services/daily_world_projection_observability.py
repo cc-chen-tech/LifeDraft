@@ -28,7 +28,7 @@ FENCED_LATE_WRITE_THRESHOLD = 5
 
 _PENDING_STATUSES = ("pending", "running", "failed_retryable")
 _COMPLETE_REPAIR_STATUSES = ("complete", "restored")
-_FENCED_LATE_WRITE_OUTCOMES = ("lease_lost", "source_superseded")
+_FENCED_LATE_WRITE_OUTCOMES = ("lease_lost",)
 
 
 def _as_utc_naive(value: datetime) -> datetime:

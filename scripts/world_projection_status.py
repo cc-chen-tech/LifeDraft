@@ -12,12 +12,6 @@ from typing import Any, Callable, Optional, Sequence, TextIO
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.database.models import SessionLocal
-from src.services.daily_world_projection_observability import (
-    summarize_projection_health,
-)
-
-
 EXIT_OK = 0
 EXIT_QUERY_ERROR = 1
 
@@ -35,7 +29,8 @@ def _parser() -> argparse.ArgumentParser:
 def run(
     argv: Optional[Sequence[str]] = None,
     *,
-    session_factory: Callable[[], Any] = SessionLocal,
+    session_factory: Optional[Callable[[], Any]] = None,
+    summarizer: Optional[Callable[[Any, datetime], Any]] = None,
     now_fn: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     stdout: Optional[TextIO] = None,
     stderr: Optional[TextIO] = None,
@@ -49,18 +44,36 @@ def run(
     except SystemExit as exc:
         return int(exc.code)
 
-    session = None
+    session: Optional[Any] = None
+    snapshot: Optional[Any] = None
+    failed = False
     try:
+        if session_factory is None:
+            from src.database.models import SessionLocal
+
+            session_factory = SessionLocal
+        if summarizer is None:
+            from src.services.daily_world_projection_observability import (
+                summarize_projection_health,
+            )
+
+            summarizer = summarize_projection_health
         session = session_factory()
-        snapshot = summarize_projection_health(session, now_fn())
+        snapshot = summarizer(session, now_fn())
     except Exception:
-        # Connection exceptions can contain deployment details; keep operator
-        # output actionable without echoing credentials or database URLs.
-        print("projection health query failed", file=stderr)
-        return EXIT_QUERY_ERROR
+        failed = True
     finally:
         if session is not None:
-            session.close()
+            try:
+                session.close()
+            except Exception:
+                failed = True
+
+    if failed or snapshot is None:
+        # Import, connection, query, and cleanup exceptions can contain deployment
+        # details; never echo their text, a URL, or a credential to the terminal.
+        print("projection health query failed", file=stderr)
+        return EXIT_QUERY_ERROR
 
     payload = snapshot.to_dict()
     if args.json:

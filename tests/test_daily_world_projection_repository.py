@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pytest
 from sqlalchemy import event
 
-from src.database.models import DailyWorldProjection
+from src.database.models import DailyWorldProjection, DailyWorldProjectionAttempt
 from src.services.daily_world_projection_repository import (
     DailyWorldProjectionRepository,
     ProjectionIdentity,
@@ -294,6 +294,85 @@ def test_attempt_ledger_counts_only_requested_window(db_session, frozen_now) -> 
         )
         == 1
     )
+
+
+def test_successful_retry_finalization_preserves_source_superseded_outcome(
+    db_session, frozen_now
+) -> None:
+    """A handled source replacement is not a rejected late write."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    task = repo.ensure_projection(identity(), source_hash="hash-a")
+    [claimed] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    attempt_id = repo.start_attempt(task.projection_id, task.game_id, frozen_now)
+
+    assert repo.mark_retryable_and_finish_attempt(
+        claimed.projection_id,
+        "worker-a",
+        "source_superseded",
+        frozen_now + timedelta(minutes=5),
+        source_hash=claimed.source_hash,
+        attempt_id=attempt_id,
+        outcome="source_superseded",
+        now=frozen_now,
+    )
+
+    attempt = db_session.get(DailyWorldProjectionAttempt, attempt_id)
+    assert (attempt.outcome, attempt.error_code) == (
+        "source_superseded",
+        "source_superseded",
+    )
+
+
+def test_fenced_retry_finalization_records_rejected_late_write(
+    db_session, frozen_now
+) -> None:
+    """A retry CAS rejected after supersede must become durable lease_lost."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    task = repo.ensure_projection(identity(), source_hash="hash-a")
+    [claimed] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    attempt_id = repo.start_attempt(task.projection_id, task.game_id, frozen_now)
+    assert repo.supersede(task.game_id, task.event_id, before_revision=2) == 1
+
+    assert not repo.mark_retryable_and_finish_attempt(
+        claimed.projection_id,
+        "worker-a",
+        "suspicious_empty",
+        frozen_now + timedelta(minutes=5),
+        source_hash=claimed.source_hash,
+        attempt_id=attempt_id,
+        outcome="extraction_error",
+        now=frozen_now,
+    )
+
+    attempt = db_session.get(DailyWorldProjectionAttempt, attempt_id)
+    assert (attempt.outcome, attempt.error_code) == ("lease_lost", "lease_lost")
+
+
+def test_fenced_cancel_finalization_records_rejected_late_write(
+    db_session, frozen_now
+) -> None:
+    """A cancel release rejected after lease loss must become durable lease_lost."""
+
+    repo = DailyWorldProjectionRepository(db_session)
+    task = repo.ensure_projection(identity(), source_hash="hash-a")
+    [claimed] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    attempt_id = repo.start_attempt(task.projection_id, task.game_id, frozen_now)
+    assert repo.supersede(task.game_id, task.event_id, before_revision=2) == 1
+
+    assert not repo.release_lease_and_finish_attempt(
+        claimed.projection_id,
+        "worker-a",
+        claimed.source_hash,
+        frozen_now,
+        attempt_id=attempt_id,
+        outcome="cancelled",
+        error_code="cancelled",
+    )
+
+    attempt = db_session.get(DailyWorldProjectionAttempt, attempt_id)
+    assert (attempt.outcome, attempt.error_code) == ("lease_lost", "lease_lost")
 
 
 def test_supersede_only_fences_older_revisions(db_session) -> None:
