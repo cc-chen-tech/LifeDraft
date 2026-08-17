@@ -102,11 +102,15 @@ def run(
         print("timeout-seconds must be non-negative", file=stderr)
         return EXIT_REPORT_CHANGED
     if args.restore_audit_id is not None:
-        if args.wait or args.expected_report_hash or args.game_id is not None:
+        if args.wait or args.game_id is not None:
             print("restore mode does not accept apply filters", file=stderr)
+            return EXIT_REPORT_CHANGED
+        if not args.expected_report_hash:
+            print("restore requires --expected-report-hash", file=stderr)
             return EXIT_REPORT_CHANGED
         return _run_restore(
             args.restore_audit_id,
+            expected_report_hash=args.expected_report_hash,
             session_factory=session_factory,
             stdout=stdout,
             stderr=stderr,
@@ -124,6 +128,10 @@ def run(
             "dry-run report changed; run dry-run again and supply its exact report hash",
             file=stderr,
         )
+        _print_json(
+            _apply_result_payload(report, [], status="report_changed"),
+            stdout,
+        )
         return EXIT_REPORT_CHANGED
 
     service = projection_service or get_daily_world_projection_service()
@@ -140,9 +148,15 @@ def run(
             service.wake()
     except (RepairStateChanged, ValueError) as exc:
         print(str(exc), file=stderr)
+        _print_json(
+            _apply_result_payload(report, audit_ids, status="apply_failed"), stdout
+        )
         return EXIT_ERROR
     except Exception as exc:
         print(f"repair apply failed: {exc}", file=stderr)
+        _print_json(
+            _apply_result_payload(report, audit_ids, status="apply_failed"), stdout
+        )
         return EXIT_ERROR
 
     if args.wait:
@@ -154,8 +168,17 @@ def run(
             monotonic=monotonic,
             sleep=sleep,
             stderr=stderr,
+            report_hash=report.hash,
         )
         if wait_result != EXIT_OK:
+            _print_json(
+                _apply_result_payload(
+                    report,
+                    audit_ids,
+                    status=_durable_apply_status(session_factory, audit_ids),
+                ),
+                stdout,
+            )
             return wait_result
 
     _print_json(
@@ -247,6 +270,7 @@ def _wait_for_audits(
     monotonic: Callable[[], float],
     sleep: Callable[[float], None],
     stderr: TextIO,
+    report_hash: str,
 ) -> int:
     deadline = monotonic() + timeout_seconds
     remaining = set(audit_ids)
@@ -268,7 +292,7 @@ def _wait_for_audits(
                     digest_after=verification.non_projection_digest_after,
                 )
                 if changed:
-                    _print_restore_command(audit_id, stderr)
+                    _print_restore_command(audit_id, report_hash, stderr)
                     durable_status = "failed_invariant"
                 else:
                     durable_status = _read_audit_status(session_factory, audit_id)
@@ -280,7 +304,7 @@ def _wait_for_audits(
                     digest_after=verification.non_projection_digest_after,
                 )
                 if changed:
-                    _print_restore_command(audit_id, stderr)
+                    _print_restore_command(audit_id, report_hash, stderr)
                     durable_status = "failed_fenced"
                 else:
                     durable_status = _read_audit_status(session_factory, audit_id)
@@ -302,7 +326,7 @@ def _wait_for_audits(
                     digest_after=digest_after,
                 )
                 if changed:
-                    _print_restore_command(audit_id, stderr)
+                    _print_restore_command(audit_id, report_hash, stderr)
                     durable_status = "timed_out"
                 else:
                     durable_status = _read_audit_status(session_factory, audit_id)
@@ -324,6 +348,7 @@ def _wait_for_audits(
 def _run_restore(
     audit_id: int,
     *,
+    expected_report_hash: str,
     session_factory: Callable[[], Any],
     stdout: TextIO,
     stderr: TextIO,
@@ -349,6 +374,20 @@ def _run_restore(
             )
             if audit is None:
                 raise ValueError("repair audit not found")
+            if audit.report_hash != expected_report_hash:
+                raise ValueError("restore report hash does not match audit")
+            if audit.status != "complete":
+                raise ValueError("restore audit is not complete")
+            newer_audit = (
+                db.query(DailyWorldProjectionRepairAudit.audit_id)
+                .filter(
+                    DailyWorldProjectionRepairAudit.game_id == audit.game_id,
+                    DailyWorldProjectionRepairAudit.audit_id > audit_id,
+                )
+                .first()
+            )
+            if newer_audit is not None:
+                raise ValueError("newer repair audit exists for this game")
             locked_identities = audit_rebuild_identities(audit.detail_json)
             if (
                 int(audit.game_id) != audit_record["game_id"]
@@ -521,10 +560,54 @@ def _report_payload(report: RepairScanReport) -> dict[str, Any]:
     return {"report_hash": report.hash, **report.to_dict()}
 
 
-def _print_restore_command(audit_id: int, stream: TextIO) -> None:
+def _apply_result_payload(
+    report: RepairScanReport, audit_ids: Sequence[int], *, status: str
+) -> dict[str, Any]:
+    """Return one JSON-safe apply outcome, including partial durable scope."""
+
+    return {
+        "report_hash": report.hash,
+        "audit_ids": list(audit_ids),
+        "status": status,
+    }
+
+
+def _durable_apply_status(
+    session_factory: Callable[[], Any], audit_ids: Sequence[int]
+) -> str:
+    """Summarize terminal audit rows without changing their durable status."""
+
+    if not audit_ids:
+        return "incomplete"
+    with session_factory() as db:
+        rows = (
+            db.query(
+                DailyWorldProjectionRepairAudit.audit_id,
+                DailyWorldProjectionRepairAudit.status,
+            )
+            .filter(DailyWorldProjectionRepairAudit.audit_id.in_(audit_ids))
+            .all()
+        )
+    statuses = {
+        int(audit_id): str(status)
+        for audit_id, status in rows
+        if isinstance(audit_id, int) and isinstance(status, str)
+    }
+    if set(statuses) != set(audit_ids):
+        return "incomplete"
+    values = set(statuses.values())
+    if "failed_invariant" in values:
+        return "failed_invariant"
+    if len(values) == 1:
+        return values.pop()
+    return "incomplete"
+
+
+def _print_restore_command(audit_id: int, report_hash: str, stream: TextIO) -> None:
     print(
         "verified restore command: "
-        f"python scripts/repair_daily_world_projections.py --restore-audit-id {audit_id}",
+        "python scripts/repair_daily_world_projections.py "
+        f"--restore-audit-id {audit_id} --expected-report-hash {report_hash}",
         file=stream,
     )
 

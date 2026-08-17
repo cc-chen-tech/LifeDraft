@@ -107,12 +107,19 @@ class RestoreOnSecondWake(WakeRecorder):
         if self.wake_count != 2:
             return
         with self.sessions() as session:
-            audit_id = int(
-                session.query(DailyWorldProjectionRepairAudit).one().audit_id
-            )
+            audit = session.query(DailyWorldProjectionRepairAudit).one()
+            audit.status = "complete"
+            audit_id = int(audit.audit_id)
+            report_hash = str(audit.report_hash)
+            session.commit()
         assert (
             cli.run(
-                ["--restore-audit-id", str(audit_id)],
+                [
+                    "--restore-audit-id",
+                    str(audit_id),
+                    "--expected-report-hash",
+                    report_hash,
+                ],
                 session_factory=self.sessions,
                 stdout=StringIO(),
                 stderr=StringIO(),
@@ -296,6 +303,11 @@ def test_apply_requires_exact_report_hash_before_any_write(
     captured = capsys.readouterr()
     assert exit_code == 2
     assert "dry-run report changed" in captured.err
+    assert json.loads(captured.out) == {
+        "audit_ids": [],
+        "report_hash": scan_latest_game_states(sessions).hash,
+        "status": "report_changed",
+    }
     assert not backup_dir.exists()
     assert _db_snapshot(sessions) == before
 
@@ -735,6 +747,7 @@ def test_restore_rejects_truncated_two_day_audit_without_writes(
         assert detail["rebuild_day_indexes"] == [0, 1]
         detail["rebuild_identities"] = detail["rebuild_identities"][:1]
         audit.detail_json = detail
+        audit.status = "complete"
         session.commit()
         audit_id = int(audit.audit_id)
         state_count_before = session.query(GameState).count()
@@ -745,14 +758,17 @@ def test_restore_rejects_truncated_two_day_audit_without_writes(
             .all()
         ]
 
-    exit_code = cli.run(["--restore-audit-id", str(audit_id)], session_factory=sessions)
+    exit_code = cli.run(
+        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        session_factory=sessions,
+    )
 
     captured = capsys.readouterr()
     assert exit_code == 3
     assert "malformed" in captured.err
     with sessions() as session:
         audit = session.get(DailyWorldProjectionRepairAudit, audit_id)
-        assert audit.status == "queued"
+        assert audit.status == "complete"
         assert session.query(GameState).count() == state_count_before
         assert [
             row.status
@@ -812,6 +828,7 @@ def test_verify_and_restore_reject_both_lists_truncated_from_verified_backup(
         detail["rebuild_day_indexes"] = [0]
         detail["rebuild_identities"] = detail["rebuild_identities"][:1]
         audit.detail_json = detail
+        audit.status = "complete"
         session.commit()
         audit_id = int(audit.audit_id)
         state_count_before = session.query(GameState).count()
@@ -824,7 +841,8 @@ def test_verify_and_restore_reject_both_lists_truncated_from_verified_backup(
 
     verification = verify_repair_invariants(sessions, audit_id)
     restore_exit = cli.run(
-        ["--restore-audit-id", str(audit_id)], session_factory=sessions
+        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        session_factory=sessions,
     )
 
     captured = capsys.readouterr()
@@ -833,7 +851,7 @@ def test_verify_and_restore_reject_both_lists_truncated_from_verified_backup(
     assert "scope" in captured.err
     with sessions() as session:
         audit = session.get(DailyWorldProjectionRepairAudit, audit_id)
-        assert audit.status == "queued"
+        assert audit.status == "complete"
         assert session.query(GameState).count() == state_count_before
         assert [
             row.status
@@ -869,6 +887,8 @@ def test_restore_rechecks_audit_scope_after_game_lock(
     capsys.readouterr()
     with sessions() as session:
         audit = session.query(DailyWorldProjectionRepairAudit).one()
+        audit.status = "complete"
+        session.commit()
         audit_id = int(audit.audit_id)
         state_count_before = session.query(GameState).count()
         projection_statuses_before = [
@@ -896,14 +916,17 @@ def test_restore_rechecks_audit_scope_after_game_lock(
 
     monkeypatch.setattr(cli, "_lock_game", change_scope_then_lock)
 
-    exit_code = cli.run(["--restore-audit-id", str(audit_id)], session_factory=sessions)
+    exit_code = cli.run(
+        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        session_factory=sessions,
+    )
 
     captured = capsys.readouterr()
     assert exit_code == 3
     assert "scope binding changed" in captured.err
     with sessions() as session:
         audit = session.get(DailyWorldProjectionRepairAudit, audit_id)
-        assert audit.status == "queued"
+        assert audit.status == "complete"
         assert audit.detail_json["rebuild_day_indexes"] == [0]
         assert session.query(GameState).count() == state_count_before
         assert [
@@ -1045,9 +1068,14 @@ def test_restore_refuses_when_non_projection_state_changed(
         )
         session.commit()
         audit_id = int(audit.audit_id)
+        audit.status = "complete"
+        session.commit()
     before = _db_snapshot(sessions)
 
-    exit_code = cli.run(["--restore-audit-id", str(audit_id)], session_factory=sessions)
+    exit_code = cli.run(
+        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        session_factory=sessions,
+    )
 
     captured = capsys.readouterr()
     assert exit_code == 3
@@ -1503,6 +1531,7 @@ def test_restore_rejects_malformed_audit_without_writes(
         malformed = deepcopy(audit.detail_json)
         malformed["rebuild_identities"][0].pop("selected_option_index")
         audit.detail_json = malformed
+        audit.status = "complete"
         session.commit()
         audit_id = int(audit.audit_id)
         state_count_before = session.query(GameState).count()
@@ -1513,14 +1542,17 @@ def test_restore_rejects_malformed_audit_without_writes(
             .all()
         ]
 
-    exit_code = cli.run(["--restore-audit-id", str(audit_id)], session_factory=sessions)
+    exit_code = cli.run(
+        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        session_factory=sessions,
+    )
 
     captured = capsys.readouterr()
     assert exit_code == 3
     assert "malformed" in captured.err
     with sessions() as session:
         audit = session.get(DailyWorldProjectionRepairAudit, audit_id)
-        assert audit.status == "queued"
+        assert audit.status == "complete"
         assert session.query(GameState).count() == state_count_before
         assert [
             row.status
@@ -1576,9 +1608,14 @@ def test_restore_uses_current_visible_fields_and_backup_projection_only(
         )
         session.commit()
         audit_id = int(audit.audit_id)
+        audit.status = "complete"
+        session.commit()
         visible_digest = non_projection_state_digest(projected)
 
-    exit_code = cli.run(["--restore-audit-id", str(audit_id)], session_factory=sessions)
+    exit_code = cli.run(
+        ["--restore-audit-id", str(audit_id), "--expected-report-hash", report.hash],
+        session_factory=sessions,
+    )
 
     output = json.loads(capsys.readouterr().out)
     assert exit_code == 0
@@ -1600,3 +1637,367 @@ def test_restore_uses_current_visible_fields_and_backup_projection_only(
         assert {row.status for row in session.query(DailyWorldProjection).all()} == {
             "superseded"
         }
+
+
+def test_wait_failure_prints_one_machine_readable_scope_payload(
+    db_engine, tmp_path: Path
+) -> None:
+    """A nonzero wait still preserves the exact report/audit evidence on stdout."""
+
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        _seed_game(session, _candidate_state("failure-payload"))
+    report = scan_latest_game_states(sessions)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = cli.run(
+        [
+            "--apply",
+            "--expected-report-hash",
+            report.hash,
+            "--backup-dir",
+            str(tmp_path),
+            "--wait",
+            "--timeout-seconds",
+            "0",
+        ],
+        session_factory=sessions,
+        projection_service=WakeRecorder(),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    payloads = [json.loads(line) for line in stdout.getvalue().splitlines() if line]
+    assert exit_code == cli.EXIT_INCOMPLETE
+    assert payloads == [
+        {
+            "audit_ids": [1],
+            "report_hash": report.hash,
+            "status": "timed_out",
+        }
+    ]
+    assert "verified restore command" in stderr.getvalue()
+
+
+def test_partial_apply_exception_prints_the_durable_partial_scope(
+    db_engine, tmp_path: Path, monkeypatch
+) -> None:
+    """A later candidate failure cannot erase evidence for earlier audit rows."""
+
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        _seed_game(session, _candidate_state("partial-first"))
+        _seed_game(session, _candidate_state("partial-second"))
+    report = scan_latest_game_states(sessions)
+    original_apply = cli._apply_candidate
+    calls = 0
+
+    def fail_second(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("injected partial apply failure")
+        return original_apply(*args, **kwargs)
+
+    monkeypatch.setattr(cli, "_apply_candidate", fail_second)
+    stdout = StringIO()
+
+    exit_code = cli.run(
+        [
+            "--apply",
+            "--expected-report-hash",
+            report.hash,
+            "--backup-dir",
+            str(tmp_path),
+        ],
+        session_factory=sessions,
+        projection_service=WakeRecorder(),
+        stdout=stdout,
+        stderr=StringIO(),
+    )
+
+    assert exit_code == cli.EXIT_ERROR
+    assert [json.loads(line) for line in stdout.getvalue().splitlines() if line] == [
+        {"audit_ids": [1], "report_hash": report.hash, "status": "apply_failed"}
+    ]
+
+
+def test_restore_requires_the_exact_expected_report_hash_before_any_write(
+    db_engine, tmp_path: Path
+) -> None:
+    """Restore is never an ID-only operation, even for a valid completed audit."""
+
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        _seed_game(session, _candidate_state("restore-expected-hash"))
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == 0
+    )
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        audit.status = "complete"
+        audit_id = int(audit.audit_id)
+        before = _db_snapshot(sessions)
+
+    missing = cli.run(
+        ["--restore-audit-id", str(audit_id)],
+        session_factory=sessions,
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+    wrong = cli.run(
+        [
+            "--restore-audit-id",
+            str(audit_id),
+            "--expected-report-hash",
+            "wrong",
+        ],
+        session_factory=sessions,
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    assert missing == cli.EXIT_REPORT_CHANGED
+    assert wrong != cli.EXIT_OK
+    assert _db_snapshot(sessions) == before
+
+
+def _clone_audit(
+    audit: DailyWorldProjectionRepairAudit, *, audit_id: int, game_id: int
+) -> DailyWorldProjectionRepairAudit:
+    return DailyWorldProjectionRepairAudit(
+        audit_id=audit_id,
+        game_id=game_id,
+        state_id=audit.state_id,
+        report_hash=audit.report_hash,
+        backup_path=audit.backup_path,
+        backup_sha256=audit.backup_sha256,
+        non_projection_digest_before=audit.non_projection_digest_before,
+        non_projection_digest_after=audit.non_projection_digest_after,
+        status="complete",
+        detail_json=deepcopy(audit.detail_json),
+        completed_at=datetime.utcnow(),
+    )
+
+
+def _two_completed_restore_audits(sessions, tmp_path: Path) -> tuple[int, int, str]:
+    with sessions() as session:
+        first_game = _seed_game(session, _candidate_state("restore-audit-a"))
+        second_game = _seed_game(session, _candidate_state("restore-audit-b"))
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+    with sessions() as session:
+        audits = (
+            session.query(DailyWorldProjectionRepairAudit)
+            .order_by(DailyWorldProjectionRepairAudit.game_id)
+            .all()
+        )
+        first, second = audits
+        first.audit_id = 100
+        second.audit_id = 102
+        first.status = "complete"
+        second.status = "complete"
+        session.commit()
+    return first_game, second_game, report.hash
+
+
+def test_restore_rejects_interleaved_newer_audit_for_the_selected_game(
+    db_engine, tmp_path: Path
+) -> None:
+    """A same-game audit between two scope IDs fences the older restore."""
+
+    sessions = sessionmaker(bind=db_engine)
+    first_game, _second_game, report_hash = _two_completed_restore_audits(
+        sessions, tmp_path
+    )
+    with sessions() as session:
+        first = session.get(DailyWorldProjectionRepairAudit, 100)
+        session.add(_clone_audit(first, audit_id=101, game_id=first_game))
+        session.commit()
+        state_count_before = session.query(GameState).count()
+        projection_statuses_before = [
+            row.status
+            for row in session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.projection_id)
+            .all()
+        ]
+
+    exit_code = cli.run(
+        [
+            "--restore-audit-id",
+            "100",
+            "--expected-report-hash",
+            report_hash,
+        ],
+        session_factory=sessions,
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    assert exit_code == cli.EXIT_INVARIANT
+    with sessions() as session:
+        assert session.query(GameState).count() == state_count_before
+        assert session.get(DailyWorldProjectionRepairAudit, 100).status == "complete"
+        assert [
+            row.status
+            for row in session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.projection_id)
+            .all()
+        ] == projection_statuses_before
+
+
+def test_restore_allows_interleaved_audit_for_a_different_game(
+    db_engine, tmp_path: Path
+) -> None:
+    """An unrelated game's later audit must not block the selected game restore."""
+
+    sessions = sessionmaker(bind=db_engine)
+    _first_game, second_game, report_hash = _two_completed_restore_audits(
+        sessions, tmp_path
+    )
+    with sessions() as session:
+        second = session.get(DailyWorldProjectionRepairAudit, 102)
+        session.add(_clone_audit(second, audit_id=101, game_id=second_game))
+        session.commit()
+
+    exit_code = cli.run(
+        [
+            "--restore-audit-id",
+            "100",
+            "--expected-report-hash",
+            report_hash,
+        ],
+        session_factory=sessions,
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    assert exit_code == cli.EXIT_OK
+    with sessions() as session:
+        assert session.get(DailyWorldProjectionRepairAudit, 100).status == "restored"
+
+
+def test_restore_fences_a_same_game_audit_created_after_preflight(
+    temp_db_file, tmp_path: Path, monkeypatch
+) -> None:
+    """The game lock closes the preflight-to-restore audit creation race."""
+
+    engine, _database_path = temp_db_file
+    sessions = sessionmaker(bind=engine)
+    with sessions() as session:
+        game_id = _seed_game(session, _candidate_state("restore-lock-fence"))
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        audit.status = "complete"
+        audit_id = int(audit.audit_id)
+        session.commit()
+
+    entered_lock = threading.Event()
+    release_lock = threading.Event()
+    thread_errors: list[BaseException] = []
+    results: list[int] = []
+    original_lock_game = cli._lock_game
+
+    def pause_before_lock(db, locked_game_id):
+        if locked_game_id == game_id and not entered_lock.is_set():
+            entered_lock.set()
+            assert release_lock.wait(5)
+        return original_lock_game(db, locked_game_id)
+
+    monkeypatch.setattr(cli, "_lock_game", pause_before_lock)
+
+    def restore() -> None:
+        try:
+            results.append(
+                cli.run(
+                    [
+                        "--restore-audit-id",
+                        str(audit_id),
+                        "--expected-report-hash",
+                        report.hash,
+                    ],
+                    session_factory=sessions,
+                    stdout=StringIO(),
+                    stderr=StringIO(),
+                )
+            )
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            thread_errors.append(exc)
+
+    restore_thread = threading.Thread(target=restore)
+    restore_thread.start()
+    assert entered_lock.wait(5)
+    with sessions() as session:
+        audit = session.get(DailyWorldProjectionRepairAudit, audit_id)
+        session.add(_clone_audit(audit, audit_id=audit_id + 1, game_id=game_id))
+        session.commit()
+        state_count_before = session.query(GameState).count()
+        projection_statuses_before = [
+            row.status
+            for row in session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.projection_id)
+            .all()
+        ]
+    release_lock.set()
+    restore_thread.join(5)
+
+    assert not thread_errors
+    assert results == [cli.EXIT_INVARIANT]
+    with sessions() as session:
+        assert session.query(GameState).count() == state_count_before
+        assert (
+            session.get(DailyWorldProjectionRepairAudit, audit_id).status == "complete"
+        )
+        assert [
+            row.status
+            for row in session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.projection_id)
+            .all()
+        ] == projection_statuses_before

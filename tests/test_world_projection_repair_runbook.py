@@ -20,9 +20,15 @@ from src.services.daily_world_projection_repair import (
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_PATH = (
-    REPOSITORY_ROOT / "tests" / "fixtures" / "daily_world_projection" / "game156_sanitized.json"
+    REPOSITORY_ROOT
+    / "tests"
+    / "fixtures"
+    / "daily_world_projection"
+    / "game156_sanitized.json"
 )
-RUNBOOK_PATH = REPOSITORY_ROOT / "docs" / "runbooks" / "versioned-world-projection-repair.md"
+RUNBOOK_PATH = (
+    REPOSITORY_ROOT / "docs" / "runbooks" / "versioned-world-projection-repair.md"
+)
 
 
 def _load_fixture() -> dict[str, object]:
@@ -68,7 +74,8 @@ def test_game156_fixture_matches_repair_and_generation_contracts() -> None:
         for option in day["options"]
     )
     assert all(
-        day["choice"] == day["options"][day["choice_option_index"]]["text"] for day in history
+        day["choice"] == day["options"][day["choice_option_index"]]["text"]
+        for day in history
     )
     assert all(
         day["postprocessing"]["world"]
@@ -116,19 +123,50 @@ def test_repair_runbook_requires_a_hashed_dry_run_and_safe_backup_handling() -> 
     runbook = RUNBOOK_PATH.read_text(encoding="utf-8")
     dry_run = "python scripts/repair_daily_world_projections.py --dry-run"
     apply = "python scripts/repair_daily_world_projections.py --apply"
+    phase_one, phase_two = runbook.split("## Phase 2: approved apply", maxsplit=1)
 
     assert runbook.index(dry_run) < runbook.index(apply)
+    assert "## Phase 1: preflight and dry run" in phase_one
+    assert apply not in phase_one
+    assert "mktemp -d" in phase_one
+    assert "WORLD_REPAIR_RUN_DIR" in phase_one
+    assert "manifest.json" in phase_one
+    assert "WORLD_REPAIR_APPROVED_REPORT_HASH:?" in phase_two
+    assert "approved report hash does not match manifest" in phase_two
+    assert "apply.stdout.json" in phase_two
+    assert "apply.stderr.log" in phase_two
+    assert "apply_exit_code" in phase_two
+    assert "manifest apply evidence already exists" in phase_two
+    assert "interrupted Phase 2 evidence requires a new repair run" in phase_two
+    for evidence_name in (
+        "apply.stdout.json.tmp",
+        "apply.stdout.json",
+        "apply.stderr.log.tmp",
+        "apply.stderr.log",
+        "status-after.json",
+        "status-after.stderr.log",
+    ):
+        assert evidence_name in phase_two
+    assert phase_two.index('if manifest.get("apply") is not None') < phase_two.index(
+        apply
+    )
+    assert phase_two.index("if any((run_dir / name).exists()") < phase_two.index(apply)
     assert '--expected-report-hash "$WORLD_REPAIR_REPORT_HASH"' in runbook
     assert "verify_state_backup" in runbook
     assert "WORLD_PROJECTION_REPAIR_BACKUP_DIR" in runbook
     assert "set -euo pipefail" in runbook
     assert "WORLD_REPAIR_EVIDENCE_DIR" in runbook
-    assert 'tee "$WORLD_REPAIR_APPLY_OUTPUT"' in runbook
+    assert "WORLD_REPAIR_RUN_DIR" in runbook
+    assert "apply.stdout.json" in runbook
+    assert "apply.stderr.log" in runbook
     assert "WORLD_REPAIR_AUDIT_IDS" in runbook
     assert "WORLD_REPAIR_AUDIT_ID:?" in runbook
+    assert (
+        '--restore-audit-id "$WORLD_REPAIR_AUDIT_ID" --expected-report-hash' in runbook
+    )
     assert "audit.report_hash != report_hash" in runbook
     assert 'audit.status != "complete"' in runbook
-    assert "audit_id > max(audit_ids)" in runbook
+    assert "newer repair audit exists for this game" in runbook
     assert "latest_completed_repair_audit_id" not in runbook
     assert "newer player activity" in runbook
     assert re.search(r"must not\s+overwrite it automatically", runbook)
