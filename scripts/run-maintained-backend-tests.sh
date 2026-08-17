@@ -34,6 +34,13 @@ maintained_tests=(
   tests/test_world_model_lifecycle_contracts.py
   tests/test_database_runner_isolation_no_mock.py
   tests/test_ci_workflow_governance_no_mock.py
+  tests/test_daily_world_projection_repair_scan.py
+  tests/test_daily_world_projection_backup.py
+  tests/test_daily_world_projection_repair_audit.py
+  tests/test_repair_daily_world_projections_cli.py
+  tests/test_daily_world_projection_rebuild.py
+  tests/test_daily_world_projection_observability.py
+  tests/test_world_projection_repair_runbook.py
 )
 
 case "$mode" in
