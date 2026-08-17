@@ -253,6 +253,37 @@ def test_canonical_layer_validation_rejects_non_sha256_applied_source() -> None:
     assert is_valid_projection_state(layer) is False
 
 
+def test_canonical_layer_validation_rejects_duplicate_ledger_day() -> None:
+    """Two source identities cannot both own one applied day."""
+
+    layer = {
+        "version": 1,
+        "applied_through_day_index": 0,
+        "projected_through_day_index": 0,
+        "pending_from_day_index": None,
+        "oldest_pending_at": None,
+        "applied_sources": [
+            {
+                "event_id": "first-day-zero",
+                "revision": 1,
+                "day_index": 0,
+                "source_hash": "a" * 64,
+                "option_index": 0,
+            },
+            {
+                "event_id": "second-day-zero",
+                "revision": 1,
+                "day_index": 0,
+                "source_hash": "b" * 64,
+                "option_index": 0,
+            },
+        ],
+        "world": _empty_world_patch(),
+    }
+
+    assert is_valid_projection_state(layer) is False
+
+
 def test_digest_ignores_only_projection_state() -> None:
     before = player_state_fixture()
     after = deepcopy(before)

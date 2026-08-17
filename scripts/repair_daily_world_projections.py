@@ -27,7 +27,6 @@ from src.services.daily_world_projection import get_daily_world_projection_servi
 from src.services.daily_world_projection_backup import (
     BackupChecksumMismatch,
     create_repair_audit,
-    restore_state_backup,
     verify_state_backup,
     write_state_backup,
 )
@@ -42,6 +41,7 @@ from src.services.daily_world_projection_repair import (
     rebuild_identities,
     rebuild_identities_match_history,
     scan_latest_game_states,
+    verified_audit_rebuild_scope,
 )
 from src.services.daily_world_projection_repository import (
     DailyWorldProjectionRepository,
@@ -330,14 +330,12 @@ def _run_restore(
 ) -> int:
     try:
         audit_record = _read_audit(session_factory, audit_id)
-        identities = audit_rebuild_identities(audit_record["detail_json"])
-        if not identities:
-            raise ValueError("malformed repair audit identities")
-        backup_state = restore_state_backup(
-            audit_record["backup_path"], audit_record["backup_sha256"]
+        identities, backup_state = verified_audit_rebuild_scope(
+            game_id=audit_record["game_id"],
+            backup_path=audit_record["backup_path"],
+            backup_sha256=audit_record["backup_sha256"],
+            detail_json=audit_record["detail_json"],
         )
-        if not isinstance(backup_state, Mapping):
-            raise BackupChecksumMismatch("backup checksum mismatch")
         if not rebuild_identities_match_history(identities, backup_state):
             raise ValueError("malformed repair audit history")
         with session_factory() as db, db.begin():
@@ -345,11 +343,18 @@ def _run_restore(
             if audit is None:
                 raise ValueError("repair audit not found")
             _lock_game(db, int(audit.game_id))
-            identities = audit_rebuild_identities(audit.detail_json)
-            if not identities or not rebuild_identities_match_history(
-                identities, backup_state
+            locked_identities = audit_rebuild_identities(audit.detail_json)
+            if (
+                int(audit.game_id) != audit_record["game_id"]
+                or int(audit.state_id) != audit_record["state_id"]
+                or str(audit.backup_path) != audit_record["backup_path"]
+                or str(audit.backup_sha256) != audit_record["backup_sha256"]
+                or str(audit.non_projection_digest_before)
+                != audit_record["non_projection_digest_before"]
+                or locked_identities != identities
+                or not rebuild_identities_match_history(identities, backup_state)
             ):
-                raise ValueError("malformed repair audit identities")
+                raise ValueError("repair audit scope binding changed")
             latest = _latest_state(db, int(audit.game_id))
             if latest is None or not isinstance(latest.state_json, Mapping):
                 raise NonProjectionStateChanged("non-projection state changed")
@@ -410,8 +415,11 @@ def _read_audit(session_factory: Callable[[], Any], audit_id: int) -> dict[str, 
         if audit is None:
             raise ValueError("repair audit not found")
         return {
+            "game_id": int(audit.game_id),
+            "state_id": int(audit.state_id),
             "backup_path": str(audit.backup_path),
             "backup_sha256": str(audit.backup_sha256),
+            "non_projection_digest_before": str(audit.non_projection_digest_before),
             "detail_json": deepcopy(audit.detail_json),
         }
 

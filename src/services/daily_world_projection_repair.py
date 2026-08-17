@@ -21,6 +21,7 @@ from src.database.models import (
 from src.game.state.player_data import default_world_projection_state
 from src.game.world_projection_coverage import detect_world_change_signals
 from src.game.world_projection_schema import compute_projection_source_hash
+from src.services.daily_world_projection_backup import restore_state_backup
 from src.services.daily_world_projection_repository import ProjectionIdentity
 
 
@@ -277,14 +278,12 @@ def is_valid_projection_state(value: Any) -> bool:
     applied_sources = value.get("applied_sources")
     if not isinstance(applied_sources, list):
         return False
-    source_identities: list[tuple[str, int, int]] = []
+    source_days: list[int] = []
     for source in applied_sources:
-        if not _valid_applied_source(source):
+        if not _valid_applied_source(source) or source["day_index"] > applied:
             return False
-        source_identities.append(
-            (source["event_id"], source["revision"], source["day_index"])
-        )
-    return len(source_identities) == len(set(source_identities))
+        source_days.append(source["day_index"])
+    return len(source_days) == len(set(source_days))
 
 
 def _valid_oldest_pending_at(value: Any) -> bool:
@@ -654,16 +653,65 @@ def initialized_projection_state(
     )
 
 
+def _read_audit_binding(
+    session_factory: Callable[[], Any], audit_id: int
+) -> dict[str, Any]:
+    with session_factory() as db:
+        audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
+        if audit is None:
+            raise ValueError("repair_audit_not_found")
+        return {
+            "game_id": int(audit.game_id),
+            "state_id": int(audit.state_id),
+            "backup_path": str(audit.backup_path),
+            "backup_sha256": str(audit.backup_sha256),
+            "non_projection_digest_before": str(audit.non_projection_digest_before),
+            "non_projection_digest_after": str(audit.non_projection_digest_after or ""),
+            "status": str(audit.status),
+            "detail_json": deepcopy(audit.detail_json),
+        }
+
+
+def _audit_matches_verified_binding(
+    audit: DailyWorldProjectionRepairAudit,
+    binding: Mapping[str, Any],
+    identities: Sequence[RebuildIdentity],
+) -> bool:
+    return (
+        int(audit.game_id) == binding["game_id"]
+        and int(audit.state_id) == binding["state_id"]
+        and str(audit.backup_path) == binding["backup_path"]
+        and str(audit.backup_sha256) == binding["backup_sha256"]
+        and str(audit.non_projection_digest_before)
+        == binding["non_projection_digest_before"]
+        and audit_rebuild_identities(audit.detail_json) == tuple(identities)
+    )
+
+
 def verify_repair_invariants(
     session_factory: Callable[[], Any], audit_id: int
 ) -> RepairVerification:
     """Check source fences, contiguous watermarks, and the visible-state digest."""
 
+    binding = _read_audit_binding(session_factory, audit_id)
+    try:
+        identities, _backup_state = verified_audit_rebuild_scope(
+            game_id=binding["game_id"],
+            backup_path=binding["backup_path"],
+            backup_sha256=binding["backup_sha256"],
+            detail_json=binding["detail_json"],
+        )
+    except Exception as exc:
+        return RepairVerification("failed_invariant", "", str(exc))
     with session_factory() as db:
         audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
         if audit is None:
             raise ValueError("repair_audit_not_found")
-        return _verify_repair_invariants_in_session(db, audit)
+        if not _audit_matches_verified_binding(audit, binding, identities):
+            return RepairVerification(
+                "failed_invariant", "", "repair_audit_binding_changed"
+            )
+        return _verify_repair_invariants_in_session(db, audit, identities)
 
 
 def finalize_repair_audit(
@@ -671,6 +719,20 @@ def finalize_repair_audit(
 ) -> RepairVerification:
     """Verify and CAS queued->complete under the game's serialization lock."""
 
+    binding = _read_audit_binding(session_factory, audit_id)
+    if binding["status"] != "queued":
+        return RepairVerification(
+            binding["status"], binding["non_projection_digest_after"]
+        )
+    try:
+        identities, _backup_state = verified_audit_rebuild_scope(
+            game_id=binding["game_id"],
+            backup_path=binding["backup_path"],
+            backup_sha256=binding["backup_sha256"],
+            detail_json=binding["detail_json"],
+        )
+    except Exception as exc:
+        return RepairVerification("failed_invariant", "", str(exc))
     with session_factory() as db, db.begin():
         audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
         if audit is None:
@@ -681,7 +743,11 @@ def finalize_repair_audit(
             return RepairVerification(
                 str(audit.status), str(audit.non_projection_digest_after or "")
             )
-        verification = _verify_repair_invariants_in_session(db, audit)
+        if not _audit_matches_verified_binding(audit, binding, identities):
+            return RepairVerification(
+                "failed_invariant", "", "repair_audit_binding_changed"
+            )
+        verification = _verify_repair_invariants_in_session(db, audit, identities)
         if verification.status != "complete":
             return verification
         updated = (
@@ -707,7 +773,9 @@ def finalize_repair_audit(
 
 
 def _verify_repair_invariants_in_session(
-    db: Any, audit: DailyWorldProjectionRepairAudit
+    db: Any,
+    audit: DailyWorldProjectionRepairAudit,
+    identities: Sequence[RebuildIdentity],
 ) -> RepairVerification:
     latest = (
         db.query(GameState)
@@ -721,11 +789,6 @@ def _verify_repair_invariants_in_session(
     if digest_after != audit.non_projection_digest_before:
         return RepairVerification(
             "failed_invariant", digest_after, "non_projection_state_changed"
-        )
-    identities = audit_rebuild_identities(audit.detail_json)
-    if not identities:
-        return RepairVerification(
-            "failed_invariant", digest_after, "rebuild_identities_missing"
         )
     if not rebuild_identities_match_history(identities, latest.state_json):
         return RepairVerification(
@@ -898,6 +961,34 @@ def rebuild_identities_match_history(
         ):
             return False
     return True
+
+
+def verified_audit_rebuild_scope(
+    *,
+    game_id: int,
+    backup_path: str,
+    backup_sha256: str,
+    detail_json: Any,
+) -> tuple[tuple[RebuildIdentity, ...], Mapping[str, Any]]:
+    """Bind mutable audit scope to the checksum-verified original save."""
+
+    backup_state = restore_state_backup(backup_path, backup_sha256)
+    if not isinstance(backup_state, Mapping):
+        raise ValueError("repair_audit_scope_backup_invalid")
+    candidate = scan_game_state(game_id, backup_state)
+    if candidate is None:
+        raise ValueError("repair_audit_scope_backup_not_affected")
+    expected = rebuild_identities(candidate, backup_state)
+    actual = audit_rebuild_identities(detail_json)
+    if (
+        not actual
+        or list(candidate.rebuild_day_indexes)
+        != [identity.day_index for identity in actual]
+        or tuple(identity.projection_key for identity in expected)
+        != tuple(identity.projection_key for identity in actual)
+    ):
+        raise ValueError("malformed_repair_audit_scope_mismatch")
+    return actual, backup_state
 
 
 def _lock_game(db: Any, game_id: int) -> None:

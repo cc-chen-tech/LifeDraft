@@ -21,6 +21,7 @@ from src.database.models import (
 )
 from src.game.state import PlayerState
 from src.game.state.player_data import default_world_projection_state
+from src.game.world_projection_schema import compute_projection_source_hash
 from src.services.daily_world_projection import DailyWorldProjectionService
 from src.services.daily_world_projection_backup import (
     restore_state_backup,
@@ -761,6 +762,174 @@ def test_restore_rejects_truncated_two_day_audit_without_writes(
         ] == projection_statuses_before
 
 
+def test_verify_and_restore_reject_both_lists_truncated_from_verified_backup(
+    db_engine, tmp_path: Path, capsys
+) -> None:
+    """The verified original backup, not two mutable audit lists, fixes scope."""
+
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        game_id = _seed_game(session, _candidate_state("both-lists-truncated"))
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+        )
+        == 0
+    )
+    capsys.readouterr()
+    with sessions() as session:
+        day_zero = (
+            session.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == game_id,
+                DailyWorldProjection.day_index == 0,
+            )
+            .one()
+        )
+        day_zero.status = "ready_no_change"
+        day_zero.story_patch_json = {}
+        day_zero.option_patches_json = {"0": {}, "1": {}}
+        session.commit()
+    assert (
+        DailyWorldProjectionService(session_factory=sessions).apply_ready_for_game(
+            game_id
+        )
+        == 1
+    )
+
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        detail = deepcopy(audit.detail_json)
+        detail["rebuild_day_indexes"] = [0]
+        detail["rebuild_identities"] = detail["rebuild_identities"][:1]
+        audit.detail_json = detail
+        session.commit()
+        audit_id = int(audit.audit_id)
+        state_count_before = session.query(GameState).count()
+        projection_statuses_before = [
+            row.status
+            for row in session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.projection_id)
+            .all()
+        ]
+
+    verification = verify_repair_invariants(sessions, audit_id)
+    restore_exit = cli.run(
+        ["--restore-audit-id", str(audit_id)], session_factory=sessions
+    )
+
+    captured = capsys.readouterr()
+    assert verification.status == "failed_invariant"
+    assert restore_exit == 3
+    assert "scope" in captured.err
+    with sessions() as session:
+        audit = session.get(DailyWorldProjectionRepairAudit, audit_id)
+        assert audit.status == "queued"
+        assert session.query(GameState).count() == state_count_before
+        assert [
+            row.status
+            for row in session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.projection_id)
+            .all()
+        ] == projection_statuses_before
+
+
+def test_future_ledger_is_reset_so_rebuild_materializes_day_zero_patch(
+    db_engine, tmp_path: Path, capsys
+) -> None:
+    """A source ahead of watermark cannot suppress its real rebuild patch."""
+
+    sessions = sessionmaker(bind=db_engine)
+    state = _candidate_state("future-ledger")
+    day_zero = state["day_history"][0]
+    state["world_projection_state"]["applied_sources"] = [
+        {
+            "event_id": day_zero["event_id"],
+            "revision": day_zero["revision"],
+            "day_index": 0,
+            "source_hash": compute_projection_source_hash(
+                day_zero["event_description"], day_zero["options"]
+            ),
+            "option_index": day_zero["choice_option_index"],
+        }
+    ]
+    with sessions() as session:
+        game_id = _seed_game(session, state)
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+        )
+        == 0
+    )
+    capsys.readouterr()
+    with sessions() as session:
+        latest = (
+            session.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+        )
+        assert latest.state_json["world_projection_state"]["applied_sources"] == []
+        row = (
+            session.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.game_id == game_id,
+                DailyWorldProjection.day_index == 0,
+            )
+            .one()
+        )
+        row.status = "ready"
+        row.story_patch_json = {
+            "fact_updates": [
+                {
+                    "action": "new",
+                    "subject": "day-zero",
+                    "category": "situation",
+                    "fact": "future ledger did not suppress this patch",
+                }
+            ]
+        }
+        row.option_patches_json = {"0": {}, "1": {}}
+        session.commit()
+
+    assert (
+        DailyWorldProjectionService(session_factory=sessions).apply_ready_for_game(
+            game_id
+        )
+        == 1
+    )
+    with sessions() as session:
+        latest = (
+            session.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+            .state_json
+        )
+        facts = latest["world_projection_state"]["world"]["fact_updates"]
+        assert [fact["fact"] for fact in facts] == [
+            "future ledger did not suppress this patch"
+        ]
+
+
 def test_restore_refuses_when_non_projection_state_changed(
     db_engine, tmp_path: Path, capsys
 ) -> None:
@@ -1136,8 +1305,8 @@ def test_wait_never_commits_complete_from_a_stale_verification(
     thread_errors: list[BaseException] = []
     original_verify = repair._verify_repair_invariants_in_session
 
-    def blocked_verify(db, audit):
-        verification = original_verify(db, audit)
+    def blocked_verify(db, audit, identities):
+        verification = original_verify(db, audit, identities)
         if verification.status == "complete":
             verified.set()
             assert release_completion.wait(5)
