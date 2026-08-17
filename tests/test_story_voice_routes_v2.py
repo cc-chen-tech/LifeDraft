@@ -100,6 +100,7 @@ def test_progress_routes_round_trip_only_for_current_user(monkeypatch) -> None:
 
 def test_health_exposes_daily_tts_and_music_runtime_capabilities(monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_DAILY_TIMELINE_V2", "true")
+    monkeypatch.setenv("ENABLE_DAILY_WORLD_PROJECTION_V1", "true")
     monkeypatch.setenv("MINIMAX_E2E_LOCAL_AUDIO", "true")
 
     with TestClient(app) as client:
@@ -108,6 +109,7 @@ def test_health_exposes_daily_tts_and_music_runtime_capabilities(monkeypatch) ->
     assert response.status_code == 200
     assert response.json()["capabilities"] == {
         "daily_timeline_v2": True,
+        "daily_world_projection_v1": True,
         "daily_recommended_prefetch": False,
         "daily_recommended_tts_prefetch": False,
         "tts_provider": "minimax",

@@ -673,6 +673,12 @@ def test_production_deploy_syncs_minimax_secret_to_ecs_env_without_committing_ke
     assert "STORY_TTS_ALLOW_REQUEST_PROVIDER" not in workflow
     assert "STORY_TTS_AUTO_READ_DEFAULT_ENABLED=true" in workflow
     assert "ENABLE_DAILY_TIMELINE_V2=true" in workflow
+    assert "ENABLE_DAILY_WORLD_PROJECTION_V1=true" in workflow
+    assert (
+        '"ENABLE_DAILY_WORLD_PROJECTION_V1": '
+        'os.environ["ENABLE_DAILY_WORLD_PROJECTION_V1"]'
+    ) in workflow
+    assert 'capabilities["daily_world_projection_v1"] is True' in workflow
     assert "STORY_MUSIC_AI_GENERATION_ENABLED" not in workflow
     assert "MINIMAX_TIMEOUT_SECONDS=180" in workflow
     assert "IMAGE_API_KEY" in workflow
@@ -727,6 +733,7 @@ def test_env_example_documents_minimax_production_audio_settings() -> None:
         "STORY_TTS_PROVIDER=minimax",
         "STORY_TTS_AUTO_READ_DEFAULT_ENABLED=true",
         "ENABLE_DAILY_TIMELINE_V2=true",
+        "ENABLE_DAILY_WORLD_PROJECTION_V1=true",
         "STORY_TTS_ASSET_DIR=./data/voice_assets",
     ]
     for line in required_lines:
