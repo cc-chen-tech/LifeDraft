@@ -100,6 +100,7 @@ set -euo pipefail
 : "${WORLD_REPAIR_APPROVED_REPORT_HASH:?set the explicitly approved report hash}"
 WORLD_REPAIR_REPORT_HASH="$(
   python - "$WORLD_REPAIR_RUN_DIR" "$WORLD_REPAIR_APPROVED_REPORT_HASH" <<'PY'
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -114,6 +115,19 @@ manifest_hash = manifest.get("report_hash")
 dry_run_hash = dry_run.get("report_hash")
 if not isinstance(manifest_hash, str) or not manifest_hash:
     raise SystemExit("manifest report hash missing")
+if not isinstance(dry_run_hash, str) or not dry_run_hash:
+    raise SystemExit("dry-run report hash missing")
+candidates = dry_run.get("candidates")
+if not isinstance(candidates, list):
+    raise SystemExit("dry-run candidates missing")
+canonical_candidates = json.dumps(
+    {"candidates": candidates},
+    ensure_ascii=False,
+    sort_keys=True,
+    separators=(",", ":"),
+).encode("utf-8")
+if hashlib.sha256(canonical_candidates).hexdigest() != dry_run_hash:
+    raise SystemExit("dry-run candidates do not match report hash")
 if manifest_hash != dry_run_hash:
     raise SystemExit("manifest report hash does not match dry run")
 if approved_hash != manifest_hash:
@@ -159,25 +173,33 @@ import sys
 from pathlib import Path
 
 run_dir = Path(sys.argv[1])
-report_hash = sys.argv[2]
+approved_report_hash = sys.argv[2]
 apply_exit_code = int(sys.argv[3])
 with (run_dir / "manifest.json").open(encoding="utf-8") as manifest_file:
     manifest = json.load(manifest_file)
 with (run_dir / "apply.stdout.json").open(encoding="utf-8") as apply_file:
     apply = json.load(apply_file)
 audit_ids = apply.get("audit_ids")
+observed_report_hash = apply.get("report_hash")
+status = apply.get("status")
 if (
-    apply.get("report_hash") != report_hash
+    not isinstance(observed_report_hash, str)
+    or not observed_report_hash
+    or not isinstance(status, str)
+    or not status
     or not isinstance(audit_ids, list)
     or any(isinstance(audit_id, bool) or not isinstance(audit_id, int) or audit_id <= 0 for audit_id in audit_ids)
     or len(audit_ids) != len(set(audit_ids))
 ):
     raise SystemExit("apply stdout is not a machine-readable exact scope")
+if apply_exit_code == 0 and observed_report_hash != approved_report_hash:
+    raise SystemExit("successful apply observed report hash does not match approved hash")
 manifest["apply"] = {
+    "approved_report_hash": approved_report_hash,
     "audit_ids": audit_ids,
     "exit_code": apply_exit_code,
-    "report_hash": report_hash,
-    "status": apply.get("status"),
+    "observed_report_hash": observed_report_hash,
+    "status": status,
 }
 temporary = run_dir / "manifest.json.tmp"
 temporary.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
@@ -207,10 +229,13 @@ PY
 python scripts/world_projection_status.py --json >"$WORLD_REPAIR_RUN_DIR/status-after.json" 2>"$WORLD_REPAIR_RUN_DIR/status-after.stderr.log"
 ```
 
-The CLI writes one machine-readable JSON payload to stdout even when wait ends
-in `failed_invariant`, `failed_fenced`, `timed_out`, or a partial apply failure.
-Phase 2 stores that payload and stderr before checking the exit code, then
-atomically updates `manifest.json` before returning the original nonzero code.
+The CLI writes one machine-readable JSON payload to stdout even when the report
+changed, wait ends in `failed_invariant`, `failed_fenced`, `timed_out`, or a
+partial apply failure. Phase 2 stores the approved and observed report hashes,
+status, audit IDs, and stderr before checking the exit code, then atomically
+updates `manifest.json` before returning the original nonzero code. In
+particular, an observed stale report hash is evidence for the CLI's exit 2, not
+a parser failure that may replace that exit code.
 
 ## Read-only inspection and backup verification
 
@@ -244,11 +269,12 @@ with open(sys.argv[1], encoding="utf-8") as manifest_file:
     manifest = json.load(manifest_file)
 apply = manifest.get("apply")
 report_hash = manifest.get("report_hash")
-if not isinstance(apply, dict) or apply.get("exit_code") != 0:
-    raise SystemExit("manifest does not contain a successful apply")
+if not isinstance(apply, dict) or apply.get("exit_code") not in (0, 3, 4):
+    raise SystemExit("manifest does not contain a restorable apply")
 audit_ids = apply.get("audit_ids")
 if (
-    apply.get("report_hash") != report_hash
+    apply.get("approved_report_hash") != report_hash
+    or apply.get("observed_report_hash") != report_hash
     or not isinstance(report_hash, str)
     or not isinstance(audit_ids, list)
     or not audit_ids
@@ -281,8 +307,10 @@ with SessionLocal() as db:
         raise SystemExit("an exact audit is missing")
     for audit_id in audit_ids:
         audit = audits[audit_id]
-        if audit.report_hash != report_hash or audit.status != "complete":
-            raise SystemExit("audit is no longer the approved completed scope")
+        if audit.report_hash != report_hash or audit.status not in {
+            "complete", "failed_invariant", "failed_fenced", "timed_out"
+        }:
+            raise SystemExit("audit is no longer the approved terminal scope")
         verify_state_backup(audit.backup_path, audit.backup_sha256)
 print("exact repair scope and backup checksums verified")
 PY
@@ -323,9 +351,12 @@ An apply can return several audit IDs. Review them one at a time. Set
 `WORLD_REPAIR_AUDIT_ID` explicitly to one ID from the manifest's
 `WORLD_REPAIR_AUDIT_IDS`; never select an audit by recency. Re-run this block
 before each individual restore. The CLI acquires that game's lock, rereads the
-selected audit with `FOR UPDATE`, requires the exact report hash and
-`complete` status, and rejects the restore if a newer repair audit exists for
-that game with `newer repair audit exists for this game`.
+selected audit with `FOR UPDATE`, requires the exact report hash and one safe
+terminal status (`complete`, `failed_invariant`, `failed_fenced`, or
+`timed_out`), and rejects the restore if a newer repair audit exists for that
+game with `newer repair audit exists for this game`. A printed terminal restore
+command is only an explicit, guarded intent after human audit review; it never
+restores automatically.
 
 ```bash
 set -euo pipefail
@@ -346,8 +377,9 @@ if (
     not isinstance(report_hash, str)
     or not isinstance(audit_ids, list)
     or not audit_ids
-    or apply.get("report_hash") != report_hash
-    or apply.get("exit_code") != 0
+    or apply.get("approved_report_hash") != report_hash
+    or apply.get("observed_report_hash") != report_hash
+    or apply.get("exit_code") not in (0, 3, 4)
 ):
     raise SystemExit("manifest repair scope is invalid")
 print(json.dumps({"audit_ids": audit_ids, "report_hash": report_hash}))

@@ -63,6 +63,19 @@ class RepairStateChanged(RuntimeError):
     """The exact dry-run state was replaced before DB enqueue."""
 
 
+class DurableAuditApplyFailed(RuntimeError):
+    """The backup/audit transaction committed but rebuild enqueue then failed."""
+
+    def __init__(self, audit_id: int, cause: Exception) -> None:
+        super().__init__(str(cause))
+        self.audit_id = audit_id
+
+
+RESTORABLE_AUDIT_STATUSES = frozenset(
+    {"complete", "failed_invariant", "failed_fenced", "timed_out"}
+)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Repair versioned daily world projections safely."
@@ -144,8 +157,15 @@ def run(
                 session_factory=session_factory,
                 backup_dir=args.backup_dir,
             )
-            audit_ids.append(audit_id)
+            _append_audit_id(audit_ids, audit_id)
             service.wake()
+    except DurableAuditApplyFailed as exc:
+        _append_audit_id(audit_ids, exc.audit_id)
+        print(f"repair apply failed: {exc}", file=stderr)
+        _print_json(
+            _apply_result_payload(report, audit_ids, status="apply_failed"), stdout
+        )
+        return EXIT_ERROR
     except (RepairStateChanged, ValueError) as exc:
         print(str(exc), file=stderr)
         _print_json(
@@ -230,34 +250,37 @@ def _apply_candidate(
         )
         audit_id = int(audit.audit_id)
 
-    with session_factory() as db, db.begin():
-        _lock_game(db, candidate.game_id)
-        latest = _exact_candidate_state(db, candidate)
-        latest_state = latest.state_json
-        audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
-        if audit is None or audit.status != "backed_up":
-            raise RuntimeError("repair audit is not backed up")
-        rebuilt = enqueue_rebuild(
-            candidate, DailyWorldProjectionRepository(db), latest_state
-        )
-        if tuple(item.projection_key for item in rebuilt) != tuple(
-            item.projection_key for item in identities
-        ):
-            raise RuntimeError("repair rebuild identity changed")
-        projection_state, initialized = initialized_projection_state(latest_state)
-        if initialized:
-            repaired_state = deepcopy(dict(latest_state))
-            repaired_state["world_projection_state"] = projection_state
-            db.add(
-                GameState(
-                    game_id=candidate.game_id,
-                    week=latest.week,
-                    age=latest.age,
-                    state_json=repaired_state,
-                )
+    try:
+        with session_factory() as db, db.begin():
+            _lock_game(db, candidate.game_id)
+            latest = _exact_candidate_state(db, candidate)
+            latest_state = latest.state_json
+            audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
+            if audit is None or audit.status != "backed_up":
+                raise RuntimeError("repair audit is not backed up")
+            rebuilt = enqueue_rebuild(
+                candidate, DailyWorldProjectionRepository(db), latest_state
             )
-        audit.status = "queued"
-        db.flush()
+            if tuple(item.projection_key for item in rebuilt) != tuple(
+                item.projection_key for item in identities
+            ):
+                raise RuntimeError("repair rebuild identity changed")
+            projection_state, initialized = initialized_projection_state(latest_state)
+            if initialized:
+                repaired_state = deepcopy(dict(latest_state))
+                repaired_state["world_projection_state"] = projection_state
+                db.add(
+                    GameState(
+                        game_id=candidate.game_id,
+                        week=latest.week,
+                        age=latest.age,
+                        state_json=repaired_state,
+                    )
+                )
+            audit.status = "queued"
+            db.flush()
+    except Exception as exc:
+        raise DurableAuditApplyFailed(audit_id, exc) from exc
     return audit_id
 
 
@@ -376,8 +399,8 @@ def _run_restore(
                 raise ValueError("repair audit not found")
             if audit.report_hash != expected_report_hash:
                 raise ValueError("restore report hash does not match audit")
-            if audit.status != "complete":
-                raise ValueError("restore audit is not complete")
+            if audit.status not in RESTORABLE_AUDIT_STATUSES:
+                raise ValueError("restore audit is not a safe terminal status")
             newer_audit = (
                 db.query(DailyWorldProjectionRepairAudit.audit_id)
                 .filter(
@@ -570,6 +593,13 @@ def _apply_result_payload(
         "audit_ids": list(audit_ids),
         "status": status,
     }
+
+
+def _append_audit_id(audit_ids: list[int], audit_id: int) -> None:
+    """Keep every committed audit ID exactly once in operator evidence."""
+
+    if audit_id not in audit_ids:
+        audit_ids.append(audit_id)
 
 
 def _durable_apply_status(

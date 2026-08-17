@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import threading
 from copy import deepcopy
 from datetime import datetime
@@ -30,6 +31,7 @@ from src.services.daily_world_projection_backup import (
 from src.services.daily_world_projection_repair import (
     audit_rebuild_identities,
     non_projection_state_digest,
+    rebuild_identities,
     scan_latest_game_states,
     verify_repair_invariants,
 )
@@ -1721,6 +1723,169 @@ def test_partial_apply_exception_prints_the_durable_partial_scope(
     assert [json.loads(line) for line in stdout.getvalue().splitlines() if line] == [
         {"audit_ids": [1], "report_hash": report.hash, "status": "apply_failed"}
     ]
+
+
+def test_source_hash_conflict_preserves_every_durable_audit_id_in_partial_output(
+    db_engine, tmp_path: Path
+) -> None:
+    """A second-stage conflict cannot hide either queued or backed-up audits."""
+
+    sessions = sessionmaker(bind=db_engine)
+    first_state = _candidate_state("durable-first")
+    conflicting_state = _candidate_state("durable-conflict")
+    with sessions() as session:
+        _seed_game(session, first_state)
+        conflicting_game_id = _seed_game(session, conflicting_state)
+    report = scan_latest_game_states(sessions)
+    conflicting_candidate = next(
+        candidate
+        for candidate in report.candidates
+        if candidate.game_id == conflicting_game_id
+    )
+    conflicting_identity = rebuild_identities(conflicting_candidate, conflicting_state)[
+        0
+    ]
+    with sessions() as session:
+        session.add(
+            DailyWorldProjection(
+                game_id=conflicting_game_id,
+                event_id=conflicting_identity.event_id,
+                revision=conflicting_identity.revision,
+                day_index=conflicting_identity.day_index,
+                source_hash="f" * 64,
+                status="pending",
+                next_attempt_at=datetime.utcnow(),
+            )
+        )
+        session.commit()
+
+    stdout = StringIO()
+    exit_code = cli.run(
+        [
+            "--apply",
+            "--expected-report-hash",
+            report.hash,
+            "--backup-dir",
+            str(tmp_path),
+        ],
+        session_factory=sessions,
+        projection_service=WakeRecorder(),
+        stdout=stdout,
+        stderr=StringIO(),
+    )
+
+    payload = json.loads(stdout.getvalue())
+    with sessions() as session:
+        durable = [
+            (int(audit.audit_id), audit.status)
+            for audit in session.query(DailyWorldProjectionRepairAudit)
+            .order_by(DailyWorldProjectionRepairAudit.audit_id)
+            .all()
+        ]
+    assert exit_code == cli.EXIT_ERROR
+    assert durable == [(1, "queued"), (2, "backed_up")]
+    assert payload == {
+        "audit_ids": [audit_id for audit_id, _status in durable],
+        "report_hash": report.hash,
+        "status": "apply_failed",
+    }
+
+
+def test_timeout_restore_command_is_a_guarded_executable_terminal_intent(
+    db_engine, tmp_path: Path
+) -> None:
+    """The terminal timeout command remains an explicit, safe restore intent."""
+
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        _seed_game(session, _candidate_state("timeout-restore-command"))
+    report = scan_latest_game_states(sessions)
+    stderr = StringIO()
+
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+                "--wait",
+                "--timeout-seconds",
+                "0",
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+            stdout=StringIO(),
+            stderr=stderr,
+        )
+        == cli.EXIT_INCOMPLETE
+    )
+    command = next(
+        line.removeprefix("verified restore command: ")
+        for line in stderr.getvalue().splitlines()
+        if line.startswith("verified restore command: ")
+    )
+
+    assert (
+        cli.run(
+            shlex.split(command)[2:],
+            session_factory=sessions,
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_OK
+    )
+    with sessions() as session:
+        assert session.query(DailyWorldProjectionRepairAudit).one().status == "restored"
+
+
+def test_failed_invariant_restore_command_refuses_changed_visible_state(
+    db_engine, tmp_path: Path
+) -> None:
+    """An explicit terminal restore still cannot overwrite player activity."""
+
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        game_id = _seed_game(session, _candidate_state("failed-invariant-restore"))
+    report = scan_latest_game_states(sessions)
+    stderr = StringIO()
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+                "--wait",
+                "--timeout-seconds",
+                "1",
+            ],
+            session_factory=sessions,
+            projection_service=VisibleStateMutatingWake(sessions, game_id),
+            stdout=StringIO(),
+            stderr=stderr,
+        )
+        == cli.EXIT_INVARIANT
+    )
+    command = next(
+        line.removeprefix("verified restore command: ")
+        for line in stderr.getvalue().splitlines()
+        if line.startswith("verified restore command: ")
+    )
+    before = _db_snapshot(sessions)
+
+    assert (
+        cli.run(
+            shlex.split(command)[2:],
+            session_factory=sessions,
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+        == cli.EXIT_INVARIANT
+    )
+    assert _db_snapshot(sessions) == before
 
 
 def test_restore_requires_the_exact_expected_report_hash_before_any_write(

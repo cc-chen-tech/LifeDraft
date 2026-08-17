@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 from src.game.daily_generation_intent import resolve_daily_generation_intent
@@ -33,6 +35,19 @@ RUNBOOK_PATH = (
 
 def _load_fixture() -> dict[str, object]:
     return json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+
+
+def _phase_two_python_block(marker: str) -> str:
+    """Extract one executable guard from the runbook's approved-apply phase."""
+
+    _, phase_two = RUNBOOK_PATH.read_text(encoding="utf-8").split(
+        "## Phase 2: approved apply", maxsplit=1
+    )
+    return next(
+        block
+        for block in re.findall(r"python - .*? <<'PY'\n(.*?)\nPY", phase_two, re.DOTALL)
+        if marker in block
+    )
 
 
 def test_game156_fixture_matches_repair_and_generation_contracts() -> None:
@@ -165,8 +180,12 @@ def test_repair_runbook_requires_a_hashed_dry_run_and_safe_backup_handling() -> 
         '--restore-audit-id "$WORLD_REPAIR_AUDIT_ID" --expected-report-hash' in runbook
     )
     assert "audit.report_hash != report_hash" in runbook
-    assert 'audit.status != "complete"' in runbook
+    assert '"failed_invariant", "failed_fenced", "timed_out"' in runbook
     assert "newer repair audit exists for this game" in runbook
+    assert "approved_report_hash" in runbook
+    assert "observed_report_hash" in runbook
+    assert "dry-run candidates do not match report hash" in runbook
+    assert 'exit "$apply_exit_code"' in phase_two
     assert "latest_completed_repair_audit_id" not in runbook
     assert "newer player activity" in runbook
     assert re.search(r"must not\s+overwrite it automatically", runbook)
@@ -182,3 +201,85 @@ def test_repair_runbook_requires_a_hashed_dry_run_and_safe_backup_handling() -> 
     assert "sshpass" not in runbook.lower()
     assert not re.search(r"--apply[^\n]*--game-id\s+156\b", runbook)
     assert not re.search(r"--game-id\s+156\b[^\n]*--apply", runbook)
+
+
+def test_phase_two_rejects_tampered_dry_run_candidates_despite_embedded_hash(
+    tmp_path: Path,
+) -> None:
+    """The actual Phase 2 guard must hash candidates, not trust their field."""
+
+    dry_run = {
+        "report_hash": "0" * 64,
+        "candidates": [{"game_id": 1, "rebuild_day_indexes": [0]}],
+    }
+    run_dir = tmp_path / "repair-run"
+    run_dir.mkdir()
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"report_hash": dry_run["report_hash"], "apply": None}),
+        encoding="utf-8",
+    )
+    (run_dir / "dry-run.json").write_text(json.dumps(dry_run), encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _phase_two_python_block("dry_run_hash = dry_run.get"),
+            str(run_dir),
+            dry_run["report_hash"],
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "candidates do not match report hash" in result.stderr
+
+
+def test_phase_two_records_report_changed_without_replacing_cli_exit_code(
+    tmp_path: Path,
+) -> None:
+    """A stale approved hash must persist observed evidence then retain exit 2."""
+
+    approved_hash = "a" * 64
+    observed_hash = "b" * 64
+    run_dir = tmp_path / "repair-run"
+    run_dir.mkdir()
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"report_hash": approved_hash, "apply": None}), encoding="utf-8"
+    )
+    (run_dir / "apply.stdout.json").write_text(
+        json.dumps(
+            {
+                "report_hash": observed_hash,
+                "audit_ids": [],
+                "status": "report_changed",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _phase_two_python_block("apply_exit_code = int"),
+            str(run_dir),
+            approved_hash,
+            "2",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["apply"] == {
+        "approved_report_hash": approved_hash,
+        "audit_ids": [],
+        "exit_code": 2,
+        "observed_report_hash": observed_hash,
+        "status": "report_changed",
+    }
