@@ -10,6 +10,9 @@ from src.ai.prompt_sanitizer import (MAX_NAME_LENGTH, MAX_USER_INPUT_LENGTH,
                                      sanitize_user_choice, sanitize_user_input,
                                      wrap_user_input)
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestSanitizeUserInput:
     """Tests for sanitize_user_input function."""

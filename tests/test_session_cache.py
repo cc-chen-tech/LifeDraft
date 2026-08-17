@@ -5,6 +5,10 @@ from unittest.mock import MagicMock
 
 from src.api.session_store import SESSION_TIMEOUT, SessionStore
 from src.game.game_loop import GameLoop
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestSessionCache:

@@ -16,6 +16,9 @@ from src.ai.harness.quality_level import QualityLevel
 from src.ai.quick_validator import QuickValidationResult
 from src.ai.story_generator import StoryGenerator
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def test_validation_failure_payload_is_friendly_and_retryable() -> None:
     finding = ValidationFinding(

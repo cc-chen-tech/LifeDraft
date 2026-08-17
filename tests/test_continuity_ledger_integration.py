@@ -10,6 +10,10 @@ from src.game.continuity_ledger import ContinuityLedger
 from src.game.game_initializer import GameInitializer
 from src.game.state import PlayerState
 from src.game.world_model import WorldModel
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 
 def _settings() -> dict:

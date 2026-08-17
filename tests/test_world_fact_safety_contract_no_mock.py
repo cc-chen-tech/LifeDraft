@@ -2,6 +2,10 @@
 
 from config.prompts.character_prompts import get_character_setting_prompt
 from src.game.world_fact_safety import qualify_generated_world_facts
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 PRECISE_WORLD = {

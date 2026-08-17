@@ -4,6 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestImageClientAfterSplit:
     """验证 ImageClient 拆分后功能完整性"""

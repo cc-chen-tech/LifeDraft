@@ -3,6 +3,10 @@
 import ast
 import importlib
 from pathlib import Path
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

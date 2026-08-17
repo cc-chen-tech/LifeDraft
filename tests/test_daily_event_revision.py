@@ -9,6 +9,9 @@ from src.game.daily_timeline import build_daily_timeline
 from src.game.state import PlayerState
 from src.game.round.event_generator import apply_daily_event_metadata
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _event(text: str = "原故事", revision: int = 1) -> GameEvent:
     return GameEvent(

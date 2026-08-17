@@ -12,6 +12,10 @@ from src.services.portrait_image_jobs import (
     requeue_interrupted_portrait_jobs,
     run_portrait_image_job,
 )
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _request(game_id: int) -> dict:

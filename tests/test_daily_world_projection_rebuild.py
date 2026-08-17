@@ -24,6 +24,9 @@ from src.services.daily_world_projection_repair import (
     repair_projection_only_identities,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _accepted_state() -> dict[str, object]:
     state = PlayerState().to_dict()

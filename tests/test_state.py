@@ -5,6 +5,9 @@ import pytest
 from config.settings import settings
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestPlayerState:
     """Test PlayerState class."""

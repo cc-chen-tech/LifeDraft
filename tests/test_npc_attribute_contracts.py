@@ -3,6 +3,10 @@
 from types import SimpleNamespace
 
 from src.ai.harness.npc_attribute_validator import NPCAttributeStabilityValidator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _context():

@@ -6,6 +6,10 @@ from config.prompts._helpers import (
 )
 from config.prompts.character_prompts import get_character_setting_prompt
 from src.services.image_service import ImageService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _conflicting_settings():

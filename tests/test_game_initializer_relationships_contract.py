@@ -3,6 +3,10 @@
 from unittest.mock import MagicMock
 
 from src.game.game_initializer import GameInitializer
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_initialize_game_normalizes_relationships_list_payload() -> None:

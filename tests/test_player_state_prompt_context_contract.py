@@ -4,6 +4,10 @@ from typing import Any
 
 from src.game.round.event_generator import RoundEventGenerator
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _make_state() -> PlayerState:

@@ -8,6 +8,10 @@ from typing import Any, Dict
 
 from src.game.round.character_introduction import CharacterIntroductionService
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 # ---------------------------------------------------------------------------
 # Helpers

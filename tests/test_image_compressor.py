@@ -5,6 +5,9 @@ import io
 import pytest
 from PIL import Image
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestImageCompressor:
     """Test image compression functionality."""

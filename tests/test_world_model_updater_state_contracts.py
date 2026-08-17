@@ -3,6 +3,10 @@
 from types import SimpleNamespace
 
 from src.game.world_model_updater import WorldModelUpdater
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _state(week: int, data: dict) -> SimpleNamespace:

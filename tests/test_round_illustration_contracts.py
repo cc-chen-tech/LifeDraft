@@ -5,6 +5,10 @@ import io
 from PIL import Image
 
 from src.game.round.illustration_service import RoundIllustrationService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _SceneClient:

@@ -14,6 +14,9 @@ from src.utils.financial_narrative import (
     contains_tracked_wealth_state,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 @pytest.mark.parametrize(
     "text",

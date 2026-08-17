@@ -13,6 +13,9 @@ from src.ai.consistency_validator import ConsistencyIssue, ValidationResult
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.ai.story_generator import StoryGenerator
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def test_story_generator_accepts_quality_level():
     """StoryGenerator 构造时接收 quality_level 参数."""

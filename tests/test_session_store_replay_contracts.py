@@ -3,6 +3,10 @@
 import time
 
 from src.api.session_store import SESSION_TIMEOUT, GameLoopSession, SessionStore
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_sse_replay_keeps_tail_event_ids_after_cache_trimming() -> None:

@@ -9,6 +9,9 @@ from fastapi.testclient import TestClient
 
 from src.api.main import app
 
+pytestmark = [pytest.mark.unit]
+
+
 client = TestClient(app)
 
 

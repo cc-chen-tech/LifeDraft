@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from src.database.models import DailyWorldProjectionRepairAudit, Game
 from src.services.daily_world_projection_backup import create_repair_audit
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_create_repair_audit_records_backup_and_visible_digest(db_session) -> None:

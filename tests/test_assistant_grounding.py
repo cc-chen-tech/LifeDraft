@@ -7,6 +7,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from src.game.assistant_grounding import AssistantEvidence, AssistantGroundingService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _player_state() -> SimpleNamespace:

@@ -1,4 +1,8 @@
 from src.services.image.scene_service import SceneImageService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _service() -> SceneImageService:

@@ -4,6 +4,10 @@ No mocks. Pure logic tests for NPC character state.
 """
 
 from src.game.state.character_state import CharacterState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestCharacterStateContract:

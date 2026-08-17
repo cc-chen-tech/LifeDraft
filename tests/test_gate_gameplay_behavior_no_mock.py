@@ -17,6 +17,9 @@ from src.ai.text_quality import (normalize_chinese_punctuation,
                                  normalize_generated_story,
                                  validate_narrative_quality)
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def test_option_generator_rejects_generic_options_for_specific_decision_point() -> None:
     event = GameEvent(

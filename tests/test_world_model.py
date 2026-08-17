@@ -7,6 +7,10 @@ from src.game.world_model import (CAREER_LEVEL_INDEX, CAREER_LEVELS,
                                   CareerInfo, CausalChain, CharacterProfile,
                                   Commitment, LocationInfo, PhysicalState,
                                   WorldModel, _extract_region)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestLocationInfo:

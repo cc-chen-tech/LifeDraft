@@ -6,6 +6,10 @@ Layer 3: 契约测试 — 防止 SQL 注入。
 
 import ast
 from pathlib import Path
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestSQLAlchemyRawSQLContract:

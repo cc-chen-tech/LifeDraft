@@ -4,6 +4,10 @@ from types import SimpleNamespace
 
 from src.ai.harness.cause_effect_validator import CauseEffectConsistencyValidator
 from src.ai.harness.info_barrier_validator import InformationBarrierValidator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestCauseEffectConsistencyContracts:

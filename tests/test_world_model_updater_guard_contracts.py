@@ -2,6 +2,10 @@
 
 from src.game.state import PlayerState
 from src.game.world_model_updater import WorldModelUpdater
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_incomplete_world_model_updates_do_not_create_partial_records() -> None:

@@ -14,6 +14,9 @@ from src.game.scheduled_events import ScheduledEvent
 from src.game.game_initializer import GameInitializer
 from src.game.world_model_updater import WorldModelUpdater
 
+pytestmark = [pytest.mark.unit]
+
+
 
 @pytest.fixture(autouse=True)
 def _reset_feature_flags() -> None:

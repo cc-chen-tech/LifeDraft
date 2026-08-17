@@ -13,6 +13,9 @@ from src.ai.budgets import GenerationCallTracker, resolve_narrative_budget
 from src.ai.client import AIClient
 from src.ai.generator import EventGenerator
 
+pytestmark = [pytest.mark.unit]
+
+
 STREAM_RESPONSE = (
     'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":0,'
     '"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"role":"assistant",'

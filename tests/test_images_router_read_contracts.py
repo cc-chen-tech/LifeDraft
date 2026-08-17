@@ -14,6 +14,9 @@ from src.api.routers.images import (
 from src.database.models import Game, SceneImage, User
 from src.database.models import Image as ImageModel
 
+pytestmark = [pytest.mark.api]
+
+
 
 def _owner_game(db_session) -> tuple[User, Game]:
     owner = User(private_id="image-router-owner", public_id="imgown01", display_name="Owner")

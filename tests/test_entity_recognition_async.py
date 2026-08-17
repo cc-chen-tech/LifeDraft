@@ -14,6 +14,9 @@ from src.services.entity_recognition_service import (
 from src.services.entity_recognition_task import (TaskStatus, get_task_manager,
                                                   reset_task_manager)
 
+pytestmark = [pytest.mark.unit]
+
+
 
 @pytest.fixture(autouse=True)
 def _clear_entity_recognition_cache():

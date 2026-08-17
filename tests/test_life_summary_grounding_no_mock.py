@@ -8,6 +8,9 @@ from src.services.life_summary_grounding import (
     validate_or_fallback_life_summary,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 STORY_HISTORY = [
     {

@@ -1,5 +1,8 @@
 import pytest
 
+pytestmark = [pytest.mark.api]
+
+
 
 @pytest.mark.asyncio
 async def test_lifespan_does_not_start_projection_service_when_flag_is_off(

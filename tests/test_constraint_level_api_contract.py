@@ -5,6 +5,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+pytestmark = [pytest.mark.api]
+
+
 
 def test_game_state_response_schema_has_constraint_level():
     from src.api.schemas import GameStateResponse

@@ -16,30 +16,95 @@ import time
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+# ── Test isolation: never let tests touch the developer's real database ──
+# src.database.models binds its engine from DATABASE_URL at import time, so
+# this MUST run before any `src` import below. Point every test process at a
+# per-process SQLite file under the system temp dir instead of data/game.db.
+if not os.environ.get("DATABASE_URL"):
+    _pytest_isolated_db = os.path.join(
+        tempfile.gettempdir(), f"story2_pytest_{os.getpid()}.db"
+    )
+    os.environ["DATABASE_URL"] = f"sqlite:///{_pytest_isolated_db}"
+
+# Tests import src.api.deps at module level (e.g. module-level create_token);
+# give them a deterministic secret instead of crashing at collection time.
+os.environ.setdefault("JWT_SECRET", "test-secret-for-pytest")
+
 # Patch httpx.Response for SSE contract tests (must be after all imports)
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from src.api.main import app
-from src.database.models import Base, Game, User
+from src.database.models import Base, Game, User, init_db
 from src.game.state import PlayerState
 
-if not hasattr(httpx.Response, "__enter__"):
-    httpx.Response.__enter__ = lambda self: self
-    httpx.Response.__exit__ = lambda self, *args: None
+# Pre-initialize the isolated test DB exactly like a deployed instance.
+# Many tests historically relied on the developer's data/game.db already
+# being initialized; with the redirect above the file starts empty.
+init_db()
 
+_original_response_enter = getattr(httpx.Response, "__enter__", None)
+_original_response_exit = getattr(httpx.Response, "__exit__", None)
 _original_iter_lines = httpx.Response.iter_lines
 
 
-def _patched_iter_lines(self):
-    for line in _original_iter_lines(self):
-        yield line.encode("utf-8")
+@pytest.fixture(autouse=True)
+def _patch_httpx_response_for_sse():
+    """Apply the httpx.Response context-manager patch per test, then restore.
+
+    The patch is applied and rolled back around every test instead of being a
+    permanent import-time mutation of the global httpx.Response class.
+    """
+    if _original_response_enter is None:
+        httpx.Response.__enter__ = lambda self: self
+        httpx.Response.__exit__ = lambda self, *args: None
+
+    def _patched_iter_lines(self):
+        for line in _original_iter_lines(self):
+            yield line.encode("utf-8")
+
+    httpx.Response.iter_lines = _patched_iter_lines
+    yield
+    if _original_response_enter is None:
+        delattr(httpx.Response, "__enter__")
+        delattr(httpx.Response, "__exit__")
+    httpx.Response.iter_lines = _original_iter_lines
 
 
-httpx.Response.iter_lines = _patched_iter_lines
+@pytest.fixture(scope="module", autouse=True)
+def _reset_isolated_db_per_module():
+    """Give every test module a clean database and empty in-memory SSE stores.
+
+    The isolated SQLite file is shared by the whole pytest process, so
+    without this reset, tests in later modules would read rows written by
+    earlier modules (same game_id/user_id) and fail in order-dependent ways.
+    """
+    from src.database.models import Base, engine, init_db
+
+    Base.metadata.drop_all(engine)
+    init_db()
+    from src.api.routers import images
+
+    images._scene_image_latest.clear()
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _restore_sse_background_state():
+    """Re-enable SSE background jobs after each test.
+
+    Tests that exercise shutdown_sse_thread_pool(prevent_new_background_jobs=True)
+    permanently flip the module-global _background_jobs_enabled flag, which
+    would break every later test that submits background media jobs.
+    """
+    yield
+    from src.api.routers.gameplay import sse_helpers
+
+    sse_helpers._background_jobs_enabled = True
 
 
 @pytest.fixture(autouse=True)
@@ -122,9 +187,15 @@ def mock_auth_user_id():
 def db_engine():
     """Create an in-memory SQLite database engine for testing.
 
-    Tables are created automatically. Use db_session for actual operations.
+    StaticPool + check_same_thread=False keep one shared connection so every
+    session and thread sees the same in-memory database.
     """
-    engine = create_engine("sqlite:///:memory:", echo=False)
+    engine = create_engine(
+        "sqlite://",
+        echo=False,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     return engine
 

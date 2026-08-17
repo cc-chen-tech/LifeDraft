@@ -6,6 +6,10 @@ Layer 3: 契约测试 — 反向提示词必须明确禁止科幻视觉元素。
 
 from src.ai.image_config import (DEFAULT_EDIT_NEGATIVE_PROMPT,
                                  DEFAULT_NEGATIVE_PROMPT)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestNegativePromptContract:

@@ -12,6 +12,9 @@ from sqlalchemy import text
 
 from src.database.models import Base, Game, SessionLocal, User
 
+pytestmark = [pytest.mark.integration]
+
+
 
 class TestRealDatabaseIntegration:
     """真实数据库集成测试"""

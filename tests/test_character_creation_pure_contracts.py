@@ -5,6 +5,10 @@ from src.game.character_creation import (
     _align_era_setting_with_life_vision,
     _strip_placeholder_surname_from_family_members,
 )
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestCharacterCreationPureContracts:

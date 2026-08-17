@@ -15,6 +15,10 @@ from src.api.schemas import (
     VoiceReadingSettingsResponse,
     VoiceReadingSettingsUpdateRequest,
 )
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_TYPES = (ROOT / "frontend" / "src" / "lib" / "types.ts").read_text(encoding="utf-8")

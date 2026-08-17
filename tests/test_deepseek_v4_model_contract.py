@@ -6,6 +6,10 @@ Layer 3: 契约测试 — 配置值、降级链、环境变量。
 
 import os
 from pathlib import Path
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestDeepSeekV4ModelConfiguration:

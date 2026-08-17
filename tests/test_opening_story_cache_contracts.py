@@ -15,6 +15,9 @@ from src.api.routers.character import (
 )
 from src.api.schemas import OpeningStoryRequest
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _request(player_name: str) -> OpeningStoryRequest:
     return OpeningStoryRequest(

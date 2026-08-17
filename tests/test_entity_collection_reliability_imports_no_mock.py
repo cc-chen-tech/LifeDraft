@@ -1,4 +1,8 @@
 """Import verification for entity collection reliability paths."""
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_entity_collection_reliability_paths_are_reachable() -> None:

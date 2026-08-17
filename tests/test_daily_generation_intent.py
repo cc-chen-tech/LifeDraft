@@ -3,6 +3,10 @@ from src.game.daily_generation_intent import (
     is_complete_daily_event,
     resolve_daily_generation_intent,
 )
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _complete_event() -> GameEvent:

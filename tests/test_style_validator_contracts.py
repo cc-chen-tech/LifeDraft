@@ -7,6 +7,10 @@ from src.ai.narrative.style_manifest import (
     TechniqueConfig,
 )
 from src.ai.narrative.style_validator import StyleAwareValidator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _style() -> StyleManifest:

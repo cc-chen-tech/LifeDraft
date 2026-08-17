@@ -11,6 +11,9 @@ from src.api.services.session_service import session_service
 from src.game.game_loop import GameLoop
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class _UnavailableCompletion:
     def generate_completion(self, **kwargs):

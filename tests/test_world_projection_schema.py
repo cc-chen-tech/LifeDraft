@@ -10,6 +10,9 @@ from src.game.world_projection_schema import (
     validate_projection_payload,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _tracked_state() -> dict[str, object]:
     return {"character_locations": {"黑袍人": {"location": "花果山"}}}

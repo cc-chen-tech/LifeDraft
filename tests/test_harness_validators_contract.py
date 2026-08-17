@@ -21,6 +21,10 @@ from src.ai.harness.validators import (validate_anti_repetition,
                                        validate_scene_continuity,
                                        validate_third_person,
                                        validate_vector_context)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 # ---------------------------------------------------------------------------
 # Helper

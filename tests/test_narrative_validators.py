@@ -4,6 +4,10 @@ from src.ai.harness.narrative_validators import (
     validate_arc_hint_compliance, validate_conflict_directive_compliance,
     validate_pacing_variety, validate_three_act_structure,
     validate_world_event_integration)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _make_long_text(

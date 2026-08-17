@@ -7,6 +7,9 @@ import pytest
 from src.ai.image_exceptions import ContentInspectionError, ImageProviderError
 from src.ai.image_generator import ImageGenerator
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _generator(base_url: str = "https://images.example/v1") -> ImageGenerator:
     return ImageGenerator(api_key="test-key", base_url=base_url, model="image-01")

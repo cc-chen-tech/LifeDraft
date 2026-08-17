@@ -3,6 +3,10 @@
 from typing import Any
 
 from src.game.character_creation import CharacterCreator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _ScriptedRelationshipGenerator:

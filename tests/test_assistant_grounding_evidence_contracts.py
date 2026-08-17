@@ -9,6 +9,10 @@ from src.game.assistant_grounding import (
     AssistantGroundingService,
     EvidenceRecord,
 )
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _PayloadProvider:

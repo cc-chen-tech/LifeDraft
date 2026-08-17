@@ -8,6 +8,9 @@ from src.game.story_origin import (
     validate_story_origin,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _origin(**overrides: object) -> dict[str, object]:
     value: dict[str, object] = {

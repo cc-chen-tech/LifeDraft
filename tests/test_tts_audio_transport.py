@@ -5,6 +5,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from src.api.main import app
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _write_minimax_asset(asset_dir: Path) -> None:

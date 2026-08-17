@@ -4,6 +4,9 @@ import pytest
 
 from src.services.image_storage import ImageStorageError, ImageStorageService
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def test_local_storage_resolves_relative_and_absolute_paths_and_encodes_urls(tmp_path: Path):
     service = ImageStorageService(storage_type="local", local_path=tmp_path)

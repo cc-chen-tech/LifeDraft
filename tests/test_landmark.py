@@ -6,6 +6,10 @@ from src.game.state.landmark_state import (LANDMARK_CATEGORY_LABELS,
                                            LANDMARK_IMPORTANCE_LABELS,
                                            LandmarkState)
 from src.services.landmark_extraction_service import LandmarkExtractionService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestLandmarkState:

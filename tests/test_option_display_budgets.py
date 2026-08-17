@@ -19,6 +19,9 @@ from src.ai.generator import EventGenerator
 from src.ai.option_generator import OptionGenerator
 from src.game.round.event_generator import RoundEventGenerator
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class SequenceClient:
     model = "test-model"

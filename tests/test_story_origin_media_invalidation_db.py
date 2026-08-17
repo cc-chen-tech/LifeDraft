@@ -7,6 +7,9 @@ from src.database.state_repository import StateRepository
 from src.game.state import PlayerState
 from src.game.story_origin import StoryOriginLocked, StoryOriginRevisionConflict
 
+pytestmark = [pytest.mark.integration]
+
+
 
 def _legacy_origin_state():
     return {

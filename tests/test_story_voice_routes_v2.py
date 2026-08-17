@@ -8,6 +8,10 @@ from src.api.deps import get_current_user
 from src.api.main import app
 from src.database.models import SessionLocal, User, init_db
 from src.services.story_voice_reading import normalize_text_hash
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _create_user() -> int:

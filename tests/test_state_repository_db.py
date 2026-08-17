@@ -14,6 +14,9 @@ from src.database.models import Base, Game, GameState, SessionLocal, User
 from src.database.state_repository import StateRepository
 from src.game.state import PlayerState
 
+pytestmark = [pytest.mark.integration]
+
+
 
 @pytest.fixture(autouse=True)
 def patch_session_local():

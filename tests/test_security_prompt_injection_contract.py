@@ -12,6 +12,9 @@ from src.ai.prompt_sanitizer import (PromptInputTooLongError,
                                      sanitize_player_name,
                                      sanitize_user_choice)
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestPromptInjectionContract:
     """测试 prompt 注入防护契约"""

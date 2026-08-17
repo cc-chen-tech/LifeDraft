@@ -2,6 +2,10 @@
 
 from src.services.item_extraction_service import ItemExtractionService
 from src.services.landmark_extraction_service import LandmarkExtractionService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_item_parser_keeps_new_items_and_normalizes_invalid_fields():

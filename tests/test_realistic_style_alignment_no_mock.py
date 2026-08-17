@@ -8,6 +8,10 @@ from src.ai.narrative.style_matcher import StyleMatcher
 from src.database.db import GameDatabase
 from src.database.models import Game, SessionLocal, User, init_db
 from src.game.game_initializer import GameInitializer
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 REALISTIC_PRODUCT_SETTINGS = {

@@ -3,6 +3,10 @@
 from fastapi import Response
 
 from src.api.main import app
+import pytest
+
+pytestmark = [pytest.mark.api]
+
 
 
 class TestSceneImageAPI:

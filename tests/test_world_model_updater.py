@@ -3,6 +3,10 @@
 from unittest.mock import MagicMock
 
 from src.game.world_model_updater import WorldModelUpdater
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestLocationUpdates:

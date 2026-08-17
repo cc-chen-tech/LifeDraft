@@ -12,6 +12,10 @@ from unittest.mock import MagicMock, patch
 
 from src.ai.image_exceptions import ImageGenerationError
 from src.game.round.illustration_service import RoundIllustrationService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestImageEditFallbackContract:

@@ -4,6 +4,10 @@ from unittest.mock import Mock, patch
 
 from src.ai.generator import EventGenerator
 from src.ai.models import EventOption, GameEvent
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestEventGenerator:

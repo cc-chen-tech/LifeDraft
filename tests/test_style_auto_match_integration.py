@@ -6,6 +6,10 @@ from fastapi.testclient import TestClient
 
 from src.api.deps import get_current_user
 from src.api.main import app
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 client = TestClient(app)
 

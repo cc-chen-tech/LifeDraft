@@ -10,6 +10,9 @@ from src.ai.client import AIClient
 from src.ai.story_generator import StoryGenerator
 from src.database.models import Game, SessionLocal, User
 
+pytestmark = [pytest.mark.integration]
+
+
 
 class TestEraValidatorIntegration:
     """时代一致性验证器 DB 集成测试"""

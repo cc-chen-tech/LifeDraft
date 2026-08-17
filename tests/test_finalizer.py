@@ -5,6 +5,10 @@ import time
 from unittest.mock import MagicMock, patch
 
 from src.game.round.finalizer import RoundFinalizer
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.slow]
+
 
 
 class TestRoundFinalizerInit:

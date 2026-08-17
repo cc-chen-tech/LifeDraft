@@ -1,6 +1,10 @@
 from pathlib import Path
 
 from src.ai.harness.metrics import HarnessMetrics
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 
 def _record_runs(metrics: HarnessMetrics) -> None:

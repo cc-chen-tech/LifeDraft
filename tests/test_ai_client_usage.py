@@ -3,6 +3,10 @@
 from types import SimpleNamespace
 
 from src.ai.client import AIClient
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _response(content: str = "ok"):

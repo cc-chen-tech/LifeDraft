@@ -7,6 +7,10 @@ from src.ai.models import GameEvent
 from src.game.fallback_events import (generate_fallback_event,
                                       generate_simple_round_event,
                                       generate_simple_scheduled_event)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestFallbackEventsContract:

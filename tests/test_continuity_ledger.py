@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from src.game.continuity_ledger import ContinuityLedger
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _settings() -> dict:

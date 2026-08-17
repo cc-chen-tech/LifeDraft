@@ -16,6 +16,9 @@ from src.api.services.event_generation_operation import (
     EventGenerationOperation,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _event() -> GameEvent:
     return GameEvent(

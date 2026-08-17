@@ -3,6 +3,10 @@
 import os
 from pathlib import Path
 import re
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CHANGE_DIR = (

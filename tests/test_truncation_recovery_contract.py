@@ -5,6 +5,10 @@ No mocks. Tests truncation detection and recovery with hand-rolled stubs.
 
 from src.ai.truncation_recovery import (TruncationRecovery,
                                         TruncationRecoveryConfig)
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class FakeClient:

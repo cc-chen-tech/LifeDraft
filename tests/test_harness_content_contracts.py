@@ -7,6 +7,10 @@ from src.ai.harness.narrative_validators import (
     validate_three_act_structure,
     validate_world_event_integration,
 )
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestItemContinuityContracts:

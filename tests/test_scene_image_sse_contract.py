@@ -19,6 +19,10 @@ os.environ.setdefault("JWT_SECRET", "test-secret-for-sse-contract")
 
 from src.api.main import app  # noqa: E402
 from src.database.models import Game, SessionLocal, init_db  # noqa: E402
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 client = TestClient(app)
 

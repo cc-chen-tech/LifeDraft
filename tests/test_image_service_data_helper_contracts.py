@@ -2,6 +2,10 @@
 
 from src.database.models import Game, GameState
 from src.services.image_service import ImageService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _service(db_session) -> ImageService:

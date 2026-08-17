@@ -22,6 +22,9 @@ from src.ai.story_generator import StoryGenerator
 from src.game.round.event_generator import RoundEventGenerator
 from src.game.state.player_state import PlayerState
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class CharacterCounter:
     """Deterministic test token counter: one character is one token."""

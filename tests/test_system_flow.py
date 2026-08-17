@@ -6,6 +6,10 @@ from config.settings import settings
 from src.game.game_loop import GameLoop
 from src.game.historical_summary_selector import HistoricalSummarySelector
 from src.game.state import CharacterState, PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestGameInitialization:

@@ -11,6 +11,10 @@ from src.api.routers.gameplay.sse_helpers import (
 from src.database.models import Game, SessionLocal, init_db
 from src.database.singletons import get_game_db
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 
 
 @pytest.fixture(scope="module", autouse=True)

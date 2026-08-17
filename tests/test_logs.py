@@ -5,6 +5,10 @@
 
 import logging
 from io import StringIO
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestEntityRecognitionLogs:

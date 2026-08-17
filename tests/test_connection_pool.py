@@ -4,6 +4,10 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestConnectionPoolConfig:

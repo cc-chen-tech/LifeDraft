@@ -7,6 +7,10 @@ from src.ai.harness.constraint_registry import (ConstraintDefinition,
                                                 ConstraintRegistry,
                                                 ConstraintType, Priority)
 from src.ai.harness.validation_pipeline import ValidationPipeline
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _make_validator(passed: bool, evidence: str = ""):

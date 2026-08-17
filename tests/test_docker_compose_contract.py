@@ -6,6 +6,9 @@
 import pytest
 import yaml
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestDockerComposeContract:
     """契约测试：docker-compose 配置"""

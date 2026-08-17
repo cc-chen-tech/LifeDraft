@@ -4,6 +4,10 @@ from typing import Any
 
 from src.game.game_loop import GameLoop
 from src.game.state import PlayerState
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _PeriodicSummaryProvider:

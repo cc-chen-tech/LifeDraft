@@ -7,6 +7,9 @@ import pytest
 
 from src.services.image_storage import ImageStorageError, ImageStorageService
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestImageStorageServiceInit:
     """Test ImageStorageService initialization."""

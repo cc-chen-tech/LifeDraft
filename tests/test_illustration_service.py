@@ -8,6 +8,9 @@ from sqlalchemy.exc import IntegrityError
 from src.ai.image_client import ContentInspectionError, ImageGenerationError
 from src.game.round.illustration_service import RoundIllustrationService
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class TestRoundIllustrationServiceInit:
     """Test RoundIllustrationService initialization."""

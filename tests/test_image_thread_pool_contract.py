@@ -7,6 +7,10 @@ B-02: 全局 ThreadPoolExecutor shutdown 后不应立即重新创建，避免资
 from concurrent.futures import ThreadPoolExecutor
 
 from src.services import image_service
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class TestImageThreadPoolLifecycle:

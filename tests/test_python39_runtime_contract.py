@@ -6,6 +6,10 @@ compatible with that runtime so imports do not fail after deployment.
 
 import ast
 from pathlib import Path
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src"

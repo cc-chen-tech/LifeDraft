@@ -8,6 +8,9 @@ from src.game.decisions import (
 )
 from src.game.state import CharacterState, PlayerState
 
+pytestmark = [pytest.mark.unit]
+
+
 
 class _FailingResultProvider:
     def generate_completion(self, **_kwargs: object) -> str:

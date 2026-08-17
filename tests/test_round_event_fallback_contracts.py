@@ -2,6 +2,10 @@
 
 from src.game.round.event_generator import RoundEventGenerator
 from src.game.round.event_generator import apply_daily_event_metadata
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def _generator(language: str) -> RoundEventGenerator:

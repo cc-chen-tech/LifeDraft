@@ -13,6 +13,9 @@ os.environ.setdefault("JWT_SECRET", "test-secret-for-sse-auth-contract")
 
 from src.api.main import app  # noqa: E402
 
+pytestmark = [pytest.mark.unit]
+
+
 client = TestClient(app)
 
 

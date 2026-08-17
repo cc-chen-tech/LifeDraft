@@ -2,6 +2,10 @@
 
 from src.game.state import PlayerState
 from src.services.collection_service import CollectionService
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 class _EmptyQuery:

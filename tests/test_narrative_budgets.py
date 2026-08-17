@@ -13,6 +13,9 @@ from src.ai.generation_budget import \
     NarrativeKind as CompatibilityNarrativeKind
 from src.ai.generation_budget import get_generation_budget
 
+pytestmark = [pytest.mark.unit]
+
+
 
 @pytest.mark.parametrize(
     (

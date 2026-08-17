@@ -10,6 +10,9 @@ from src.game.round.daily_choice_processor import DailyChoiceProcessor
 from src.game.state import PlayerState
 from src.game.world_projection_schema import compute_projection_source_hash
 
+pytestmark = [pytest.mark.unit]
+
+
 
 def _state(day_index: int = 0) -> PlayerState:
     return PlayerState(

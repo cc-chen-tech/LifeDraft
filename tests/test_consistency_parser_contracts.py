@@ -3,6 +3,10 @@
 import json
 
 from src.ai.consistency_validator import ConsistencyValidator
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 
 def test_critical_issue_without_should_retry_falls_back_to_retry():

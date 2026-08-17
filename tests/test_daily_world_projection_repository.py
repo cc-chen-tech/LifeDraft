@@ -18,6 +18,9 @@ from src.services.daily_world_projection_repository import (
     ProjectionSourceHashConflict,
 )
 
+pytestmark = [pytest.mark.unit]
+
+
 REPAIR_SOURCE_HASH = "a" * 64
 
 
