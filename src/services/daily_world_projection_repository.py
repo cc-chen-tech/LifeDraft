@@ -29,7 +29,9 @@ REPROCESSABLE_STATUSES = CLAIMABLE_STATUSES + ("running",) + READY_STATUSES
 class JsonModel(Protocol):
     """A typed model that can produce JSON-ready persistence data."""
 
-    def model_dump(self, *, mode: str) -> Any: ...
+    def model_dump(self, *, mode: str) -> Any:
+        """Return JSON-ready model data for durable projection storage."""
+        ...
 
 
 CoverageInput = Union[Mapping[str, Any], JsonModel]

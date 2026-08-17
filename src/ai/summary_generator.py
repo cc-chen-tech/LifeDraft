@@ -6,18 +6,21 @@ and yearly summaries.
 
 import logging
 import re as _re
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from src.ai.client import AIClient
 from src.ai.budgets import (
     InformationBudget,
     format_information_budget_requirement,
     measure_narrative_length,
     resolve_information_budget,
 )
+from src.ai.client import AIClient
 from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
+
+if TYPE_CHECKING:
+    from src.game.world_projection_schema import WorldProjectionPayload
 
 logger = logging.getLogger(__name__)
 
@@ -461,7 +464,6 @@ class SummaryGenerator:
         from config.prompts import get_daily_world_projection_prompt
         from src.game.world_projection_schema import (
             WorldProjectionExtractionError,
-            WorldProjectionPayload,
             validate_projection_payload,
         )
 

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from dataclasses import dataclass
-import logging
 from threading import Lock
-from typing import Any, Callable, Dict, Optional, cast
+from typing import Any, Callable, Dict, Optional
 
 from config.settings import settings
 from src.ai.models import GameEvent
@@ -15,7 +15,6 @@ from src.game.daily_timeline import advance_daily_timeline, normalize_daily_time
 from src.game.daily_transition import resolve_daily_transition
 from src.game.world_projection_schema import compute_projection_source_hash
 from src.game.world_projection_state import apply_world_projection_patch
-
 
 logger = logging.getLogger(__name__)
 
@@ -318,7 +317,7 @@ class DailyChoiceProcessor:
         projection_id = cls._projection_field(projection, "projection_id")
         if isinstance(projection_id, bool) or not isinstance(projection_id, int):
             return None
-        return cast(int, projection_id)
+        return int(projection_id)
 
     def _find_duplicate(
         self, state: Any, event_id: str, revision: int, option_index: int
