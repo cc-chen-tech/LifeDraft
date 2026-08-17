@@ -4,6 +4,7 @@
 包含所有 Pydantic 字段定义、验证器和序列化方法。
 """
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional
 
 from pydantic import Field, field_validator
@@ -13,6 +14,120 @@ from config.settings import settings
 # 在 TYPE_CHECKING 中声明 BaseModel 的方法
 if TYPE_CHECKING:
     pass
+
+
+def default_world_projection_state() -> Dict[str, Any]:
+    """Return a fresh v1 projection layer for a player's derived world facts."""
+
+    return {
+        "version": 1,
+        "projected_through_day_index": -1,
+        "applied_through_day_index": -1,
+        "pending_from_day_index": None,
+        "oldest_pending_at": None,
+        "applied_sources": [],
+        "world": {
+            "fact_updates": [],
+            "foreshadowing_seeds": [],
+            "habit_updates": [],
+            "location_updates": [],
+            "career_updates": [],
+            "commitment_updates": [],
+            "causal_updates": [],
+        },
+    }
+
+
+def _sanitize_world_projection_state(value: Any) -> Dict[str, Any]:
+    """Fill missing v1 keys while preserving all valid legacy projection data."""
+
+    normalized = default_world_projection_state()
+    if not isinstance(value, Mapping):
+        return normalized
+
+    normalized.update(deepcopy(dict(value)))
+    normalized["version"] = 1
+    normalized["projected_through_day_index"] = _sanitize_watermark(
+        value.get("projected_through_day_index")
+    )
+    normalized["applied_through_day_index"] = _sanitize_watermark(
+        value.get("applied_through_day_index")
+    )
+    normalized["pending_from_day_index"] = _sanitize_pending_day_index(
+        value.get("pending_from_day_index")
+    )
+    normalized["oldest_pending_at"] = _sanitize_oldest_pending_at(
+        value.get("oldest_pending_at")
+    )
+    normalized["applied_sources"] = _sanitize_applied_sources(
+        value.get("applied_sources")
+    )
+    normalized["world"] = _sanitize_projection_world(value.get("world"))
+    return normalized
+
+
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _sanitize_watermark(value: Any) -> int:
+    return value if _is_int(value) and value >= -1 else -1
+
+
+def _sanitize_pending_day_index(value: Any) -> Optional[int]:
+    return value if _is_int(value) and value >= 0 else None
+
+
+def _sanitize_oldest_pending_at(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    try:
+        from datetime import datetime
+
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return value
+
+
+def _sanitize_applied_sources(value: Any) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+    sources: list[Any] = []
+    for source in value:
+        if isinstance(source, Mapping):
+            event_id = source.get("event_id")
+            revision = source.get("revision")
+            day_index = source.get("day_index")
+            if (
+                isinstance(event_id, str)
+                and event_id.strip()
+                and _is_int(revision)
+                and revision >= 1
+                and _is_int(day_index)
+                and day_index >= 0
+            ):
+                sanitized = deepcopy(dict(source))
+                sources.append(sanitized)
+    return sources
+
+
+def _sanitize_projection_world(value: Any) -> Dict[str, Any]:
+    defaults = default_world_projection_state()["world"]
+    if not isinstance(value, Mapping):
+        return defaults
+    return {
+        category: (
+            [
+                deepcopy(dict(entry))
+                for entry in value.get(category, [])
+                if isinstance(entry, Mapping)
+            ]
+            if isinstance(value.get(category), list)
+            else []
+        )
+        for category in defaults
+    }
 
 
 class PlayerDataMixin:
@@ -159,6 +274,12 @@ class PlayerDataMixin:
         }
     )
 
+    # Materialized daily world facts are derived from accepted story revisions.
+    # Legacy mixed world_model_data remains intact as a soft prompt hint.
+    world_projection_state: Dict[str, Any] = Field(
+        default_factory=default_world_projection_state
+    )
+
     # P1-7 authoritative continuity ledger. Narrative prose is never the
     # authority for identity, chronology, committed events, health, or
     # relationships; every mutable entry carries its source event.
@@ -241,6 +362,12 @@ class PlayerDataMixin:
         """Ensure relationship values are within bounds."""
         return {name: max(0, min(100, affinity)) for name, affinity in v.items()}
 
+    @field_validator("world_projection_state", mode="before")
+    @classmethod
+    def validate_world_projection_state(cls, value: Any) -> Dict[str, Any]:
+        """Make partial pre-projection saves readable without rewriting them."""
+        return _sanitize_world_projection_state(value)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert state to a persistence-safe dictionary."""
         from src.game.continuity_ledger import ContinuityLedger
@@ -278,7 +405,9 @@ class PlayerDataMixin:
         """
         data = self.to_dict()
         data["round_history"] = (data.get("round_history") or [])[-recent_rounds:]
-        data["decision_history"] = (data.get("decision_history") or [])[-recent_decisions:]
+        data["decision_history"] = (data.get("decision_history") or [])[
+            -recent_decisions:
+        ]
         for key in (
             "story_history",
             "four_week_summaries",

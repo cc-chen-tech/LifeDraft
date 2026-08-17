@@ -2,6 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from config.feature_flags import reset_features, set_feature
 from src.ai.models import EventOption, GameEvent
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.daily_timeline import build_daily_timeline
@@ -58,7 +59,9 @@ def test_failed_daily_generation_discards_character_introduction(
         "provider unavailable"
     )
     generator = _round_generator(state, ai_generator)
-    monkeypatch.setattr("src.game.round.character_introduction.random.random", lambda: 1.0)
+    monkeypatch.setattr(
+        "src.game.round.character_introduction.random.random", lambda: 1.0
+    )
 
     with pytest.raises(StoryGenerationFailure, match="provider unavailable"):
         generator.generate_round_event()
@@ -81,7 +84,9 @@ def test_daily_generation_rejects_an_introduced_character_missing_from_final_sto
         ],
     )
     generator = _round_generator(state, ai_generator)
-    monkeypatch.setattr("src.game.round.character_introduction.random.random", lambda: 1.0)
+    monkeypatch.setattr(
+        "src.game.round.character_introduction.random.random", lambda: 1.0
+    )
 
     streamed = []
     with pytest.raises(StoryGenerationFailure, match="introduced character"):
@@ -105,7 +110,9 @@ def test_successful_daily_generation_commits_staged_character_once(
         ],
     )
     generator = _round_generator(state, ai_generator)
-    monkeypatch.setattr("src.game.round.character_introduction.random.random", lambda: 1.0)
+    monkeypatch.setattr(
+        "src.game.round.character_introduction.random.random", lambda: 1.0
+    )
 
     streamed = []
 
@@ -141,7 +148,9 @@ def test_commit_callback_failure_restores_live_state(
     )
     generator = _round_generator(state, ai_generator)
     generator.event_callback = Mock(side_effect=RuntimeError("persist failed"))
-    monkeypatch.setattr("src.game.round.character_introduction.random.random", lambda: 1.0)
+    monkeypatch.setattr(
+        "src.game.round.character_introduction.random.random", lambda: 1.0
+    )
 
     with pytest.raises(RuntimeError, match="persist failed"):
         generator.generate_round_event()
@@ -162,7 +171,9 @@ def test_sse_operation_id_reaches_story_candidate_generation(
         ],
     )
     generator = _round_generator(state, ai_generator)
-    monkeypatch.setattr("src.game.round.character_introduction.random.random", lambda: 1.0)
+    monkeypatch.setattr(
+        "src.game.round.character_introduction.random.random", lambda: 1.0
+    )
 
     generator.generate_round_event(operation_id="sse-operation-123")
 
@@ -186,12 +197,8 @@ def test_daily_generation_uses_soft_history_when_world_projection_is_stale(
         }
     ]
     state.world_model_data = {
-        "character_locations": {
-            "孙悟空": {"location": "花果山", "region": "傲来国"}
-        },
-        "active_commitments": [
-            {"description": "留在花果山", "parties": ["孙悟空"]}
-        ],
+        "character_locations": {"孙悟空": {"location": "花果山", "region": "傲来国"}},
+        "active_commitments": [{"description": "留在花果山", "parties": ["孙悟空"]}],
         "causal_chains": [
             {
                 "cause": "留守花果山",
@@ -216,7 +223,9 @@ def test_daily_generation_uses_soft_history_when_world_projection_is_stale(
         ],
     )
     generator = _round_generator(state, ai_generator)
-    monkeypatch.setattr("src.game.round.character_introduction.random.random", lambda: 1.0)
+    monkeypatch.setattr(
+        "src.game.round.character_introduction.random.random", lambda: 1.0
+    )
 
     generator.generate_round_event()
 
@@ -227,3 +236,144 @@ def test_daily_generation_uses_soft_history_when_world_projection_is_stale(
     assert list(kwargs["established_facts"]) == []
     assert "孙悟空已经离开花果山，抵达东海。" in kwargs["round_context"]
     assert "进入龙宫" in kwargs["round_context"]
+
+
+def test_daily_generation_uses_projection_hard_world_and_canonical_gap_tail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_feature("daily_world_projection_v1", True)
+    try:
+        state = _daily_state()
+        state.pending_character_introductions = []
+        state.day_history = [
+            {
+                "day_index": 1,
+                "event_id": "event-1",
+                "revision": 2,
+                "story_date": "2026-08-14",
+                "event_description": "孙悟空离开东海，回到花果山。",
+                "options": [
+                    {"text": "留在东海", "effects": {}},
+                    {"text": "进入水帘洞", "effects": {}},
+                ],
+                "choice_option_index": 1,
+                "choice": "进入水帘洞",
+                "world_projection_status": "failed_retryable",
+            }
+        ]
+        state.world_model_data = {
+            "character_locations": {"孙悟空": {"location": "东海", "region": "东海"}},
+            "career_records": {
+                "孙悟空": {"current_job": "旧任弼马温", "since_week": 0}
+            },
+            "active_commitments": [
+                {"description": "继续留在东海", "parties": ["孙悟空"]}
+            ],
+            "causal_chains": [
+                {"cause": "滞留东海", "expected_consequence": "不能回山"}
+            ],
+        }
+        state.character_habits = [{"character": "孙悟空", "habit": "每天清晨巡海"}]
+        state.world_projection_state["applied_through_day_index"] = 0
+        state.world_projection_state["projected_through_day_index"] = 0
+        state.world_projection_state["pending_from_day_index"] = 1
+        state.world_projection_state["world"]["location_updates"] = [
+            {
+                "character": "孙悟空",
+                "location": "花果山",
+                "region": "傲来国",
+                "source": {"event_id": "event-0", "revision": 1, "day_index": 0},
+            }
+        ]
+        ai_generator = Mock()
+        ai_generator.generate_round_event.return_value = GameEvent(
+            event_description="孙悟空在花果山查看水帘洞里的陈设。",
+            options=[
+                EventOption(text="召集群猴", effects={}),
+                EventOption(text="独自休息", effects={}),
+            ],
+        )
+        generator = _round_generator(state, ai_generator)
+        monkeypatch.setattr(
+            "src.game.round.character_introduction.random.random", lambda: 1.0
+        )
+
+        generator.generate_round_event()
+
+        kwargs = ai_generator.generate_round_event.call_args.kwargs
+        assert kwargs["world_model"].character_locations == {}
+        assert kwargs["world_model"].career_records == {}
+        assert kwargs["world_model"].active_commitments == []
+        assert kwargs["world_model"].causal_chains == []
+        assert kwargs["character_habits"] == []
+        assert "孙悟空离开东海，回到花果山。" in kwargs["round_context"]
+        assert "进入水帘洞" in kwargs["round_context"]
+        assert "event-1" in kwargs["round_context"]
+        assert "继续留在东海" in kwargs["round_context"]
+        assert "每天清晨巡海" in kwargs["round_context"]
+        assert "花果山" in kwargs["round_context"]
+    finally:
+        reset_features()
+
+
+def test_daily_generation_selects_projection_foreshadowing_not_legacy_seed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_feature("daily_world_projection_v1", True)
+    try:
+        state = _daily_state()
+        state.week = 20
+        state.pending_character_introductions = []
+        state.foreshadowing_seeds = [
+            {
+                "description": "legacy-seed",
+                "planted_week": 0,
+                "maturity_weeks": 1,
+                "obfuscation_level": 0.0,
+                "narrative_weight": "major",
+                "related_characters": [],
+                "related_storylines": [],
+                "activated": False,
+            }
+        ]
+        state.world_projection_state["applied_through_day_index"] = 0
+        state.world_projection_state["world"]["foreshadowing_seeds"] = [
+            {
+                "description": "projection-seed",
+                "planted_week": 0,
+                "maturity_weeks": 1,
+                "obfuscation_level": 0.0,
+                "narrative_weight": "major",
+                "related_characters": [],
+                "related_storylines": [],
+                "activated": False,
+                "source": {"event_id": "event-0", "revision": 1, "day_index": 0},
+            }
+        ]
+        ai_generator = Mock()
+        ai_generator.generate_round_event.return_value = GameEvent(
+            event_description="孙悟空在花果山石阶上发现一道旧刻痕。",
+            options=[
+                EventOption(text="仔细查看", effects={}),
+                EventOption(text="暂时离开", effects={}),
+            ],
+        )
+        generator = _round_generator(state, ai_generator)
+        monkeypatch.setattr(
+            "src.game.round.character_introduction.random.random", lambda: 1.0
+        )
+        monkeypatch.setattr("src.game.narrative_manager.random.random", lambda: 0.0)
+
+        generator.generate_round_event()
+
+        activated = ai_generator.generate_round_event.call_args.kwargs[
+            "activated_foreshadowing"
+        ]
+        assert activated["description"] == "projection-seed"
+        assert state.foreshadowing_seeds[0]["activated"] is False
+        assert (
+            state.world_projection_state["world"]["foreshadowing_seeds"][0]["activated"]
+            is True
+        )
+    finally:
+        reset_features()

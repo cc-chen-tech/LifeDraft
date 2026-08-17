@@ -2,7 +2,10 @@
 
 import json
 
+import pytest
+
 from src.ai.summary_generator import SummaryGenerator
+from src.game.world_projection_schema import WorldProjectionExtractionError
 
 
 class _DeterministicSummaryClient:
@@ -13,7 +16,27 @@ class _DeterministicSummaryClient:
         return self.responses.pop(0)
 
 
-def test_story_compression_keeps_structured_updates_and_cleans_summary_artifacts() -> None:
+class _TimedOutProjectionClient:
+    def call(self, **_kwargs: object) -> str:
+        raise TimeoutError("provider timeout")
+
+
+class _ScriptedProjectionClient:
+    def __init__(self, responses: list[object]):
+        self.responses = responses
+        self.calls = 0
+
+    def call(self, **_kwargs: object) -> str:
+        self.calls += 1
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return str(response)
+
+
+def test_story_compression_keeps_structured_updates_and_cleans_summary_artifacts() -> (
+    None
+):
     client = _DeterministicSummaryClient(
         [
             json.dumps(
@@ -187,3 +210,46 @@ def test_combined_postprocess_prompt_embeds_story_once_with_both_schemas() -> No
     assert '"fact_updates"' in prompt
     assert '"causal_updates"' in prompt
     assert "只返回JSON" in prompt
+
+
+def test_daily_projection_provider_timeout_raises_instead_of_returning_empty() -> None:
+    generator = SummaryGenerator(_TimedOutProjectionClient())
+
+    with pytest.raises(WorldProjectionExtractionError) as caught:
+        generator.extract_daily_world_projection(
+            "黑袍人抵达东海。",
+            [{"text": "进入龙宫"}],
+            {"character_locations": {"黑袍人": {"location": "花果山"}}},
+            language="zh",
+        )
+
+    assert caught.value.code == "provider_timeout"
+
+
+def test_daily_projection_makes_two_failed_calls_and_keeps_last_error_code() -> None:
+    client = _ScriptedProjectionClient([TimeoutError("first"), "not json"])
+
+    with pytest.raises(WorldProjectionExtractionError) as caught:
+        SummaryGenerator(client).extract_daily_world_projection(
+            "两人在院中闲谈天气。", [], {}, language="zh"
+        )
+
+    assert client.calls == 2
+    assert caught.value.code == "invalid_json"
+
+
+def test_daily_projection_retries_once_then_returns_typed_payload() -> None:
+    client = _ScriptedProjectionClient(
+        [
+            "not json",
+            json.dumps({"schema_version": 1, "story_patch": {}, "option_patches": {}}),
+        ]
+    )
+
+    payload = SummaryGenerator(client).extract_daily_world_projection(
+        "两人在院中闲谈天气。", [], {}, language="zh"
+    )
+
+    assert client.calls == 2
+    assert payload.no_change is True
+    assert payload.option_patches == {}

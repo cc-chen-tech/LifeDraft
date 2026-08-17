@@ -471,6 +471,7 @@ def ensure_daily_recommended_prefetch(
             voice_id=saved_voice_id,
             voice_speed=saved_voice_speed,
         )
+
     if submitter is not None:
         submitter(callback)
     else:
@@ -478,7 +479,9 @@ def ensure_daily_recommended_prefetch(
     return task_id
 
 
-def _generate_with_isolated_game_loop(source_loop: Any, projected_state: Any) -> GameEvent:
+def _generate_with_isolated_game_loop(
+    source_loop: Any, projected_state: Any
+) -> GameEvent:
     from src.game.game_loop import GameLoop
 
     speculative_loop = GameLoop(
@@ -601,7 +604,9 @@ def _run_demanded_prefetch_worker(
         repository = DailyRecommendedPrefetchRepository(claim_db)
         token = repository.claim(task_id)
         task = claim_db.get(DailyRecommendedPrefetch, task_id)
-        user_id = int(task.user_id) if task is not None and task.user_id is not None else None
+        user_id = (
+            int(task.user_id) if task is not None and task.user_id is not None else None
+        )
         voice_id = str(task.voice_id) if task is not None and task.voice_id else None
         voice_speed = (
             float(task.voice_speed)
@@ -668,7 +673,9 @@ def _run_demanded_prefetch_worker(
             logger.exception("Failed to persist recovered prefetch failure")
         finally:
             failed_db.close()
-        logger.exception("Demanded recommended prefetch recovery failed: task=%s", task_id)
+        logger.exception(
+            "Demanded recommended prefetch recovery failed: task=%s", task_id
+        )
 
 
 def probe_demanded_prefetch(
@@ -690,7 +697,11 @@ def probe_demanded_prefetch(
     revision = int(latest.get("revision") or 0)
     option_index = latest.get("choice_option_index")
     day_index = latest.get("day_index")
-    if not event_id or not isinstance(option_index, int) or not isinstance(day_index, int):
+    if (
+        not event_id
+        or not isinstance(option_index, int)
+        or not isinstance(day_index, int)
+    ):
         return DemandedPrefetchProbe(None, "absent", False, None)
 
     db = SessionLocal()
@@ -711,7 +722,9 @@ def probe_demanded_prefetch(
             )
         task_id = int(task.prefetch_id)
         status = str(task.status)
-        payload = task.next_event_json if isinstance(task.next_event_json, dict) else None
+        payload = (
+            task.next_event_json if isinstance(task.next_event_json, dict) else None
+        )
         should_recover = status == "queued" or (
             status == "processing"
             and (
@@ -749,6 +762,7 @@ def probe_demanded_prefetch(
                 projected_state=projected_state,
                 game_id=game_id,
             )
+
         if submitter is not None:
             submitter(callback)
         else:
@@ -866,9 +880,21 @@ def _promote_demanded_prefetch(*, task_id: int, game_id: int, game_loop: Any) ->
                 state.current_event_data = None
                 game_loop.current_event = None
                 return False
-            if task.status != "consumed":
-                DailyRecommendedPrefetchRepository(db).consume_task(task_id)
-            db.commit()
+            from src.services.daily_world_projection import (
+                enqueue_accepted_daily_world_projection,
+            )
+
+            enqueue_accepted_daily_world_projection(game_id, next_event, state)
+            try:
+                if task.status != "consumed":
+                    DailyRecommendedPrefetchRepository(db).consume_task(task_id)
+                db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception(
+                    "Promoted recommended prefetch bookkeeping failed after save: task=%s",
+                    task_id,
+                )
             return True
     except Exception:
         db.rollback()

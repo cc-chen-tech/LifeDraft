@@ -75,9 +75,7 @@ def derive_legacy_freshness(
             continue
         postprocessing = record.get("postprocessing")
         world_patch = (
-            postprocessing.get("world")
-            if isinstance(postprocessing, Mapping)
-            else None
+            postprocessing.get("world") if isinstance(postprocessing, Mapping) else None
         )
         signals = detect_world_change_signals(
             str(record.get("event_description") or ""),
@@ -115,8 +113,8 @@ def _canonical_history_context(day_history: Sequence[Any], limit: int = 8) -> st
     return "\n".join(lines)
 
 
-def build_validation_world_model(player_state: Any) -> ValidationWorldModelView:
-    """Return hard constraints plus canonical history and downgraded soft hints."""
+def build_legacy_validation_world_model(player_state: Any) -> ValidationWorldModelView:
+    """Return PR 1's schema-independent legacy freshness view."""
 
     from src.game.world_model import WorldModel
 
@@ -129,9 +127,7 @@ def build_validation_world_model(player_state: Any) -> ValidationWorldModelView:
     soft_sections = []
     canonical_context = _canonical_history_context(day_history)
     if canonical_context:
-        soft_sections.append(
-            "【已接受故事与选择（事实依据）】\n" + canonical_context
-        )
+        soft_sections.append("【已接受故事与选择（事实依据）】\n" + canonical_context)
 
     if not freshness.world_derivations_are_fresh:
         stale_fact_categories = {
@@ -145,8 +141,7 @@ def build_validation_world_model(player_state: Any) -> ValidationWorldModelView:
             fact
             for fact in established_facts
             if isinstance(fact, Mapping)
-            and str(fact.get("category") or "").lower()
-            in stale_fact_categories
+            and str(fact.get("category") or "").lower() in stale_fact_categories
         ]
         hard_established_facts = [
             fact for fact in established_facts if fact not in downgraded_legacy_facts
@@ -181,4 +176,27 @@ def build_validation_world_model(player_state: Any) -> ValidationWorldModelView:
         freshness=freshness,
         soft_context=world_model.soft_context,
         hard_established_facts=tuple(hard_established_facts),
+    )
+
+
+def build_validation_world_model(player_state: Any) -> ValidationWorldModelView:
+    """Return the active daily hard-validation view without changing callers."""
+
+    from config.feature_flags import get_feature
+
+    if not get_feature("daily_world_projection_v1"):
+        return build_legacy_validation_world_model(player_state)
+
+    from src.game.world_projection_resolver import resolve_world_context
+
+    resolved = resolve_world_context(player_state)
+    model = resolved.hard_world_model
+    model.soft_context = resolved.soft_context
+    model.canonical_tail = resolved.canonical_tail
+    model.constraint_freshness = resolved.freshness
+    return ValidationWorldModelView(
+        world_model=model,
+        freshness=resolved.freshness,
+        soft_context=resolved.soft_context,
+        hard_established_facts=tuple(getattr(model, "hard_established_facts", ())),
     )

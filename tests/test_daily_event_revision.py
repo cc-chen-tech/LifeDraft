@@ -36,7 +36,9 @@ class FakeLoop:
         self.ai_generator = self
 
     def generate_round_event(self, **_kwargs):
-        self.player_state.pending_storylines.append({"description": "candidate side effect"})
+        self.player_state.pending_storylines.append(
+            {"description": "candidate side effect"}
+        )
         if self.fail_regenerate:
             raise RuntimeError("generation failed")
         event = _event("重新生成的故事")

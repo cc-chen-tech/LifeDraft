@@ -4,8 +4,21 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Callable, Generator, TypeVar, cast
 
-from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
-                        Index, Integer, String, Text, create_engine, inspect, text)
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    inspect,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
 
 from config.settings import settings
@@ -27,13 +40,17 @@ class User(Base):
 
     user_id = Column(Integer, primary_key=True, autoincrement=True)
     private_id = Column(String(32), unique=True, nullable=False, index=True)  # 登录用
-    public_id = Column(String(8), unique=True, nullable=False, index=True)  # 显示/加好友用
+    public_id = Column(
+        String(8), unique=True, nullable=False, index=True
+    )  # 显示/加好友用
     display_name = Column(String(50), nullable=True)  # 可选昵称
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
 
     # ★ 服务端会话管理：记录最近活跃的游戏ID，用于自动恢复
-    last_active_game_id = Column(Integer, ForeignKey("games.game_id"), nullable=True, index=True)
+    last_active_game_id = Column(
+        Integer, ForeignKey("games.game_id"), nullable=True, index=True
+    )
 
     # 关联
     # 明确指定 foreign_keys，因为 users-games 之间存在两个外键路径
@@ -72,7 +89,9 @@ class Friendship(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # 关联
-    user = relationship("User", foreign_keys=[user_id], back_populates="sent_friend_requests")
+    user = relationship(
+        "User", foreign_keys=[user_id], back_populates="sent_friend_requests"
+    )
     friend = relationship(
         "User", foreign_keys=[friend_id], back_populates="received_friend_requests"
     )
@@ -87,7 +106,9 @@ class Game(Base):
     __tablename__ = "games"
 
     game_id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)  # 关联用户
+    user_id = Column(
+        Integer, ForeignKey("users.user_id"), nullable=True, index=True
+    )  # 关联用户
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True
@@ -99,17 +120,25 @@ class Game(Base):
     ending_summary = Column(Text, nullable=True)
     is_public = Column(Boolean, default=False)  # 是否公开给好友查看
     narrative_style_id = Column(String, nullable=True)  # 叙事风格ID
-    constraint_level = Column(String, default="expert")  # 叙事质量级别: fast/expert/master
+    constraint_level = Column(
+        String, default="expert"
+    )  # 叙事质量级别: fast/expert/master
 
     # Relationships
     user = relationship("User", back_populates="games", foreign_keys=[user_id])
-    states = relationship("GameState", back_populates="game", cascade="all, delete-orphan")
-    decisions = relationship("Decision", back_populates="game", cascade="all, delete-orphan")
+    states = relationship(
+        "GameState", back_populates="game", cascade="all, delete-orphan"
+    )
+    decisions = relationship(
+        "Decision", back_populates="game", cascade="all, delete-orphan"
+    )
     ending = relationship(
         "Ending", back_populates="game", cascade="all, delete-orphan", uselist=False
     )
     images = relationship("Image", back_populates="game", cascade="all, delete-orphan")
-    scene_images = relationship("SceneImage", back_populates="game", cascade="all, delete-orphan")
+    scene_images = relationship(
+        "SceneImage", back_populates="game", cascade="all, delete-orphan"
+    )
     playlist = relationship(
         "GamePlaylist",
         back_populates="game",
@@ -201,7 +230,9 @@ class CharacterPreset(Base):
     life_vision = Column(Text, nullable=True)
     character_settings = Column(JSON, nullable=False)
     narrative_style_id = Column(String, default="chinese_classic_saga")  # 叙事风格ID
-    constraint_level = Column(String, default="expert")  # 叙事质量级别: fast/expert/master
+    constraint_level = Column(
+        String, default="expert"
+    )  # 叙事质量级别: fast/expert/master
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -222,7 +253,9 @@ class Image(Base):
 
     # 实体标识（用于关联）
     entity_name = Column(String(100), nullable=False)  # 人物名/地点名/物品名
-    entity_key = Column(String(100), nullable=True)  # 唯一标识键（如 player_main, npc_1 等）
+    entity_key = Column(
+        String(100), nullable=True
+    )  # 唯一标识键（如 player_main, npc_1 等）
 
     # 图片信息
     prompt_text = Column(Text, nullable=False)  # 生成时使用的prompt
@@ -238,7 +271,9 @@ class Image(Base):
 
     # 主图/变体关系
     is_primary = Column(Boolean, default=False)  # 是否为主图（第一张）
-    primary_image_id = Column(Integer, ForeignKey("images.image_id"), nullable=True)  # 关联的主图ID
+    primary_image_id = Column(
+        Integer, ForeignKey("images.image_id"), nullable=True
+    )  # 关联的主图ID
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -268,7 +303,9 @@ class PortraitImageGenerationJob(Base):
     error_code = Column(String(80), nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
     game = relationship("Game")
     user = relationship("User")
@@ -348,7 +385,9 @@ class GamePlaylist(Base):
     __tablename__ = "game_playlists"
 
     playlist_id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, unique=True, index=True)
+    game_id = Column(
+        Integer, ForeignKey("games.game_id"), nullable=False, unique=True, index=True
+    )
 
     # Playback state
     current_song_json = Column(JSON, nullable=True)
@@ -375,7 +414,9 @@ class VoiceReadingSetting(Base):
     __tablename__ = "voice_reading_settings"
 
     setting_id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False, unique=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.user_id"), nullable=False, unique=True, index=True
+    )
     selected_voice_color = Column(String(80), nullable=True)
     auto_read_enabled = Column(Boolean, default=True, nullable=False)
     selected_speed = Column(Float, default=1.0, nullable=False)
@@ -428,7 +469,9 @@ class VoiceReadingJob(Base):
     job_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False, index=True)
     dedupe_key = Column(String(128), nullable=True, unique=True, index=True)
-    asset_id = Column(Integer, ForeignKey("generated_voice_assets.asset_id"), nullable=True)
+    asset_id = Column(
+        Integer, ForeignKey("generated_voice_assets.asset_id"), nullable=True
+    )
     context_json = Column(JSON, nullable=False)
     text_hash = Column(String(128), nullable=False, index=True)
     voice_id = Column(String(80), nullable=False)
@@ -456,8 +499,12 @@ class VoiceReadingSegment(Base):
     __tablename__ = "voice_reading_segments"
 
     segment_id = Column(Integer, primary_key=True, autoincrement=True)
-    job_id = Column(Integer, ForeignKey("voice_reading_jobs.job_id"), nullable=False, index=True)
-    asset_id = Column(Integer, ForeignKey("generated_voice_assets.asset_id"), nullable=True)
+    job_id = Column(
+        Integer, ForeignKey("voice_reading_jobs.job_id"), nullable=False, index=True
+    )
+    asset_id = Column(
+        Integer, ForeignKey("generated_voice_assets.asset_id"), nullable=True
+    )
     paragraph_index = Column(Integer, nullable=False)
     text_hash = Column(String(128), nullable=False, index=True)
     text_content = Column(Text, nullable=False)
@@ -467,7 +514,9 @@ class VoiceReadingSegment(Base):
     error_code = Column(String(80), nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
     job = relationship("VoiceReadingJob", back_populates="segments")
     asset = relationship("GeneratedVoiceAsset")
@@ -499,7 +548,9 @@ class VoiceReadingProgress(Base):
     position_ms = Column(Integer, nullable=False, default=0)
     completed = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
     user = relationship("User")
     game = relationship("Game")
@@ -560,6 +611,69 @@ class DailyRecommendedPrefetch(Base):
     )
 
 
+class DailyWorldProjection(Base):
+    """One revision-fenced world projection for an accepted daily event."""
+
+    __tablename__ = "daily_world_projections"
+
+    projection_id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    event_id = Column(String(96), nullable=False)
+    revision = Column(Integer, nullable=False)
+    day_index = Column(Integer, nullable=False, index=True)
+    story_date = Column(String(10), nullable=True)
+    source_hash = Column(String(128), nullable=False)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    story_patch_json = Column(JSON, nullable=True)
+    option_patches_json = Column(JSON, nullable=True)
+    coverage_json = Column(JSON, nullable=True)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    next_attempt_at = Column(DateTime, nullable=False, index=True)
+    lease_owner = Column(String(96), nullable=True, index=True)
+    lease_expires_at = Column(DateTime, nullable=True)
+    error_code = Column(String(80), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    applied_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_daily_world_projection_identity",
+            "game_id",
+            "event_id",
+            "revision",
+            unique=True,
+        ),
+        Index(
+            "ix_daily_world_projection_due",
+            "status",
+            "next_attempt_at",
+            "lease_expires_at",
+        ),
+    )
+
+
+class DailyWorldProjectionAttempt(Base):
+    """Per-provider-call accounting for a daily world projection."""
+
+    __tablename__ = "daily_world_projection_attempts"
+
+    attempt_id = Column(Integer, primary_key=True, autoincrement=True)
+    projection_id = Column(
+        Integer,
+        ForeignKey("daily_world_projections.projection_id"),
+        nullable=False,
+        index=True,
+    )
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    started_at = Column(DateTime, nullable=False, index=True)
+    finished_at = Column(DateTime, nullable=True)
+    outcome = Column(String(32), nullable=False, default="running", index=True)
+    error_code = Column(String(80), nullable=True, index=True)
+
+
 class GeneratedMusicAsset(Base):
     """Persisted metadata for reusable AI-generated background music."""
 
@@ -611,7 +725,9 @@ class GeneratedMusicLibraryEntry(Base):
         unique=True,
         index=True,
     )
-    source_game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    source_game_id = Column(
+        Integer, ForeignKey("games.game_id"), nullable=False, index=True
+    )
     provider = Column(String(80), nullable=False, index=True)
     model = Column(String(120), nullable=False, index=True)
     status = Column(String(30), nullable=False, index=True)
@@ -628,7 +744,9 @@ class GeneratedMusicLibraryEntry(Base):
     loopable = Column(Boolean, default=True, nullable=False, index=True)
     usage_count = Column(Integer, default=0, nullable=False)
     last_used_at = Column(DateTime, nullable=True)
-    last_used_game_id = Column(Integer, ForeignKey("games.game_id"), nullable=True, index=True)
+    last_used_game_id = Column(
+        Integer, ForeignKey("games.game_id"), nullable=True, index=True
+    )
     last_match_score = Column(Integer, nullable=True)
     last_match_reason = Column(String(120), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -685,21 +803,23 @@ else:
 
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
+
 def init_db() -> None:
     """Initialize database tables and performance indexes."""
     Base.metadata.create_all(engine, checkfirst=True)
     _ensure_legacy_columns()
     # ★ 自动创建性能优化索引（向后兼容：已存在则跳过）
     try:
-        from src.database.add_performance_indexes import \
-            create_performance_indexes
+        from src.database.add_performance_indexes import create_performance_indexes
 
         create_performance_indexes()  # type: ignore[no-untyped-call]
     except Exception:
         # 索引创建失败不应阻塞应用启动
         import logging
 
-        logging.getLogger(__name__).warning("Failed to create performance indexes", exc_info=True)
+        logging.getLogger(__name__).warning(
+            "Failed to create performance indexes", exc_info=True
+        )
 
 
 def _ensure_legacy_columns() -> None:
@@ -740,8 +860,7 @@ def _ensure_legacy_columns() -> None:
             if table_name not in available_tables:
                 continue
             existing = {
-                str(column["name"])
-                for column in inspector.get_columns(table_name)
+                str(column["name"]) for column in inspector.get_columns(table_name)
             }
             for column_name, column_type in columns.items():
                 if column_name not in existing:

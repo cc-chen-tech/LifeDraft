@@ -442,6 +442,19 @@ class EventGenerator:
             character_habits=character_habits,
         )
 
+    def extract_daily_world_projection(
+        self,
+        story: str,
+        options: List[Any],
+        tracked_state: Any = None,
+        *,
+        language: str = "zh",
+    ):
+        """Extract the typed daily projection; legacy weekly extraction stays separate."""
+        return self.summary_gen.extract_daily_world_projection(
+            story, options, tracked_state, language=language
+        )
+
     def compress_and_extract(
         self,
         story: str,

@@ -193,7 +193,9 @@ class SessionStore:
 
     # ---- public API ----
 
-    def get(self, game_id: int, user_id: Optional[int] = None) -> Optional[GameLoopSession]:
+    def get(
+        self, game_id: int, user_id: Optional[int] = None
+    ) -> Optional[GameLoopSession]:
         """Get a session if it exists and is not expired."""
         self._maybe_cleanup()
         key = self.make_key(game_id, user_id)
@@ -221,6 +223,11 @@ class SessionStore:
         cached data (like options cache) for better performance.
         """
         key = self.make_key(game_id, user_id)
+        try:
+            game_loop.game_id = game_id
+        except AttributeError:
+            # Lightweight contract-test doubles may not expose writable attrs.
+            pass
 
         with self._lock:
             existing_session = self._sessions.get(key)
@@ -260,7 +267,19 @@ class SessionStore:
         prefix = f"user_{user_id}_game_"
         with self._lock:
             return [
-                s for k, s in self._sessions.items() if k.startswith(prefix) and not s.is_expired
+                s
+                for k, s in self._sessions.items()
+                if k.startswith(prefix) and not s.is_expired
+            ]
+
+    def get_game_sessions(self, game_id: int) -> list[GameLoopSession]:
+        """Return active in-process sessions for one game without restoring it."""
+
+        with self._lock:
+            return [
+                session
+                for session in self._sessions.values()
+                if session.game_id == game_id and not session.is_expired
             ]
 
     @property

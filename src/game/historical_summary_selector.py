@@ -7,7 +7,9 @@ All methods are static and accept a PlayerState instance.
 import logging
 import math
 import random
-from typing import Optional, Tuple
+from typing import Mapping, Optional, Tuple
+
+from src.game.daily_timeline import is_daily_timeline
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +46,30 @@ class HistoricalSummarySelector:
                 keywords.add(char)
 
         # 从 active_commitments 提取
-        wm_data = player_state.world_model_data
-        for c in wm_data.get("active_commitments", []):
-            if c.get("status") == "pending":
-                keywords.add(c.get("description", ""))
-                for party in c.get("parties", []):
-                    keywords.add(party)
+        if is_daily_timeline(player_state):
+            from src.game.world_projection_resolver import resolve_world_context
+
+            commitments = resolve_world_context(
+                player_state
+            ).hard_world_model.active_commitments
+        else:
+            wm_data = player_state.world_model_data
+            commitments = wm_data.get("active_commitments", [])
+        for commitment in commitments:
+            if isinstance(commitment, Mapping):
+                status = commitment.get("status")
+                description = commitment.get("description", "")
+                parties = commitment.get("parties", [])
+            else:
+                status = getattr(commitment, "status", None)
+                description = getattr(commitment, "description", "")
+                parties = getattr(commitment, "parties", [])
+            if status == "pending":
+                keywords.add(description)
+                if isinstance(parties, (list, tuple)):
+                    for party in parties:
+                        if isinstance(party, str) and party:
+                            keywords.add(party)
 
         # 从上一轮故事提取人物名
         last_story = player_state.last_round_full_story or ""
@@ -80,7 +100,9 @@ class HistoricalSummarySelector:
 
         # 如果没有关键词，回退到随机选择
         if not keywords:
-            return HistoricalSummarySelector.select_random_historical_summary_fallback(player_state)
+            return HistoricalSummarySelector.select_random_historical_summary_fallback(
+                player_state
+            )
 
         weekly_summary = None
         yearly_summary = None

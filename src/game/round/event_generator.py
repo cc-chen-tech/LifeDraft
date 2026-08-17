@@ -11,6 +11,7 @@ import time
 import uuid
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional, cast
 
 from config.feature_flags import get_feature
@@ -218,7 +219,9 @@ class RoundEventGenerator:
             if event is None:
                 raise StoryGenerationFailure("AI generator returned no round event")
 
-            introduced_people = self._relationship_people_names(staged_state) - before_people
+            introduced_people = (
+                self._relationship_people_names(staged_state) - before_people
+            )
             missing_people = sorted(
                 name
                 for name in introduced_people
@@ -625,12 +628,26 @@ class RoundEventGenerator:
 
                     validation_view = build_validation_world_model(player_state)
                     world_model = validation_view.world_model
-                    if validation_view.soft_context:
+                    resolved_prompt_context = "\n\n".join(
+                        value
+                        for value in (
+                            getattr(world_model, "canonical_tail", ""),
+                            validation_view.soft_context,
+                        )
+                        if value
+                    )
+                    if resolved_prompt_context:
                         round_context = (
-                            f"{round_context}\n\n{validation_view.soft_context}"
+                            f"{round_context}\n\n{resolved_prompt_context}"
                         ).strip()
                     if not validation_view.freshness.world_derivations_are_fresh:
-                        for category in ("location", "commitment", "causal"):
+                        for category in (
+                            "location",
+                            "commitment",
+                            "causal",
+                            "career",
+                            "habit",
+                        ):
                             logger.warning(
                                 "stale_world_constraint_downgraded "
                                 "game_id=%s day_index=%s category=%s reason=%s",
@@ -658,6 +675,21 @@ class RoundEventGenerator:
             if status_callback:
                 status_callback("generating_story")
 
+            foreshadowing_state = player_state
+            if is_daily_timeline(player_state) and get_feature(
+                "daily_world_projection_v1"
+            ):
+                foreshadowing_state = SimpleNamespace(
+                    foreshadowing_seeds=getattr(
+                        world_model,
+                        "hard_foreshadowing_seeds",
+                        [],
+                    ),
+                    week=player_state.week,
+                    pending_storylines=player_state.pending_storylines,
+                    foreshadowing_metrics=player_state.foreshadowing_metrics,
+                )
+
             ai_event = cast(
                 Optional[GameEvent],
                 self.ai_generator.generate_round_event(
@@ -680,9 +712,13 @@ class RoundEventGenerator:
                     last_event_concluded=player_state.last_event_concluded,
                     last_round_full_story=player_state.last_round_full_story,
                     activated_foreshadowing=NarrativeManager.select_foreshadowing_seed(
-                        player_state
+                        foreshadowing_state
                     ),
-                    character_habits=player_state.character_habits,
+                    character_habits=getattr(
+                        world_model,
+                        "hard_character_habits",
+                        player_state.character_habits,
+                    ),
                     world_model=world_model,
                     new_character=new_character,
                     status_callback=status_callback,
@@ -742,12 +778,15 @@ class RoundEventGenerator:
         """Bound resume-only option generation so recovery never strands the player."""
 
         def call_options_generator() -> GameEvent:
-            return cast(GameEvent, self.ai_generator.generate_options_only(
-                story_description=existing_story,
-                player_state=self._prompt_context(player_state),
-                character_settings=player_state.character_settings,
-                language=self.language,
-            ))
+            return cast(
+                GameEvent,
+                self.ai_generator.generate_options_only(
+                    story_description=existing_story,
+                    player_state=self._prompt_context(player_state),
+                    character_settings=player_state.character_settings,
+                    language=self.language,
+                ),
+            )
 
         executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="options-resume"
@@ -1005,7 +1044,9 @@ class RoundEventGenerator:
 
         for se in scheduled_events:
             descriptions.append(se.get("description", ""))
-            all_parties.update(se.get("parties", []))
+            parties = se.get("parties")
+            if isinstance(parties, list):
+                all_parties.update(item for item in parties if isinstance(item, str))
             if se.get("event_hint"):
                 event_hints.append(str(se.get("event_hint")))
             # 取最高重要程度
@@ -1052,7 +1093,9 @@ class RoundEventGenerator:
             last_validation_error = ""
             last_rejected_story = ""
             last_validation_findings = []
-            raw_quality_level = getattr(self.ai_generator, "quality_level", None) or "expert"
+            raw_quality_level = (
+                getattr(self.ai_generator, "quality_level", None) or "expert"
+            )
             quality_level = str(getattr(raw_quality_level, "value", raw_quality_level))
             narrative_budget = (
                 resolve_narrative_budget(
@@ -1071,9 +1114,7 @@ class RoundEventGenerator:
                 else None
             )
             max_attempts = (
-                narrative_budget.prose_call_limit
-                if narrative_budget is not None
-                else 2
+                narrative_budget.prose_call_limit if narrative_budget is not None else 2
             )
 
             for attempt in range(max_attempts):
@@ -1225,7 +1266,9 @@ class RoundEventGenerator:
 
         for se in scheduled_events:
             descriptions.append(se.get("description", ""))
-            all_parties.update(se.get("parties", []))
+            parties = se.get("parties")
+            if isinstance(parties, list):
+                all_parties.update(item for item in parties if isinstance(item, str))
             if se.get("event_hint"):
                 event_hints.append(str(se.get("event_hint")))
 
@@ -1292,6 +1335,50 @@ class RoundEventGenerator:
             character_settings,
             language,
         )
+        resolved_hard_context = ""
+        resolved_writing_context = ""
+        if daily_mode:
+            from src.ai.story_generator import StoryGenerator
+
+            resolved_world = StoryGenerator._build_world_model_from_state_dict(
+                player_state
+            )
+            if resolved_world is not None:
+                hard_sections = [resolved_world.build_constraints_text(language)]
+                hard_facts = getattr(
+                    resolved_world,
+                    "hard_established_facts",
+                    (),
+                )
+                fact_lines = [
+                    str(fact.get("fact") or "").strip()
+                    for fact in hard_facts
+                    if isinstance(fact, dict) and str(fact.get("fact") or "").strip()
+                ]
+                if fact_lines:
+                    label = (
+                        "【不可变基础事实】"
+                        if language == "zh"
+                        else "[Immutable Base Facts]"
+                    )
+                    hard_sections.append(label + "\n" + "\n".join(fact_lines))
+                resolved_hard_context = "\n".join(
+                    section for section in hard_sections if section
+                )
+                writing_sections = [
+                    getattr(resolved_world, "canonical_tail", ""),
+                    getattr(resolved_world, "soft_context", ""),
+                ]
+                writing_sections = [section for section in writing_sections if section]
+                if writing_sections:
+                    label = (
+                        "【连续性写作上下文（软记录不得作为拒稿依据）】"
+                        if language == "zh"
+                        else "[Continuity Writing Context (soft records are not rejection grounds)]"
+                    )
+                    resolved_writing_context = (
+                        label + "\n" + "\n\n".join(writing_sections)
+                    )
         quality_level = str(
             getattr(self.ai_generator, "quality_level", None) or "expert"
         )
@@ -1329,6 +1416,9 @@ class RoundEventGenerator:
 【角色设定硬约束】
 {character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}
 {required_cast_context}{modern_world_boundary}{era_constraints}
+{resolved_hard_context}
+
+{resolved_writing_context}
 
 【要求】
 1. 事件必须围绕兑现上述承诺展开
@@ -1380,6 +1470,9 @@ Player name: {player_name}
 [Character Setting Hard Constraints]
 {character_context if character_context else "Standard modern young adult"}{name_instruction}{available_people_str}
 {required_cast_context}{modern_world_boundary}{era_constraints}
+{resolved_hard_context}
+
+{resolved_writing_context}
 
 [Requirements]
 1. The event must center on fulfilling the above commitment

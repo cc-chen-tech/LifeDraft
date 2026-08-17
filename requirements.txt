@@ -4,6 +4,9 @@ requests>=2.31.0
 websockets>=16.0
 mutagen>=1.47.0
 python-dotenv>=1.0.0
+# Offline Chinese POS segmentation for conservative world-projection subject binding.
+# jieba ships its dictionary in the installed package; extraction never downloads a model.
+jieba==0.42.1
 pydantic>=2.0.0
 tokenizers>=0.20.0
 sqlalchemy>=2.0.0

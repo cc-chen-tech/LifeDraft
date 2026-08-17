@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from threading import Lock
@@ -12,6 +13,10 @@ from src.ai.models import GameEvent
 from src.game.continuity_ledger import ContinuityLedger
 from src.game.daily_timeline import advance_daily_timeline, normalize_daily_timeline
 from src.game.daily_transition import resolve_daily_transition
+from src.game.world_projection_schema import compute_projection_source_hash
+from src.game.world_projection_state import apply_world_projection_patch
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -36,6 +41,9 @@ class DailyChoiceProcessor:
         postprocess_callback: Optional[Callable[[str], None]] = None,
         settlement_lock: Optional[Any] = None,
         language_getter: Optional[Callable[[], str]] = None,
+        game_id_getter: Optional[Callable[[], Optional[int]]] = None,
+        projection_lookup: Optional[Callable[..., Any]] = None,
+        projection_settled_callback: Optional[Callable[[Any], None]] = None,
     ) -> None:
         self._get_player_state = player_state_getter
         self._get_current_event = current_event_getter
@@ -44,6 +52,9 @@ class DailyChoiceProcessor:
         self.postprocess_callback = postprocess_callback
         self._settlement_lock = settlement_lock or Lock()
         self._get_language = language_getter or (lambda: "zh")
+        self._get_game_id = game_id_getter or (lambda: None)
+        self.projection_lookup = projection_lookup
+        self.projection_settled_callback = projection_settled_callback
 
     def make_choice(
         self,
@@ -100,6 +111,19 @@ class DailyChoiceProcessor:
             raise ValueError("stale_story_date")
 
         option = event.options[option_index]
+        projection_identity = {
+            "event_id": event.event_id,
+            "revision": event.revision,
+            "day_index": timeline["day_index"],
+            "source_hash": compute_projection_source_hash(
+                event.event_description, event.options
+            ),
+        }
+        lookup_identity = dict(projection_identity)
+        game_id = self._get_game_id()
+        if isinstance(game_id, int) and not isinstance(game_id, bool) and game_id > 0:
+            lookup_identity["game_id"] = game_id
+        projection = self._lookup_projection(lookup_identity)
         transition_text = resolve_daily_transition(
             option,
             state,
@@ -156,7 +180,12 @@ class DailyChoiceProcessor:
             "resource_warnings": warnings,
             "postprocessing_status": "pending",
             "summary_milestones": summary_milestones,
+            "world_projection_identity": deepcopy(projection_identity),
+            "world_projection_status": "pending",
         }
+        projection_id = self._matching_projection_id(projection, lookup_identity)
+        if projection_id is not None:
+            record["world_projection_id"] = projection_id
         result = {
             "story_continuation": "",
             "summary": "",
@@ -181,6 +210,23 @@ class DailyChoiceProcessor:
             result["prefetch_hit"] = True
         record["choice_result"] = deepcopy(result)
         staged.day_history.append(record)
+        if projection_id is not None and str(
+            self._projection_field(projection, "status") or ""
+        ) in {"ready", "ready_no_change", "applied"}:
+            try:
+                apply_world_projection_patch(staged, projection, option_index)
+            except Exception:
+                # A projection is derived, repairable state.  Even a ready row
+                # can be temporarily inapplicable when an older day is still a
+                # gap, so it must never turn a valid player choice into a hard
+                # failure.  The serial applier will retry after the gap closes.
+                logger.exception(
+                    "daily world projection apply deferred event_id=%s revision=%s",
+                    event.event_id,
+                    event.revision,
+                )
+            else:
+                record["world_projection_status"] = "applied"
         ledger_fact_updates = []
         for name, change in (applied.get("relationships") or {}).items():
             ledger_fact_updates.append(
@@ -230,7 +276,48 @@ class DailyChoiceProcessor:
             self.result_callback(result, state)
         if self.postprocess_callback:
             self.postprocess_callback(event_id)
+        if self.projection_settled_callback:
+            try:
+                self.projection_settled_callback(projection)
+            except Exception:
+                logger.exception(
+                    "daily world projection settlement wake failed event_id=%s",
+                    event_id,
+                )
         return result
+
+    def _lookup_projection(self, identity: Dict[str, Any]) -> Any:
+        if self.projection_lookup is None:
+            return None
+        try:
+            return self.projection_lookup(**identity)
+        except Exception:
+            logger.exception(
+                "daily world projection lookup failed event_id=%s revision=%s",
+                identity["event_id"],
+                identity["revision"],
+            )
+            return None
+
+    @staticmethod
+    def _projection_field(value: Any, name: str) -> Any:
+        if isinstance(value, dict):
+            return value.get(name)
+        return getattr(value, name, None)
+
+    @classmethod
+    def _matching_projection_id(
+        cls, projection: Any, identity: Dict[str, Any]
+    ) -> Optional[int]:
+        if projection is None or any(
+            cls._projection_field(projection, name) != expected
+            for name, expected in identity.items()
+        ):
+            return None
+        projection_id = cls._projection_field(projection, "projection_id")
+        if isinstance(projection_id, bool) or not isinstance(projection_id, int):
+            return None
+        return int(projection_id)
 
     def _find_duplicate(
         self, state: Any, event_id: str, revision: int, option_index: int

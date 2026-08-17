@@ -87,6 +87,7 @@ def test_save_point_load_and_delete_require_the_owner() -> None:
     loaded = repository.load_save_point(save_point_id, owner_id)
     assert loaded is not None
     assert loaded["_game_id"] == game_id
+    assert loaded["_loaded_save_point_state_id"] == save_point_id
     assert loaded["player_name"] == "周宁"
     assert loaded["current_round"] == 2
     assert repository.delete_save_point(save_point_id, owner_id) is True

@@ -148,10 +148,15 @@ def rewrite_daily_event_atomically(
             )
             candidate = GameEvent(
                 event_description=rewritten,
-                options=[option.model_copy(deep=True) for option in options_event.options],
+                options=[
+                    option.model_copy(deep=True) for option in options_event.options
+                ],
             )
             return _commit_candidate(
-                loop, original, candidate, persist_callback=persist_callback
+                loop,
+                original,
+                candidate,
+                persist_callback=persist_callback,
             )
         except Exception:
             _restore_state(loop, original_state, original)

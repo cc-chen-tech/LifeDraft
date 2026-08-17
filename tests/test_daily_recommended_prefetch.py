@@ -13,7 +13,9 @@ from src.ai.option_generator import OptionGenerator
 from src.api.schemas import ReadingContext
 from src.database.models import (
     DailyRecommendedPrefetch,
+    DailyWorldProjection,
     GeneratedVoiceAsset,
+    Game,
     VoiceReadingJob,
     VoiceReadingSegment,
 )
@@ -36,8 +38,12 @@ from src.services.daily_recommended_prefetch import (
     probe_demanded_prefetch,
     resolve_choice_prefetch,
 )
+from src.services.daily_world_projection import DailyWorldProjectionService
 from src.services.story_tts_provider import DeterministicTTSProvider
-from src.services.story_voice_reading import ReadingContextValidator, normalize_text_hash
+from src.services.story_voice_reading import (
+    ReadingContextValidator,
+    normalize_text_hash,
+)
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 
 
@@ -82,7 +88,9 @@ def test_daily_recommendation_keeps_exactly_one_model_choice() -> None:
     assert [option.likely_choice for option in prepared] == [False, True, False]
 
 
-def test_daily_recommendation_repairs_missing_or_multiple_flags_deterministically() -> None:
+def test_daily_recommendation_repairs_missing_or_multiple_flags_deterministically() -> (
+    None
+):
     state = _state()
     options = _event().options
     missing = prepare_daily_option_recommendation(options, state)
@@ -243,13 +251,16 @@ def test_prefetch_repository_invalidates_other_choice_and_consumes_ready_hit(
     assert token
     repository.mark_story_ready(task.prefetch_id, token, _event().model_dump())
 
-    assert repository.consume_if_ready(
-        game_id=42,
-        event_id="day-0-event",
-        revision=1,
-        option_index=1,
-        state_fingerprint="state-v2",
-    ) is not None
+    assert (
+        repository.consume_if_ready(
+            game_id=42,
+            event_id="day-0-event",
+            revision=1,
+            option_index=1,
+            state_fingerprint="state-v2",
+        )
+        is not None
+    )
 
     other = repository.enqueue(
         game_id=42,
@@ -267,7 +278,10 @@ def test_prefetch_repository_invalidates_other_choice_and_consumes_ready_hit(
         selected_option_index=0,
     )
 
-    assert db_session.get(DailyRecommendedPrefetch, other.prefetch_id).status == "invalidated"
+    assert (
+        db_session.get(DailyRecommendedPrefetch, other.prefetch_id).status
+        == "invalidated"
+    )
 
 
 def test_prefetch_fingerprint_is_stable_and_tracks_canonical_changes() -> None:
@@ -361,7 +375,10 @@ def test_ready_recommended_choice_resolves_event_while_other_choice_invalidates(
 
     assert miss.next_event is None
     assert miss.recommended_selected is False
-    assert db_session.get(DailyRecommendedPrefetch, task.prefetch_id).status == "invalidated"
+    assert (
+        db_session.get(DailyRecommendedPrefetch, task.prefetch_id).status
+        == "invalidated"
+    )
 
 
 def test_inflight_recommended_choice_marks_task_demanded_without_duplicate(
@@ -420,13 +437,16 @@ def test_repository_finds_only_the_demanded_task_for_committed_choice(
 
     assert found is not None
     assert found.prefetch_id == task.prefetch_id
-    assert repository.find_demanded_after_choice(
-        game_id=53,
-        event_id="day-0-event",
-        revision=1,
-        option_index=0,
-        day_index=0,
-    ) is None
+    assert (
+        repository.find_demanded_after_choice(
+            game_id=53,
+            event_id="day-0-event",
+            revision=1,
+            option_index=0,
+            day_index=0,
+        )
+        is None
+    )
 
 
 def test_terminal_prefetch_cleanup_keeps_recent_rows_for_seven_days(
@@ -610,7 +630,9 @@ def test_tts_validator_accepts_internal_recommended_prefetch_source() -> None:
 
     with pytest.raises(Exception) as error:
         ReadingContextValidator().validate(context)
-    assert getattr(error.value, "detail", {}).get("error_code") == "internal_source_only"
+    assert (
+        getattr(error.value, "detail", {}).get("error_code") == "internal_source_only"
+    )
 
 
 def test_prefetch_worker_persists_story_without_mutating_unselected_live_state(
@@ -802,6 +824,150 @@ def test_demanded_prefetch_recovers_from_committed_state_without_second_pipeline
         assert saves == [(73, "day-1-recovered")]
     finally:
         observer.close()
+
+
+@pytest.mark.parametrize(
+    ("save_result", "expected_promoted", "expected_projection_rows"),
+    [(False, False, 0), (True, True, 1)],
+)
+def test_promoted_prefetch_enqueues_only_after_successful_save(
+    db_engine,
+    monkeypatch,
+    save_result: bool,
+    expected_promoted: bool,
+    expected_projection_rows: int,
+) -> None:
+    """A failed promotion save must not create a projection for an absent event."""
+    from sqlalchemy.orm import sessionmaker
+
+    from src.services.daily_recommended_prefetch import _promote_demanded_prefetch
+
+    Session = sessionmaker(bind=db_engine)
+    with Session() as setup:
+        setup.add(Game(game_id=158, initial_state={}))
+        task = DailyRecommendedPrefetchRepository(setup).enqueue(
+            game_id=158,
+            user_id=None,
+            event_id="day-0-event",
+            revision=1,
+            day_index=0,
+            option_index=1,
+            state_fingerprint="accepted-choice",
+        )
+        task.demanded = True
+        task.status = "story_ready"
+        task.next_event_json = GameEvent(
+            event_id="day-1-event",
+            revision=1,
+            story_date="2026-08-14",
+            event_description="清晨，林默打开书店的门。",
+            options=[
+                EventOption(text="整理新书", effects={}),
+                EventOption(text="招呼邻居", effects={}),
+            ],
+        ).model_dump()
+        task_id = task.prefetch_id
+        setup.commit()
+
+    state = project_daily_choice(
+        _state(), _event(), option_index=1, language="zh"
+    ).state
+    source_loop = SimpleNamespace(
+        language="zh",
+        player_state=state,
+        current_event=None,
+        _daily_mutation_lock=RLock(),
+    )
+    service = DailyWorldProjectionService(session_factory=Session)
+    monkeypatch.setattr("src.database.models.SessionLocal", Session)
+    monkeypatch.setattr(
+        "src.database.singletons.get_game_db",
+        lambda: SimpleNamespace(save_game_progress=lambda *_args: save_result),
+    )
+    monkeypatch.setattr(
+        "src.services.daily_world_projection.get_daily_world_projection_service",
+        lambda: service,
+    )
+
+    assert (
+        _promote_demanded_prefetch(task_id=task_id, game_id=158, game_loop=source_loop)
+        is expected_promoted
+    )
+
+    with Session() as observer:
+        assert observer.query(DailyWorldProjection).count() == expected_projection_rows
+
+
+def test_promoted_prefetch_stays_promoted_when_task_bookkeeping_commit_fails(
+    db_engine, monkeypatch
+) -> None:
+    """A post-save task failure must not report a second-generation retry path."""
+    from sqlalchemy.orm import Session, sessionmaker
+
+    from src.services.daily_recommended_prefetch import _promote_demanded_prefetch
+
+    SessionFactory = sessionmaker(bind=db_engine)
+    with SessionFactory() as setup:
+        setup.add(Game(game_id=163, initial_state={}))
+        task = DailyRecommendedPrefetchRepository(setup).enqueue(
+            game_id=163,
+            user_id=None,
+            event_id="day-0-event",
+            revision=1,
+            day_index=0,
+            option_index=1,
+            state_fingerprint="accepted-choice",
+        )
+        task.demanded = True
+        task.status = "story_ready"
+        task.next_event_json = GameEvent(
+            event_id="day-1-event",
+            revision=1,
+            story_date="2026-08-14",
+            event_description="清晨，林默打开书店的门。",
+            options=[
+                EventOption(text="整理新书", effects={}),
+                EventOption(text="招呼邻居", effects={}),
+            ],
+        ).model_dump()
+        task_id = task.prefetch_id
+        setup.commit()
+
+    class CommitFailsSession(Session):
+        def commit(self) -> None:
+            raise RuntimeError("task bookkeeping commit failed")
+
+    failing_sessions = sessionmaker(bind=db_engine, class_=CommitFailsSession)
+    state = project_daily_choice(
+        _state(), _event(), option_index=1, language="zh"
+    ).state
+    source_loop = SimpleNamespace(
+        language="zh",
+        player_state=state,
+        current_event=None,
+        _daily_mutation_lock=RLock(),
+    )
+    service = DailyWorldProjectionService(session_factory=SessionFactory)
+    monkeypatch.setattr("src.database.models.SessionLocal", failing_sessions)
+    monkeypatch.setattr(
+        "src.database.singletons.get_game_db",
+        lambda: SimpleNamespace(save_game_progress=lambda *_args: True),
+    )
+    monkeypatch.setattr(
+        "src.services.daily_world_projection.get_daily_world_projection_service",
+        lambda: service,
+    )
+
+    assert (
+        _promote_demanded_prefetch(task_id=task_id, game_id=163, game_loop=source_loop)
+        is True
+    )
+    assert source_loop.current_event is not None
+    assert source_loop.current_event.event_id == "day-1-event"
+
+    with SessionFactory() as observer:
+        assert observer.get(DailyRecommendedPrefetch, task_id).status == "story_ready"
+        assert observer.query(DailyWorldProjection).count() == 1
 
 
 def test_tts_prefetch_uses_saved_auto_read_voice_and_marks_task_ready(

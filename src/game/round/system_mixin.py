@@ -105,6 +105,9 @@ class RoundSystemMixin:
             postprocess_callback=getattr(self, "_queue_daily_postprocessing", None),
             settlement_lock=getattr(self, "_daily_mutation_lock", None),
             language_getter=lambda: self.language,
+            game_id_getter=lambda: getattr(self, "game_id", None),
+            projection_lookup=self._lookup_daily_choice_projection,
+            projection_settled_callback=self._wake_daily_projection_applier,
         )
 
         # Finalizer service
@@ -117,6 +120,36 @@ class RoundSystemMixin:
         )
 
         logger.info("Round system services initialized")
+
+    @staticmethod
+    def _lookup_daily_choice_projection(**identity: Any) -> Any:
+        """Read a ready/pending projection without opening a provider session."""
+
+        from config.feature_flags import get_feature
+
+        if not get_feature("daily_world_projection_v1"):
+            return None
+        from src.services.daily_world_projection import (
+            get_daily_world_projection_service,
+        )
+
+        return get_daily_world_projection_service().lookup_choice_projection(**identity)
+
+    @staticmethod
+    def _wake_daily_projection_applier(projection: Any) -> None:
+        from config.feature_flags import get_feature
+
+        if not get_feature("daily_world_projection_v1"):
+            return
+        from src.services.daily_world_projection import (
+            get_daily_world_projection_service,
+        )
+
+        service = get_daily_world_projection_service()
+        game_id = getattr(projection, "game_id", None)
+        if isinstance(game_id, int) and game_id > 0:
+            service.schedule_apply_for_game(game_id)
+        service.wake()
 
     # ==================== Event Generation ====================
 

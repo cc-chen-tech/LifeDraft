@@ -77,22 +77,31 @@ class GameLoop(RoundSystemMixin):
         self.quality_level = quality_level
         self.event_callback = event_callback
         self.result_callback = result_callback
+        self.game_id: Optional[int] = None
         self.player_state: Optional[PlayerState] = None  # type: ignore[assignment]
         self.current_event: Optional[GameEvent] = None
         self._generating: bool = False  # Flag to prevent concurrent generation
-        self._generating_start_time: Optional[float] = None  # Track when generation started
-        self._GENERATION_TIMEOUT = settings.GENERATION_TIMEOUT  # Max seconds before auto-reset
+        self._generating_start_time: Optional[float] = (
+            None  # Track when generation started
+        )
+        self._GENERATION_TIMEOUT = (
+            settings.GENERATION_TIMEOUT
+        )  # Max seconds before auto-reset
         self.milestone_weeks = settings.MILESTONE_WEEKS  # Milestone events
         self.yearly_summary_gen = YearlySummaryGenerator(self.ai_generator, language)
         self.relationship_service = RelationshipMCPService()
         self.story_service = StoryService(self.ai_generator, language)
-        self.character_creator = CharacterCreator(ai_generator=self.ai_generator, language=language)
+        self.character_creator = CharacterCreator(
+            ai_generator=self.ai_generator, language=language
+        )
         # Extracted sub-services (Phase 3 God Class decomposition)
         self.narrative_mgr = NarrativeManager()
         self.world_updater = WorldModelUpdater()
         self.summary_selector = HistoricalSummarySelector()
         self.last_year_start_week = 0  # Track year boundaries
-        self.last_year_start_state: Optional[dict[str, Any]] = None  # Track state at year start
+        self.last_year_start_state: Optional[dict[str, Any]] = (
+            None  # Track state at year start
+        )
         self.last_event_week = -1  # Track when last event was generated
         # Parallel post-processor (lazy init, managed by feature flag)
         self._parallel_postprocessor: Optional[ParallelPostProcessor] = None
@@ -140,7 +149,9 @@ class GameLoop(RoundSystemMixin):
             self._init_round_services()
             self.current_event = current_event
 
-    def start_new_game(self, initial_state: Optional[Dict[str, Any]] = None) -> PlayerState:
+    def start_new_game(
+        self, initial_state: Optional[Dict[str, Any]] = None
+    ) -> PlayerState:
         """
         Start a new game.
 
@@ -185,7 +196,24 @@ class GameLoop(RoundSystemMixin):
         Returns:
             Loaded PlayerState
         """
+        stored_game_id = state_dict.get("_game_id")
+        if (
+            isinstance(stored_game_id, int)
+            and not isinstance(stored_game_id, bool)
+            and stored_game_id > 0
+        ):
+            self.game_id = stored_game_id
         self.player_state = PlayerState.from_dict(state_dict)
+        rewind_state_id = state_dict.get("_loaded_save_point_state_id")
+        if (
+            get_feature("daily_world_projection_v1")
+            and isinstance(rewind_state_id, int)
+            and not isinstance(rewind_state_id, bool)
+            and rewind_state_id > 0
+        ):
+            self.player_state.world_projection_state["rewind_from_state_id"] = (
+                rewind_state_id
+            )
 
         # 如果characters为空但有character_settings，尝试初始化
         if not self.player_state.characters and self.player_state.character_settings:
@@ -205,7 +233,8 @@ class GameLoop(RoundSystemMixin):
             round_history = self.player_state.round_history or []
 
             already_processed = any(
-                entry.get("week") == current_week and entry.get("round") == current_round
+                entry.get("week") == current_week
+                and entry.get("round") == current_round
                 for entry in round_history
             )
 
@@ -220,7 +249,9 @@ class GameLoop(RoundSystemMixin):
                 try:
                     from src.ai.models import GameEvent, RecoverableGameEvent
 
-                    self.current_event = GameEvent(**self.player_state.current_event_data)
+                    self.current_event = GameEvent(
+                        **self.player_state.current_event_data
+                    )
                     logger.info(
                         f"[LoadGame] Restored current event from saved state: "
                         f"{self.current_event.event_description[:50]}..."
@@ -230,7 +261,9 @@ class GameLoop(RoundSystemMixin):
                         "event_description", ""
                     )
                     if event_description:
-                        saved_options = self.player_state.current_event_data.get("options") or []
+                        saved_options = (
+                            self.player_state.current_event_data.get("options") or []
+                        )
                         try:
                             self.current_event = RecoverableGameEvent(
                                 event_description=event_description,
@@ -250,10 +283,14 @@ class GameLoop(RoundSystemMixin):
                             f"{event_description[:50]}..."
                         )
                     else:
-                        logger.warning(f"[LoadGame] Failed to restore current event: {e}")
+                        logger.warning(
+                            f"[LoadGame] Failed to restore current event: {e}"
+                        )
                         self.current_event = None
         else:
-            logger.info("[LoadGame] No current_event_data, setting current_event to None")
+            logger.info(
+                "[LoadGame] No current_event_data, setting current_event to None"
+            )
             self.current_event = None
 
         # Daily settlement is never held hostage by enrichment. Preserve all
@@ -261,6 +298,7 @@ class GameLoop(RoundSystemMixin):
         # every restore.
         if self.player_state.timeline_version == 2:
             self._retry_pending_daily_postprocessing()
+            self._reconcile_daily_world_projections(state_dict)
 
         # Initialize year tracking based on loaded state
         if self.player_state.yearly_summaries:
@@ -275,7 +313,9 @@ class GameLoop(RoundSystemMixin):
         # Check if we've already made a decision this week
         current_week = self.player_state.week
         week_decisions = [
-            d for d in self.player_state.decision_history if d.get("week", 0) == current_week
+            d
+            for d in self.player_state.decision_history
+            if d.get("week", 0) == current_week
         ]
 
         if week_decisions:
@@ -296,8 +336,71 @@ class GameLoop(RoundSystemMixin):
             self.narrative_style_id = style_id
             logger.info(f"[LoadGame] Restored narrative_style_id={style_id}")
 
-        logger.info(f"Loaded game at age {self.player_state.age}, 第{self.player_state.week + 1}周")
+        logger.info(
+            f"Loaded game at age {self.player_state.age}, 第{self.player_state.week + 1}周"
+        )
         return self.player_state
+
+    def _reconcile_daily_world_projections(self, state_dict: Dict[str, Any]) -> None:
+        """Restore only explicitly recoverable projection work after a daily load."""
+
+        if not get_feature("daily_world_projection_v1"):
+            return
+        game_id = state_dict.get("_game_id")
+        if not isinstance(game_id, int) or game_id <= 0:
+            return
+        self._initialize_projection_migration_baseline()
+        from src.services.daily_world_projection import (
+            enqueue_accepted_daily_world_projection,
+        )
+        from src.game.daily_generation_intent import is_complete_daily_event
+
+        current_data = self.player_state.current_event_data
+        if (
+            isinstance(current_data, dict)
+            and self._is_complete_persisted_daily_event(
+                current_data, is_complete_daily_event
+            )
+            and self.current_event is not None
+        ):
+            enqueue_accepted_daily_world_projection(
+                game_id, self.current_event, self.player_state, replacement=True
+            )
+        for record in self.player_state.day_history:
+            if not isinstance(record, dict):
+                continue
+            if record.get(
+                "world_projection_status"
+            ) != "pending" or not self._is_complete_persisted_daily_event(
+                record, is_complete_daily_event
+            ):
+                continue
+            enqueue_accepted_daily_world_projection(game_id, record, self.player_state)
+
+    def _initialize_projection_migration_baseline(self) -> None:
+        """Advance across the contiguous legacy prefix that predates projections."""
+
+        from src.game.world_projection_state import (
+            initialize_legacy_projection_baseline,
+        )
+
+        initialize_legacy_projection_baseline(self.player_state)
+
+    @staticmethod
+    def _is_complete_persisted_daily_event(
+        value: Dict[str, Any], complete: Any
+    ) -> bool:
+        """Reject defaults synthesized while recovering an incomplete raw payload."""
+
+        event_id = value.get("event_id")
+        revision = value.get("revision")
+        return bool(
+            isinstance(event_id, str)
+            and event_id.strip()
+            and isinstance(revision, int)
+            and revision >= 1
+            and complete(value)
+        )
 
     def _retry_pending_daily_postprocessing(self) -> None:
         """Queue recoverable daily enrichment without blocking save restore."""
@@ -364,7 +467,9 @@ class GameLoop(RoundSystemMixin):
             NarrativeManager.process_foreshadowing_seeds(
                 state, world.get("foreshadowing_seeds", [])
             )
-            NarrativeManager.process_habit_updates(state, world.get("habit_updates", []))
+            NarrativeManager.process_habit_updates(
+                state, world.get("habit_updates", [])
+            )
             WorldModelUpdater.process_location_updates(
                 state, world.get("location_updates", [])
             )
@@ -481,7 +586,11 @@ class GameLoop(RoundSystemMixin):
                         "start_day": year_start,
                         "end_day": completed_days - 1,
                         "summary": "\n".join(
-                            str(item.get("summary") or item.get("event_description") or "")
+                            str(
+                                item.get("summary")
+                                or item.get("event_description")
+                                or ""
+                            )
                             for item in records
                         ),
                     }
@@ -530,7 +639,9 @@ class GameLoop(RoundSystemMixin):
         current_week = self.player_state.week
 
         # ★ 显示用周数（人类可读，从1开始）
-        week_display = f"第{current_week + 1}周" if current_week is not None else "未知周"
+        week_display = (
+            f"第{current_week + 1}周" if current_week is not None else "未知周"
+        )
         logger.debug(
             f"Generating weekly event: {week_display}, last_event_week={self.last_event_week}, force={force}"
         )
@@ -544,10 +655,14 @@ class GameLoop(RoundSystemMixin):
 
         # Check for milestone events first (bypass for force)
         if self.player_state.week in self.milestone_weeks and not force:
-            logger.debug(f"Checking for milestone event at 第{self.player_state.week + 1}周")
+            logger.debug(
+                f"Checking for milestone event at 第{self.player_state.week + 1}周"
+            )
             event = self._generate_milestone_event()
             if event:
-                logger.info(f"Generated milestone event for 第{self.player_state.week + 1}周")
+                logger.info(
+                    f"Generated milestone event for 第{self.player_state.week + 1}周"
+                )
                 self.current_event = event
                 self.last_event_week = current_week
                 return event
@@ -595,7 +710,9 @@ class GameLoop(RoundSystemMixin):
             if self.event_callback:
                 self.event_callback(event, self.player_state)
 
-            logger.debug(f"Successfully generated event for 第{self.player_state.week + 1}周")
+            logger.debug(
+                f"Successfully generated event for 第{self.player_state.week + 1}周"
+            )
             return event
 
         except StoryGenerationFailure:
@@ -622,7 +739,8 @@ class GameLoop(RoundSystemMixin):
 
         # Convert GameEvent options to dict format
         event_options = [
-            {"text": opt.text, "effects": opt.effects} for opt in self.current_event.options
+            {"text": opt.text, "effects": opt.effects}
+            for opt in self.current_event.options
         ]
 
         result = process_decision(
@@ -740,10 +858,14 @@ class GameLoop(RoundSystemMixin):
                 "start_week": start_week,
                 "end_week": current_week - 1,
                 "summary": summary_text,
-                "date_info": (self.player_state.get_game_date_info() if self.player_state else {}),
+                "date_info": (
+                    self.player_state.get_game_date_info() if self.player_state else {}
+                ),
             }
             self.player_state.four_week_summaries.append(summary_entry)
-            logger.info(f"Generated 4-week summary for 第{start_week + 1}周-第{current_week}周")
+            logger.info(
+                f"Generated 4-week summary for 第{start_week + 1}周-第{current_week}周"
+            )
 
         except Exception as e:
             logger.error(f"Failed to generate 4-week summary: {e}")
@@ -784,10 +906,14 @@ class GameLoop(RoundSystemMixin):
                 "start_week": start_week,
                 "end_week": current_week - 1,
                 "summary": summary_text,
-                "date_info": (self.player_state.get_game_date_info() if self.player_state else {}),
+                "date_info": (
+                    self.player_state.get_game_date_info() if self.player_state else {}
+                ),
             }
             self.player_state.yearly_summaries.append(summary_entry)
-            logger.info(f"Generated yearly summary for 第{start_week + 1}周-第{current_week}周")
+            logger.info(
+                f"Generated yearly summary for 第{start_week + 1}周-第{current_week}周"
+            )
 
         except Exception as e:
             logger.error(f"Failed to generate yearly summary: {e}")
@@ -874,20 +1000,22 @@ class GameLoop(RoundSystemMixin):
             f"Using {'round ' if is_round else ''}fallback event - AI generation failed!"
         )
 
-        character_settings = self.player_state.character_settings if self.player_state else {}
+        character_settings = (
+            self.player_state.character_settings if self.player_state else {}
+        )
 
         if is_round:
             prefix = (
-                self.player_state.get_round_name(self.language) if self.player_state else "周一"
+                self.player_state.get_round_name(self.language)
+                if self.player_state
+                else "周一"
             )
         else:
             prefix = ""
 
         if self.language == "zh":
             if is_round:
-                desc = (
-                    f"{prefix}，你度过了平静的一天。生活的节奏张弛有度，你有一些时间可以自由支配。"
-                )
+                desc = f"{prefix}，你度过了平静的一天。生活的节奏张弛有度，你有一些时间可以自由支配。"
             else:
                 desc = "你度过了一个平静的一周。"
                 if character_settings and "era" in character_settings:
@@ -900,7 +1028,9 @@ class GameLoop(RoundSystemMixin):
                 event_description=desc,
                 options=[
                     EventOption(
-                        text=("保持现状，继续前进" if not is_round else "继续保持现有节奏"),
+                        text=(
+                            "保持现状，继续前进" if not is_round else "继续保持现有节奏"
+                        ),
                         effects={
                             "energy": 0 if is_round else 5,
                             "mood": 5,
@@ -917,9 +1047,7 @@ class GameLoop(RoundSystemMixin):
             if is_round:
                 desc = f"{prefix}, you had a quiet day. Life flows at a steady pace, and you have some time for yourself."
             else:
-                desc = (
-                    "You had a quiet week. You have some free time to think about what to do next."
-                )
+                desc = "You had a quiet week. You have some free time to think about what to do next."
 
             return GameEvent(
                 event_description=desc,

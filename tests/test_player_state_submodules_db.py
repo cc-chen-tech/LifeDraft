@@ -4,6 +4,8 @@ Tests the 6 player state mixin submodules via save/load round-trip
 with a real in-memory SQLite database. No mocks.
 """
 
+from copy import deepcopy
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -114,7 +116,10 @@ class TestPlayerCharactersDB:
         state = PlayerState()
         state.add_character(
             CharacterState(
-                name="王五", role="导师", affinity=60, personality_traits=["严厉", "睿智"]
+                name="王五",
+                role="导师",
+                affinity=60,
+                personality_traits=["严厉", "睿智"],
             )
         )
 
@@ -243,6 +248,111 @@ class TestPlayerDataDB:
         assert d["week"] == 10
         assert d["current_round"] == 1
 
+    def test_defaults_versioned_world_projection_watermarks(self):
+        """New states begin with an empty, independently-owned projection layer."""
+        state = PlayerState()
+
+        assert state.world_projection_state == {
+            "version": 1,
+            "projected_through_day_index": -1,
+            "applied_through_day_index": -1,
+            "pending_from_day_index": None,
+            "oldest_pending_at": None,
+            "applied_sources": [],
+            "world": {
+                "fact_updates": [],
+                "foreshadowing_seeds": [],
+                "habit_updates": [],
+                "location_updates": [],
+                "career_updates": [],
+                "commitment_updates": [],
+                "causal_updates": [],
+            },
+        }
+
+    def test_loading_legacy_state_adds_missing_projection_keys_without_mutating_input(
+        self,
+    ):
+        """Old saves retain their projection data while receiving safe v1 defaults."""
+        legacy = {
+            "player_name": "旧存档玩家",
+            "world_projection_state": {
+                "applied_through_day_index": 3,
+                "world": {"location_updates": [{"name": "花果山"}]},
+            },
+        }
+
+        state = PlayerState.from_dict(legacy)
+
+        assert legacy["world_projection_state"] == {
+            "applied_through_day_index": 3,
+            "world": {"location_updates": [{"name": "花果山"}]},
+        }
+        assert state.world_projection_state["version"] == 1
+        assert state.world_projection_state["applied_through_day_index"] == 3
+        assert state.world_projection_state["projected_through_day_index"] == -1
+        assert state.world_projection_state["world"]["location_updates"] == [
+            {"name": "花果山"}
+        ]
+        assert state.world_projection_state["world"]["commitment_updates"] == []
+
+    def test_loading_malformed_projection_state_keeps_only_safe_typed_values(self):
+        """Malformed legacy projection fields cannot become downstream world inputs."""
+        legacy = {
+            "world_projection_state": {
+                "version": 2,
+                "projected_through_day_index": -2,
+                "applied_through_day_index": True,
+                "pending_from_day_index": "-1",
+                "oldest_pending_at": {"not": "a scalar"},
+                "applied_sources": [
+                    {"event_id": "evt-7", "revision": 2, "day_index": 7},
+                    ["evt-list", 3, 8],
+                    {
+                        "event_id": "evt-nested",
+                        "revision": {"not": "an integer"},
+                        "day_index": 8,
+                    },
+                ],
+                "world": {
+                    "fact_updates": {"not": "a-list"},
+                    "foreshadowing_seeds": "not-a-list",
+                    "habit_updates": None,
+                    "location_updates": [
+                        {"name": "花果山"},
+                        "not-a-mapping",
+                        3,
+                        ["nested", "list"],
+                    ],
+                    "career_updates": {"not": "a-list"},
+                    "commitment_updates": "not-a-list",
+                    "causal_updates": 3,
+                },
+            }
+        }
+        before = deepcopy(legacy)
+
+        state = PlayerState.from_dict(legacy)
+
+        assert legacy == before
+        assert state.world_projection_state["version"] == 1
+        assert state.world_projection_state["projected_through_day_index"] == -1
+        assert state.world_projection_state["applied_through_day_index"] == -1
+        assert state.world_projection_state["pending_from_day_index"] is None
+        assert state.world_projection_state["oldest_pending_at"] is None
+        assert state.world_projection_state["applied_sources"] == [
+            {"event_id": "evt-7", "revision": 2, "day_index": 7}
+        ]
+        assert state.world_projection_state["world"] == {
+            "fact_updates": [],
+            "foreshadowing_seeds": [],
+            "habit_updates": [],
+            "location_updates": [{"name": "花果山"}],
+            "career_updates": [],
+            "commitment_updates": [],
+            "causal_updates": [],
+        }
+
     def test_to_dict_includes_collection_fields(self, repo, sample_game):
         """to_dict should serialize characters, items, landmarks."""
         state = PlayerState()
@@ -294,13 +404,17 @@ class TestPlayerDataDB:
 
     def test_validate_state_passes_for_valid_data(self):
         """validate_state should return True for valid state."""
-        state = PlayerState(week=0, age=25, energy=50, mood=50, knowledge=50, wealth=100)
+        state = PlayerState(
+            week=0, age=25, energy=50, mood=50, knowledge=50, wealth=100
+        )
 
         assert state.validate_state() is True
 
     def test_validate_state_raises_for_out_of_bounds_energy(self):
         """validate_state should raise ValueError when energy is set out of bounds post-construction."""
-        state = PlayerState(week=0, age=25, energy=50, mood=50, knowledge=50, wealth=100)
+        state = PlayerState(
+            week=0, age=25, energy=50, mood=50, knowledge=50, wealth=100
+        )
         # Bypass Pydantic construction validation by setting attribute directly
         object.__setattr__(state, "energy", 150)
 
@@ -317,7 +431,9 @@ class TestPlayerDataDB:
     def test_weekly_summaries_and_story_history_serialize(self, repo, sample_game):
         """List fields like weekly_summaries and story_history should survive round-trip."""
         state = PlayerState(
-            weekly_summaries=[{"week": 0, "summary": "一切开始的一周", "bonus_effects": {}}],
+            weekly_summaries=[
+                {"week": 0, "summary": "一切开始的一周", "bonus_effects": {}}
+            ],
             story_history=["第一周故事文本"],
             four_week_summaries=[{"weeks": "0-3", "summary": "首月总结"}],
             yearly_summaries=[{"year": 1, "summary": "第一年总结"}],
@@ -354,7 +470,9 @@ class TestPlayerDataDB:
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
         assert "character_locations" in loaded.world_model_data
-        assert loaded.world_model_data["character_locations"]["主角"]["location"] == "长安"
+        assert (
+            loaded.world_model_data["character_locations"]["主角"]["location"] == "长安"
+        )
 
 
 # ================================================================
@@ -609,7 +727,9 @@ class TestPlayerInventoryDB:
         """get_item should return correct ItemState after load."""
         state = PlayerState()
         state.add_item(
-            ItemState(name="藏宝图", category="document", acquired_week=3, is_key_item=True)
+            ItemState(
+                name="藏宝图", category="document", acquired_week=3, is_key_item=True
+            )
         )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
@@ -647,7 +767,9 @@ class TestPlayerInventoryDB:
     def test_get_key_items_filters_correctly(self, repo, sample_game):
         """get_key_items should only return items with is_key_item=True."""
         state = PlayerState()
-        state.add_item(ItemState(name="关键物品", category="treasure", is_key_item=True))
+        state.add_item(
+            ItemState(name="关键物品", category="treasure", is_key_item=True)
+        )
         state.add_item(ItemState(name="普通物品", category="other", is_key_item=False))
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
@@ -659,7 +781,9 @@ class TestPlayerInventoryDB:
     def test_update_item_survives_round_trip(self, repo, sample_game):
         """update_item changes should persist across save/load."""
         state = PlayerState()
-        state.add_item(ItemState(name="旧剑", description="一把旧剑", category="weapon"))
+        state.add_item(
+            ItemState(name="旧剑", description="一把旧剑", category="weapon")
+        )
 
         state.update_item("旧剑", description="打磨后的宝剑", importance="critical")
         loaded = _save_and_load(repo, sample_game.game_id, state)
@@ -749,7 +873,12 @@ class TestPlayerLandmarksDB:
         """get_landmark should return correct LandmarkState after load."""
         state = PlayerState()
         state.add_landmark(
-            LandmarkState(name="白鹿书院", category="building", first_appear_week=1, appear_count=3)
+            LandmarkState(
+                name="白鹿书院",
+                category="building",
+                first_appear_week=1,
+                appear_count=3,
+            )
         )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
@@ -787,8 +916,12 @@ class TestPlayerLandmarksDB:
     def test_get_key_landmarks_filters_correctly(self, repo, sample_game):
         """get_key_landmarks should only return landmarks with is_key_location=True."""
         state = PlayerState()
-        state.add_landmark(LandmarkState(name="关键地点", category="area", is_key_location=True))
-        state.add_landmark(LandmarkState(name="普通地点", category="other", is_key_location=False))
+        state.add_landmark(
+            LandmarkState(name="关键地点", category="area", is_key_location=True)
+        )
+        state.add_landmark(
+            LandmarkState(name="普通地点", category="other", is_key_location=False)
+        )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
