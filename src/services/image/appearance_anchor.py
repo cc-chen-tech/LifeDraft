@@ -4,7 +4,7 @@
 """
 
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
@@ -69,8 +69,9 @@ class CharacterAppearanceAnchor:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CharacterAppearanceAnchor":
-        """从字典创建."""
-        return cls(**data)
+        """从字典创建，忽略未知字段（如 fallback 标记 is_fallback）。"""
+        known_fields = {item.name for item in fields(cls)}
+        return cls(**{key: value for key, value in data.items() if key in known_fields})
 
     def build_prompt_segment(self) -> str:
         """构建用于图片生成的描述片段.
