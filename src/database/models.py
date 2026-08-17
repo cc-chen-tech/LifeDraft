@@ -674,6 +674,25 @@ class DailyWorldProjectionAttempt(Base):
     error_code = Column(String(80), nullable=True, index=True)
 
 
+class DailyWorldProjectionRepairAudit(Base):
+    """Durable operator audit trail for a projection-only save repair."""
+
+    __tablename__ = "daily_world_projection_repair_audits"
+
+    audit_id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    state_id = Column(Integer, nullable=False)
+    report_hash = Column(String(64), nullable=False, index=True)
+    backup_path = Column(String(700), nullable=False)
+    backup_sha256 = Column(String(64), nullable=False)
+    non_projection_digest_before = Column(String(64), nullable=False)
+    non_projection_digest_after = Column(String(64), nullable=True)
+    status = Column(String(32), nullable=False, index=True)
+    detail_json = Column(JSON, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+
 class GeneratedMusicAsset(Base):
     """Persisted metadata for reusable AI-generated background music."""
 
