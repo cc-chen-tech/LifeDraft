@@ -49,6 +49,10 @@ from src.services.daily_world_projection_repository import (
     ProjectionIdentity,
 )
 from src.services.daily_world_projection_repair import audit_rebuild_identities
+from src.services.daily_world_projection_observability import (
+    emit_projection_health,
+    summarize_projection_health,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +97,11 @@ class DailyWorldProjectionService:
         before_claim_commit: Optional[Callable[[], None]] = None,
         before_reservation_guard: Optional[Callable[[], None]] = None,
         before_projection_state_save: Optional[Callable[[], None]] = None,
+        health_summary_fn: Callable[[Any, datetime], Any] = (
+            summarize_projection_health
+        ),
+        health_emitter: Callable[[Any], Any] = emit_projection_health,
+        health_interval: timedelta = timedelta(seconds=60),
     ) -> None:
         self.session_factory = session_factory
         self.repository_factory = repository_factory
@@ -116,6 +125,9 @@ class DailyWorldProjectionService:
         self.before_claim_commit = before_claim_commit
         self.before_reservation_guard = before_reservation_guard
         self.before_projection_state_save = before_projection_state_save
+        self.health_summary_fn = health_summary_fn
+        self.health_emitter = health_emitter
+        self.health_interval = health_interval
         zone_name = time_zone or os.getenv(
             "WORLD_PROJECTION_TIME_ZONE", DEFAULT_TIME_ZONE
         )
@@ -128,6 +140,7 @@ class DailyWorldProjectionService:
         self._cancel_event: Optional[threading.Event] = None
         self._generation_owners: dict[int, str] = {}
         self._heartbeat_done: set[threading.Event] = set()
+        self._last_health_emitted_at: Optional[datetime] = None
         self.canonical_loader = canonical_loader or self._load_canonical_source
 
     @property
@@ -243,6 +256,10 @@ class DailyWorldProjectionService:
                 max_workers=self.extraction_workers,
                 thread_name_prefix="daily-world-projection",
             )
+            if self._last_health_emitted_at is None:
+                # The scanner emits once per completed minute, rather than
+                # opening a second read session during its startup claim pass.
+                self._last_health_emitted_at = self._as_utc_naive(self.now_fn())
             self._started = True
             self._scanner = threading.Thread(
                 target=self._scan_loop,
@@ -888,14 +905,42 @@ class DailyWorldProjectionService:
 
     def _scan_loop(self, generation: int, cancel: threading.Event) -> None:
         while self._active_generation(generation, cancel):
+            now = self.now_fn()
             try:
-                self.run_once(self.now_fn(), _generation=generation, _cancel=cancel)
+                self.run_once(now, _generation=generation, _cancel=cancel)
             except Exception:
                 logger.exception("daily world projection scan failed")
+            if self._active_generation(generation, cancel):
+                try:
+                    self._emit_health_if_due(now)
+                except Exception:
+                    logger.exception("daily world projection health query failed")
             if cancel.is_set():
                 return
             self.wake_event.wait(self.scan_seconds)
             self.wake_event.clear()
+
+    def _emit_health_if_due(self, now: datetime) -> None:
+        """Read and emit health on the scanner thread after claims are dispatched."""
+
+        db_now = self._as_utc_naive(now)
+        with self._lock:
+            previous = self._last_health_emitted_at
+            if (
+                previous is not None
+                and db_now >= previous
+                and db_now - previous < self.health_interval
+            ):
+                return
+            # Throttle query failures as well as successful logs; a broken DB must
+            # not turn the one-minute health check into a one-second retry storm.
+            self._last_health_emitted_at = db_now
+        session = self.session_factory()
+        try:
+            snapshot = self.health_summary_fn(session, now)
+        finally:
+            session.close()
+        self.health_emitter(snapshot)
 
     def _load_canonical_source(
         self, game_id: int, event_id: str, revision: int
