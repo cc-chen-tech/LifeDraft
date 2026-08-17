@@ -734,11 +734,16 @@ def finalize_repair_audit(
     except Exception as exc:
         return RepairVerification("failed_invariant", "", str(exc))
     with session_factory() as db, db.begin():
-        audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
+        _lock_game(db, binding["game_id"])
+        audit = (
+            db.query(DailyWorldProjectionRepairAudit)
+            .filter(DailyWorldProjectionRepairAudit.audit_id == audit_id)
+            .with_for_update()
+            .populate_existing()
+            .one_or_none()
+        )
         if audit is None:
             raise ValueError("repair_audit_not_found")
-        _lock_game(db, int(audit.game_id))
-        db.expire(audit)
         if audit.status != "queued":
             return RepairVerification(
                 str(audit.status), str(audit.non_projection_digest_after or "")

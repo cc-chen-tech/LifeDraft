@@ -843,6 +843,77 @@ def test_verify_and_restore_reject_both_lists_truncated_from_verified_backup(
         ] == projection_statuses_before
 
 
+def test_restore_rechecks_audit_scope_after_game_lock(
+    db_engine, tmp_path: Path, capsys, monkeypatch
+) -> None:
+    """A scope change while waiting for the game lock must fence restore."""
+
+    sessions = sessionmaker(bind=db_engine)
+    with sessions() as session:
+        _seed_game(session, _candidate_state("restore-scope-lock"))
+    report = scan_latest_game_states(sessions)
+    assert (
+        cli.run(
+            [
+                "--apply",
+                "--expected-report-hash",
+                report.hash,
+                "--backup-dir",
+                str(tmp_path),
+            ],
+            session_factory=sessions,
+            projection_service=WakeRecorder(),
+        )
+        == 0
+    )
+    capsys.readouterr()
+    with sessions() as session:
+        audit = session.query(DailyWorldProjectionRepairAudit).one()
+        audit_id = int(audit.audit_id)
+        state_count_before = session.query(GameState).count()
+        projection_statuses_before = [
+            row.status
+            for row in session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.projection_id)
+            .all()
+        ]
+
+    original_lock_game = cli._lock_game
+    scope_changed = False
+
+    def change_scope_then_lock(db, game_id):
+        nonlocal scope_changed
+        if not scope_changed:
+            with sessions() as other:
+                audit = other.get(DailyWorldProjectionRepairAudit, audit_id)
+                detail = deepcopy(audit.detail_json)
+                detail["rebuild_day_indexes"] = [0]
+                detail["rebuild_identities"] = detail["rebuild_identities"][:1]
+                audit.detail_json = detail
+                other.commit()
+            scope_changed = True
+        return original_lock_game(db, game_id)
+
+    monkeypatch.setattr(cli, "_lock_game", change_scope_then_lock)
+
+    exit_code = cli.run(["--restore-audit-id", str(audit_id)], session_factory=sessions)
+
+    captured = capsys.readouterr()
+    assert exit_code == 3
+    assert "scope binding changed" in captured.err
+    with sessions() as session:
+        audit = session.get(DailyWorldProjectionRepairAudit, audit_id)
+        assert audit.status == "queued"
+        assert audit.detail_json["rebuild_day_indexes"] == [0]
+        assert session.query(GameState).count() == state_count_before
+        assert [
+            row.status
+            for row in session.query(DailyWorldProjection)
+            .order_by(DailyWorldProjection.projection_id)
+            .all()
+        ] == projection_statuses_before
+
+
 def test_future_ledger_is_reset_so_rebuild_materializes_day_zero_patch(
     db_engine, tmp_path: Path, capsys
 ) -> None:

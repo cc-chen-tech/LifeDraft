@@ -339,10 +339,16 @@ def _run_restore(
         if not rebuild_identities_match_history(identities, backup_state):
             raise ValueError("malformed repair audit history")
         with session_factory() as db, db.begin():
-            audit = db.get(DailyWorldProjectionRepairAudit, audit_id)
+            _lock_game(db, audit_record["game_id"])
+            audit = (
+                db.query(DailyWorldProjectionRepairAudit)
+                .filter(DailyWorldProjectionRepairAudit.audit_id == audit_id)
+                .with_for_update()
+                .populate_existing()
+                .one_or_none()
+            )
             if audit is None:
                 raise ValueError("repair audit not found")
-            _lock_game(db, int(audit.game_id))
             locked_identities = audit_rebuild_identities(audit.detail_json)
             if (
                 int(audit.game_id) != audit_record["game_id"]
