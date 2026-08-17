@@ -86,6 +86,25 @@ def game_via_api(client, auth_headers):
     Uses the same pattern as test_constraint_level_api_contract.py.
     Requires: API keys configured for LLM calls (will fail without).
     """
+    # The token patch below maps every request to user_id=1, but registration
+    # is normally a prerequisite for game creation. Ensure the user row exists
+    # on fresh test databases so active-game recovery can resolve it.
+    from src.database.models import SessionLocal, User
+
+    db = SessionLocal()
+    try:
+        if db.query(User).filter(User.user_id == 1).first() is None:
+            db.add(
+                User(
+                    user_id=1,
+                    private_id="test-contract-private-1",
+                    public_id="TESTCON1",
+                )
+            )
+            db.commit()
+    finally:
+        db.close()
+
     with patch("src.api.deps.decode_token", return_value=1):
         create_resp = client.post(
             "/api/games",

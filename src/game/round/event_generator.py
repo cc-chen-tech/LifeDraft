@@ -34,6 +34,7 @@ from src.ai.budgets import (
     GenerationOperation,
     NarrativeKind,
     resolve_narrative_budget,
+    resolve_option_length_requirement,
 )
 from src.ai.generation_budget import get_generation_budget
 from src.ai.models import EventOption, GameEvent
@@ -1385,6 +1386,7 @@ class RoundEventGenerator:
         length_requirement = get_generation_budget(quality_level).length_requirement(
             language
         )
+        option_length_requirement = resolve_option_length_requirement(language)
 
         if language == "zh":
             current_time = (
@@ -1425,7 +1427,7 @@ class RoundEventGenerator:
 2. 必须涉及上述人物
 3. 事件开头要自然衔接之前的承诺（如"记得之前答应过..."）
 4. {length_requirement}，生动有深度
-5. 提供恰好3个选项，每个选项目标8-24字、超过40字必须重写，且都要与承诺相关
+5. 提供恰好3个选项，每个选项{option_length_requirement}、过长必须重写，且都要与承诺相关
 6. 选项应呈现真实的权衡取舍{transition_requirement}
 
 【输出格式】
@@ -1433,7 +1435,7 @@ class RoundEventGenerator:
 {{
   "event_description": "事件描述（{length_requirement}）",
   "options": [
-    {{"text": "选项文本（目标8-24字）", "effects": {{"energy": -10, "mood": 5, ...}}{transition_json}}},
+    {{"text": "选项文本（{option_length_requirement}）", "effects": {{"energy": -10, "mood": 5, ...}}{transition_json}}},
     ...
   ]
 }}
@@ -1479,7 +1481,7 @@ Player name: {player_name}
 2. Must involve the listed characters
 3. Start naturally by referencing the previous promise (e.g., "Remembering the promise to...")
 4. {length_requirement}, vivid and deep
-5. Provide exactly 3 options, each targeting 3-12 words; rewrite any option over 16 words, and keep each related to the commitment
+5. Provide exactly 3 options, each targeting {option_length_requirement}; rewrite any option over 16 words, and keep each related to the commitment
 6. Options should present real trade-offs{transition_requirement}
 
 [Output Format]
@@ -1487,7 +1489,7 @@ Return JSON:
 {{
   "event_description": "Event description ({length_requirement})",
   "options": [
-    {{"text": "Option text (target 3-12 words)", "effects": {{"energy": -10, "mood": 5, ...}}{transition_json}}},
+    {{"text": "Option text ({option_length_requirement})", "effects": {{"energy": -10, "mood": 5, ...}}{transition_json}}},
     ...
   ]
 }}
