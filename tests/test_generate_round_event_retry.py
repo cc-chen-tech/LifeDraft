@@ -90,9 +90,12 @@ def test_round_event_does_not_retry_majority_cast_with_heuristic_object_names():
         status_callback=statuses.append,
     )
 
-    assert mock_client.call.call_count == 1
+    # Heuristic object names only produce a soft cast-coverage warning, so
+    # the best-draft engine refines candidates within budget without ever
+    # signalling a hard retry.
+    assert mock_client.call.call_count == 3
     assert "retry" not in statuses
-    mock_option_gen.generate_options_only.assert_called_once()
+    mock_option_gen.generate_options_only.assert_not_called()
 
 
 def test_fast_mode_single_attempt():

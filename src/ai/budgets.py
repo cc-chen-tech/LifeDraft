@@ -367,6 +367,19 @@ def resolve_prompt_length_requirement(
     return f"Story should be {target_min}-{target_max} words"
 
 
+_OPTION_LENGTH_REQUIREMENTS = {
+    "zh": "目标8-24字",
+    "en": "3-12 words",
+}
+
+
+def resolve_option_length_requirement(language: str) -> str:
+    """Single-source option length wording so prompt templates embed no ranges."""
+    return _OPTION_LENGTH_REQUIREMENTS.get(
+        _normalized_language(language), _OPTION_LENGTH_REQUIREMENTS["en"]
+    )
+
+
 def get_generation_budget(level: str) -> GenerationBudget:
     """Return the compatibility round budget for migrated and legacy callers."""
     from config.feature_flags import get_feature

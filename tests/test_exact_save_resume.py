@@ -52,7 +52,7 @@ async def test_acknowledge_clears_and_persists_saved_result() -> None:
 
     with (
         patch(
-            "src.api.routers.gameplay.events.session_service.get_or_restore",
+            "src.api.routers.gameplay.events._require_session",
             return_value=session,
         ),
         patch("src.api.routers.gameplay.events.get_db", return_value=db),

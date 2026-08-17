@@ -1,13 +1,29 @@
 """Real-database contracts for SSE-visible rewrite and recovery state."""
 
+import pytest
+
+from config.settings import settings
 from src.ai.models import EventOption, GameEvent, StoryDeliveryNotice
 from src.api.routers.gameplay.sse_helpers import (
     _set_generation_resume_view,
     persist_rewritten_current_event,
 )
-from src.database.models import Game, SessionLocal
+from src.database.models import Game, SessionLocal, init_db
 from src.database.singletons import get_game_db
 from src.game.state import PlayerState
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _initialize_real_database() -> None:
+    """Create the tables these contracts exercise in the real database.
+
+    The contracts write through the production ``SessionLocal`` engine and
+    reload through ``get_game_db()``, so the schema must exist first. The
+    data directory may not exist in a fresh checkout, so create it before
+    the first connection.
+    """
+    settings.DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    init_db()
 
 
 class _GameLoop:

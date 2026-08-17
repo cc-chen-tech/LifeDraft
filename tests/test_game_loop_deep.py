@@ -638,13 +638,20 @@ class TestRoundEventContext:
                 pytest.skip("Function not available")
 
     def test_event_generation_parameter_count(self):
-        """事件生成函数参数数量应合理（<= 10）"""
+        """事件生成函数参数数量应保持精简"""
         import inspect
 
         from src.game.round.event_generator import RoundEventGenerator
 
         sig = inspect.signature(RoundEventGenerator.generate_round_event)
         param_count = len(sig.parameters)
-        # 修复后参数应 <= 10（使用 Context 对象封装）
-        # self + stream_callback + status_callback + session = 4 个参数
-        assert param_count <= 4, f"Expected <= 4 parameters, got {param_count}"
+        # self + stream_callback + status_callback + session，加上显式的
+        # force_regenerate / operation_id 重试与可观测参数
+        assert param_count <= 8, f"Expected <= 8 parameters, got {param_count}"
+        assert {
+            "stream_callback",
+            "status_callback",
+            "session",
+            "force_regenerate",
+            "operation_id",
+        } <= set(sig.parameters)

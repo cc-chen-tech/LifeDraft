@@ -504,11 +504,13 @@ class TestEventGenerationResponseShape:
             )
 
         # The first event generation after game creation should produce an event
-        # But may get 409 if still initializing or 400 if game over
+        # But may get 409 if still initializing, 400 if game over, or 503 when
+        # the story provider is unavailable and the failure is surfaced.
         assert resp.status_code in (
             200,
             409,
             400,
+            503,
         ), f"Unexpected status {resp.status_code}: {resp.text[:200]}"
 
         if resp.status_code == 200:
@@ -523,6 +525,9 @@ class TestEventGenerationResponseShape:
             for opt in data["options"]:
                 assert "text" in opt, "Option missing: text"
                 assert "effects" in opt, "Option missing: effects"
+        elif resp.status_code == 503:
+            data = resp.json()
+            assert "detail" in data, "503 must carry a failure detail for the UI"
 
     def test_event_generation_requires_game(self, client, auth_headers):
         """Event sync endpoint for non-existent game should return 404."""

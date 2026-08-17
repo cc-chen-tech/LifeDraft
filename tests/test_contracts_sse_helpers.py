@@ -23,7 +23,7 @@ class TestPrefetchOptionsContracts:
         )
 
         game_loop = MagicMock()
-        game_loop.player_state = SimpleNamespace(week=3, current_round=1, to_dict=lambda: {})
+        game_loop.player_state = SimpleNamespace(week=3, current_round=1, to_prompt_context=lambda: {})
         session = MagicMock()
         session.is_prefetching_options.return_value = False
         session.get_cached_options.return_value = ["cached"]
@@ -45,7 +45,10 @@ class TestPrefetchOptionsContracts:
 
         game_loop = MagicMock()
         game_loop.player_state = SimpleNamespace(
-            week=5, current_round=2, to_dict=lambda: {"foo": "bar"}, character_settings={}
+            week=5,
+            current_round=2,
+            to_prompt_context=lambda: {"foo": "bar"},
+            character_settings={},
         )
         game_loop.player_state.character_settings = {}
         options_event = SimpleNamespace(options=[SimpleNamespace(model_dump=lambda: {"text": "选项A"})])
@@ -83,7 +86,10 @@ class TestPrefetchOptionsContracts:
 
         game_loop = MagicMock()
         game_loop.player_state = SimpleNamespace(
-            week=5, current_round=2, to_dict=lambda: {"foo": "bar"}, character_settings={}
+            week=5,
+            current_round=2,
+            to_prompt_context=lambda: {"foo": "bar"},
+            character_settings={},
         )
         game_loop.ai_generator = SimpleNamespace(generate_options_only=MagicMock(return_value=None))
         game_loop.language = "zh"
@@ -122,7 +128,10 @@ class TestPrefetchOptionsContracts:
 
         game_loop = MagicMock()
         game_loop.player_state = SimpleNamespace(
-            week=5, current_round=2, to_dict=lambda: {}, character_settings={}
+            week=5,
+            current_round=2,
+            to_prompt_context=lambda: {},
+            character_settings={},
         )
         game_loop.ai_generator = SimpleNamespace(
             generate_options_only=MagicMock(side_effect=RuntimeError("模型调用失败"))

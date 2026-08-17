@@ -6,10 +6,20 @@ async def test_lifespan_does_not_start_projection_service_when_flag_is_off(
     monkeypatch,
 ) -> None:
     import src.api.main as main
+    import src.api.routers.gameplay.sse_helpers as sse_helpers
+    import src.services.image_service as image_service
 
     calls: list[str] = []
     monkeypatch.setattr(main, "init_db", lambda: calls.append("init"))
     monkeypatch.setattr(main, "get_feature", lambda _name: False, raising=False)
+    # The real shutdown permanently disables background-job admission, which
+    # would poison every later test in the session.
+    monkeypatch.setattr(
+        sse_helpers, "shutdown_sse_thread_pool", lambda **_kwargs: None
+    )
+    monkeypatch.setattr(
+        image_service, "shutdown_image_thread_pool", lambda **_kwargs: None
+    )
 
     async with main.lifespan(main.app):
         assert calls == ["init"]

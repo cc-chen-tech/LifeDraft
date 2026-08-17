@@ -55,8 +55,8 @@ def test_life_summary_uses_a_short_provider_deadline(monkeypatch) -> None:
     )
     game_loop = SimpleNamespace(player_state=player, ai_generator=generator)
     monkeypatch.setattr(
-        summary.session_service,
-        "get_or_restore",
+        summary,
+        "_require_session",
         lambda _game_id, _user_id: SimpleNamespace(game_loop=game_loop),
     )
 
@@ -81,8 +81,8 @@ def test_life_summary_timeout_returns_grounded_fallback_without_mutating_history
     player = SimpleNamespace(week=0, round_history=history, decision_history=[])
     game_loop = SimpleNamespace(player_state=player, ai_generator=TimedOutSummaryGenerator())
     monkeypatch.setattr(
-        summary.session_service,
-        "get_or_restore",
+        summary,
+        "_require_session",
         lambda _game_id, _user_id: SimpleNamespace(game_loop=game_loop),
     )
 
@@ -122,8 +122,8 @@ def test_rejected_provider_money_state_returns_safe_generated_summary(
         ai_generator=UnsafeSummaryGenerator(provider_summary),
     )
     monkeypatch.setattr(
-        summary.session_service,
-        "get_or_restore",
+        summary,
+        "_require_session",
         lambda _game_id, _user_id: SimpleNamespace(game_loop=game_loop),
     )
 

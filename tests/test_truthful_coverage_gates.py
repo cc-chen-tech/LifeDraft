@@ -227,9 +227,11 @@ def test_frontend_tests_runs_jest_coverage_and_requires_its_artifact() -> None:
     run_step = _step(job, "Run tests with coverage")
     assert str(run_step["run"]).startswith("npm run test:coverage")
     assert "--coverageReporters=text" in str(run_step["run"])
+    assert "--coverageReporters=cobertura" in str(run_step["run"])
     assert "--coverageReporters=html" in str(run_step["run"])
 
-    verify_step = _step(job, "Verify frontend coverage report")
+    verify_step = _step(job, "Verify frontend coverage reports")
+    assert "test -f coverage/cobertura-coverage.xml" in str(verify_step["run"])
     assert "test -f coverage/index.html" in str(verify_step["run"])
 
     upload_step = _step(job, "Upload coverage report")
@@ -261,15 +263,19 @@ def test_coverage_workflow_requires_repository_owned_reports() -> None:
     assert backend_options["path"] == "coverage.xml"
     assert backend_options["if-no-files-found"] == "error"
 
-    frontend_job = jobs["frontend-coverage"]
+    # CI deduplication (#320) moved the frontend coverage run into the
+    # frontend-tests workflow; the repository must still produce, verify,
+    # and upload its own cobertura + html reports there.
+    frontend_workflow = _workflow(".github/workflows/frontend-tests.yml")
+    frontend_job = frontend_workflow["jobs"]["test"]
     assert isinstance(frontend_job, dict)
-    frontend_run = _step(frontend_job, "Run Jest with coverage")
+    frontend_run = _step(frontend_job, "Run tests with coverage")
     assert "--coverageReporters=cobertura" in str(frontend_run["run"])
     assert "--coverageReporters=html" in str(frontend_run["run"])
     frontend_verify = _step(frontend_job, "Verify frontend coverage reports")
     assert "coverage/cobertura-coverage.xml" in str(frontend_verify["run"])
     assert "coverage/index.html" in str(frontend_verify["run"])
-    frontend_upload = _step(frontend_job, "Upload frontend coverage artifact")
+    frontend_upload = _step(frontend_job, "Upload coverage report")
     frontend_options = frontend_upload["with"]
     assert isinstance(frontend_options, dict)
     assert frontend_options["path"] == "frontend/coverage/"

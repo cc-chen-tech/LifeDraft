@@ -924,7 +924,7 @@ class TestSummaryGenerator:
         )
         gen = SummaryGenerator(mock_client)
         result = gen.compress_story("Long story text", "选择A", "zh")
-        assert result["summary"] == "压缩后的摘要"
+        assert result["summary"] == "压缩后的摘要。"
         assert result["event_concluded"] is True
 
     def test_compress_story_truncates_long_summary(self):
@@ -957,7 +957,7 @@ class TestSummaryGenerator:
         mock_client.call.side_effect = Exception("fail")
         gen = SummaryGenerator(mock_client)
         result = gen.compress_story("Short", "choice", "zh")
-        assert result["summary"] == "Short"
+        assert result["summary"] == "Short。"
 
     def test_clean_summary_text_code_block(self):
         from src.ai.summary_generator import SummaryGenerator
@@ -994,7 +994,7 @@ class TestSummaryGenerator:
 
         content = '{"summary": "Extracted text", "other": "data"}'
         result = SummaryGenerator._extract_summary_from_raw(content, "original", "zh")
-        assert result == "Extracted text"
+        assert result == "Extracted text。"
 
     def test_extract_summary_from_raw_malformed(self):
         from src.ai.summary_generator import SummaryGenerator
@@ -1010,7 +1010,7 @@ class TestSummaryGenerator:
         result = SummaryGenerator._extract_summary_from_raw(
             content, "original story text", "zh"
         )
-        assert result == "original story text"
+        assert result == "original story text。"
 
     def test_generate_weekly_summary_success(self):
         from src.ai.summary_generator import SummaryGenerator
@@ -1021,7 +1021,7 @@ class TestSummaryGenerator:
         )
         gen = SummaryGenerator(mock_client)
         result = gen.generate_weekly_summary([{"summary": "round1"}], {}, "zh")
-        assert result["summary"] == "本周很忙碌"
+        assert result["summary"] == "本周很忙碌。"
         assert result["bonus_effects"]["energy"] == 5
 
     def test_generate_weekly_summary_invalid_bonus_clamped(self):
@@ -1055,7 +1055,7 @@ class TestSummaryGenerator:
         mock_client.call_with_retry.return_value = "四周总结文本"
         gen = SummaryGenerator(mock_client)
         result = gen.generate_four_week_summary(["s1", "s2"], [{"choice": "A"}])
-        assert result == "四周总结文本"
+        assert result == "四周总结文本。"
 
     def test_generate_four_week_summary_fallback(self):
         from src.ai.summary_generator import SummaryGenerator
@@ -1073,7 +1073,7 @@ class TestSummaryGenerator:
         mock_client.call_with_retry.return_value = "年度总结"
         gen = SummaryGenerator(mock_client)
         result = gen.generate_yearly_summary([{"summary": "s"}])
-        assert result == "年度总结"
+        assert result == "年度总结。"
 
     def test_generate_yearly_summary_fallback(self):
         from src.ai.summary_generator import SummaryGenerator
