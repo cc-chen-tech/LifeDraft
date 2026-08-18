@@ -1011,6 +1011,7 @@ class DailyWorldProjectionService:
             return deepcopy(legacy_value) if isinstance(legacy_value, list) else []
 
         tracked: dict[str, Any] = {
+            "player_name": str(data.get("player_name") or ""),
             "character_locations": locations,
             "active_commitments": projected_records(
                 "commitment_updates", "active_commitments"

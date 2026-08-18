@@ -120,6 +120,79 @@ def _validate_raw_option_patch_keys(value: Any) -> None:
             )
 
 
+def _coerce_string_patch_records(value: Any, protagonist: str) -> Any:
+    """Coerce bare-string patch records into minimal structured dicts.
+
+    ``deepseek-v4-flash`` occasionally emits world-projection patch entries
+    (e.g. ``fact_updates``) as plain strings — the update text only — instead of
+    the structured objects the schema requires. Coerce those strings back into
+    minimal dicts so the payload validates and the text is preserved with a
+    best-effort subject, instead of failing schema validation outright.
+    """
+    if not isinstance(value, Mapping):
+        return value
+
+    subject = protagonist or "主角"
+    coercions: dict[str, Any] = {
+        "fact_updates": lambda text: {
+            "action": "new",
+            "subject": subject,
+            "category": "situation",
+            "fact": text,
+        },
+        "foreshadowing_seeds": lambda text: {
+            "description": text,
+            "seed_type": "mystery",
+            "related_characters": [],
+            "related_storylines": [],
+        },
+        "habit_updates": lambda text: {
+            "action": "new",
+            "character": subject,
+            "habit": text,
+            "category": "behavioral",
+            "strength": "moderate",
+        },
+        "location_updates": lambda text: {
+            "character": subject,
+            "location": text,
+        },
+        "career_updates": lambda text: {
+            "character": subject,
+            "current_job": text,
+        },
+        "commitment_updates": lambda text: {
+            "description": text,
+            "parties": [],
+        },
+        "causal_updates": lambda text: {
+            "cause": text,
+            "expected_consequence": "结果未明",
+        },
+    }
+
+    def coerce_patch(patch: Any) -> Any:
+        if not isinstance(patch, Mapping):
+            return patch
+        coerced = dict(patch)
+        for field, coerce in coercions.items():
+            records = coerced.get(field)
+            if isinstance(records, list):
+                coerced[field] = [
+                    coerce(item) if isinstance(item, str) else item for item in records
+                ]
+        return coerced
+
+    result = dict(value)
+    if "story_patch" in result:
+        result["story_patch"] = coerce_patch(result["story_patch"])
+    if isinstance(result.get("option_patches"), Mapping):
+        result["option_patches"] = {
+            key: coerce_patch(patch) for key, patch in result["option_patches"].items()
+        }
+    return result
+
+
 def validate_projection_payload(
     value: Any,
     story: str,
@@ -127,6 +200,10 @@ def validate_projection_payload(
     tracked_state: Any = None,
 ) -> WorldProjectionPayload:
     """Validate one extracted payload and reject suspicious all-empty output."""
+    protagonist = ""
+    if isinstance(tracked_state, Mapping):
+        protagonist = str(tracked_state.get("player_name") or "").strip()
+    value = _coerce_string_patch_records(value, protagonist)
     _validate_raw_option_patch_keys(value)
     payload = _parse_payload(value)
     expected_indexes = set(range(len(options)))
