@@ -90,6 +90,24 @@ class TestCharacterAppearanceAnchor:
         assert anchor.face_shape == "鹅蛋脸"
         assert anchor.version == 2
 
+    def test_from_dict_ignores_unknown_keys(self):
+        """从字典创建时应忽略未知字段（如 is_fallback 标记）而不报错"""
+        data = {
+            "name": "孙悟空",
+            "face_shape": "毛脸雷公嘴",
+            "hair_style": "金色猴毛",
+            "is_fallback": True,
+            "unknown_field": "should-be-dropped",
+        }
+
+        anchor = CharacterAppearanceAnchor.from_dict(data)
+
+        assert anchor.name == "孙悟空"
+        assert anchor.face_shape == "毛脸雷公嘴"
+        assert anchor.hair_style == "金色猴毛"
+        assert not hasattr(anchor, "is_fallback")
+        assert not hasattr(anchor, "unknown_field")
+
     def test_build_prompt_segment_basic(self):
         """测试构建基本提示词片段"""
         anchor = CharacterAppearanceAnchor(
