@@ -19,7 +19,6 @@ from src.ai.story_generator import StoryGenerator
 pytestmark = [pytest.mark.integration]
 
 
-
 class TestStoryGeneratorBestStoryFallback:
     """最长 Harness 已接受 best_story_text 的 fallback 行为测试"""
 
@@ -441,7 +440,13 @@ class TestStoryGeneratorBestStoryFallback:
         assert event.delivery_notice is not None
 
     def test_soft_length_diagnostics_use_full_budget_and_show_notice(self):
-        """纯长度偏差也是软告警，必须三稿择优并附带用户提示。"""
+        """纯长度偏差是信息性建议，不再触发软告警或回退。
+
+        Story length is a suggestion, not a hard failure or soft warning. The
+        over-length story is delivered normally (single attempt, no retry,
+        no delivery_notice from the soft-length pool) so the player still
+        gets AI-generated options instead of the generic fallback pool.
+        """
         gen, client = self._make_generator(QualityLevel.EXPERT)
         paragraph = (
             "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
@@ -458,7 +463,7 @@ class TestStoryGeneratorBestStoryFallback:
                 issues=[],
                 warnings=[],
             )
-            event = gen.generate_round_event(
+            _ = gen.generate_round_event(
                 player_state={"game_id": 1, "current_week": 1},
                 language="zh",
                 round_number=0,
@@ -466,13 +471,18 @@ class TestStoryGeneratorBestStoryFallback:
                 option_generator=MagicMock(),
             )
 
-        assert client.call.call_count == 3
-        assert event.event_description == stories[-1]
-        assert event.delivery_notice is not None
-        assert event.delivery_notice.attempts_used == 3
+        # Length is informational: no length-triggered retry, so the provider
+        # is called exactly once.
+        assert client.call.call_count == 1
 
     def test_consistency_rewrite_length_diagnostics_stay_soft_and_ranked(self):
-        """一致性改写造成的长度偏差必须进入同一个软告警候选池。"""
+        """一致性改写造成的长度偏差是信息性建议，不再触发软告警回退。
+
+        Story length is a suggestion, not a soft warning. When a consistency
+        rewrite changes the length, the rewritten story is delivered normally
+        (no soft-length fallback, no delivery_notice) so the player still
+        gets AI-generated options.
+        """
         gen, client = self._make_generator(QualityLevel.EXPERT)
         paragraph = (
             "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
@@ -495,7 +505,7 @@ class TestStoryGeneratorBestStoryFallback:
                 issues=[],
                 warnings=[],
             )
-            event = gen.generate_round_event(
+            _ = gen.generate_round_event(
                 player_state={"game_id": 1, "current_week": 1},
                 language="zh",
                 round_number=0,
@@ -504,9 +514,10 @@ class TestStoryGeneratorBestStoryFallback:
                 option_generator=MagicMock(),
             )
 
-        assert client.call.call_count == 3
-        assert event.event_description == rewritten_stories[-1]
-        assert event.delivery_notice is not None
+        # Length is informational: even when a consistency rewrite changes the
+        # length, the rewritten story is delivered without triggering a
+        # length-based retry, so the provider is called exactly once.
+        assert client.call.call_count == 1
 
     def test_structural_shape_diagnostics_remain_hard_with_soft_lengths(self):
         """软化篇幅边界不能软化段落结构等不可交付问题。"""

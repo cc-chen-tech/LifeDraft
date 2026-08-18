@@ -1048,11 +1048,19 @@ class StoryGenerator:
                 target_max=target_max,
                 use_localized_measurement=narrative_budget is not None,
             )
+            # Story length is a suggestion, not a hard failure: when
+            # ENABLE_SOFT_NARRATIVE_LENGTHS is on, story_too_short /
+            # story_too_long are purely informational and must not trigger
+            # the shape retry / soft-warning fallback.
+            hard_shape_issue_kinds = {"over_fragmented_paragraphs"}
+            if not self._soft_narrative_lengths:
+                hard_shape_issue_kinds.update(
+                    {"story_too_short", "story_too_long"}
+                )
             return [
                 issue
                 for issue in shape_issues
-                if issue
-                in {"story_too_short", "story_too_long", "over_fragmented_paragraphs"}
+                if issue in hard_shape_issue_kinds
             ]
 
         def _build_shape_retry_instruction(hard_shape_issues: list[str]) -> str:
@@ -1559,7 +1567,13 @@ class StoryGenerator:
                             "Story shape validation failed: "
                             + "; ".join(final_length_issues)
                         )
-                    soft_length_warning_count = len(set(final_length_issues))
+                    # Story length is a soft suggestion, not a soft warning.
+                    # Counting it here would route the over-length story through
+                    # the soft_warning fallback (which replaces AI options with
+                    # generic fallback options). Treat length as purely
+                    # informational so the story is delivered normally with AI
+                    # options.
+                    soft_length_warning_count = 0
 
                 # Harness 检查（仅在开启时执行），支持在无效内容上继续 retry
                 if self._harness_enabled and self._validation_pipeline:

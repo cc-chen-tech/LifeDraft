@@ -123,6 +123,22 @@ class ThreeOptionGenerator:
         return []
 
 
+class TrackingOptionGenerator(ThreeOptionGenerator):
+    """Track whether AI options or the generic fallback option path is used."""
+
+    def __init__(self) -> None:
+        self.ai_options_called = False
+        self.fallback_options_called = False
+
+    def generate_options_only(self, **kwargs: Any) -> GameEvent:  # type: ignore[override]
+        self.ai_options_called = True
+        return super().generate_options_only(**kwargs)
+
+    def complete_new_event_options(self, *args: Any, **kwargs: Any) -> Any:
+        self.fallback_options_called = True
+        return super().complete_new_event_options(*args, **kwargs)
+
+
 class FailingOptionGenerator(ThreeOptionGenerator):
     def generate_options_only(self, **_kwargs: Any) -> GameEvent:
         raise TimeoutError("option deadline exhausted")
@@ -201,6 +217,43 @@ def test_expert_length_drift_keeps_story_and_three_options(
 
     assert event.event_description == story
     assert len(event.options) == 3
+
+
+def test_fast_over_length_story_uses_ai_options_not_generic_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An over-length story under FAST quality must not trigger the soft-warning
+    fallback, which replaces AI options with a generic fallback option pool.
+
+    Regression: length is a suggestion, not a soft warning. Counting it toward
+    the soft-warning budget would route the story through the fallback delivery
+    and deny the player AI-generated choices on every over-length night.
+    """
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "false")
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    story = _story_with_length(1329)  # well over the fast target (700)
+    client = LengthDriftClient(story)
+    generator = StoryGenerator(client, quality_level=QualityLevel.FAST)
+    option_generator = TrackingOptionGenerator()
+
+    event = generator.generate_round_event(
+        player_state={"game_id": 7, "week": 4, "current_round": 1329},
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings={},
+        option_generator=option_generator,
+        world_model=MinimalWorldModel(),
+    )
+
+    assert event.event_description == story
+    assert len(event.options) == 3
+    assert option_generator.ai_options_called, (
+        "over-length story must use AI options"
+    )
+    assert not option_generator.fallback_options_called, (
+        "over-length story must not use the generic fallback option pool"
+    )
 
 
 @pytest.mark.xfail(reason="origin/main drift: hard-fingerprint retry logic changed, mocks need rework")
