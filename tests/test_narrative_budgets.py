@@ -29,10 +29,10 @@ pytestmark = [pytest.mark.unit]
         "call_limits",
     ),
     [
-        ("fast", "zh", 400, 700, 1400, 1024, 60, (1, 0, 1)),
+        ("fast", "zh", 400, 700, 1400, 2048, 60, (1, 0, 1)),
         ("expert", "zh", 800, 1400, 2400, 2048, 120, (3, 2, 2)),
         ("master", "zh", 1200, 2200, 4000, 4096, None, (10, 2, 2)),
-        ("fast", "en", 250, 450, 900, 1024, 60, (1, 0, 1)),
+        ("fast", "en", 250, 450, 900, 2048, 60, (1, 0, 1)),
         ("expert", "en", 500, 900, 1500, 2048, 120, (3, 2, 2)),
         ("master", "en", 800, 1400, 2500, 4096, None, (10, 2, 2)),
     ],
@@ -67,6 +67,29 @@ def test_round_budget_defaults_are_localized_and_orthogonal(
         budget.validation_call_limit,
         budget.option_call_limit,
     ) == call_limits
+
+
+@pytest.mark.parametrize("language", ["zh", "en"])
+def test_fast_round_token_budget_covers_compression_threshold(language: str) -> None:
+    """Regression guard: fast round token headroom must cover the full length ceiling.
+
+    fast previously allocated only 1024 output tokens while the Chinese round
+    band still allowed up to a 1400-char compression threshold. A fast daily
+    continuation that overshot its 700-char target was therefore truncated
+    (~1392 chars) before it could finish, failed the constraint harness, and —
+    with fast's single-attempt, no-retry budget — had no fallback draft to
+    promote, surfacing as a hard story-generation failure with no selectable
+    story. The token budget must always cover the compression threshold so an
+    over-long story is delivered intact (and then soft-fallbacked) rather than
+    truncated mid-sentence.
+    """
+    budget = resolve_narrative_budget(
+        NarrativeKind.ROUND,
+        GenerationOperation.GENERATE,
+        "fast",
+        language,
+    )
+    assert budget.max_output_tokens >= budget.length.compression_threshold
 
 
 @pytest.mark.parametrize(

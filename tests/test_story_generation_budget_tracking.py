@@ -196,7 +196,7 @@ def test_retry_wrapper_propagates_budget_exhaustion_without_provider_call(
 
 
 @pytest.mark.parametrize(
-    ("quality", "expected_tokens"), [("fast", 1024), ("expert", 2048), ("master", 4096)]
+    ("quality", "expected_tokens"), [("fast", 2048), ("expert", 2048), ("master", 4096)]
 )
 def test_legacy_event_entry_passes_active_quality_to_prompt_and_budget(
     monkeypatch: pytest.MonkeyPatch, quality: str, expected_tokens: int
