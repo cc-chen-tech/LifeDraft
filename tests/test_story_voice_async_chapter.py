@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from threading import Barrier, Event, Thread
 from uuid import uuid4
 
@@ -127,6 +128,36 @@ def test_failed_segment_marks_chapter_failed_without_browser_audio() -> None:
         assert failed.error_code == "tts_generation_failed"
         assert failed.segments[0].status == "failed"
         assert failed.segments[0].audio_url is None
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_get_job_expires_a_stale_processing_job_instead_of_polling_forever() -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"stale-get-{uuid4().hex[:20]}",
+            public_id=f"SG{uuid4().hex[:7]}",
+            display_name="Stale polling listener",
+        )
+        session.add(user)
+        session.flush()
+        service = StoryVoiceReadingService(
+            StoryVoiceReadingRepository(session), provider=DeterministicTTSProvider()
+        )
+        queued = service.request_reading(user.user_id, _request("卡住的朗读任务必须结束。"))
+        job = session.query(VoiceReadingJob).filter_by(job_id=queued.job_id).one()
+        job.status = "processing"
+        job.updated_at = datetime.utcnow() - timedelta(minutes=11)
+        session.commit()
+
+        expired = service.get_job(user.user_id, queued.job_id)
+
+        assert expired.status == "failed"
+        assert expired.error_code == "tts_processing_timeout"
+        assert expired.segments[0].status == "failed"
     finally:
         session.rollback()
         session.close()

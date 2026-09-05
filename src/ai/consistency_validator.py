@@ -20,6 +20,7 @@ class ConsistencyIssue:
     severity: str  # "CRITICAL" / "WARNING"
     description: str  # Human-readable description of the issue
     fix_suggestion: str  # Suggested fix for the issue
+    evidence: str = ""  # Exact excerpt from the rejected story, when available
 
 
 @dataclass
@@ -129,6 +130,7 @@ class ConsistencyValidator:
                                 f"保持 {issue.subject} 的权威事实：{issue.expected}；"
                                 f"删除或明确过渡冲突内容：{issue.observed}"
                             ),
+                            evidence=issue.observed,
                         )
                         for issue in authoritative.issues
                     ]
@@ -243,6 +245,9 @@ class ConsistencyValidator:
 
                 description = raw.get("description", "")
                 fix_suggestion = raw.get("fix_suggestion", "")
+                evidence = str(
+                    raw.get("evidence") or raw.get("source_excerpt") or ""
+                ).strip()
                 reasoning = raw.get("reasoning", "")  # ★ AI 的判断理由
 
                 # ★ 将判断理由附加到 fix_suggestion
@@ -260,6 +265,7 @@ class ConsistencyValidator:
                             severity=severity,
                             description=description,
                             fix_suggestion=fix_suggestion,
+                            evidence=evidence,
                         )
                     )
 
@@ -296,6 +302,8 @@ class ConsistencyValidator:
                         fix_parts.append("\n⛔【地理位置错误 - 最严重的问题】")
                         for issue in critical_by_dimension["geographic"]:
                             fix_parts.append(f"  ❗ {issue.description}")
+                            if issue.evidence:
+                                fix_parts.append(f"  → 原文证据：{issue.evidence}")
                             fix_parts.append(f"  → 修正方案：{issue.fix_suggestion}")
                         fix_parts.append(
                             "  提示：人物必须在其当前位置出现，如需移动必须先交代。可使用通讯方式（电话/信件/法术通讯）代替面对面交流。"
@@ -334,9 +342,13 @@ class ConsistencyValidator:
                     for issue in issue_list:
                         if language == "zh":
                             fix_parts.append(f"  - {issue.description}")
+                            if issue.evidence:
+                                fix_parts.append(f"  → 原文证据：{issue.evidence}")
                             fix_parts.append(f"  → 修正方案：{issue.fix_suggestion}")
                         else:
                             fix_parts.append(f"  - {issue.description}")
+                            if issue.evidence:
+                                fix_parts.append(f"  → Evidence: {issue.evidence}")
                             fix_parts.append(f"  → Fix: {issue.fix_suggestion}")
 
                 if language == "zh":

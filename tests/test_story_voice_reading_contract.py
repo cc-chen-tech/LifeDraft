@@ -73,7 +73,13 @@ def test_story_voice_response_fields_match_frontend_contract() -> None:
         "status",
     }
 
-    assert {"context", "voice_id", "speed", "auto_play"} <= _fields(StoryVoiceReadingRequest)
+    assert {
+        "context",
+        "voice_id",
+        "speed",
+        "auto_play",
+        "force_retry",
+    } <= _fields(StoryVoiceReadingRequest)
     assert response_fields <= _fields(StoryVoiceReadingResponse)
     assert response_fields <= _fields(VoiceReadingJobResponse)
     assert asset_fields <= _fields(VoiceAssetResponse)

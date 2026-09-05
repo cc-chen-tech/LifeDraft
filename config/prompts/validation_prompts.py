@@ -325,6 +325,7 @@ def get_consistency_validation_prompt(
       "severity": "CRITICAL/WARNING",
       "reasoning": "严重级别判断理由（考虑了哪些因素）",
       "description": "问题的具体描述",
+      "evidence": "从待检查故事中逐字摘录的最小冲突片段；如果无法确定则为空字符串",
       "fix_suggestion": "修正建议"
     }}
   ],
@@ -398,6 +399,7 @@ Provide your judgment directly in the `severity` field, and briefly explain your
       "severity": "CRITICAL/WARNING",
       "reasoning": "Reasoning for severity judgment (what factors were considered)",
       "description": "Specific description of the issue",
+      "evidence": "The smallest verbatim conflicting excerpt from the story; empty if uncertain",
       "fix_suggestion": "Suggested fix"
     }}
   ],

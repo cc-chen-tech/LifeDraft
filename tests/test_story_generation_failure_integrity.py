@@ -612,6 +612,87 @@ def test_round_generation_rejects_an_overlong_story_after_shape_retry(
     option_generator.generate_options_only.assert_not_called()
 
 
+def test_round_generation_combines_quick_and_shape_repairs_in_one_provider_call(
+    monkeypatch,
+    constraint_harness_disabled,
+) -> None:
+    """A draft with era drift and length drift gets one actionable repair prompt."""
+
+    overlong_story = "林岚在现代影院核对预算，却误写成长安城里的旧事。" * 80
+    valid_story = "林岚在现代影院核对预算，陈越把本周施工安排整理成一页清单。" * 30
+
+    class PromptAwareClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def call(self, **kwargs: object) -> str:
+            self.calls.append(kwargs)
+            prompt = str(kwargs.get("user_prompt", ""))
+            if "篇幅与分段修正" in prompt:
+                return valid_story
+            return overlong_story
+
+    client = PromptAwareClient()
+    option_generator = RecordingOptionGenerator()
+    quick_results = iter(
+        [
+            SimpleNamespace(
+                passed=False,
+                warnings=[],
+                issues=["现代背景检测到古代/前现代漂移: 长安"],
+            ),
+            SimpleNamespace(passed=True, warnings=[], issues=[]),
+        ]
+    )
+
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: next(quick_results),
+    )
+
+    event = StoryGenerator(client).generate_round_event(
+        player_state={"week": 0, "current_round": 0},
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings={},
+        option_generator=option_generator,
+    )
+
+    assert event.event_description == valid_story
+    assert len(client.calls) == 2
+    assert "长安" in str(client.calls[1]["user_prompt"])
+    assert "篇幅与分段修正" in str(client.calls[1]["user_prompt"])
+
+
+def test_soft_story_length_warning_does_not_consume_a_prose_retry(
+    monkeypatch,
+    constraint_harness_disabled,
+) -> None:
+    """A product-allowed long story should still reach LLM option generation."""
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    long_story = "孙悟空在花果山与哪吒核对东海线索，随后决定先查明龙骨去向。" * 80
+    client = StaticStoryClient(long_story)
+    option_generator = RecordingOptionGenerator()
+
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: SimpleNamespace(passed=True, warnings=[], issues=[]),
+    )
+    event = StoryGenerator(client, quality_level=QualityLevel.MASTER).generate_round_event(
+        player_state={"week": 0, "current_round": 0},
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings={},
+        option_generator=option_generator,
+    )
+
+    assert event.event_description == long_story
+    assert len(client.calls) == 1
+    assert option_generator.story_descriptions == [long_story]
+
+
 def test_round_generation_rejects_an_overlong_consistency_retry(
     monkeypatch,
     constraint_harness_disabled,

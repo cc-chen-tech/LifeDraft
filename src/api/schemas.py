@@ -333,6 +333,7 @@ class StoryVoiceReadingRequest(BaseModel):
     voice_id: str = "warm_female"
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     auto_play: bool = False
+    force_retry: bool = False
 
 
 class VoiceReadingSegmentResponse(BaseModel):

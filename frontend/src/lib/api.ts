@@ -23,6 +23,7 @@ import { resolveApiBase } from './apiBase';
 
 const API_BASE = resolveApiBase();
 export const LIFE_SUMMARY_REQUEST_TIMEOUT_MS = 30_000;
+export const STORY_VOICE_JOB_REQUEST_TIMEOUT_MS = 20_000;
 
 export interface PortraitImageGenerationJob {
   job_id: number;
@@ -582,7 +583,9 @@ export const api = {
         body: JSON.stringify(data),
       }),
     getJob: (jobId: number) =>
-      fetchJson<VoiceReadingJobResponse>(`/voice-reading/jobs/${jobId}`),
+      fetchJson<VoiceReadingJobResponse>(`/voice-reading/jobs/${jobId}`, {
+        timeout: STORY_VOICE_JOB_REQUEST_TIMEOUT_MS,
+      }),
     getProgress: (identity: Pick<VoiceReadingProgress, 'game_id' | 'day_index' | 'text_hash' | 'voice_id' | 'speed'>) => {
       const query = new URLSearchParams({
         game_id: String(identity.game_id),

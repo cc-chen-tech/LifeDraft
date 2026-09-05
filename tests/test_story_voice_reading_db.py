@@ -589,6 +589,50 @@ def test_repeated_read_does_not_reclaim_a_fresh_processing_job() -> None:
         session.close()
 
 
+def test_force_retry_requeues_a_fresh_processing_job() -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"priv_{uuid4().hex[:16]}",
+            public_id=f"pub_{uuid4().hex[:6]}",
+            display_name="Voice Forced Retry",
+        )
+        session.add(user)
+        session.flush()
+        service = StoryVoiceReadingService(
+            StoryVoiceReadingRepository(session), provider=DeterministicTTSProvider()
+        )
+        request = StoryVoiceReadingRequest(
+            context={
+                "source_type": "current_story",
+                "game_id": 919,
+                "week": 1,
+                "round_number": 1,
+                "stage": "event",
+                "attempt_id": "force-retry",
+                "text_hash": normalize_text_hash("用户明确重试时应重新排队。"),
+                "text": "用户明确重试时应重新排队。",
+            }
+        )
+        queued = service.request_reading(int(user.user_id), request)
+        job = session.query(VoiceReadingJob).filter_by(job_id=queued.job_id).one()
+        job.status = "processing"
+        job.updated_at = datetime.utcnow()
+        session.commit()
+
+        forced = service.request_reading(
+            int(user.user_id), request.model_copy(update={"force_retry": True})
+        )
+
+        assert forced.job_id == queued.job_id
+        assert forced.status == "queued"
+        assert session.query(VoiceReadingJob).filter_by(job_id=queued.job_id).one().status == "queued"
+    finally:
+        session.rollback()
+        session.close()
+
+
 def test_lease_heartbeat_prevents_stale_recovery() -> None:
     init_db()
     session = SessionLocal()

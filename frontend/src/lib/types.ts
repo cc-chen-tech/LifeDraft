@@ -59,6 +59,7 @@ export interface StoryVoiceReadingRequest {
   voice_id: string;
   speed: number;
   auto_play: boolean;
+  force_retry?: boolean;
   preferred_provider?: string | null;
 }
 

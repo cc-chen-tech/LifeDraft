@@ -440,8 +440,8 @@ class TestStoryGeneratorBestStoryFallback:
         assert event.event_description == soft_story
         assert event.delivery_notice is not None
 
-    def test_soft_length_diagnostics_use_full_budget_and_show_notice(self):
-        """纯长度偏差也是软告警，必须三稿择优并附带用户提示。"""
+    def test_soft_length_diagnostics_do_not_consume_story_budget(self):
+        """产品允许的篇幅偏差不应消耗 prose 重试或触发 fallback。"""
         gen, client = self._make_generator(QualityLevel.EXPERT)
         paragraph = (
             "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
@@ -451,6 +451,14 @@ class TestStoryGeneratorBestStoryFallback:
         client.call.side_effect = stories
         gen._soft_narrative_lengths = True
         gen._harness_enabled = False
+        option_generator = MagicMock()
+        option_generator.generate_options_only.return_value = GameEvent(
+            event_description=stories[0],
+            options=[
+                EventOption(text="继续核对", effects={}),
+                EventOption(text="联系伙伴", effects={}),
+            ],
+        )
 
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
             mock_quick.return_value = SimpleNamespace(
@@ -463,16 +471,16 @@ class TestStoryGeneratorBestStoryFallback:
                 language="zh",
                 round_number=0,
                 round_context="",
-                option_generator=MagicMock(),
+                option_generator=option_generator,
             )
 
-        assert client.call.call_count == 3
-        assert event.event_description == stories[-1]
-        assert event.delivery_notice is not None
-        assert event.delivery_notice.attempts_used == 3
+        assert client.call.call_count == 1
+        assert event.event_description == stories[0]
+        assert event.delivery_notice is None
+        option_generator.generate_options_only.assert_called_once()
 
-    def test_consistency_rewrite_length_diagnostics_stay_soft_and_ranked(self):
-        """一致性改写造成的长度偏差必须进入同一个软告警候选池。"""
+    def test_consistency_rewrite_length_diagnostics_do_not_trigger_fallback(self):
+        """一致性改写后的篇幅偏差仍不应触发长度 fallback。"""
         gen, client = self._make_generator(QualityLevel.EXPERT)
         paragraph = (
             "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
@@ -488,6 +496,14 @@ class TestStoryGeneratorBestStoryFallback:
         gen._soft_narrative_lengths = True
         gen._harness_enabled = False
         gen._validate_and_retry_story = MagicMock(side_effect=rewritten_stories)
+        option_generator = MagicMock()
+        option_generator.generate_options_only.return_value = GameEvent(
+            event_description=rewritten_stories[0],
+            options=[
+                EventOption(text="继续核对", effects={}),
+                EventOption(text="联系伙伴", effects={}),
+            ],
+        )
 
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
             mock_quick.return_value = SimpleNamespace(
@@ -501,12 +517,16 @@ class TestStoryGeneratorBestStoryFallback:
                 round_number=0,
                 round_context="",
                 world_model=object(),
-                option_generator=MagicMock(),
+                option_generator=option_generator,
             )
 
-        assert client.call.call_count == 3
-        assert event.event_description == rewritten_stories[-1]
-        assert event.delivery_notice is not None
+        assert client.call.call_count == 1
+        gen._validate_and_retry_story.assert_called_once()
+        assert (
+            option_generator.generate_options_only.call_args.kwargs["story_description"]
+            == rewritten_stories[0]
+        )
+        assert event.delivery_notice is None
 
     def test_structural_shape_diagnostics_remain_hard_with_soft_lengths(self):
         """软化篇幅边界不能软化段落结构等不可交付问题。"""

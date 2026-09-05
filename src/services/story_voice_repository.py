@@ -249,6 +249,101 @@ class StoryVoiceReadingRepository:
         self.db.flush()
         return recovered == 1
 
+    def force_requeue_processing_job(
+        self,
+        user_id: int,
+        job_id: int,
+        *,
+        now: Optional[datetime] = None,
+    ) -> bool:
+        """Requeue a still-processing job after an explicit user retry."""
+        current_time = now or datetime.utcnow()
+        requeued = (
+            self.db.query(VoiceReadingJob)
+            .filter(
+                VoiceReadingJob.job_id == job_id,
+                VoiceReadingJob.user_id == user_id,
+                VoiceReadingJob.status == "processing",
+            )
+            .update(
+                {
+                    VoiceReadingJob.status: "queued",
+                    VoiceReadingJob.error_code: None,
+                    VoiceReadingJob.error_message: None,
+                    VoiceReadingJob.updated_at: current_time,
+                },
+                synchronize_session=False,
+            )
+        )
+        if requeued != 1:
+            return False
+        self.db.query(VoiceReadingSegment).filter(
+            VoiceReadingSegment.job_id == job_id
+        ).update(
+            {
+                VoiceReadingSegment.status: "queued",
+                VoiceReadingSegment.error_code: None,
+                VoiceReadingSegment.error_message: None,
+                VoiceReadingSegment.updated_at: current_time,
+            },
+            synchronize_session=False,
+        )
+        self.db.flush()
+        self.db.expire_all()
+        return True
+
+    def fail_stale_processing_job(
+        self,
+        user_id: int,
+        job_id: int,
+        *,
+        now: Optional[datetime] = None,
+    ) -> bool:
+        """Put an abandoned processing job into a durable terminal state."""
+        current_time = now or datetime.utcnow()
+        stale_before = current_time - PROCESSING_LEASE_DURATION
+        failed = (
+            self.db.query(VoiceReadingJob)
+            .filter(
+                VoiceReadingJob.job_id == job_id,
+                VoiceReadingJob.user_id == user_id,
+                VoiceReadingJob.status == "processing",
+                or_(
+                    VoiceReadingJob.updated_at.is_(None),
+                    VoiceReadingJob.updated_at < stale_before,
+                ),
+            )
+            .update(
+                {
+                    VoiceReadingJob.status: "failed",
+                    VoiceReadingJob.error_code: "tts_processing_timeout",
+                    VoiceReadingJob.error_message: (
+                        "High-quality narration processing expired; please retry"
+                    ),
+                    VoiceReadingJob.updated_at: current_time,
+                },
+                synchronize_session=False,
+            )
+        )
+        if failed != 1:
+            return False
+        self.db.query(VoiceReadingSegment).filter(
+            VoiceReadingSegment.job_id == job_id
+        ).update(
+            {
+                VoiceReadingSegment.status: "failed",
+                VoiceReadingSegment.error_code: "tts_processing_timeout",
+                VoiceReadingSegment.error_message: (
+                    "High-quality narration processing expired; please retry"
+                ),
+                VoiceReadingSegment.updated_at: current_time,
+            },
+            synchronize_session=False,
+        )
+        self.db.commit()
+        self.db.expire_all()
+        return True
+
     def commit_processing_changes(
         self,
         user_id: int,
