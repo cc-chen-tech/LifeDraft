@@ -173,7 +173,7 @@ class TestStoryGeneratorBestStoryFallback:
         assert len(event.event_description) > len(medium_story)
 
     def test_expert_uses_all_three_attempts_and_delivers_best_soft_candidate(self):
-        """仅有软告警时应耗尽专家档三次预算，再按告警数和分数择优。"""
+        """仅有软告警时应立即生成真实选项，不应进入 fallback。"""
         gen, client = self._make_generator(QualityLevel.EXPERT)
 
         story_a = (
@@ -233,7 +233,7 @@ class TestStoryGeneratorBestStoryFallback:
 
         option_generator = MagicMock()
         option_generator.generate_options_only.return_value = GameEvent(
-            event_description="unused",
+            event_description=story_a,
             options=[
                 EventOption(text="继续核对", effects={}),
                 EventOption(text="联系伙伴", effects={}),
@@ -257,14 +257,11 @@ class TestStoryGeneratorBestStoryFallback:
                 stream_callback=streamed_chunks.append,
             )
 
-        assert client.call.call_count == 3
-        assert event.event_description == story_b
-        assert event.delivery_notice is not None
-        assert event.delivery_notice.code == "SOFT_VALIDATION_FALLBACK"
-        assert event.delivery_notice.attempts_used == 3
-        assert "内部" not in event.delivery_notice.reason
-        assert streamed_chunks == [story_b]
-        option_generator.generate_options_only.assert_not_called()
+        assert client.call.call_count == 1
+        assert event.event_description == story_a
+        assert event.delivery_notice is None
+        assert streamed_chunks == [story_a]
+        option_generator.generate_options_only.assert_called_once()
 
     def test_hard_rejected_candidates_never_enter_soft_fallback_pool(self):
         """所有候选均有硬错误时仍须失败，且不能为拒绝稿生成选项。"""
@@ -393,7 +390,7 @@ class TestStoryGeneratorBestStoryFallback:
     def test_master_uses_total_budget_after_soft_candidate_and_failed_hard_repairs(
         self,
     ):
-        """内部两次修复不能让 MASTER 在 10 次总预算尚未用完时提前退出。"""
+        """软 warning 不应为了继续修复而耗尽 MASTER 的 prose 预算。"""
         gen, client = self._make_generator(QualityLevel.MASTER)
         soft_story = (
             "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
@@ -426,6 +423,11 @@ class TestStoryGeneratorBestStoryFallback:
             )
             for i in range(1, 10)
         )
+        option_generator = MagicMock()
+        option_generator.generate_options_only.return_value = GameEvent(
+            event_description=soft_story,
+            options=[EventOption(text="继续核对", effects={}) for _ in range(2)],
+        )
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
             mock_quick.side_effect = quick_results
             event = gen.generate_round_event(
@@ -433,12 +435,13 @@ class TestStoryGeneratorBestStoryFallback:
                 language="zh",
                 round_number=0,
                 round_context="",
-                option_generator=MagicMock(),
+                option_generator=option_generator,
             )
 
-        assert client.call.call_count == 10
+        assert client.call.call_count == 1
         assert event.event_description == soft_story
-        assert event.delivery_notice is not None
+        assert event.delivery_notice is None
+        option_generator.generate_options_only.assert_called_once()
 
     def test_soft_length_diagnostics_do_not_consume_story_budget(self):
         """产品允许的篇幅偏差不应消耗 prose 重试或触发 fallback。"""
@@ -564,7 +567,7 @@ class TestStoryGeneratorBestStoryFallback:
         option_generator.generate_options_only.assert_not_called()
 
     def test_master_soft_candidate_survives_repeated_hard_fingerprint_to_budget(self):
-        """重复硬错误只终止当前修复链，已有软稿时仍应继续寻找至总预算。"""
+        """软 warning 不应触发重复硬错误修复链或 fallback。"""
         gen, client = self._make_generator(QualityLevel.MASTER)
         soft_story = (
             "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
@@ -595,6 +598,11 @@ class TestStoryGeneratorBestStoryFallback:
             )
             for _ in range(9)
         )
+        option_generator = MagicMock()
+        option_generator.generate_options_only.return_value = GameEvent(
+            event_description=soft_story,
+            options=[EventOption(text="继续核对", effects={}) for _ in range(2)],
+        )
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
             mock_quick.side_effect = quick_results
             event = gen.generate_round_event(
@@ -602,15 +610,16 @@ class TestStoryGeneratorBestStoryFallback:
                 language="zh",
                 round_number=0,
                 round_context="",
-                option_generator=MagicMock(),
+                option_generator=option_generator,
             )
 
-        assert client.call.call_count == 10
+        assert client.call.call_count == 1
         assert event.event_description == soft_story
-        assert event.delivery_notice is not None
+        assert event.delivery_notice is None
+        option_generator.generate_options_only.assert_called_once()
 
     def test_soft_candidate_survives_consistency_circuit_break_to_budget(self):
-        """一致性修复熔断只结束当前链，已有软稿时仍继续到总预算。"""
+        """一致性没有硬失败时应直接生成真实选项。"""
         gen, client = self._make_generator(QualityLevel.EXPERT)
         paragraph = (
             "你在办公室核对今天的实验记录，并把会议结论逐项写入项目日志。"
@@ -643,6 +652,11 @@ class TestStoryGeneratorBestStoryFallback:
             side_effect=[stories[0], consistency_circuit, consistency_circuit]
         )
 
+        option_generator = MagicMock()
+        option_generator.generate_options_only.return_value = GameEvent(
+            event_description=stories[0],
+            options=[EventOption(text="继续核对", effects={}) for _ in range(2)],
+        )
         with patch("src.ai.quick_validator.quick_validate_story") as mock_quick:
             mock_quick.return_value = SimpleNamespace(
                 passed=True,
@@ -655,12 +669,13 @@ class TestStoryGeneratorBestStoryFallback:
                 round_number=0,
                 round_context="",
                 world_model=object(),
-                option_generator=MagicMock(),
+                option_generator=option_generator,
             )
 
-        assert client.call.call_count == 3
+        assert client.call.call_count == 1
         assert event.event_description == stories[0]
-        assert event.delivery_notice is not None
+        assert event.delivery_notice is None
+        option_generator.generate_options_only.assert_called_once()
 
     def test_consistency_repair_is_rechecked_by_quick_validator(self):
         """一致性修订改变文本后，新的硬 quick finding 必须阻止交付。"""
