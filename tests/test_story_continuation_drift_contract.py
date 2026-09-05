@@ -108,6 +108,31 @@ def test_quick_validator_allows_classical_chapter_title_for_ancient_story() -> N
     assert result.issues == []
 
 
+def test_quick_validator_recognizes_tang_era_as_ancient_even_with_relationships() -> None:
+    """Tang-era preset stories must not be misclassified as modern."""
+    from src.ai.quick_validator import quick_validate_story
+
+    result = quick_validate_story(
+        story_text="孙悟空在长安城外收起金箍棒，哪吒从云端落下与他商议天庭旧序。",
+        character_settings={
+            "era": {
+                "year": 640,
+                "era_description": "唐代贞观年间，佛道并盛。",
+                "world_context": "玄奘西行取经，三界神仙与人间交汇。",
+            },
+            "world": {"world_description": "天庭、灵山与凡间并立。"},
+            "relationships": {
+                "key_people": [{"name": "哪吒", "role": "天庭神将"}]
+            },
+        },
+        available_people=["孙悟空", "哪吒"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
 def test_story_continuation_retries_when_choice_result_drifts_from_character_settings() -> None:
     class DriftThenValidGenerator:
         def __init__(self) -> None:
