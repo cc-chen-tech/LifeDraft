@@ -1048,11 +1048,17 @@ class StoryGenerator:
                 target_max=target_max,
                 use_localized_measurement=narrative_budget is not None,
             )
+            soft_length_issues = (
+                {"story_too_short", "story_too_long"}
+                if self._soft_narrative_lengths
+                else set()
+            )
             return [
                 issue
                 for issue in shape_issues
                 if issue
                 in {"story_too_short", "story_too_long", "over_fragmented_paragraphs"}
+                and issue not in soft_length_issues
             ]
 
         def _build_shape_retry_instruction(hard_shape_issues: list[str]) -> str:
@@ -1101,6 +1107,40 @@ class StoryGenerator:
                 "[Severe Continuity Fix - Regenerate Required]\n"
                 f"The previous draft violated these continuity constraints:\n{issues}\n"
                 "Regenerate from established facts, character state, and causal history."
+            )
+
+        def _build_findings_retry_hint(
+            findings: list[ValidationFinding],
+        ) -> str:
+            """Carry concrete failed findings into the next outer prose attempt."""
+            lines: list[str] = []
+            for finding in findings[:8]:
+                code = str(getattr(finding, "code", "VALIDATION_FAILED") or "VALIDATION_FAILED")
+                message = str(getattr(finding, "message", "") or "").strip()
+                evidence = str(getattr(finding, "evidence", "") or "").strip()
+                repair = str(
+                    getattr(finding, "repair_instruction", "") or ""
+                ).strip()
+                detail = f"- [{code}] {message}"
+                if evidence:
+                    detail += f"\n  原文证据：{evidence[:240]}"
+                if repair:
+                    detail += f"\n  修正要求：{repair[:320]}"
+                lines.append(detail)
+            if not lines:
+                return ""
+            if language == "zh":
+                return (
+                    "【上一轮一致性修复仍未通过 - 本轮必须修正】\n"
+                    "以下问题来自上一轮被拒绝的候选，不能忽略：\n"
+                    + "\n".join(lines)
+                    + "\n请以权威事实、人物当前位置和已兑现/待兑现承诺为准，返回完整新故事。"
+                )
+            return (
+                "[The previous consistency repair still failed - fix this attempt]\n"
+                "The following findings came from the rejected candidate:\n"
+                + "\n".join(lines)
+                + "\nUse authoritative facts, current locations, and commitments; return a complete new story."
             )
 
         def _build_targeted_repair_prompt(
@@ -1192,6 +1232,7 @@ class StoryGenerator:
                 first_hard_fingerprints = {
                     finding.fingerprint for finding in _hard_findings(last_findings)
                 }
+                initial_shape_issues = _hard_shape_issues(story_text)
                 quick_retry_used = False
                 locally_usable_story = quick_result.passed
                 repeated_from_previous_candidate = first_hard_fingerprints.intersection(
@@ -1232,6 +1273,8 @@ class StoryGenerator:
                         story_text,
                         quick_result.issues,
                     )
+                    if initial_shape_issues:
+                        retry_prompt += _build_shape_retry_instruction(initial_shape_issues)
                     if status_callback:
                         status_callback("retry")
 
@@ -1767,7 +1810,21 @@ class StoryGenerator:
             except GenerationBudgetError as e:
                 logger.warning("Round request budget exhausted: %s", e)
                 best_valid_story_text = ""
-                last_generation_error = e
+                if final_shape_issues:
+                    last_generation_error = ValueError(
+                        "Story shape validation failed: "
+                        + "; ".join(final_shape_issues)
+                    )
+                elif _hard_findings(last_findings):
+                    last_generation_error = ValueError(
+                        "Story quick validation failed: "
+                        + "; ".join(
+                            str(getattr(finding, "message", finding))
+                            for finding in _hard_findings(last_findings)
+                        )
+                    )
+                else:
+                    last_generation_error = e
                 break
             except StoryGenerationFailure as e:
                 # A candidate rejected by a hard consistency check is never a
@@ -1776,6 +1833,7 @@ class StoryGenerator:
                 best_valid_story_text = ""
                 last_findings = list(e.findings)
                 last_generation_error = e
+                retry_hint = _build_findings_retry_hint(last_findings)
                 logger.warning(
                     "Round event attempt %d failed hard consistency validation: %s",
                     attempt + 1,
@@ -1785,7 +1843,6 @@ class StoryGenerator:
                     if len(best_soft_story_text) <= 20:
                         raise
                     previous_hard_fingerprints = set()
-                    retry_hint = None
                     if (
                         provider_requests_used < max_story_requests
                         and attempt < max_attempts - 1
@@ -2156,13 +2213,29 @@ class StoryGenerator:
                     f"  CRITICAL [{issue.dimension}]: {issue.description[:80]}"
                 )
 
+            issue_details: list[str] = []
+            for issue in validation.critical_issues:
+                detail = f"- [{issue.dimension}] {issue.description}"
+                if issue.evidence:
+                    detail += f"\n  原文证据：{issue.evidence[:240]}"
+                if issue.fix_suggestion:
+                    detail += f"\n  修正方案：{issue.fix_suggestion[:320]}"
+                issue_details.append(detail)
+            structured_issue_details = "\n".join(issue_details)
+            retry_instructions = validation.fix_instructions
+            if structured_issue_details:
+                retry_instructions += (
+                    "\n\n【结构化冲突证据 - 必须逐项修正】\n"
+                    + structured_issue_details
+                )
+
             # Regenerate with fix instructions appended
             # ★ 重要：重试时也需要流式输出，否则前端会显示不完整的旧内容
             if language == "zh":
                 retry_prompt = (
                     original_prompt
                     + "\n\n【定点一致性修订 - 返回完整故事】\n"
-                    + validation.fix_instructions
+                    + retry_instructions
                     + "\n\n【上一稿全文】\n"
                     + story_text
                     + "\n【上一稿结束】\n"
@@ -2172,7 +2245,7 @@ class StoryGenerator:
                 retry_prompt = (
                     original_prompt
                     + "\n\n[Targeted Consistency Revision - Return the Full Story]\n"
-                    + validation.fix_instructions
+                    + retry_instructions
                     + "\n\n[Full Rejected Draft]\n"
                     + story_text
                     + "\n[End Rejected Draft]\n"
@@ -2268,7 +2341,7 @@ class StoryGenerator:
                         confidence=0.9,
                         source="consistency_validator",
                         message=issue.description,
-                        evidence=issue.description,
+                        evidence=issue.evidence or issue.description,
                         repair_instruction=issue.fix_suggestion,
                     )
                     for issue in repaired_validation.critical_issues

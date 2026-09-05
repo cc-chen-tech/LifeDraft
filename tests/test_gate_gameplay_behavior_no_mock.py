@@ -574,7 +574,7 @@ def test_round_event_repairs_length_after_a_quick_validation_retry(
             SimpleNamespace(passed=True, issues=[], warnings=[]),
         ]
     )
-    shape_results = iter([["story_too_long"], []])
+    shape_results = iter([["story_too_short"], ["story_too_long"], []])
     monkeypatch.setattr(
         "src.ai.quick_validator.quick_validate_story",
         lambda **_kwargs: next(quick_results),

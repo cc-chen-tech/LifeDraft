@@ -248,7 +248,10 @@ class StoryVoiceReadingService:
         elif str(job.status) == "failed":
             self.repository.mark_job_queued_for_retry(job)
         elif str(job.status) == "processing":
-            self.repository.requeue_stale_processing_job(user_id, int(job.job_id))
+            if request.force_retry:
+                self.repository.force_requeue_processing_job(user_id, int(job.job_id))
+            else:
+                self.repository.requeue_stale_processing_job(user_id, int(job.job_id))
             job = self.repository.get_job(int(job.job_id), user_id)
             if job is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
@@ -534,6 +537,12 @@ class StoryVoiceReadingService:
         job = self.repository.get_job(job_id, user_id)
         if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        if str(job.status) == "processing" and self.repository.fail_stale_processing_job(
+            user_id, job_id
+        ):
+            job = self.repository.get_job(job_id, user_id)
+            if job is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
         metadata = self.provider.metadata()
         response = self._reading_response(job, metadata.provider, metadata.model)
         return VoiceReadingJobResponse(**response.model_dump())

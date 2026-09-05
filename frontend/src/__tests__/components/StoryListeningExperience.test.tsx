@@ -1,6 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { StoryListeningExperience } from "@/components/game/StoryListeningExperience";
+import {
+  STORY_VOICE_POLL_TIMEOUT_MS,
+  StoryListeningExperience,
+} from "@/components/game/StoryListeningExperience";
 import { api } from "@/lib/api";
 
 jest.mock("@/lib/api", () => ({
@@ -148,6 +151,60 @@ describe("StoryListeningExperience", () => {
     expect(screen.queryByText("浏览器语音")).not.toBeInTheDocument();
   });
 
+  it("plays a ready chapter when only the job-level audio URL is present", async () => {
+    voiceApi.getJob.mockResolvedValueOnce({
+      job_id: 19,
+      status: "ready",
+      audio_url: "/api/voice-reading/audio/chapter.mp3",
+      playback_mode: "audio",
+      provider: "minimax",
+      model: "speech-2.8-turbo",
+      message: "",
+      segments: segments.map((segment) => ({
+        ...segment,
+        status: "ready",
+        audio_url: null,
+      })),
+    });
+
+    renderExperience();
+
+    const audio = await waitFor(() => {
+      const element = document.querySelector("audio");
+      expect(element).not.toBeNull();
+      return element as HTMLAudioElement;
+    });
+
+    expect(audio).toHaveAttribute("src", "/api/voice-reading/audio/chapter.mp3");
+    expect(screen.getByRole("button", { name: "播放朗读" })).toBeEnabled();
+  });
+
+  it("turns a permanently processing job into a retryable failure", async () => {
+    let now = 0;
+    jest.spyOn(Date, "now").mockImplementation(() => now);
+    voiceApi.getJob.mockImplementation(async () => {
+      now = STORY_VOICE_POLL_TIMEOUT_MS;
+      return {
+        job_id: 19,
+        status: "processing",
+        playback_mode: "unavailable",
+        provider: "minimax",
+        model: "speech-2.8-turbo",
+        message: "",
+        segments: segments.map((segment) => ({
+          ...segment,
+          status: "processing",
+          audio_url: null,
+        })),
+      };
+    });
+
+    renderExperience();
+
+    expect(await screen.findByText("高质量语音生成超时，请重试")).toBeInTheDocument();
+    expect(screen.getByText("重试高质量语音")).toBeInTheDocument();
+  });
+
   it("lets the listener start from a selected paragraph", async () => {
     renderExperience();
     const transcriptLabel = await screen.findByText("查看正文");
@@ -277,6 +334,9 @@ describe("StoryListeningExperience", () => {
     fireEvent.click(await screen.findByRole("button", { name: "重试高质量语音" }));
 
     await waitFor(() => expect(voiceApi.requestReading).toHaveBeenCalledTimes(2));
+    expect(voiceApi.requestReading.mock.calls[1][0]).toEqual(
+      expect.objectContaining({ force_retry: true }),
+    );
     fireEvent.canPlay(document.querySelector("audio") as HTMLAudioElement);
     await waitFor(() => expect(play).toHaveBeenCalled());
   });

@@ -57,6 +57,8 @@ const VOICES = [
 ];
 const SPEEDS = [0.75, 1, 1.25, 1.5];
 const STALL_WATCHDOG_MS = 8_000;
+export const STORY_VOICE_POLL_TIMEOUT_MS = 210_000;
+const STORY_VOICE_POLL_INTERVAL_MS = 700;
 
 function splitParagraphs(text: string): string[] {
   return text
@@ -235,13 +237,19 @@ export function StoryListeningExperience({
   }, [storyText]);
 
   const applyJob = useCallback((job: VoiceReadingJobResponse) => {
-    setSegments(job.segments);
+    const chapterAudioUrl = job.status === "ready" ? job.audio_url : null;
+    const normalizedSegments = chapterAudioUrl
+      ? job.segments.map((segment) =>
+          segment.audio_url ? segment : { ...segment, audio_url: chapterAudioUrl },
+        )
+      : job.segments;
+    setSegments(normalizedSegments);
     if (job.status === "failed") {
       setStatus("failed");
       setErrorMessage(job.message || job.error_code || "高质量语音生成失败");
       return;
     }
-    if (job.segments.some((segment) => segment.audio_url)) {
+    if (chapterAudioUrl || normalizedSegments.some((segment) => segment.audio_url)) {
       setStatus((current) => (current === "playing" ? current : "ready"));
     } else {
       setStatus("preparing");
@@ -307,17 +315,24 @@ export function StoryListeningExperience({
           voice_id: selectedVoice,
           speed,
           auto_play: autoReadRef.current,
+          force_retry: retryNonce > 0,
         });
         if (!active || generation !== generationRef.current) return;
         setJobId(response.job_id);
         applyJob(response);
 
         let job: VoiceReadingJobResponse = response;
+        const pollStartedAt = Date.now();
         while (active && generation === generationRef.current && !["ready", "failed"].includes(job.status)) {
           job = await api.voice_reading.getJob(response.job_id);
           if (!active || generation !== generationRef.current) return;
           applyJob(job);
-          if (!["ready", "failed"].includes(job.status)) await delay(700);
+          if (!["ready", "failed"].includes(job.status)) {
+            if (Date.now() - pollStartedAt >= STORY_VOICE_POLL_TIMEOUT_MS) {
+              throw new Error("高质量语音生成超时，请重试");
+            }
+            await delay(STORY_VOICE_POLL_INTERVAL_MS);
+          }
         }
       } catch (error) {
         if (!active || generation !== generationRef.current) return;
