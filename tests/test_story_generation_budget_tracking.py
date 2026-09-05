@@ -147,13 +147,13 @@ def test_story_provider_call_consumes_prose_before_invocation() -> None:
     generator = StoryGenerator(client, quality_level="expert")
     tracker = _tracker()
 
-    for _ in range(3):
+    for _ in range(5):
         generator._call_required_round_story(
             language="zh",
             generation_tracker=tracker,
             system_prompt="system",
             user_prompt="story",
-            max_tokens=2048,
+            max_tokens=4096,
         )
 
     with pytest.raises(GenerationBudgetExceeded, match="prose"):
@@ -162,18 +162,22 @@ def test_story_provider_call_consumes_prose_before_invocation() -> None:
             generation_tracker=tracker,
             system_prompt="system",
             user_prompt="story",
-            max_tokens=2048,
+            max_tokens=4096,
         )
 
-    assert len(client.calls) == 3
-    assert tracker.prose_calls == 3
+    assert len(client.calls) == 5
+    assert tracker.prose_calls == 5
 
 
 def test_retry_wrapper_propagates_budget_exhaustion_without_provider_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = AIClient(api_key="test-key", model="test-model")
+    # fast 档 prose_call_limit=2；先用完 1 次预算（模拟已经做过一次成功生成），
+    # 让 call_with_retry 的首次 attempt 仍能 consume（2 == 2 通过），但进入
+    # retry 后第 2 次 consume（2+1=3）必须 raise GenerationBudgetExceeded。
     tracker = _tracker(quality="fast")
+    tracker.consume("prose")
     tracker.consume("prose")
     provider_call_count = 0
 
@@ -196,7 +200,7 @@ def test_retry_wrapper_propagates_budget_exhaustion_without_provider_call(
 
 
 @pytest.mark.parametrize(
-    ("quality", "expected_tokens"), [("fast", 2048), ("expert", 2048), ("master", 4096)]
+    ("quality", "expected_tokens"), [("fast", 4096), ("expert", 4096), ("master", 4096)]
 )
 def test_legacy_event_entry_passes_active_quality_to_prompt_and_budget(
     monkeypatch: pytest.MonkeyPatch, quality: str, expected_tokens: int
@@ -629,7 +633,7 @@ def test_consistency_provider_call_consumes_validation_and_uses_request_tokens()
     assert result.passed
     assert second.passed
     assert len(client.calls) == 2
-    assert client.calls[0]["max_tokens"] == 2048
+    assert client.calls[0]["max_tokens"] == 4096
     assert tracker.validation_calls == 2
 
 
@@ -789,7 +793,7 @@ def test_full_output_rewrite_uses_original_length_band_and_request_tokens(
 
     assert result == rewritten
     assert len(client.calls) == 1
-    assert client.calls[0]["max_tokens"] == 2048
+    assert client.calls[0]["max_tokens"] == 4096
     assert "故事应该80-120字" in client.calls[0]["user_prompt"]
 
 
@@ -837,7 +841,7 @@ def test_truncation_recovery_consumes_same_prose_allowance_and_stops_on_exhausti
         generation_tracker=tracker,
     )
 
-    assert recovered == "开头被截断继续写出尚未完成的部分继续写出尚未完成的部分"
-    assert len(continuation_calls) == 2
+    assert recovered == "开头被截断继续写出尚未完成的部分继续写出尚未完成的部分继续写出尚未完成的部分"
+    assert len(continuation_calls) == 3
     assert continuation_calls[0]["_allow_truncation_recovery"] is False
-    assert tracker.prose_calls == 3
+    assert tracker.prose_calls == 4

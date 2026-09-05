@@ -65,7 +65,7 @@ FEATURE_DEFAULTS: FeatureFlags = {
     "creative_enhancement": False,
     "epic_narrative": False,
     "model_fallback": False,
-    "truncation_recovery": False,
+    "truncation_recovery": True,  # ★ 软限制默认开启：截断后自动续写
     "reactive_compression": False,
     "parallel_postprocessing": False,
     "generation_state_tracking": False,

@@ -512,7 +512,7 @@ def test_severe_continuity_is_terminal_in_its_production_priority_bucket(
     assert all(constraint_type in prompt for prompt in retry_prompts)
 
 
-def test_unified_expert_budget_caps_harness_at_three_prose_calls(
+def test_unified_expert_budget_caps_harness_at_five_prose_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
@@ -542,5 +542,59 @@ def test_unified_expert_budget_caps_harness_at_three_prose_calls(
             option_generator=ThreeOptionGenerator(),
         )
 
-    assert len(generator.client.calls) == 3
+    assert len(generator.client.calls) == 5
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    monkeypatch.setenv("ENABLE_UNIFIED_NARRATIVE_BUDGETS", "true")
+    story = _story_with_length(900)
+    generator = StoryGenerator(
+        LengthDriftClient(story),
+        quality_level=QualityLevel.EXPERT,
+    )
+    generator._validation_pipeline = SingleFailurePipeline(
+        "item_continuity",
+        "HIGH",
+        80.0,
+    )
+
+    with pytest.raises(
+        StoryGenerationFailure,
+        match="Story harness validation failed after final attempt",
+    ):
+        generator.generate_round_event(
+            player_state={"game_id": 17, "week": 4, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings={},
+            option_generator=ThreeOptionGenerator(),
+        )
+
+    assert len(generator.client.calls) == 5
+    monkeypatch.setenv("ENABLE_UNIFIED_NARRATIVE_BUDGETS", "true")
+    story = _story_with_length(900)
+    generator = StoryGenerator(
+        LengthDriftClient(story),
+        quality_level=QualityLevel.EXPERT,
+    )
+    generator._validation_pipeline = SingleFailurePipeline(
+        "item_continuity",
+        "HIGH",
+        80.0,
+    )
+
+    with pytest.raises(
+        StoryGenerationFailure,
+        match="Story harness validation failed after final attempt",
+    ):
+        generator.generate_round_event(
+            player_state={"game_id": 17, "week": 4, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings={},
+            option_generator=ThreeOptionGenerator(),
+        )
+
+    assert len(generator.client.calls) == 5
     assert "[Retry Hint]" in generator.client.calls[1]["user_prompt"]

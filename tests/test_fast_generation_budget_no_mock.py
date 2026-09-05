@@ -15,11 +15,14 @@ def test_fast_budget_is_materially_smaller_and_has_no_secondary_story_calls() ->
 
     assert fast.min_length == 350
     assert fast.max_length == 600
-    assert fast.max_tokens == 2048
+    # fast 档 max_tokens 2048 → 4096：与 expert 拉齐，避免 500 字符目标长度
+    # 被截断（PR #342 已在主干统一过 max_tokens）。
+    assert fast.max_tokens == 4096
     assert fast.allow_quick_regeneration is False
     assert fast.allow_ai_consistency is False
     assert fast.expected_seconds < expert.expected_seconds < master.expected_seconds
-    assert fast.max_tokens < expert.max_tokens <= master.max_tokens
+    # fast / expert 现在都是 4096；master 更大。三档仍按档位递增。
+    assert fast.max_tokens <= expert.max_tokens <= master.max_tokens
 
 
 def test_fast_round_prompt_uses_fast_length_instead_of_master_length() -> None:
