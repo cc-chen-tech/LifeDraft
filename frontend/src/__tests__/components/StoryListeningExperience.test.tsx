@@ -341,6 +341,76 @@ describe("StoryListeningExperience", () => {
     await waitFor(() => expect(play).toHaveBeenCalled());
   });
 
+  it("falls back to browser Chinese narration when backend TTS is unavailable", async () => {
+    const spoken: Array<{
+      text: string;
+      lang: string;
+      rate: number;
+      onstart?: () => void;
+      onend?: () => void;
+    }> = [];
+    const speechSynthesis = {
+      cancel: jest.fn(),
+      getVoices: jest.fn(() => []),
+      speak: jest.fn((utterance: (typeof spoken)[number]) => {
+        spoken.push(utterance);
+      }),
+    };
+    const previousSynthesis = (window as Window & { speechSynthesis?: unknown }).speechSynthesis;
+    const previousUtterance = (globalThis as { SpeechSynthesisUtterance?: unknown }).SpeechSynthesisUtterance;
+    class TestSpeechSynthesisUtterance {
+      text: string;
+      lang = "";
+      rate = 1;
+      onstart?: () => void;
+      onend?: () => void;
+
+      constructor(text: string) {
+        this.text = text;
+      }
+    }
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: speechSynthesis,
+    });
+    Object.defineProperty(globalThis, "SpeechSynthesisUtterance", {
+      configurable: true,
+      value: TestSpeechSynthesisUtterance,
+    });
+    voiceApi.requestReading.mockResolvedValueOnce({
+      job_id: 20,
+      status: "failed",
+      playback_mode: "unavailable",
+      provider: "minimax",
+      model: "speech-2.8-turbo",
+      error_code: "tts_generation_failed",
+      message: "High-quality narration could not be generated",
+      segments: [{ ...segments[0], status: "failed", audio_url: null }],
+    });
+
+    try {
+      renderExperience();
+
+      expect(await screen.findByText("高质量语音暂时不可用，已切换浏览器朗读")).toBeInTheDocument();
+      const playButton = screen.getByRole("button", { name: "播放朗读" });
+      expect(playButton).toBeEnabled();
+      fireEvent.click(playButton);
+
+      await waitFor(() => expect(speechSynthesis.speak).toHaveBeenCalledTimes(1));
+      expect(spoken[0]).toMatchObject({ text: "第一段故事。", lang: "zh-CN", rate: 1 });
+      spoken[0].onstart?.();
+      expect(await screen.findByText("朗读中")).toBeInTheDocument();
+      spoken[0].onend?.();
+      expect(await screen.findByText("第 2 段")).toBeInTheDocument();
+      expect(speechSynthesis.speak).toHaveBeenCalledTimes(2);
+    } finally {
+      if (previousSynthesis === undefined) delete (window as Window & { speechSynthesis?: unknown }).speechSynthesis;
+      else Object.defineProperty(window, "speechSynthesis", { configurable: true, value: previousSynthesis });
+      if (previousUtterance === undefined) delete (globalThis as { SpeechSynthesisUtterance?: unknown }).SpeechSynthesisUtterance;
+      else Object.defineProperty(globalThis, "SpeechSynthesisUtterance", { configurable: true, value: previousUtterance });
+    }
+  });
+
   it("restores the saved paragraph and in-paragraph position", async () => {
     voiceApi.getProgress.mockResolvedValue({
       game_id: context.game_id,
