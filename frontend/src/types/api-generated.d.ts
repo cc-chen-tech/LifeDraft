@@ -2958,6 +2958,11 @@ export interface components {
              * @default false
              */
             auto_play: boolean;
+            /**
+             * Force Retry
+             * @default false
+             */
+            force_retry: boolean;
         };
         /** StoryVoiceReadingResponse */
         StoryVoiceReadingResponse: {

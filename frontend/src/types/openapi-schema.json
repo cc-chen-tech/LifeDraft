@@ -7004,6 +7004,11 @@
             "type": "boolean",
             "title": "Auto Play",
             "default": false
+          },
+          "force_retry": {
+            "type": "boolean",
+            "title": "Force Retry",
+            "default": false
           }
         },
         "type": "object",
