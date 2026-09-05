@@ -1130,6 +1130,28 @@ class TestPlayerLogicDB:
         assert info["year"] == 2024  # 26 < 52, still year 1
         assert info["total_week"] == 27  # display week = 26 + 1
 
+    def test_get_game_date_info_uses_daily_timeline_authority(self, repo, sample_game):
+        """Daily games must validate against timeline date, not legacy week zero."""
+        from src.game.daily_timeline import build_daily_timeline
+
+        state = PlayerState(
+            week=0,
+            current_round=0,
+            age=28,
+            character_settings={"era": {"year": 640}},
+            timeline=build_daily_timeline(start_date="0640-08-13", day_index=13),
+            timeline_version=2,
+        )
+
+        loaded = _save_and_load(repo, sample_game.game_id, state)
+
+        info = loaded.get_game_date_info()
+        assert info["year"] == 640
+        assert info["month"] == 8
+        assert info["week_in_month"] == 4
+        assert info["total_week"] == 2
+        assert info["date_string"].startswith("640年8月")
+
     def test_get_game_date_info_uses_year_from_era_text_when_year_field_missing(
         self, repo, sample_game
     ):

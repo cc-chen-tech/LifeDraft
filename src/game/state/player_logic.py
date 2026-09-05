@@ -4,6 +4,7 @@
 包含状态更新、时间推进、轮次管理和上下文构建等方法。
 """
 
+from datetime import date
 import re
 from typing import Any, Dict, List, Optional
 
@@ -134,18 +135,31 @@ class PlayerLogicMixin:
 
     def get_game_date_info(self) -> Dict[str, Any]:
         """
-        基于 era.year + week 计算游戏内日期信息。
+        基于日历时间线或 legacy week 计算游戏内日期信息。
 
         Returns:
             包含年、月、周等时间信息的字典
         """
-        era = self.character_settings.get("era", {})
-        start_year = _extract_start_year_from_era(era) if isinstance(era, dict) else 2024
-        years_passed = self.week // 52
-        current_year = start_year + years_passed
-        week_in_year = self.week % 52
-        current_month = week_in_year // 4 + 1
-        week_in_month = week_in_year % 4 + 1
+        from src.game.daily_timeline import is_daily_timeline, normalize_daily_timeline
+
+        if is_daily_timeline(self):
+            timeline = normalize_daily_timeline(self.timeline or {})
+            current_date = date.fromisoformat(str(timeline["current_date"]))
+            current_year = current_date.year
+            current_month = current_date.month
+            week_in_month = (current_date.day - 1) // 7 + 1
+            total_week = int(timeline.get("week_number") or 1)
+        else:
+            era = self.character_settings.get("era", {})
+            start_year = (
+                _extract_start_year_from_era(era) if isinstance(era, dict) else 2024
+            )
+            years_passed = self.week // 52
+            current_year = start_year + years_passed
+            week_in_year = self.week % 52
+            current_month = week_in_year // 4 + 1
+            week_in_month = week_in_year % 4 + 1
+            total_week = self.week + 1
 
         # 计算大致季节
         if 3 <= current_month <= 5:
@@ -162,7 +176,7 @@ class PlayerLogicMixin:
             "month": current_month,
             "week_in_month": week_in_month,
             "season": season,
-            "total_week": self.week + 1,  # ★ week 从0开始，显示时+1，与前端一致
+            "total_week": total_week,
             "age": self.age,
             "date_string": f"{current_year}年{current_month}月第{week_in_month}周",
             "date_string_en": f"Year {current_year}, Month {current_month}, Week {week_in_month}",
