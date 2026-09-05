@@ -1740,13 +1740,9 @@ class StoryGenerator:
                         warning_count=soft_warning_count,
                         validation_score=candidate_validation_score,
                     )
-                    if provider_requests_used < max_story_requests:
-                        retry_hint = "Improve non-blocking story quality warnings while preserving all established facts."
-                        logger.info(
-                            "Soft-warning candidate retained; trying another candidate within budget"
-                        )
-                        continue
-                    break
+                    logger.info(
+                        "Soft-warning candidate retained; proceeding to real option generation"
+                    )
 
                 # Step 2: Generate options based on the story
                 if option_generator is None:

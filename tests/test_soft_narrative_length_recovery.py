@@ -133,6 +133,31 @@ class PassingPipeline:
         return ValidationResult(passed=True, score=100.0)
 
 
+class WarningPipeline:
+    def validate(self, **_kwargs: Any) -> ValidationResult:
+        warning = ConstraintCheckResult(
+            constraint_type="cast_coverage",
+            priority="HIGH",
+            passed=False,
+            evidence="deterministic non-terminal warning",
+        )
+        return ValidationResult(
+            passed=True,
+            score=88.0,
+            total_checked=1,
+            high_warnings=[warning],
+        )
+
+
+class RecordingOptionGenerator(ThreeOptionGenerator):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate_options_only(self, **kwargs: Any) -> GameEvent:
+        self.calls += 1
+        return super().generate_options_only(**kwargs)
+
+
 @dataclass
 class SingleFailurePipeline:
     constraint_type: str
@@ -168,6 +193,37 @@ class MinimalWorldModel:
 
     def get_established_profile_names(self) -> list[str]:
         return []
+
+
+def test_warning_only_story_still_generates_real_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    story = _story_with_length(900)
+    option_generator = RecordingOptionGenerator()
+    generator = StoryGenerator(
+        SequenceThenFailClient([story]),
+        quality_level=QualityLevel.FAST,
+    )
+    generator._validation_pipeline = WarningPipeline()
+
+    event = generator.generate_round_event(
+        player_state={"game_id": 16, "week": 4, "current_round": 0},
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings={},
+        option_generator=option_generator,
+    )
+
+    assert option_generator.calls == 1
+    assert [option.text for option in event.options] == [
+        "细读合作条款",
+        "请伙伴一起把关",
+        "先锁定关键风险",
+    ]
+    assert event.delivery_notice is None
 
 
 @pytest.mark.xfail(reason="origin/main drift: hard-fingerprint retry logic changed, mocks need rework")
