@@ -125,7 +125,7 @@ def test_voice_settings_contract_supports_reading_defaults() -> None:
     assert defaults.tts_model == "speech-2.8-turbo"
 
 
-def test_daily_listener_uses_chapter_audio_without_browser_speech() -> None:
+def test_daily_listener_uses_chapter_audio_with_browser_speech_fallback() -> None:
     component = (
         ROOT / "frontend" / "src" / "components" / "game" / "StoryListeningExperience.tsx"
     ).read_text(encoding="utf-8")
@@ -138,8 +138,8 @@ def test_daily_listener_uses_chapter_audio_without_browser_speech() -> None:
     assert "api.voice_reading.updateProgress" in component
     assert "storyVoiceTextToHash" in component
     assert "crypto.subtle.digest" in hash_helper
-    assert "speechSynthesis" not in component
-    assert "SpeechSynthesisUtterance" not in component
+    assert "speechSynthesis" in component
+    assert "SpeechSynthesisUtterance" in component
     assert "从第 ${index + 1} 段开始朗读" in component
 
 
