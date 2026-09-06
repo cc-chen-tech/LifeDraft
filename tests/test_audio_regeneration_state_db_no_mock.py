@@ -2,7 +2,7 @@
 
 from uuid import uuid4
 
-from src.database.models import SessionLocal, User, init_db
+from src.database.models import SessionLocal, User
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 import pytest
 
@@ -11,7 +11,6 @@ pytestmark = [pytest.mark.integration]
 
 
 def test_clear_neutral_voice_survives_real_settings_save_read() -> None:
-    init_db()
     session = SessionLocal()
     try:
         suffix = uuid4().hex[:10]
@@ -39,4 +38,3 @@ def test_clear_neutral_voice_survives_real_settings_save_read() -> None:
     finally:
         session.rollback()
         session.close()
-

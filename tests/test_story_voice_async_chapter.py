@@ -5,7 +5,7 @@ from threading import Barrier, Event, Thread
 from uuid import uuid4
 
 from src.api.schemas import StoryVoiceReadingRequest
-from src.database.models import GeneratedVoiceAsset, SessionLocal, User, VoiceReadingJob, init_db
+from src.database.models import GeneratedVoiceAsset, SessionLocal, User, VoiceReadingJob
 from src.services.story_tts_provider import DeterministicTTSProvider
 from src.services.story_voice_reading import StoryVoiceReadingService, normalize_text_hash
 from src.services.story_voice_repository import StoryVoiceReadingRepository
@@ -43,7 +43,6 @@ def test_chapter_request_is_idempotent_and_processes_ordered_paragraph_audio() -
             self.contexts.append(dict(context))
             return super().synthesize(context, voice_id, speed, on_progress=on_progress)
 
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -103,7 +102,6 @@ def test_failed_segment_marks_chapter_failed_without_browser_audio() -> None:
         def synthesize(self, context, voice_id, speed, on_progress=None):
             raise RuntimeError("provider timeout")
 
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -134,7 +132,6 @@ def test_failed_segment_marks_chapter_failed_without_browser_audio() -> None:
 
 
 def test_get_job_expires_a_stale_processing_job_instead_of_polling_forever() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -181,7 +178,6 @@ def test_chapter_is_published_only_after_the_single_continuous_asset_is_ready() 
                 on_progress=on_progress,
             )
 
-    init_db()
     setup_session = SessionLocal()
     worker_errors: list[BaseException] = []
     try:
@@ -248,7 +244,6 @@ def test_failed_chapter_retry_reuses_the_same_job_and_can_recover() -> None:
                 on_progress=on_progress,
             )
 
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -281,7 +276,6 @@ def test_failed_chapter_retry_reuses_the_same_job_and_can_recover() -> None:
 
 
 def test_concurrent_identical_requests_converge_on_one_chapter_job() -> None:
-    init_db()
     setup_session = SessionLocal()
     try:
         user = User(

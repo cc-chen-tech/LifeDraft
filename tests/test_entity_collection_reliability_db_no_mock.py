@@ -3,7 +3,7 @@
 from uuid import uuid4
 
 from src.database.db import GameDatabase
-from src.database.models import SessionLocal, User, init_db
+from src.database.models import SessionLocal, User
 from src.game.state import PlayerState
 from src.services.collection_service import CollectionService
 import pytest
@@ -13,7 +13,6 @@ pytestmark = [pytest.mark.integration]
 
 
 def test_recognized_entities_survive_real_database_save_read() -> None:
-    init_db()
     suffix = uuid4().hex[:10]
     session = SessionLocal()
     database = GameDatabase()

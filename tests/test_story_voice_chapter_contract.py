@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from src.api.schemas import StoryVoiceReadingRequest
-from src.database.models import SessionLocal, User, init_db
+from src.database.models import SessionLocal, User
 from src.services import story_voice_reading
 from src.services.story_tts_provider import DeterministicTTSProvider, UnavailableTTSProvider
 from src.services.story_voice_reading import StoryVoiceReadingService, normalize_text_hash
@@ -58,7 +58,6 @@ def test_story_is_split_into_stable_nonempty_paragraphs() -> None:
 
 
 def test_reading_rejects_non_current_story_sources() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user_id = _user(session)
@@ -78,7 +77,6 @@ def test_reading_rejects_non_current_story_sources() -> None:
 
 
 def test_provider_without_backend_audio_fails_without_browser_fallback() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user_id = _user(session)
@@ -99,7 +97,6 @@ def test_provider_without_backend_audio_fails_without_browser_fallback() -> None
 
 
 def test_voice_settings_persist_speed_and_default_auto_read_on() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user_id = _user(session)
@@ -122,7 +119,6 @@ def test_voice_settings_persist_speed_and_default_auto_read_on() -> None:
 
 
 def test_reading_progress_is_scoped_to_owner_and_story_identity() -> None:
-    init_db()
     session = SessionLocal()
     try:
         owner_id = _user(session)

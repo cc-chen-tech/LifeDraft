@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from src.api.schemas import StoryVoiceReadingRequest
-from src.database.models import GeneratedVoiceAsset, SessionLocal, User, VoiceReadingJob, init_db
+from src.database.models import GeneratedVoiceAsset, SessionLocal, User, VoiceReadingJob
 from src.services.story_tts_provider import DeterministicTTSProvider, UnavailableTTSProvider
 from src.services.story_voice_reading import (
     StoryVoiceReadingService,
@@ -48,7 +48,6 @@ def _reading_request(text: str, **context_overrides: object) -> StoryVoiceReadin
 
 
 def test_voice_settings_persist_through_service_with_real_database() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user_id = _add_user(session)
@@ -74,7 +73,6 @@ def test_voice_settings_persist_through_service_with_real_database() -> None:
 
 
 def test_unavailable_provider_persists_failed_job_without_audio_asset() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user_id = _add_user(session)
@@ -103,7 +101,6 @@ def test_unavailable_provider_persists_failed_job_without_audio_asset() -> None:
 
 
 def test_deterministic_reading_creates_then_reuses_owned_audio_asset() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user_id = _add_user(session)
@@ -133,7 +130,6 @@ def test_deterministic_reading_creates_then_reuses_owned_audio_asset() -> None:
 
 
 def test_reading_context_rejects_missing_identity_and_text_hash_mismatch() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user_id = _add_user(session)

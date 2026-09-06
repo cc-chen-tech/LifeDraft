@@ -34,7 +34,7 @@ os.environ.setdefault("JWT_SECRET", "test-secret-for-pytest")
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -94,18 +94,64 @@ def _patch_httpx_response_for_sse():
         cls.iter_lines = _original_iter_lines[cls]
 
 
+def _clear_isolated_db(engine) -> None:
+    """Clear application rows while keeping the isolated schema intact.
+
+    The process-local test database is already initialized by this module.
+    Rebuilding every table for every test module is expensive and produces
+    SQLite foreign-key cycle warnings, so ordinary modules delete rows while
+    temporarily disabling SQLite foreign-key enforcement. Schema-recovery
+    tests can still call ``init_db`` explicitly when they intentionally drop
+    tables.
+    """
+    if engine.dialect.name != "sqlite":
+        Base.metadata.drop_all(engine)
+        init_db()
+        return
+
+    with engine.connect() as connection:
+        foreign_keys_enabled = bool(
+            connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
+        )
+        connection.commit()
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.commit()
+        try:
+            with connection.begin():
+                for table in Base.metadata.tables.values():
+                    connection.execute(table.delete())
+                if inspect(connection).has_table("sqlite_sequence"):
+                    connection.execute(text("DELETE FROM sqlite_sequence"))
+        finally:
+            connection.exec_driver_sql(
+                "PRAGMA foreign_keys="
+                + ("ON" if foreign_keys_enabled else "OFF")
+            )
+            connection.commit()
+
+
+@pytest.fixture
+def clear_isolated_db():
+    """Expose the module reset for focused fixture-behavior tests."""
+    return _clear_isolated_db
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _reset_isolated_db_per_module():
-    """Give every test module a clean database and empty in-memory SSE stores.
+    """Give every test module clean rows and empty in-memory SSE stores.
 
     The isolated SQLite file is shared by the whole pytest process, so
     without this reset, tests in later modules would read rows written by
     earlier modules (same game_id/user_id) and fail in order-dependent ways.
+    Keep the schema between ordinary modules and recover it only when a test
+    intentionally removed it.
     """
-    from src.database.models import Base, engine, init_db
+    from src.database.models import engine, init_db
 
-    Base.metadata.drop_all(engine)
-    init_db()
+    if not inspect(engine).has_table("users"):
+        init_db()
+    else:
+        _clear_isolated_db(engine)
     from src.api.routers import images
 
     images._scene_image_latest.clear()
@@ -113,29 +159,14 @@ def _reset_isolated_db_per_module():
 
 
 @pytest.fixture(autouse=True)
-def _restore_sse_background_state():
-    """Re-enable SSE background jobs after each test.
+def _restore_background_job_state():
+    """Re-enable SSE/background jobs after each test.
 
     Tests that exercise shutdown_sse_thread_pool(prevent_new_background_jobs=True)
     permanently flip the module-global _background_jobs_enabled flag, which
-    would break every later test that submits background media jobs.
-    """
-    yield
-    from src.api.routers.gameplay import sse_helpers
-
-    sse_helpers._background_jobs_enabled = True
-
-
-@pytest.fixture(autouse=True)
-def _restore_background_job_admission():
-    """Keep the production shutdown flag from leaking between tests.
-
-    ``TestClient(app)`` context managers run the real FastAPI lifespan, which
-    calls ``shutdown_sse_thread_pool(prevent_new_background_jobs=True)`` and
-    permanently disables background-job admission for the process. That would
-    poison every later test that relies on background pools, so re-arm the
-    flag after each test. Tests that assert the disabled path (e.g. the
-    permanent-shutdown contract) still observe it during their own body.
+    would break every later test that submits background media jobs. The real
+    FastAPI lifespan also disables admission during TestClient shutdown, so
+    both cases use this same restoration boundary.
     """
     yield
     from src.api.routers.gameplay import sse_helpers
