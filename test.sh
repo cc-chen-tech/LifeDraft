@@ -468,6 +468,26 @@ run_maintained_backend_suite() {
     ./scripts/run-maintained-backend-tests.sh test
 }
 
+run_quick_frontend() {
+    echo -e "${MAGENTA}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${MAGENTA}║${NC}              ${CYAN}PR 快速前端门禁 (quick-frontend)${NC}          ${MAGENTA}║${NC}"
+    echo -e "${MAGENTA}╚════════════════════════════════════════════════════════════╝${NC}"
+
+    local failed=0
+
+    echo -e "${YELLOW}运行前端 strict typecheck...${NC}"
+    run_frontend_strict_typecheck || failed=$((failed + 1))
+    run_preflight_jest || failed=$((failed + 1))
+
+    if [ $failed -eq 0 ]; then
+        echo -e "${GREEN}✓ PR 快速前端门禁通过${NC}"
+        return 0
+    fi
+
+    echo -e "${RED}✗ PR 快速前端门禁有 $failed 个子门禁失败${NC}"
+    return 1
+}
+
 run_quick() {
     echo -e "${MAGENTA}╔════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${MAGENTA}║${NC}              ${CYAN}PR 快速门禁 (quick)${NC}                       ${MAGENTA}║${NC}"
@@ -477,10 +497,7 @@ run_quick() {
 
     run_mypy || failed=$((failed + 1))
     run_maintained_backend_suite || failed=$((failed + 1))
-
-    echo -e "${YELLOW}运行前端 strict typecheck...${NC}"
-    run_frontend_strict_typecheck || failed=$((failed + 1))
-    run_preflight_jest || failed=$((failed + 1))
+    run_quick_frontend || failed=$((failed + 1))
 
     if [ $failed -eq 0 ]; then
         echo -e "${GREEN}✓ PR 快速门禁通过${NC}"
@@ -1122,6 +1139,7 @@ show_help() {
     echo ""
     echo -e "${YELLOW}其他命令:${NC}"
     echo "  quick          - PR 快速门禁: mypy/static + maintained backend + TypeScript + preflight Jest"
+    echo "  quick-frontend - PR 快速前端门禁: TypeScript + preflight Jest"
     echo "  all           - 运行全部测试 (Preflight + Layer 1-5)"
     echo "  backend       - 运行后端全量 pytest 测试"
     echo "  frontend      - 运行前端 tsc + Jest 测试"
@@ -1147,6 +1165,9 @@ fi
 case "${1:-}" in
     quick)
         run_quick
+        ;;
+    quick-frontend)
+        run_quick_frontend
         ;;
     preflight)
         run_preflight

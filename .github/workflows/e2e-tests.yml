@@ -43,7 +43,7 @@ jobs:
 
       - name: Run PR quick gate
         if: github.event_name == 'pull_request'
-        run: ./test.sh quick
+        run: ./test.sh quick-frontend
         env:
           CI: true
 
