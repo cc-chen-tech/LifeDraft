@@ -82,6 +82,50 @@ def test_narration_plan_generator_retries_with_validation_feedback() -> None:
     assert "emotion must be one of" in client.prompts[1]
 
 
+def test_narration_plan_generator_records_ai_observability() -> None:
+    class Client:
+        def call(self, **kwargs):
+            return (
+                '{"segments":[{"paragraph_index":0,"emotion":"calm",'
+                '"speed":1,"pause_after_ms":0,"vocal_cue":""}]}'
+            )
+
+    generator = NarrationPlanGenerator(Client())
+    generator.generate("门后传来一声轻响。")
+
+    assert generator.last_metrics["source"] == "ai"
+    assert generator.last_metrics["fallback_reason"] is None
+    assert generator.last_metrics["ai_attempts"] == 1
+    assert len(generator.last_metrics["output_token_budgets"]) == 1
+    assert generator.last_metrics["duration_ms"] >= 0
+
+
+def test_narration_plan_generator_records_validation_retry_metrics() -> None:
+    class Client:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def call(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return '{"segments":[]}'
+            return (
+                '{"segments":[{"paragraph_index":0,"emotion":"calm",'
+                '"speed":1,"pause_after_ms":0,"vocal_cue":""}]}'
+            )
+
+    generator = NarrationPlanGenerator(Client())
+    generator.generate("门后传来一声轻响。")
+
+    assert generator.last_metrics["source"] == "ai"
+    assert generator.last_metrics["ai_attempts"] == 2
+    assert len(generator.last_metrics["output_token_budgets"]) == 2
+    assert (
+        generator.last_metrics["output_token_budgets"][1]
+        > generator.last_metrics["output_token_budgets"][0]
+    )
+
+
 def test_narration_plan_generation_disables_text_truncation_recovery() -> None:
     class Client:
         def __init__(self) -> None:
@@ -174,6 +218,34 @@ def test_ensure_narration_plan_falls_back_when_ai_plan_is_invalid(monkeypatch) -
     assert plan["segments"][0]["emotion"] == "fearful"
 
 
+def test_ensure_narration_plan_reports_fallback_reason_when_ai_fails(monkeypatch) -> None:
+    class Client:
+        api_key = "configured"
+
+    class BrokenGenerator:
+        def __init__(self, client) -> None:
+            self.last_metrics = {
+                "ai_attempts": 2,
+                "output_token_budgets": [2048, 4096],
+            }
+
+        def generate(self, *args, **kwargs):
+            raise TimeoutError("provider timeout")
+
+    monkeypatch.setattr("src.ai.client.AIClient", lambda: Client())
+    monkeypatch.setattr("src.services.story_voice_reading.NarrationPlanGenerator", BrokenGenerator)
+
+    plan, metrics = StoryVoiceReadingService._ensure_narration_plan_with_metrics(
+        {}, ["黑暗中传来危险的脚步声。"]
+    )
+
+    assert plan["source"] == "deterministic-fallback"
+    assert metrics["source"] == "deterministic-fallback"
+    assert metrics["fallback_reason"] == "timeout"
+    assert metrics["ai_attempts"] == 2
+    assert metrics["output_token_budgets"] == [2048, 4096]
+
+
 def test_ensure_narration_plan_falls_back_when_ai_returns_truncated_json(
     monkeypatch,
 ) -> None:
@@ -211,3 +283,54 @@ def test_ensure_narration_plan_can_disable_ai_and_use_local_plan(monkeypatch) ->
 
     assert plan["source"] == "deterministic-fallback"
     assert plan["segments"][0]["emotion"] == "happy"
+
+
+@pytest.mark.parametrize(
+    ("env_name", "reason"),
+    [
+        ("ENABLE_AI_NARRATION_PLAN", "feature_disabled"),
+        ("STORY_TTS_DISABLE_NARRATION_PLAN_AI", "kill_switch"),
+    ],
+)
+def test_ensure_narration_plan_reports_non_ai_fallback_reason(
+    monkeypatch, env_name, reason
+) -> None:
+    class Client:
+        api_key = "configured"
+
+        def call(self, **kwargs):
+            raise AssertionError("AI narration plan must not be called")
+
+    monkeypatch.setattr("src.ai.client.AIClient", lambda: Client())
+    monkeypatch.delenv("ENABLE_AI_NARRATION_PLAN", raising=False)
+    monkeypatch.delenv("STORY_TTS_DISABLE_NARRATION_PLAN_AI", raising=False)
+    if env_name == "ENABLE_AI_NARRATION_PLAN":
+        monkeypatch.setenv(env_name, "false")
+    else:
+        monkeypatch.setenv(env_name, "1")
+
+    plan, metrics = StoryVoiceReadingService._ensure_narration_plan_with_metrics(
+        {}, ["开心地笑了起来。"]
+    )
+
+    assert plan["source"] == "deterministic-fallback"
+    assert metrics["source"] == "deterministic-fallback"
+    assert metrics["fallback_reason"] == reason
+    assert metrics["ai_attempts"] == 0
+
+
+def test_ensure_narration_plan_reports_missing_api_key(monkeypatch) -> None:
+    class Client:
+        api_key = ""
+
+    monkeypatch.delenv("ENABLE_AI_NARRATION_PLAN", raising=False)
+    monkeypatch.delenv("STORY_TTS_DISABLE_NARRATION_PLAN_AI", raising=False)
+    monkeypatch.setattr("src.ai.client.AIClient", lambda: Client())
+
+    plan, metrics = StoryVoiceReadingService._ensure_narration_plan_with_metrics(
+        {}, ["没有配置密钥时也要保留本地旁白。"]
+    )
+
+    assert plan["source"] == "deterministic-fallback"
+    assert metrics["fallback_reason"] == "missing_api_key"
+    assert metrics["ai_attempts"] == 0

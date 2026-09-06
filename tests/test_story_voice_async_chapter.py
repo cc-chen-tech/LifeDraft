@@ -323,6 +323,8 @@ def test_narration_plan_failure_finishes_job_instead_of_leaving_processing(
             "src.services.story_voice_reading.NarrationPlanGenerator", BrokenGenerator
         )
         monkeypatch.setattr("src.ai.client.AIClient", lambda: Client())
+        monkeypatch.delenv("ENABLE_AI_NARRATION_PLAN", raising=False)
+        monkeypatch.delenv("STORY_TTS_DISABLE_NARRATION_PLAN_AI", raising=False)
 
         queued = service.request_reading(user_id, _request("旁白计划失败也不能卡住。"))
         result = service.process_job(user_id, queued.job_id)
@@ -331,6 +333,94 @@ def test_narration_plan_failure_finishes_job_instead_of_leaving_processing(
         assert result.error_code == "narration_plan_failed"
         assert all(segment.status == "failed" for segment in result.segments)
     finally:
+        session.close()
+
+
+def test_narration_plan_metrics_are_persisted_and_exposed_after_processing(monkeypatch) -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"plan-metrics-{uuid4().hex[:20]}",
+            public_id=f"PM{uuid4().hex[:7]}",
+            display_name="Narration metrics listener",
+        )
+        session.add(user)
+        session.flush()
+        user_id = int(user.user_id)
+
+        class Client:
+            api_key = "configured"
+
+            def call(self, **kwargs):
+                return (
+                    '{"segments":[{"paragraph_index":0,"emotion":"calm",'
+                    '"speed":1,"pause_after_ms":0,"vocal_cue":""}]}'
+                )
+
+        monkeypatch.setattr("src.ai.client.AIClient", lambda: Client())
+        service = StoryVoiceReadingService(
+            StoryVoiceReadingRepository(session), provider=DeterministicTTSProvider()
+        )
+
+        queued = service.request_reading(user_id, _request("记录旁白计划指标。"))
+        result = service.process_job(user_id, queued.job_id)
+        stored = session.query(VoiceReadingJob).filter_by(job_id=queued.job_id).one()
+
+        assert result.status == "ready"
+        assert result.narration_plan_source == "ai"
+        assert result.narration_plan_fallback_reason is None
+        assert result.narration_plan_ai_attempts == 1
+        assert result.narration_plan_duration_ms is not None
+        assert result.narration_plan_output_token_budgets
+        assert stored.context_json["narration_plan_metrics"]["source"] == "ai"
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_narration_plan_metrics_survive_tts_failure(monkeypatch) -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"plan-metrics-tts-fail-{uuid4().hex[:16]}",
+            public_id=f"PT{uuid4().hex[:7]}",
+            display_name="Narration metrics TTS failure listener",
+        )
+        session.add(user)
+        session.flush()
+        user_id = int(user.user_id)
+
+        class Client:
+            api_key = "configured"
+
+            def call(self, **kwargs):
+                return (
+                    '{"segments":[{"paragraph_index":0,"emotion":"calm",'
+                    '"speed":1,"pause_after_ms":0,"vocal_cue":""}]}'
+                )
+
+        class FailingProvider(DeterministicTTSProvider):
+            def synthesize(self, context, voice_id, speed, on_progress=None):
+                raise RuntimeError("MiniMax unavailable")
+
+        monkeypatch.setattr("src.ai.client.AIClient", lambda: Client())
+        monkeypatch.delenv("ENABLE_AI_NARRATION_PLAN", raising=False)
+        monkeypatch.delenv("STORY_TTS_DISABLE_NARRATION_PLAN_AI", raising=False)
+        service = StoryVoiceReadingService(
+            StoryVoiceReadingRepository(session), provider=FailingProvider()
+        )
+
+        queued = service.request_reading(user_id, _request("TTS 失败也保留计划指标。"))
+        result = service.process_job(user_id, queued.job_id)
+
+        assert result.status == "failed"
+        assert result.narration_plan_source == "ai"
+        assert result.narration_plan_ai_attempts == 1
+        assert result.narration_plan_output_token_budgets
+    finally:
+        session.rollback()
         session.close()
 
 

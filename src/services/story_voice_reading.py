@@ -398,9 +398,12 @@ class StoryVoiceReadingService:
         chapter_context = dict(job.context_json)
         chapter_context["paragraphs"] = [str(segment.text_content) for segment in job.segments]
         try:
-            chapter_context["narration_plan"] = self._ensure_narration_plan(
+            narration_plan, narration_plan_metrics = self._ensure_narration_plan_with_metrics(
                 chapter_context, chapter_context["paragraphs"]
             )
+            chapter_context["narration_plan"] = narration_plan
+            chapter_context["narration_plan_metrics"] = narration_plan_metrics
+            self._log_narration_plan_decision(job_id, narration_plan_metrics)
             setattr(job, "context_json", chapter_context)
             # Persist the plan before the next fenced heartbeat. The JSON update
             # itself triggers SQLAlchemy's on-update timestamp, so it must not be
@@ -500,11 +503,11 @@ class StoryVoiceReadingService:
                     scene_context["text"] = str(segment.text_content)
                     scene_context["text_hash"] = str(segment.text_hash)
                     scene_context["paragraphs"] = [str(segment.text_content)]
-                    narration_plan = chapter_context.get("narration_plan")
+                    scene_narration_plan: Any = chapter_context.get("narration_plan")
                     plan_segments = (
-                        narration_plan.get("segments")
-                        if isinstance(narration_plan, dict)
-                        else narration_plan
+                        scene_narration_plan.get("segments")
+                        if isinstance(scene_narration_plan, dict)
+                        else scene_narration_plan
                     )
                     scene_speed = float(job.speed)
                     if isinstance(plan_segments, list) and int(segment.paragraph_index) < len(
@@ -656,6 +659,13 @@ class StoryVoiceReadingService:
 
     @staticmethod
     def _ensure_narration_plan(context: Dict[str, Any], paragraphs: list[str]) -> Dict[str, Any]:
+        plan, _ = StoryVoiceReadingService._ensure_narration_plan_with_metrics(context, paragraphs)
+        return plan
+
+    @staticmethod
+    def _ensure_narration_plan_with_metrics(
+        context: Dict[str, Any], paragraphs: list[str]
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         fallback_plan = build_legacy_narration_plan(paragraphs)
         raw_plan = context.get("narration_plan")
         if raw_plan is not None:
@@ -666,8 +676,11 @@ class StoryVoiceReadingService:
                     "Stored narration plan is invalid; using deterministic fallback: %s",
                     error,
                 )
-                return fallback_plan
-            return {
+                return fallback_plan, StoryVoiceReadingService._narration_metrics(
+                    source="deterministic-fallback",
+                    fallback_reason="stored_plan_invalid",
+                )
+            normalized_plan = {
                 "segments": [segment.__dict__ for segment in plan.segments],
                 "source": (
                     str(raw_plan.get("source") or "story-model")
@@ -675,24 +688,126 @@ class StoryVoiceReadingService:
                     else "story-model"
                 ),
             }
+            stored_metrics = context.get("narration_plan_metrics")
+            if isinstance(stored_metrics, dict):
+                return normalized_plan, StoryVoiceReadingService._sanitize_narration_metrics(
+                    stored_metrics
+                )
+            return normalized_plan, StoryVoiceReadingService._narration_metrics(source="stored")
 
         # AI is the preferred enhancement path. The deterministic plan was
         # prepared above so every AI failure has a valid local fallback.
+        if not get_feature("ai_narration_plan"):
+            return fallback_plan, StoryVoiceReadingService._narration_metrics(
+                source="deterministic-fallback", fallback_reason="feature_disabled"
+            )
+        if os.getenv("STORY_TTS_DISABLE_NARRATION_PLAN_AI") == "1":
+            return fallback_plan, StoryVoiceReadingService._narration_metrics(
+                source="deterministic-fallback", fallback_reason="kill_switch"
+            )
+        generator: Optional[NarrationPlanGenerator] = None
         try:
             from src.ai.client import AIClient
 
             client = AIClient()
-            if (
-                get_feature("ai_narration_plan")
-                and client.api_key
-                and os.getenv("STORY_TTS_DISABLE_NARRATION_PLAN_AI") != "1"
-            ):
-                generated = NarrationPlanGenerator(client).generate("\n\n".join(paragraphs))
-                parse_narration_plan(generated, paragraph_count=len(paragraphs))
-                return generated
+            if not getattr(client, "api_key", None):
+                return fallback_plan, StoryVoiceReadingService._narration_metrics(
+                    source="deterministic-fallback", fallback_reason="missing_api_key"
+                )
+            generator = NarrationPlanGenerator(client)
+            generated = generator.generate("\n\n".join(paragraphs))
+            parse_narration_plan(generated, paragraph_count=len(paragraphs))
+            return generated, StoryVoiceReadingService._sanitize_narration_metrics(
+                getattr(generator, "last_metrics", {}), source="ai"
+            )
         except Exception as error:
-            logger.warning("AI narration plan failed; using deterministic fallback: %s", error)
-        return fallback_plan
+            generator_metrics = getattr(generator, "last_metrics", {})
+            reason = StoryVoiceReadingService._narration_failure_reason(error, generator_metrics)
+            metrics = StoryVoiceReadingService._sanitize_narration_metrics(
+                generator_metrics,
+                source="deterministic-fallback",
+                fallback_reason=reason,
+            )
+            logger.warning(
+                "AI narration plan failed; using deterministic fallback reason=%s: %s",
+                reason,
+                error,
+            )
+            return fallback_plan, metrics
+
+    @staticmethod
+    def _narration_metrics(
+        *,
+        source: str,
+        fallback_reason: Optional[str] = None,
+        ai_attempts: int = 0,
+        output_token_budgets: Optional[list[int]] = None,
+        duration_ms: int = 0,
+    ) -> Dict[str, Any]:
+        return {
+            "source": source,
+            "fallback_reason": fallback_reason,
+            "ai_attempts": max(0, int(ai_attempts)),
+            "output_token_budgets": list(output_token_budgets or []),
+            "duration_ms": max(0, int(duration_ms)),
+        }
+
+    @staticmethod
+    def _sanitize_narration_metrics(
+        raw: Any,
+        *,
+        source: Optional[str] = None,
+        fallback_reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        value = raw if isinstance(raw, dict) else {}
+        raw_budgets = value.get("output_token_budgets")
+        budgets = (
+            [int(item) for item in raw_budgets if isinstance(item, int) and item >= 0]
+            if isinstance(raw_budgets, list)
+            else []
+        )
+        raw_source = value.get("source")
+        raw_reason = value.get("fallback_reason")
+        raw_attempts = value.get("ai_attempts")
+        raw_duration = value.get("duration_ms")
+        return StoryVoiceReadingService._narration_metrics(
+            source=source or (str(raw_source) if raw_source else "stored"),
+            fallback_reason=(
+                fallback_reason
+                if fallback_reason is not None
+                else str(raw_reason) if raw_reason else None
+            ),
+            ai_attempts=(int(raw_attempts) if isinstance(raw_attempts, int) else 0),
+            output_token_budgets=budgets,
+            duration_ms=(int(raw_duration) if isinstance(raw_duration, int) else 0),
+        )
+
+    @staticmethod
+    def _narration_failure_reason(error: Exception, metrics: Any) -> str:
+        if isinstance(metrics, dict) and metrics.get("fallback_reason"):
+            return str(metrics["fallback_reason"])
+        from src.ai.client import AIResponseTruncatedError
+
+        if isinstance(error, AIResponseTruncatedError):
+            return "truncated"
+        if isinstance(error, NarrationPlanValidationError):
+            return "json_parse_error" if "valid JSON" in str(error) else "validation_error"
+        if isinstance(error, TimeoutError) or "timeout" in type(error).__name__.lower():
+            return "timeout"
+        return "api_error"
+
+    @staticmethod
+    def _log_narration_plan_decision(job_id: int, metrics: Dict[str, Any]) -> None:
+        logger.info(
+            "narration_plan_decision job_id=%s source=%s fallback_reason=%s "
+            "ai_attempts=%s output_token_budgets=%s duration_ms=%s",
+            job_id,
+            metrics.get("source"),
+            metrics.get("fallback_reason"),
+            metrics.get("ai_attempts"),
+            metrics.get("output_token_budgets"),
+            metrics.get("duration_ms"),
+        )
 
     def _mark_processing_job_failed(
         self,
@@ -844,6 +959,12 @@ class StoryVoiceReadingService:
         playback_mode = "audio" if first_ready is not None else "unavailable"
         error_code = str(job.error_code) if job.error_code is not None else None
         message = str(job.error_message) if job.error_message is not None else ""
+        has_metrics = isinstance(job.context_json, dict) and isinstance(
+            job.context_json.get("narration_plan_metrics"), dict
+        )
+        metrics = self._sanitize_narration_metrics(
+            job.context_json.get("narration_plan_metrics") if has_metrics else None
+        )
         return StoryVoiceReadingResponse(
             job_id=int(job.job_id),
             status=str(job.status),
@@ -860,6 +981,13 @@ class StoryVoiceReadingService:
             media_type=first_ready.media_type if first_ready is not None else None,
             error_code=error_code,
             message=message,
+            narration_plan_source=metrics["source"] if has_metrics else None,
+            narration_plan_fallback_reason=(metrics["fallback_reason"] if has_metrics else None),
+            narration_plan_ai_attempts=metrics["ai_attempts"] if has_metrics else None,
+            narration_plan_duration_ms=metrics["duration_ms"] if has_metrics else None,
+            narration_plan_output_token_budgets=(
+                metrics["output_token_budgets"] if has_metrics else []
+            ),
             segments=segments,
         )
 

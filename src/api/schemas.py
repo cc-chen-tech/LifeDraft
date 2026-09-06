@@ -373,6 +373,11 @@ class StoryVoiceReadingResponse(BaseModel):
     media_type: Optional[str] = None
     error_code: Optional[str] = None
     message: str = ""
+    narration_plan_source: Optional[str] = None
+    narration_plan_fallback_reason: Optional[str] = None
+    narration_plan_ai_attempts: Optional[int] = None
+    narration_plan_duration_ms: Optional[int] = None
+    narration_plan_output_token_budgets: List[int] = Field(default_factory=list)
     segments: List[VoiceReadingSegmentResponse] = Field(default_factory=list)
 
 
@@ -388,6 +393,11 @@ class VoiceReadingJobResponse(BaseModel):
     media_type: Optional[str] = None
     error_code: Optional[str] = None
     message: str = ""
+    narration_plan_source: Optional[str] = None
+    narration_plan_fallback_reason: Optional[str] = None
+    narration_plan_ai_attempts: Optional[int] = None
+    narration_plan_duration_ms: Optional[int] = None
+    narration_plan_output_token_budgets: List[int] = Field(default_factory=list)
     segments: List[VoiceReadingSegmentResponse] = Field(default_factory=list)
 
 

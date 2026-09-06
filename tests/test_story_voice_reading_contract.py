@@ -60,6 +60,11 @@ def test_story_voice_response_fields_match_frontend_contract() -> None:
         "media_type",
         "error_code",
         "message",
+        "narration_plan_source",
+        "narration_plan_fallback_reason",
+        "narration_plan_ai_attempts",
+        "narration_plan_duration_ms",
+        "narration_plan_output_token_budgets",
     }
     asset_fields = {
         "asset_id",
