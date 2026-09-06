@@ -193,7 +193,7 @@ def test_frontend_tests_owns_full_jest_coverage_and_artifact() -> None:
     assert "--coverageReporters=cobertura" in frontend_text
     assert "test -f coverage/cobertura-coverage.xml" in frontend_text
     assert "test -f coverage/index.html" in frontend_text
-    assert "./test.sh quick" in E2E_WORKFLOW.read_text(encoding="utf-8")
+    assert "./test.sh quick-frontend" in E2E_WORKFLOW.read_text(encoding="utf-8")
     jobs = coverage["jobs"]
     assert isinstance(jobs, dict)
     assert set(jobs) == {"python-coverage"}
@@ -239,8 +239,8 @@ def test_pr_quick_gate_precedes_e2e_environment_and_playwright() -> None:
     quick_index, quick_step = named_steps["Run PR quick gate"]
     env_index, _ = named_steps["Create .env file"]
     browser_index, _ = named_steps["Install Playwright browsers"]
-    e2e_index, _ = named_steps["Run E2E tests"]
-    assert quick_step["run"] == "./test.sh quick"
+    e2e_index, _ = named_steps["Run core E2E tests"]
+    assert quick_step["run"] == "./test.sh quick-frontend"
     assert quick_step["if"] == "github.event_name == 'pull_request'"
     assert quick_index < env_index < browser_index < e2e_index
 

@@ -80,7 +80,7 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     assert 'cmp -s "$generated_openapi_schema" frontend/src/types/openapi-schema.json' in script
     assert script.index("run_preflight || ((failed++))") < script.index("run_mypy || ((failed++))")
     assert script.index("run_preflight || ((failed++))") < script.index(
-        "run_e2e_browser || ((failed++))"
+        "run_e2e_core || ((failed++))"
     )
 
 
@@ -137,7 +137,7 @@ def test_preflight_validates_current_story_tts_contracts() -> None:
     assert "openspec validate provider-backed-story-tts --strict" in script
     assert "tests/test_story_voice_chapter_contract.py" in script
     assert "tests/test_story_voice_async_chapter.py" in script
-    assert 'run_playwright_command "core" npx playwright test --project=core' in script
+    assert 'playwright_args+=(--project=core)' in script
     assert "minimax-story-audio-generation.spec.ts" not in config.split(
         "const AI_HEAVY_TESTS", 1
     )[1].split("const MANUAL_EXPLORATION_TESTS", 1)[0]

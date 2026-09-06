@@ -156,7 +156,7 @@ def test_shift_left_route_contract_is_wired_before_e2e() -> None:
 
     assert route_contract in script
     assert "openspec validate shift-left-e2e-contract-gates --strict" in script
-    assert script.index(route_contract) < script.index("run_e2e_browser || ((failed++))")
+    assert script.index(route_contract) < script.index("run_e2e_core || ((failed++))")
     assert script.index("run_contract || ((failed++))") < script.index(
-        "run_e2e_browser || ((failed++))"
+        "run_e2e_core || ((failed++))"
     )
