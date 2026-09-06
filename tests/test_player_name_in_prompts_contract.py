@@ -181,7 +181,7 @@ class TestPlayerNameInPrompts:
         assert "预设关键人物关系" in prompt
         assert "canonical name 必须严格使用" in prompt
         assert "本轮必须至少使用1位预设关键人物" in prompt
-        assert "至少80%的预设关系网参与推进" in prompt
+        assert "至少80%的预设关系网参与推进" not in prompt
         assert "不得把这些人物的身份、关系或剧情功能转移给新命名人物" in prompt
         assert "陆昊然：导师" in prompt
         assert "陈晓雨：闺蜜" in prompt

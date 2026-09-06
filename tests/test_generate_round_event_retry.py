@@ -49,6 +49,26 @@ def _three_person_relationship_settings():
     }
 
 
+def _seven_person_relationship_settings():
+    return {
+        "era": {
+            "era_description": "2026年现代都市",
+            "world_context": "互联网产品团队核对需求与测试材料。",
+        },
+        "relationships": {
+            "key_people": [
+                {"name": "陆昊然", "role": "导师"},
+                {"name": "陈晓雨", "role": "同事"},
+                {"name": "林一凡", "role": "朋友"},
+                {"name": "王天成", "role": "创业伙伴"},
+                {"name": "周梅", "role": "同事"},
+                {"name": "顾建国", "role": "投资人"},
+                {"name": "林清", "role": "朋友"},
+            ]
+        },
+    }
+
+
 def test_validation_people_include_protagonist_once():
     names = StoryGenerator._validation_people_names(
         player_state={"player_name": "孙悟空"},
@@ -61,9 +81,18 @@ def test_validation_people_include_protagonist_once():
     assert names == ["孙悟空", "陆昊然", "陈晓雨", "林一凡"]
 
 
-def test_round_event_does_not_retry_majority_cast_with_heuristic_object_names():
+@pytest.mark.parametrize(
+    "active_names",
+    [
+        ("陆昊然", "陈晓雨", "林一凡", "王天成"),
+        ("陆昊然", "陈晓雨", "林一凡", "王天成", "周梅"),
+    ],
+    ids=["four-of-seven", "five-of-seven"],
+)
+def test_round_event_does_not_retry_partial_seven_person_cast(active_names):
+    character_settings = _seven_person_relationship_settings()
     opening = (
-        "陆昊然和陈晓雨同孙悟空核对方案。"
+        f"{'、'.join(active_names)}同孙悟空核对方案。"
         "安神香是产品代号，雷火阵是风控模块，云梯果是测试数据集。"
     )
     detail = "他们逐页核对需求说明和测试记录，把需要补充的证据写在纸上。"
@@ -88,16 +117,28 @@ def test_round_event_does_not_retry_majority_cast_with_heuristic_object_names():
         language="zh",
         round_number=0,
         round_context="",
-        character_settings=_three_person_relationship_settings(),
+        character_settings=character_settings,
         option_generator=mock_option_gen,
         status_callback=statuses.append,
     )
 
-    # Heuristic object names only produce a soft cast-coverage warning, so
-    # the warning candidate proceeds to real option generation immediately.
+    # Heuristic object names are not cast findings, so the candidate proceeds
+    # to real option generation immediately without a coverage retry.
     assert mock_client.call.call_count == 1
     assert "retry" not in statuses
     mock_option_gen.generate_options_only.assert_called_once()
+
+    from src.ai.quick_validator import quick_validate_story
+
+    validation = quick_validate_story(
+        story_text=story,
+        character_settings=character_settings,
+        available_people=StoryGenerator._validation_people_names(
+            {"player_name": "孙悟空"}, character_settings
+        ),
+        language="zh",
+    )
+    assert not any(finding.code == "CAST_COVERAGE_LOW" for finding in validation.findings)
 
 
 def test_fast_mode_single_attempt():
