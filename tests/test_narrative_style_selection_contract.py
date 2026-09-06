@@ -111,6 +111,38 @@ class TestNarrativeStyleSelectionContract:
         assert game_loop.player_state.narrative_style_id == "cyberpunk"
         session_store.get.assert_called_once_with(42, user_id=7)
 
+    def test_update_style_invalidates_prefetch_without_live_session(self):
+        """A cold session must still fence the old speculative event."""
+        db_session = MagicMock()
+        game = MagicMock()
+        db_session.query.return_value.filter.return_value.first.return_value = game
+        saved_state = {
+            "current_event_data": {"event_id": "day-0-event", "revision": 1}
+        }
+        game_db = MagicMock()
+        game_db.load_saved_game.return_value = saved_state
+
+        with patch("src.api.routers.games.SessionLocal", return_value=db_session):
+            with patch("src.api.routers.games.get_db", return_value=game_db):
+                with patch("src.api.routers.games.session_store") as session_store:
+                    session_store.get.return_value = None
+                    with patch(
+                        "src.services.daily_recommended_prefetch.invalidate_daily_recommended_prefetch_for_event"
+                    ) as invalidate:
+                        asyncio.run(
+                            update_narrative_style(
+                                game_id=43,
+                                req=UpdateNarrativeStyleRequest(style_id="cyberpunk"),
+                                user_id=7,
+                            )
+                        )
+
+        invalidate.assert_called_once_with(
+            game_id=43,
+            event_id="day-0-event",
+            revision=1,
+        )
+
     def test_update_game_narrative_style_rejects_invalid(self):
         """更新游戏叙事风格时，无效风格 ID 应返回 400"""
         with patch("src.api.routers.games.get_db") as mock_get_db:

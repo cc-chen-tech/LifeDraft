@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
 import json
 from threading import RLock
 from types import SimpleNamespace
@@ -332,6 +333,44 @@ def test_prefetch_repository_prefers_ready_task_for_duplicate_identity(db_sessio
     assert found.prefetch_id == ready.prefetch_id
 
 
+def test_prefetch_repository_concurrent_drifted_enqueue_converges_on_one_task(
+    db_engine,
+) -> None:
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=db_engine)
+
+    def enqueue(fingerprint: str) -> int:
+        with Session() as session:
+            task = DailyRecommendedPrefetchRepository(session).enqueue(
+                game_id=451,
+                user_id=None,
+                event_id="day-0-event",
+                revision=1,
+                day_index=0,
+                option_index=1,
+                state_fingerprint=fingerprint,
+            )
+            session.commit()
+            return int(task.prefetch_id)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        task_ids = list(executor.map(enqueue, ["state-v1", "state-v2"]))
+
+    with Session() as observer:
+        rows = (
+            observer.query(DailyRecommendedPrefetch)
+            .filter(
+                DailyRecommendedPrefetch.game_id == 451,
+                DailyRecommendedPrefetch.event_id == "day-0-event",
+            )
+            .all()
+        )
+
+    assert task_ids[0] == task_ids[1]
+    assert len(rows) == 1
+
+
 def test_prefetch_repository_invalidates_other_choice_and_consumes_ready_hit(
     db_session,
 ) -> None:
@@ -553,6 +592,165 @@ def test_ready_recommended_choice_falls_back_for_invalid_payload(db_session, cap
     assert resolution.task_id == task.prefetch_id
     assert "identity_hit=true" in caplog.text
     assert "fallback_reason=invalid_payload" in caplog.text
+
+
+def test_demanded_invalid_payload_is_invalidated_before_recovery(
+    db_engine, monkeypatch
+) -> None:
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=db_engine)
+    state = _state()
+    state.timeline = build_daily_timeline(start_date="2026-08-13", day_index=1)
+    state.day_history.append(
+        {
+            "event_id": "day-0-event",
+            "revision": 1,
+            "day_index": 0,
+            "choice_option_index": 1,
+            "recommendation_selected": True,
+        }
+    )
+    with Session() as setup:
+        task = DailyRecommendedPrefetchRepository(setup).enqueue(
+            game_id=571,
+            user_id=None,
+            event_id="day-0-event",
+            revision=1,
+            day_index=0,
+            option_index=1,
+            state_fingerprint="state-v1",
+        )
+        task.status = "story_ready"
+        task.demanded = True
+        task.next_event_json = {"event_id": "malformed"}
+        task_id = task.prefetch_id
+        setup.commit()
+
+    monkeypatch.setattr("src.database.models.SessionLocal", Session)
+    probe = probe_demanded_prefetch(
+        game_id=571,
+        game_loop=SimpleNamespace(player_state=state, current_event=None),
+    )
+
+    assert probe.pending is False
+    assert probe.event is None
+    with Session() as observer:
+        stored = observer.get(DailyRecommendedPrefetch, task_id)
+        assert stored.status == "invalidated"
+
+
+def test_demanded_prefetch_does_not_return_event_when_promotion_fails(
+    db_engine, monkeypatch
+) -> None:
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=db_engine)
+    state = _state()
+    state.timeline = build_daily_timeline(start_date="2026-08-13", day_index=1)
+    state.day_history.append(
+        {
+            "event_id": "day-0-event",
+            "revision": 1,
+            "day_index": 0,
+            "choice_option_index": 1,
+            "recommendation_selected": True,
+        }
+    )
+    recovered = GameEvent(
+        event_id="day-1-event",
+        revision=1,
+        story_date="2026-08-14",
+        event_description="恢复事件",
+        options=[
+            EventOption(text="继续", effects={}),
+            EventOption(text="稍后再说", effects={}),
+        ],
+    )
+    with Session() as setup:
+        task = DailyRecommendedPrefetchRepository(setup).enqueue(
+            game_id=572,
+            user_id=None,
+            event_id="day-0-event",
+            revision=1,
+            day_index=0,
+            option_index=1,
+            state_fingerprint="state-v1",
+        )
+        task.status = "story_ready"
+        task.demanded = True
+        task.next_event_json = recovered.model_dump()
+        setup.commit()
+
+    monkeypatch.setattr("src.database.models.SessionLocal", Session)
+    monkeypatch.setattr(
+        "src.services.daily_recommended_prefetch._promote_demanded_prefetch",
+        lambda **_kwargs: False,
+    )
+    probe = probe_demanded_prefetch(
+        game_id=572,
+        game_loop=SimpleNamespace(player_state=state, current_event=None),
+    )
+
+    assert probe.pending is False
+    assert probe.event is None
+
+
+def test_demanded_prefetch_rejects_wrong_story_date(db_engine, monkeypatch) -> None:
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=db_engine)
+    state = _state()
+    state.timeline = build_daily_timeline(start_date="2026-08-13", day_index=1)
+    state.day_history.append(
+        {
+            "event_id": "day-0-event",
+            "revision": 1,
+            "day_index": 0,
+            "choice_option_index": 1,
+            "recommendation_selected": True,
+        }
+    )
+    recovered = GameEvent(
+        event_id="day-1-event",
+        revision=1,
+        story_date="2026-08-15",
+        event_description="日期错误的恢复事件",
+        options=[
+            EventOption(text="继续", effects={}),
+            EventOption(text="稍后再说", effects={}),
+        ],
+    )
+    with Session() as setup:
+        task = DailyRecommendedPrefetchRepository(setup).enqueue(
+            game_id=573,
+            user_id=None,
+            event_id="day-0-event",
+            revision=1,
+            day_index=0,
+            option_index=1,
+            state_fingerprint="state-v1",
+        )
+        task.status = "ready"
+        task.demanded = True
+        task.next_event_json = recovered.model_dump()
+        task_id = task.prefetch_id
+        setup.commit()
+
+    monkeypatch.setattr("src.database.models.SessionLocal", Session)
+    monkeypatch.setattr(
+        "src.services.daily_recommended_prefetch._promote_demanded_prefetch",
+        lambda **_kwargs: pytest.fail("wrong-date event must not be promoted"),
+    )
+    probe = probe_demanded_prefetch(
+        game_id=573,
+        game_loop=SimpleNamespace(player_state=state, current_event=None),
+    )
+
+    assert probe.pending is False
+    assert probe.event is None
+    with Session() as observer:
+        assert observer.get(DailyRecommendedPrefetch, task_id).status == "invalidated"
 
 
 def test_consume_ready_prefetch_ignores_background_state_drift(db_session) -> None:
