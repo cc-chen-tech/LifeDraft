@@ -540,6 +540,37 @@ def test_successful_retry_finalization_preserves_source_superseded_outcome(
     )
 
 
+def test_degraded_unknown_finalization_keeps_projection_as_an_ordered_gap(
+    db_session, frozen_now
+) -> None:
+    repo = DailyWorldProjectionRepository(db_session)
+    task = repo.ensure_projection(identity(), source_hash="hash-a")
+    [claimed] = repo.claim_due(now=frozen_now, worker_id="worker-a", limit=1)
+    attempt_id = repo.start_attempt(task.projection_id, task.game_id, frozen_now)
+
+    assert repo.mark_degraded_unknown_and_finish_attempt(
+        claimed.projection_id,
+        "worker-a",
+        "invalid_schema",
+        source_hash=claimed.source_hash,
+        attempt_id=attempt_id,
+        now=frozen_now,
+    )
+
+    db_session.expire_all()
+    stored = db_session.get(DailyWorldProjection, task.projection_id)
+    attempt = db_session.get(DailyWorldProjectionAttempt, attempt_id)
+    assert stored.status == "degraded_unknown"
+    assert stored.error_code == "invalid_schema"
+    assert stored.lease_owner is None
+    assert stored.lease_expires_at is None
+    assert (attempt.outcome, attempt.error_code) == (
+        "degraded_unknown",
+        "invalid_schema",
+    )
+    assert repo.claim_due(now=frozen_now + timedelta(days=1), worker_id="worker-b", limit=1) == []
+
+
 def test_fenced_retry_finalization_records_rejected_late_write(
     db_session, frozen_now
 ) -> None:

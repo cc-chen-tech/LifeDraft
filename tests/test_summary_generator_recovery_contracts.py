@@ -5,6 +5,7 @@ import json
 import pytest
 
 from src.ai.summary_generator import SummaryGenerator
+from src.ai.utils import extract_json
 from src.game.world_projection_schema import WorldProjectionExtractionError
 
 pytestmark = [pytest.mark.unit]
@@ -23,6 +24,9 @@ class _TimedOutProjectionClient:
     def call(self, **_kwargs: object) -> str:
         raise TimeoutError("provider timeout")
 
+    def call_json(self, **_kwargs: object) -> object:
+        raise TimeoutError("provider timeout")
+
 
 class _ScriptedProjectionClient:
     def __init__(self, responses: list[object]):
@@ -35,6 +39,26 @@ class _ScriptedProjectionClient:
         if isinstance(response, Exception):
             raise response
         return str(response)
+
+    def call_json(self, **kwargs: object) -> object:
+        self.calls += 1
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return extract_json(str(response))
+
+
+class _ScriptedJsonProjectionClient:
+    def __init__(self, responses: list[object]):
+        self.responses = responses
+        self.calls: list[dict[str, object]] = []
+
+    def call_json(self, **kwargs: object) -> object:
+        self.calls.append(kwargs)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 def test_story_compression_keeps_structured_updates_and_cleans_summary_artifacts() -> (
@@ -241,6 +265,19 @@ def test_daily_projection_makes_two_failed_calls_and_keeps_last_error_code() -> 
     assert caught.value.code == "invalid_json"
 
 
+def test_daily_projection_treats_empty_json_result_as_a_retryable_extraction_error() -> None:
+    client = _ScriptedJsonProjectionClient([None, None])
+
+    with pytest.raises(WorldProjectionExtractionError) as caught:
+        SummaryGenerator(client).extract_daily_world_projection(
+            "两人在院中闲谈天气。", [], {}, language="zh"
+        )
+
+    assert len(client.calls) == 2
+    assert caught.value.code == "invalid_json"
+    assert "empty response" in str(caught.value)
+
+
 def test_daily_projection_retries_once_then_returns_typed_payload() -> None:
     client = _ScriptedProjectionClient(
         [
@@ -256,3 +293,27 @@ def test_daily_projection_retries_once_then_returns_typed_payload() -> None:
     assert client.calls == 2
     assert payload.no_change is True
     assert payload.option_patches == {}
+
+
+def test_daily_projection_uses_shared_json_call_without_generic_recovery() -> None:
+    client = _ScriptedJsonProjectionClient(
+        [
+            {
+                "schema_version": 1,
+                "story_patch": {},
+                "option_patches": {},
+            }
+        ]
+    )
+
+    payload = SummaryGenerator(client).extract_daily_world_projection(
+        "两人在院中闲谈天气。", [], {}, language="zh"
+    )
+
+    assert payload.no_change is True
+    assert len(client.calls) == 1
+    call = client.calls[0]
+    assert call["temperature"] == 0.5
+    assert call["max_tokens"] == 4096
+    assert call["thinking"] is False
+    assert call["allow_truncation_recovery"] is False

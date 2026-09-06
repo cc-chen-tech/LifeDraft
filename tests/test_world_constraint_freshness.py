@@ -5,9 +5,28 @@ from src.game.world_constraint_freshness import (
     derive_legacy_freshness,
 )
 from src.ai.story_generator import StoryGenerator
+from src.game.round.event_generator import RoundEventGenerator
 import pytest
 
 pytestmark = [pytest.mark.unit]
+
+
+def test_stale_world_downgrade_is_logged_once_with_all_categories(caplog) -> None:
+    with caplog.at_level("WARNING", logger="src.game.round.event_generator"):
+        RoundEventGenerator._log_stale_world_constraint_downgrade(
+            game_id=156,
+            day_index=13,
+            categories=("location", "commitment", "causal", "career", "habit"),
+            reason="world_projection_watermark_lag",
+        )
+
+    records = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("stale_world_constraint_downgraded")
+    ]
+    assert len(records) == 1
+    assert "categories=location,commitment,causal,career,habit" in records[0].getMessage()
 
 
 

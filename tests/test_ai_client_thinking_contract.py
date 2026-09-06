@@ -304,6 +304,34 @@ def test_call_json_preserves_disabled_thinking() -> None:
     ]
 
 
+def test_call_json_can_disable_generic_truncation_recovery() -> None:
+    seen: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body)
+        return _completion_response(
+            request,
+            body,
+            content='{"value": 1}',
+            finish_reason="length",
+        )
+
+    set_feature("truncation_recovery", True)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = _ai_client("deepseek-v4-flash", http_client)
+        result = client.call_json(
+            "system",
+            "user",
+            thinking=False,
+            allow_truncation_recovery=False,
+        )
+
+    assert result == {"value": 1}
+    assert len(seen) == 1
+    assert seen[0]["thinking"] == {"type": "disabled"}
+
+
 def test_call_with_retry_preserves_disabled_thinking_on_every_attempt() -> None:
     """A retry must not silently return to DeepSeek's default thinking policy."""
     seen: list[dict[str, Any]] = []

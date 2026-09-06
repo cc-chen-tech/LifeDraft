@@ -116,6 +116,25 @@ class RoundEventGenerator:
         self._player_state_override: Optional[Any] = None
 
     @staticmethod
+    def _log_stale_world_constraint_downgrade(
+        *,
+        game_id: Any,
+        day_index: Any,
+        categories: tuple[str, ...],
+        reason: Optional[str],
+    ) -> None:
+        """Emit one structured warning for the whole stale-world downgrade."""
+
+        logger.warning(
+            "stale_world_constraint_downgraded game_id=%s day_index=%s "
+            "categories=%s reason=%s",
+            game_id,
+            day_index,
+            ",".join(categories),
+            reason,
+        )
+
+    @staticmethod
     def _persist_long_context_snapshots(
         player_state: Any, generated_state: Dict[str, Any]
     ) -> None:
@@ -642,23 +661,20 @@ class RoundEventGenerator:
                             f"{round_context}\n\n{resolved_prompt_context}"
                         ).strip()
                     if not validation_view.freshness.world_derivations_are_fresh:
-                        for category in (
-                            "location",
-                            "commitment",
-                            "causal",
-                            "career",
-                            "habit",
-                        ):
-                            logger.warning(
-                                "stale_world_constraint_downgraded "
-                                "game_id=%s day_index=%s category=%s reason=%s",
-                                getattr(player_state, "game_id", None),
-                                (getattr(player_state, "timeline", {}) or {}).get(
-                                    "day_index"
-                                ),
-                                category,
-                                validation_view.freshness.reason,
-                            )
+                        self._log_stale_world_constraint_downgrade(
+                            game_id=getattr(player_state, "game_id", None),
+                            day_index=(getattr(player_state, "timeline", {}) or {}).get(
+                                "day_index"
+                            ),
+                            categories=(
+                                "location",
+                                "commitment",
+                                "causal",
+                                "career",
+                                "habit",
+                            ),
+                            reason=validation_view.freshness.reason,
+                        )
                 else:
                     from src.game.world_model import WorldModel
 
