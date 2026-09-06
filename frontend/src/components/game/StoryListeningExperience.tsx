@@ -30,6 +30,7 @@ import type {
   VoiceReadingJobResponse,
   VoiceReadingProgress,
   VoiceReadingSegment,
+  MiniMaxVoiceOption,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -154,6 +155,10 @@ export function StoryListeningExperience({
   const [status, setStatus] = useState<ListeningStatus>("preparing");
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedVoice, setSelectedVoice] = useState("warm_female");
+  const [voiceCatalog, setVoiceCatalog] = useState<MiniMaxVoiceOption[]>([]);
+  const [voiceSearch, setVoiceSearch] = useState("");
+  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [speed, setSpeed] = useState(1);
   const [autoRead, setAutoRead] = useState(true);
   const [activeParagraph, setActiveParagraph] = useState(0);
@@ -164,12 +169,36 @@ export function StoryListeningExperience({
   const [networkRetryRequired, setNetworkRetryRequired] = useState(false);
   const [networkRetryVisible, setNetworkRetryVisible] = useState(false);
   const [browserFallback, setBrowserFallback] = useState(false);
+  const [queueAdvancePending, setQueueAdvancePending] = useState(false);
 
   const currentSegment = segments.find(
     (segment) => segment.paragraph_index === activeParagraph,
   );
+  const visibleVoices = voiceCatalog.filter((voice) => {
+    const query = voiceSearch.trim().toLowerCase();
+    return !query || [voice.voice_id, voice.label, voice.language, voice.group]
+      .some((value) => value.toLowerCase().includes(query));
+  });
+  const previewVoice = async (voiceId: string) => {
+    previewAudioRef.current?.pause();
+    setPreviewingVoice(voiceId);
+    try {
+      const preview = await api.voice_reading.preview(voiceId);
+      const audio = new Audio(preview.audio_url);
+      previewAudioRef.current = audio;
+      audio.onended = () => setPreviewingVoice(null);
+      await audio.play();
+    } catch (error) {
+      setPreviewingVoice(null);
+      setErrorMessage(error instanceof Error ? error.message : "音色试听失败");
+    }
+  };
   const chapterSegment = segments.find((segment) => segment.audio_url);
-  const activeAudioSource = chapterSegment?.audio_url ?? null;
+  const sceneQueueMode = new Set(segments.filter((segment) => segment.audio_url).map((segment) => segment.audio_url)).size > 1;
+  const activeSegment = segments.find((segment) => segment.paragraph_index === activeParagraph);
+  const activeAudioSource = sceneQueueMode
+    ? activeSegment?.audio_url ?? null
+    : chapterSegment?.audio_url ?? null;
   useLayoutEffect(() => {
     activeAudioSourceRef.current = activeAudioSource;
   }, [activeAudioSource]);
@@ -183,11 +212,19 @@ export function StoryListeningExperience({
     ...segments.map((segment) => segment.end_ms ?? 0),
     segments.reduce((total, segment) => total + segmentDuration(segment), 0),
   );
-  const totalDurationMs = chapterMediaDurationMs ?? declaredDurationMs;
-  const elapsedBeforeCurrent = currentSegment?.start_ms
-    ?? segments
+  const totalDurationMs = chapterMediaDurationMs ?? (
+    sceneQueueMode
+      ? segments.reduce((total, segment) => total + segmentDuration(segment), 0)
+      : declaredDurationMs
+  );
+  const elapsedBeforeCurrent = sceneQueueMode
+    ? segments
       .filter((segment) => segment.paragraph_index < activeParagraph)
-      .reduce((total, segment) => total + segmentDuration(segment), 0);
+      .reduce((total, segment) => total + segmentDuration(segment), 0)
+    : currentSegment?.start_ms
+      ?? segments
+        .filter((segment) => segment.paragraph_index < activeParagraph)
+        .reduce((total, segment) => total + segmentDuration(segment), 0);
   const chapterPositionMs = Math.min(
     totalDurationMs,
     elapsedBeforeCurrent + positionMs,
@@ -251,6 +288,7 @@ export function StoryListeningExperience({
       .then(([settings, hash]) => {
         if (cancelledRef.current) return;
         setSelectedVoice(settings.selected_voice_color || "warm_female");
+        setVoiceCatalog(settings.voice_catalog || []);
         setSpeed(settings.selected_speed || 1);
         setAutoRead(settings.auto_read_enabled);
         autoReadRef.current = settings.auto_read_enabled;
@@ -327,6 +365,7 @@ export function StoryListeningExperience({
     setChapterMediaDurationMs(null);
     setNetworkRetryRequired(false);
     setNetworkRetryVisible(false);
+    setQueueAdvancePending(false);
 
     const identity = {
       game_id: context.game_id,
@@ -608,6 +647,21 @@ export function StoryListeningExperience({
     };
   }, [activeAudioSource]);
 
+  useEffect(() => {
+    if (!queueAdvancePending || !sceneQueueMode) return;
+    const nextSegment = segments
+      .filter((segment) => segment.paragraph_index > activeParagraph && segment.audio_url)
+      .sort((left, right) => left.paragraph_index - right.paragraph_index)[0];
+    if (!nextSegment) return;
+    setQueueAdvancePending(false);
+    setActiveParagraph(nextSegment.paragraph_index);
+    activeParagraphRef.current = nextSegment.paragraph_index;
+    setPositionMs(0);
+    autoPlayRequestedRef.current = true;
+    finalSegmentEndedRef.current = false;
+    persistProgress(nextSegment.paragraph_index, 0);
+  }, [activeParagraph, persistProgress, queueAdvancePending, sceneQueueMode, segments]);
+
   const chooseParagraph = (index: number) => {
     const targetSegment = segments.find((segment) => segment.paragraph_index === index);
     const targetPositionMs = targetSegment?.start_ms;
@@ -651,6 +705,24 @@ export function StoryListeningExperience({
     playRequestRef.current = null;
     playingAudioRef.current = null;
     playbackGenerationRef.current += 1;
+    if (sceneQueueMode) {
+      const nextSegment = segments
+        .filter((segment) => segment.paragraph_index > activeParagraph)
+        .sort((left, right) => left.paragraph_index - right.paragraph_index)[0];
+      if (nextSegment?.audio_url) {
+        setActiveParagraph(nextSegment.paragraph_index);
+        activeParagraphRef.current = nextSegment.paragraph_index;
+        setPositionMs(0);
+        autoPlayRequestedRef.current = true;
+        finalSegmentEndedRef.current = false;
+        persistProgress(nextSegment.paragraph_index, 0);
+        return;
+      }
+      setQueueAdvancePending(true);
+      setStatus("preparing");
+      autoPlayRequestedRef.current = true;
+      return;
+    }
     finalSegmentEndedRef.current = true;
     autoPlayRequestedRef.current = false;
     setStatus("ready");
@@ -1115,12 +1187,32 @@ export function StoryListeningExperience({
           </div>
 
           <div className="mt-7 grid grid-cols-2 gap-3 border-y border-[var(--border-default)] py-4 sm:grid-cols-3">
-            <label className="text-xs text-[var(--text-secondary)]">
-              音色
-              <select value={selectedVoice} onChange={handleVoiceChange} className="mt-1 block w-full bg-transparent py-2 text-sm text-[var(--text-primary)]">
-                {VOICES.map((voice) => <option key={voice.id} value={voice.id}>{voice.label}</option>)}
+            <div className="text-xs text-[var(--text-secondary)]">
+              <label htmlFor="voice-search">搜索音色</label>
+              <input
+                id="voice-search"
+                value={voiceSearch}
+                onChange={(event) => setVoiceSearch(event.target.value)}
+                placeholder="搜索全部音色"
+                className="mt-1 block w-full border-b border-[var(--border-default)] bg-transparent py-1 text-xs text-[var(--text-primary)] outline-none"
+              />
+              <label htmlFor="voice-select" className="mt-1 block">音色</label>
+              <select id="voice-select" value={selectedVoice} onChange={handleVoiceChange} className="block w-full bg-transparent py-2 text-sm text-[var(--text-primary)]">
+                {voiceCatalog.length === 0 ? VOICES.map((voice) => <option key={voice.id} value={voice.id}>{voice.label}</option>) : null}
+                {visibleVoices.map((voice) => <option key={voice.voice_id} value={voice.voice_id}>{voice.recommended ? "推荐 · " : ""}{voice.label} · {voice.language}</option>)}
               </select>
-            </label>
+              <Button
+                type="button"
+                variant="quiet"
+                size="sm"
+                className="mt-1"
+                onClick={() => void previewVoice(selectedVoice)}
+                disabled={previewingVoice === selectedVoice}
+              >
+                <Play className="mr-1 h-3 w-3" />
+                {previewingVoice === selectedVoice ? "试听中" : "试听当前音色"}
+              </Button>
+            </div>
             <label className="text-xs text-[var(--text-secondary)]">
               语速
               <select value={speed} onChange={handleSpeedChange} className="mt-1 block w-full bg-transparent py-2 text-sm text-[var(--text-primary)]">

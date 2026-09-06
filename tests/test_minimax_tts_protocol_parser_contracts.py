@@ -55,6 +55,64 @@ def test_tts_protocol_helpers_accept_nested_audio_and_completion_shapes() -> Non
     assert _is_done_message({"status": "running"}) is False
 
 
+def test_minimax_narration_payload_uses_native_emotion_and_vocal_cue() -> None:
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_API_KEY": "configured"},
+            voice_asset_dir=_make_asset_dir(),
+        )
+    )
+
+    payload = provider.build_async_create_payload(
+        "（低声）门后传来一声轻响。",
+        "female-shaonv",
+        0.92,
+        emotion="fearful",
+        vocal_cue="(whispers)",
+    )
+
+    assert payload["voice_setting"]["voice_id"] == "female-shaonv"
+    assert payload["voice_setting"]["emotion"] == "fearful"
+    assert payload["text"].startswith("(whispers)")
+
+
+def test_minimax_rejects_non_native_emotion_instead_of_downgrading() -> None:
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_API_KEY": "configured"},
+            voice_asset_dir=_make_asset_dir(),
+        )
+    )
+
+    with pytest.raises(ValueError, match="Unsupported MiniMax emotion: tense"):
+        provider.build_async_create_payload(
+            "危险正在逼近。", "female-shaonv", 1.0, emotion="tense"
+        )
+
+
+def test_minimax_websocket_scene_frames_follow_official_task_protocol() -> None:
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_API_KEY": "configured"},
+            voice_asset_dir=_make_asset_dir(),
+        )
+    )
+    start, continue_frame, finish = provider.build_websocket_task_messages(
+        "门后传来一声轻响。", "female-shaonv", 1.0, emotion="fearful"
+    )
+
+    assert start["event"] == "task_start"
+    assert start["voice_setting"]["emotion"] == "fearful"
+    assert continue_frame == {"event": "task_continue", "text": "门后传来一声轻响。"}
+    assert finish == {"event": "task_finish"}
+
+
 def test_tts_protocol_rejects_provider_error_and_parses_nested_download_url() -> None:
     with pytest.raises(RuntimeError, match="1008 quota exhausted"):
         _raise_for_base_resp({"base_resp": {"status_code": 1008, "status_msg": "quota exhausted"}})

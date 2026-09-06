@@ -7,6 +7,7 @@ import json
 import os
 import re
 import struct
+import subprocess
 import tarfile
 import tempfile
 import time
@@ -23,6 +24,7 @@ from mutagen.wave import WAVE
 
 from src.database.models import VOICE_ASSET_VERSION
 from src.services.minimax_config import MiniMaxConfig, build_minimax_config
+from src.services.minimax_voice_catalog import LEGACY_VOICE_ALIASES, is_supported_voice
 from src.services.story_tts_provider import (
     GeneratedSpeech,
     ParagraphCue,
@@ -30,6 +32,10 @@ from src.services.story_tts_provider import (
     StoryTTSProviderMetadata,
     TTSProviderUnavailableError,
     build_deterministic_wav,
+)
+
+MINIMAX_NATIVE_EMOTIONS = frozenset(
+    {"happy", "sad", "angry", "fearful", "disgusted", "surprised", "calm", "whipser"}
 )
 
 
@@ -78,12 +84,31 @@ class MiniMaxWebSocketTTSClient:
             open_timeout=self.config.request_timeout_seconds,
             close_timeout=self.config.request_timeout_seconds,
         ) as websocket:
-            websocket.send(_json_dumps(payload))
-            for message in websocket:
+            # MiniMax WebSocket protocol: connected_success, task_start,
+            # task_started, task_continue, audio chunks, task_finish,
+            # task_finished.  The old implementation sent the HTTP-shaped
+            # payload as one frame, which could not provide scene-first TTS.
+            connected = json.loads(str(websocket.recv()))
+            if str(connected.get("event") or connected.get("status") or "") not in {
+                "connected_success",
+                "connected",
+            }:
+                raise RuntimeError("MiniMax WebSocket did not confirm connection")
+            websocket.send(_json_dumps({"event": "task_start", **dict(payload)}))
+            started = json.loads(str(websocket.recv()))
+            if str(started.get("event") or "") != "task_started":
+                raise RuntimeError("MiniMax WebSocket did not start the task")
+            websocket.send(_json_dumps({"event": "task_continue", "text": payload.get("text", "")}))
+            finish_sent = False
+            for _ in range(10000):
+                message = websocket.recv()
                 payload_obj = json.loads(str(message))
                 audio_hex = _extract_audio_hex(payload_obj)
                 if audio_hex:
                     audio_chunks.append(bytes.fromhex(audio_hex))
+                if not finish_sent and audio_chunks:
+                    websocket.send(_json_dumps({"event": "task_finish"}))
+                    finish_sent = True
                 if _is_done_message(payload_obj):
                     break
         if not audio_chunks:
@@ -245,6 +270,7 @@ class MiniMaxTTSProvider:
         self.config = config or build_minimax_config()
         self.model = self.config.tts_model
         self.client = client or MiniMaxAsyncTTSClient(self.config)
+        self.websocket_client = MiniMaxWebSocketTTSClient(self.config)
 
     def metadata(self) -> StoryTTSProviderMetadata:
         available = bool(self.config.api_key) or self.config.local_audio_enabled
@@ -263,17 +289,28 @@ class MiniMaxTTSProvider:
         text: str,
         voice_id: str,
         speed: float,
+        *,
+        emotion: Optional[str] = None,
+        vocal_cue: Optional[str] = None,
     ) -> Dict[str, Any]:
+        if emotion is not None and emotion not in MINIMAX_NATIVE_EMOTIONS:
+            raise ValueError(f"Unsupported MiniMax emotion: {emotion}")
+        rendered_text = text.strip()
+        if vocal_cue:
+            rendered_text = f"{vocal_cue.strip()} {rendered_text}".strip()
+        voice_setting: Dict[str, Any] = {
+            "voice_id": _map_voice_id(voice_id),
+            "speed": speed,
+            "vol": 1.0,
+            "pitch": 0,
+        }
+        if emotion is not None:
+            voice_setting["emotion"] = emotion
         return {
             "model": self.model,
-            "text": text,
+            "text": rendered_text,
             "language_boost": "auto",
-            "voice_setting": {
-                "voice_id": _map_voice_id(voice_id),
-                "speed": speed,
-                "vol": 1.0,
-                "pitch": 0,
-            },
+            "voice_setting": voice_setting,
             "audio_setting": {
                 "audio_sample_rate": 32000,
                 "bitrate": 128000,
@@ -287,11 +324,39 @@ class MiniMaxTTSProvider:
         text: str,
         voice_id: str,
         speed: float,
+        *,
+        emotion: Optional[str] = None,
+        vocal_cue: Optional[str] = None,
     ) -> Dict[str, Any]:
-        payload = self.build_async_create_payload(text, voice_id, speed)
+        payload = self.build_async_create_payload(
+            text,
+            voice_id,
+            speed,
+            emotion=emotion,
+            vocal_cue=vocal_cue,
+        )
         payload["stream"] = False
         payload.pop("language_boost", None)
         return payload
+
+    def build_websocket_task_messages(
+        self,
+        text: str,
+        voice_id: str,
+        speed: float,
+        *,
+        emotion: Optional[str] = None,
+        vocal_cue: Optional[str] = None,
+    ) -> tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        """Build the official MiniMax task_start/continue/finish frames."""
+        start_payload = self.build_websocket_start_payload(
+            text, voice_id, speed, emotion=emotion, vocal_cue=vocal_cue
+        )
+        return (
+            {"event": "task_start", **start_payload},
+            {"event": "task_continue", "text": start_payload["text"]},
+            {"event": "task_finish"},
+        )
 
     def synthesize(
         self,
@@ -327,7 +392,13 @@ class MiniMaxTTSProvider:
             if subtitle_path.exists():
                 subtitle_text = subtitle_path.read_text(encoding="utf-8")
         if duration_ms is None:
-            payload = self.build_async_create_payload(text, voice_id, speed)
+            payload = self.build_async_create_payload(
+                text,
+                voice_id,
+                speed,
+                emotion=context.get("emotion"),
+                vocal_cue=context.get("vocal_cue"),
+            )
             temporary_path: Optional[Path] = None
             temporary_subtitle: Optional[Path] = None
             try:
@@ -379,6 +450,187 @@ class MiniMaxTTSProvider:
             media_type=media_type,
             playback_mode="audio",
             paragraph_cues=paragraph_cues,
+        )
+
+    def synthesize_scene(
+        self,
+        context: Dict[str, Any],
+        voice_id: str,
+        speed: float,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> GeneratedSpeech:
+        """Generate one independently cacheable scene for queue playback."""
+        scene_context = dict(context)
+        scene_text = str(scene_context.get("text") or "").strip()
+        scene_context["text"] = scene_text
+        scene_context["paragraphs"] = [scene_text]
+        if self.config.local_audio_enabled:
+            return self.synthesize(scene_context, voice_id, speed, on_progress=on_progress)
+
+        text_hash = str(scene_context["text_hash"])
+        file_name = (
+            f"{_safe_token(text_hash)}-{_safe_token(voice_id)}-scene-"
+            f"{_safe_token(self.provider)}-{_safe_token(self.model)}-"
+            f"speed-{_normalized_speed_token(speed)}-cache-v{VOICE_ASSET_VERSION}.mp3"
+        )
+        self.config.voice_asset_dir.mkdir(parents=True, exist_ok=True)
+        output_path = self.config.voice_asset_dir / file_name
+        duration_ms: Optional[int] = None
+        if output_path.exists():
+            try:
+                duration_ms = _validated_audio_duration_ms(output_path, "mp3")
+            except Exception:
+                output_path.unlink(missing_ok=True)
+        if duration_ms is None:
+            payload = self.build_websocket_start_payload(
+                scene_text,
+                voice_id,
+                speed,
+                emotion=scene_context.get("emotion"),
+                vocal_cue=scene_context.get("vocal_cue"),
+            )
+            descriptor, temporary_name = tempfile.mkstemp(
+                dir=self.config.voice_asset_dir,
+                prefix=f".{file_name}.",
+                suffix=".mp3",
+            )
+            os.close(descriptor)
+            temporary_path = Path(temporary_name)
+            try:
+                self.websocket_client.synthesize_to_file(
+                    payload, temporary_path, on_progress=on_progress
+                )
+                pause_after_ms = int(scene_context.get("pause_after_ms") or 0)
+                if pause_after_ms > 0:
+                    padded_descriptor, padded_name = tempfile.mkstemp(
+                        dir=self.config.voice_asset_dir,
+                        prefix=f".{file_name}.pause-",
+                        suffix=".mp3",
+                    )
+                    os.close(padded_descriptor)
+                    padded_path = Path(padded_name)
+                    try:
+                        _append_silence_to_mp3(
+                            temporary_path,
+                            padded_path,
+                            pause_after_ms,
+                            timeout_seconds=self.config.request_timeout_seconds,
+                        )
+                        os.replace(padded_path, temporary_path)
+                    finally:
+                        padded_path.unlink(missing_ok=True)
+                duration_ms = _validated_audio_duration_ms(temporary_path, "mp3")
+                os.replace(temporary_path, output_path)
+            except Exception as error:
+                temporary_path.unlink(missing_ok=True)
+                raise TTSProviderUnavailableError(
+                    "MiniMax WebSocket scene TTS generation failed"
+                ) from error
+        return GeneratedSpeech(
+            storage_path=f"/api/voice-reading/audio/{file_name}",
+            duration_ms=duration_ms,
+            provider=self.provider,
+            model=self.model,
+            media_type="audio/mpeg",
+            playback_mode="audio",
+            paragraph_cues=(ParagraphCue(0, 0, int(duration_ms)),),
+        )
+
+    def assemble_scenes(
+        self,
+        scene_storage_paths: list[str],
+        context: Dict[str, Any],
+        voice_id: str,
+        speed: float,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> GeneratedSpeech:
+        """Concatenate validated scene MP3s into the reusable chapter asset."""
+        if self.config.local_audio_enabled:
+            return self.synthesize(context, voice_id, speed, on_progress=on_progress)
+        scene_paths: list[Path] = []
+        for storage_path in scene_storage_paths:
+            file_name = Path(urlparse(storage_path).path).name
+            path = (self.config.voice_asset_dir / file_name).resolve()
+            path.relative_to(self.config.voice_asset_dir.resolve())
+            if not path.is_file():
+                raise TTSProviderUnavailableError("MiniMax scene asset is missing")
+            _validated_audio_duration_ms(path, "mp3")
+            scene_paths.append(path)
+        if not scene_paths:
+            raise TTSProviderUnavailableError("No MiniMax scenes to assemble")
+
+        text_hash = str(context["text_hash"])
+        file_name = (
+            f"{_safe_token(text_hash)}-{_safe_token(voice_id)}-"
+            f"{_safe_token(self.provider)}-{_safe_token(self.model)}-"
+            f"speed-{_normalized_speed_token(speed)}-cache-v{VOICE_ASSET_VERSION}.mp3"
+        )
+        self.config.voice_asset_dir.mkdir(parents=True, exist_ok=True)
+        output_path = self.config.voice_asset_dir / file_name
+        if not output_path.exists():
+            list_descriptor, list_name = tempfile.mkstemp(
+                dir=self.config.voice_asset_dir, prefix=".concat-", suffix=".txt"
+            )
+            os.close(list_descriptor)
+            list_path = Path(list_name)
+            descriptor, temporary_name = tempfile.mkstemp(
+                dir=self.config.voice_asset_dir, prefix=f".{file_name}.", suffix=".mp3"
+            )
+            os.close(descriptor)
+            temporary_path = Path(temporary_name)
+            try:
+                list_path.write_text(
+                    "\n".join(
+                        "file '" + str(path).replace("'", "'\\''") + "'"
+                        for path in scene_paths
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-nostdin",
+                        "-y",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        str(list_path),
+                        "-c",
+                        "copy",
+                        str(temporary_path),
+                    ],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    timeout=self.config.request_timeout_seconds,
+                )
+                os.replace(temporary_path, output_path)
+            except Exception as error:
+                temporary_path.unlink(missing_ok=True)
+                raise TTSProviderUnavailableError(
+                    "MiniMax scene assembly failed"
+                ) from error
+            finally:
+                list_path.unlink(missing_ok=True)
+        duration_ms = _validated_audio_duration_ms(output_path, "mp3")
+        cues: list[ParagraphCue] = []
+        cursor = 0
+        for index, path in enumerate(scene_paths):
+            scene_duration = _validated_audio_duration_ms(path, "mp3")
+            cues.append(ParagraphCue(index, cursor, cursor + scene_duration))
+            cursor += scene_duration
+        _report_progress(on_progress)
+        return GeneratedSpeech(
+            storage_path=f"/api/voice-reading/audio/{file_name}",
+            duration_ms=duration_ms,
+            provider=self.provider,
+            model=self.model,
+            media_type="audio/mpeg",
+            playback_mode="audio",
+            paragraph_cues=tuple(cues),
         )
 
     def _paragraph_cues(
@@ -434,11 +686,9 @@ def _report_progress(on_progress: Optional[ProgressCallback]) -> None:
 
 
 def _map_voice_id(voice_id: str) -> str:
-    return {
-        "warm_female": "female-shaonv",
-        "calm_male": "male-qn-qingse",
-        "clear_neutral": "female-yujie",
-    }.get(voice_id, "female-shaonv")
+    if is_supported_voice(voice_id):
+        return LEGACY_VOICE_ALIASES.get(voice_id, voice_id)
+    return "female-shaonv"
 
 
 def _safe_token(value: str) -> str:
@@ -465,6 +715,45 @@ def _validated_audio_duration_ms(audio_path: Path, extension: str) -> int:
     except Exception as error:
         raise RuntimeError("MiniMax TTS generated invalid audio") from error
     return max(1, int(round(float(duration_seconds) * 1000)))
+
+
+def _append_silence_to_mp3(
+    input_path: Path,
+    output_path: Path,
+    pause_after_ms: int,
+    *,
+    timeout_seconds: float,
+) -> None:
+    """Append a planned scene pause while keeping the cached asset self-contained."""
+    pause_seconds = max(0.0, float(pause_after_ms) / 1000.0)
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-nostdin",
+            "-y",
+            "-i",
+            str(input_path),
+            "-f",
+            "lavfi",
+            "-t",
+            str(pause_seconds),
+            "-i",
+            "anullsrc=channel_layout=mono:sample_rate=32000",
+            "-filter_complex",
+            "[0:a][1:a]concat=n=2:v=0:a=1[out]",
+            "-map",
+            "[out]",
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            "128k",
+            str(output_path),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        timeout=timeout_seconds,
+    )
 
 
 def _json_dumps(payload: Mapping[str, Any]) -> str:
