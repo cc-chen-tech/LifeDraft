@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SAWarning
 
 from src.api.deps import create_token
 from src.api.routers.images import get_round_scene_image
@@ -87,7 +88,8 @@ def _persist_completed_choice_state(
 def test_user_registration_recovers_when_previous_test_removed_schema() -> None:
     """E2E auth should recover if a destructive DB test dropped SQLite tables."""
     init_db()
-    Base.metadata.drop_all(engine)
+    with pytest.warns(SAWarning, match="Can't sort tables for DROP"):
+        Base.metadata.drop_all(engine)
 
     manager = UserManager()
     try:

@@ -226,8 +226,6 @@ def test_warning_only_story_still_generates_real_options(
     assert event.delivery_notice is None
 
 
-@pytest.mark.xfail(reason="origin/main drift: hard-fingerprint retry logic changed, mocks need rework")
-
 @pytest.mark.parametrize(
     "harness_enabled", [False, True], ids=["harness-off", "harness-on"]
 )
@@ -259,8 +257,6 @@ def test_expert_length_drift_keeps_story_and_three_options(
     assert len(event.options) == 3
 
 
-@pytest.mark.xfail(reason="origin/main drift: hard-fingerprint retry logic changed, mocks need rework")
-
 def test_failed_shape_repair_recovers_latest_story_and_three_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -286,8 +282,6 @@ def test_failed_shape_repair_recovers_latest_story_and_three_options(
     assert event.event_description == story
     assert len(event.options) == 3
 
-
-@pytest.mark.xfail(reason="origin/main drift: hard-fingerprint retry logic changed, mocks need rework")
 
 def test_blank_shape_repair_recovers_complete_story_and_three_options(
     monkeypatch: pytest.MonkeyPatch,
@@ -333,8 +327,6 @@ def test_blank_consistency_rewrite_remains_a_hard_failure(
             world_model=MinimalWorldModel(),
         )
 
-
-@pytest.mark.xfail(reason="origin/main drift: hard-fingerprint retry logic changed, mocks need rework")
 
 def test_successful_shape_repair_becomes_latest_fallback_story(
     monkeypatch: pytest.MonkeyPatch,
@@ -385,8 +377,6 @@ def test_fallback_uses_latest_complete_story_not_longest_story(
     assert event.event_description == latest_complete_story
     assert len(event.options) == 3
 
-
-@pytest.mark.xfail(reason="origin/main drift: hard-fingerprint retry logic changed, mocks need rework")
 
 def test_expert_consistency_rewrite_inherits_expert_token_budget(
     monkeypatch: pytest.MonkeyPatch,

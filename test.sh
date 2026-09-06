@@ -468,6 +468,26 @@ run_maintained_backend_suite() {
     ./scripts/run-maintained-backend-tests.sh test
 }
 
+run_quick_frontend() {
+    echo -e "${MAGENTA}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${MAGENTA}║${NC}              ${CYAN}PR 快速前端门禁 (quick-frontend)${NC}          ${MAGENTA}║${NC}"
+    echo -e "${MAGENTA}╚════════════════════════════════════════════════════════════╝${NC}"
+
+    local failed=0
+
+    echo -e "${YELLOW}运行前端 strict typecheck...${NC}"
+    run_frontend_strict_typecheck || failed=$((failed + 1))
+    run_preflight_jest || failed=$((failed + 1))
+
+    if [ $failed -eq 0 ]; then
+        echo -e "${GREEN}✓ PR 快速前端门禁通过${NC}"
+        return 0
+    fi
+
+    echo -e "${RED}✗ PR 快速前端门禁有 $failed 个子门禁失败${NC}"
+    return 1
+}
+
 run_quick() {
     echo -e "${MAGENTA}╔════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${MAGENTA}║${NC}              ${CYAN}PR 快速门禁 (quick)${NC}                       ${MAGENTA}║${NC}"
@@ -477,10 +497,7 @@ run_quick() {
 
     run_mypy || failed=$((failed + 1))
     run_maintained_backend_suite || failed=$((failed + 1))
-
-    echo -e "${YELLOW}运行前端 strict typecheck...${NC}"
-    run_frontend_strict_typecheck || failed=$((failed + 1))
-    run_preflight_jest || failed=$((failed + 1))
+    run_quick_frontend || failed=$((failed + 1))
 
     if [ $failed -eq 0 ]; then
         echo -e "${GREEN}✓ PR 快速门禁通过${NC}"
@@ -586,7 +603,19 @@ run_db() {
 
 # Layer 5: E2E 浏览器测试 (Playwright)
 run_e2e_browser() {
-    with_e2e_lock run_e2e_browser_impl
+    run_e2e_core
+}
+
+run_e2e_core() {
+    E2E_SUITE=core with_e2e_lock run_e2e_browser_impl
+}
+
+run_e2e_full() {
+    E2E_SUITE=full with_e2e_lock run_e2e_browser_impl
+}
+
+run_e2e_mobile() {
+    E2E_SUITE=mobile E2E_INCLUDE_MOBILE=1 with_e2e_lock run_e2e_browser_impl
 }
 
 run_e2e_browser_impl() {
@@ -753,20 +782,37 @@ run_e2e_browser_impl() {
     export E2E_BROWSER_API_HOST="${E2E_BROWSER_API_HOST:-localhost}"
     export E2E_BACKEND_PORT
 
-    echo -e "${YELLOW}运行完整 Playwright E2E 测试 (chromium)...${NC}"
-    run_playwright_command "core" npx playwright test --project=core --reporter=dot --workers=1
-    local core_result=$?
+    local e2e_suite="${E2E_SUITE:-core}"
+    local playwright_args=(npx playwright test --workers=1)
+    case "$e2e_suite" in
+        core)
+            echo -e "${YELLOW}运行 Playwright core E2E 测试 (chromium)...${NC}"
+            playwright_args+=(--project=core)
+            ;;
+        full)
+            echo -e "${YELLOW}运行完整 Playwright E2E 测试 (core + ai-heavy)...${NC}"
+            playwright_args+=(--project=core --project=ai-heavy)
+            if [ "${E2E_INCLUDE_MOBILE:-0}" = "1" ]; then
+                playwright_args+=(--project="Mobile Safari")
+            fi
+            ;;
+        mobile)
+            echo -e "${YELLOW}运行 Playwright Mobile Safari E2E 测试...${NC}"
+            playwright_args+=(--project="Mobile Safari" --no-deps)
+            ;;
+        *)
+            echo -e "${RED}未知 E2E 测试范围: $e2e_suite${NC}" >&2
+            E2E_RESULT=1
+            cleanup_e2e_runtimes
+            return 1
+            ;;
+    esac
 
-    echo -e "${YELLOW}运行角色设定 PATCH 持久化 E2E 浏览器测试...${NC}"
-    run_playwright_command "character-settings" npx playwright test e2e/character-settings-persistence.spec.ts \
-        --project=ai-heavy \
-        --reporter=list \
-        --workers=1 \
-        --no-deps
-    local character_settings_result=$?
+    run_playwright_command "$e2e_suite" "${playwright_args[@]}"
+    local suite_result=$?
 
     local result=0
-    if [ $core_result -ne 0 ] || [ $character_settings_result -ne 0 ]; then
+    if [ $suite_result -ne 0 ]; then
         result=1
     fi
 
@@ -777,21 +823,40 @@ run_e2e_browser_impl() {
     return $result
 }
 
-# 单元测试 (pytest -m unit)
+# 单元测试 (pytest -m 'unit and not slow')
 run_unit() {
     echo -e "${BLUE}========================================${NC}"
-    echo -e "${YELLOW}运行单元测试 (pytest -m unit)...${NC}"
+    echo -e "${YELLOW}运行快速单元测试 (pytest -m 'unit and not slow')...${NC}"
     echo -e "${BLUE}========================================${NC}"
     cd "$PROJECT_DIR"
     activate_python_env
     
-    run_pytest_with_isolated_database tests/ -m unit -v
+    run_pytest_with_isolated_database tests/ -m 'unit and not slow' -v
     local result=$?
     
     if [ $result -eq 0 ]; then
-        echo -e "${GREEN}✓ 单元测试通过${NC}"
+        echo -e "${GREEN}✓ 快速单元测试通过${NC}"
     else
-        echo -e "${RED}✗ 单元测试失败${NC}"
+        echo -e "${RED}✗ 快速单元测试失败${NC}"
+    fi
+    return $result
+}
+
+# 慢速/压力测试 (pytest -m slow)
+run_slow() {
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${YELLOW}运行慢速与压力测试 (pytest -m slow)...${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    cd "$PROJECT_DIR"
+    activate_python_env
+
+    run_pytest_with_isolated_database tests/ -m slow -v
+    local result=$?
+
+    if [ $result -eq 0 ]; then
+        echo -e "${GREEN}✓ 慢速与压力测试通过${NC}"
+    else
+        echo -e "${RED}✗ 慢速与压力测试失败${NC}"
     fi
     return $result
 }
@@ -855,7 +920,7 @@ run_frontend() {
     # Jest 单元测试
     echo ""
     echo -e "${YELLOW}--- Jest 单元测试 ---${NC}"
-    npm test -- --passWithNoTests
+    npm run test:ci
     local jest_result=$?
     
     if [ $jest_result -eq 0 ]; then
@@ -1022,11 +1087,11 @@ run_perf() {
     locust -f locustfile.py --host="http://127.0.0.1:${PERF_BACKEND_PORT}"
 }
 
-# 运行所有自动化测试 (Preflight + 5 层)
-run_all() {
+# 运行验收测试 (Preflight + 5 层)
+run_acceptance() {
     echo -e "${MAGENTA}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${MAGENTA}║${NC}           ${CYAN}Story2 测试架构 - 自动化测试${NC}                  ${MAGENTA}║${NC}"
-    echo -e "${MAGENTA}║${NC}           ${YELLOW}(Preflight + Layer 1-5 全自动化)${NC}           ${MAGENTA}║${NC}"
+    echo -e "${MAGENTA}║${NC}           ${CYAN}Story2 测试架构 - 验收测试${NC}                    ${MAGENTA}║${NC}"
+    echo -e "${MAGENTA}║${NC}           ${YELLOW}(Preflight + Layer 1-5)${NC}                  ${MAGENTA}║${NC}"
     echo -e "${MAGENTA}╚════════════════════════════════════════════════════════════╝${NC}"
     
     local failed=0
@@ -1046,8 +1111,8 @@ run_all() {
     # Layer 4: DB 集成测试
     run_db || ((failed++))
     
-    # Layer 5: E2E 浏览器测试
-    run_e2e_browser || ((failed++))
+    # Layer 5: E2E 浏览器测试（core；完整 E2E 由 e2e-full 显式运行）
+    run_e2e_core || ((failed++))
     
     # 打印总结
     echo ""
@@ -1090,7 +1155,7 @@ run_all() {
     
     if [ $failed -eq 0 ]; then
         echo -e "${GREEN}══════════════════════════════════════════════════════════════${NC}"
-        echo -e "${GREEN}✓ 所有测试通过！ (Preflight + 5/5 layers)${NC}"
+        echo -e "${GREEN}✓ 验收测试通过！ (Preflight + 5/5 layers)${NC}"
         echo -e "${GREEN}══════════════════════════════════════════════════════════════${NC}"
     else
         echo -e "${RED}══════════════════════════════════════════════════════════════${NC}"
@@ -1099,6 +1164,10 @@ run_all() {
     fi
     
     return $failed
+}
+
+run_full_backend() {
+    run_backend
 }
 
 # 显示帮助
@@ -1113,17 +1182,23 @@ show_help() {
     echo "  imports       - Layer 2: 导入验证测试"
     echo "  contract      - Layer 3: API 契约测试"
     echo "  db            - Layer 4: 真实 DB 集成测试"
-    echo "  e2e           - Layer 5: E2E 浏览器测试 (Playwright)"
+    echo "  e2e-core      - Layer 5: core E2E 浏览器测试 (Playwright)"
+    echo "  e2e-full      - 完整 E2E: core + ai-heavy（可选 Mobile Safari）"
+    echo "  e2e-mobile    - 仅运行 Mobile Safari E2E"
     echo ""
     echo -e "${YELLOW}按标记运行:${NC}"
-    echo "  unit          - 运行 pytest -m unit"
+    echo "  unit          - 快速单元测试 (pytest -m 'unit and not slow')"
+    echo "  slow          - 显式运行慢速与压力测试 (pytest -m slow)"
     echo "  integration   - 运行 pytest -m integration"
     echo "  api           - 运行 pytest -m api"
     echo ""
     echo -e "${YELLOW}其他命令:${NC}"
     echo "  quick          - PR 快速门禁: mypy/static + maintained backend + TypeScript + preflight Jest"
-    echo "  all           - 运行全部测试 (Preflight + Layer 1-5)"
-    echo "  backend       - 运行后端全量 pytest 测试"
+    echo "  quick-frontend - PR 快速前端门禁: TypeScript + preflight Jest"
+    echo "  acceptance    - 验收测试: Preflight + Layer 1-5（core E2E）"
+    echo "  all           - acceptance 的兼容别名"
+    echo "  full-backend  - 运行后端全量 pytest 测试"
+    echo "  backend       - full-backend 的兼容别名"
     echo "  frontend      - 运行前端 tsc + Jest 测试"
     echo "  coverage      - 运行测试并生成覆盖率报告"
     echo "  security      - 运行安全扫描 (Bandit)"
@@ -1131,8 +1206,9 @@ show_help() {
     echo "  help          - 显示此帮助信息"
     echo ""
     echo -e "${YELLOW}示例:${NC}"
-    echo "  ./test.sh              # 运行全部测试 (Preflight + Layer 1-5)"
-    echo "  ./test.sh all          # 同上"
+    echo "  ./test.sh              # 运行 acceptance 验收测试"
+    echo "  ./test.sh acceptance   # 同上"
+    echo "  ./test.sh full-backend # 运行后端全量 pytest"
     echo "  ./test.sh preflight    # 只运行前置校验"
     echo "  ./test.sh mypy         # 只运行 mypy 静态分析"
     echo "  ./test.sh contract     # 只运行契约测试"
@@ -1147,6 +1223,9 @@ fi
 case "${1:-}" in
     quick)
         run_quick
+        ;;
+    quick-frontend)
+        run_quick_frontend
         ;;
     preflight)
         run_preflight
@@ -1163,11 +1242,20 @@ case "${1:-}" in
     db)
         run_db
         ;;
-    e2e)
-        run_e2e_browser
+    e2e|e2e-core)
+        run_e2e_core
+        ;;
+    e2e-full)
+        run_e2e_full
+        ;;
+    e2e-mobile)
+        run_e2e_mobile
         ;;
     unit)
         run_unit
+        ;;
+    slow)
+        run_slow
         ;;
     integration)
         run_integration
@@ -1178,8 +1266,8 @@ case "${1:-}" in
     frontend)
         run_frontend
         ;;
-    backend)
-        run_backend
+    backend|full-backend)
+        run_full_backend
         ;;
     coverage)
         run_coverage
@@ -1190,8 +1278,8 @@ case "${1:-}" in
     perf)
         run_perf
         ;;
-    all|"")
-        run_all
+    acceptance|all|"")
+        run_acceptance
         ;;
     help|--help|-h)
         show_help

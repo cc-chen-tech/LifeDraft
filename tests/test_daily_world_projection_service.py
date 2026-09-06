@@ -1825,14 +1825,24 @@ def test_cancelled_queued_claim_future_releases_its_old_lease(tmp_path) -> None:
         threading.Event(),
         threading.Event(),
     )
+    scanner_entered = threading.Event()
+    release_scanner = threading.Event()
+
+    def hold_initial_scanner_claim() -> None:
+        if not scanner_entered.is_set():
+            scanner_entered.set()
+            release_scanner.wait()
+
     service = DailyWorldProjectionService(
         session_factory=sessions,
         worker_id="worker-a",
         claim_limit=0,
         extraction_workers=1,
         now_fn=lambda: now,
+        before_claim_guard=hold_initial_scanner_claim,
     )
     service.start()
+    assert scanner_entered.wait(1)
     old_cancel, old_generation = service._cancel_event, service._generation
     assert old_cancel is not None and service._pool is not None
     service._pool.submit(lambda: (blocker_started.set(), unblock.wait()))
@@ -1852,6 +1862,7 @@ def test_cancelled_queued_claim_future_releases_its_old_lease(tmp_path) -> None:
     started = time.monotonic()
     service.stop(wait=False)
     assert time.monotonic() - started < 0.2
+    release_scanner.set()
     assert released.wait(1)
     unblock.set()
 

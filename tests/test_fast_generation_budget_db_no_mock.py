@@ -3,7 +3,7 @@
 from uuid import uuid4
 
 from src.database.db import GameDatabase
-from src.database.models import SessionLocal, User, init_db
+from src.database.models import SessionLocal, User
 import pytest
 
 pytestmark = [pytest.mark.integration]
@@ -11,7 +11,6 @@ pytestmark = [pytest.mark.integration]
 
 
 def test_fast_constraint_level_survives_real_database_save_read() -> None:
-    init_db()
     session = SessionLocal()
     game_id: int | None = None
     try:
@@ -43,4 +42,3 @@ def test_fast_constraint_level_survives_real_database_save_read() -> None:
                 session.delete(session.merge(game))
         session.commit()
         session.close()
-

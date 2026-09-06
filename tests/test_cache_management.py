@@ -1,6 +1,5 @@
 """缓存管理测试 - 对应优化 H-07"""
 
-import time
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.slow]
@@ -37,21 +36,21 @@ class TestCacheManagement:
         assert cache.get("d") is not None  # 新插入
         assert cache.size <= 3
 
-    def test_cache_ttl_expiration(self, mock_cache_with_ttl):
+    def test_cache_ttl_expiration(self, mock_cache_with_ttl, fake_clock):
         """条目应在 TTL 后过期"""
-        cache = mock_cache_with_ttl(max_size=10, ttl=0.1)  # 0.1秒 TTL
+        cache = mock_cache_with_ttl(max_size=10, ttl=0.1, clock=fake_clock)
 
         cache.set("key", "value")
         assert cache.get("key") == "value"
 
-        time.sleep(0.2)  # 等待过期
+        fake_clock.advance(0.2)
         assert cache.get("key") is None
 
-    def test_expired_entry_returns_none(self, mock_cache_with_ttl):
+    def test_expired_entry_returns_none(self, mock_cache_with_ttl, fake_clock):
         """过期条目应返回 None"""
-        cache = mock_cache_with_ttl(max_size=10, ttl=0.05)
+        cache = mock_cache_with_ttl(max_size=10, ttl=0.05, clock=fake_clock)
         cache.set("temp", "data")
-        time.sleep(0.1)
+        fake_clock.advance(0.1)
         assert cache.get("temp") is None
 
     def test_cache_hit_updates_access_time(self, mock_cache_with_ttl):
@@ -59,9 +58,7 @@ class TestCacheManagement:
         cache = mock_cache_with_ttl(max_size=3, ttl=3600)
 
         cache.set("a", 1)
-        time.sleep(0.01)
         cache.set("b", 2)
-        time.sleep(0.01)
 
         # 访问 a 更新其访问时间
         cache.get("a")

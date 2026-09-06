@@ -153,20 +153,26 @@ class TestIntegrationImports:
     They are marked with xfail to indicate they are known-failing until implementation.
     """
 
-    @pytest.mark.xfail(reason="Phase 3 Task 12: AIClient integration not yet done")
+    @pytest.mark.xfail(
+        reason="Phase 3 Task 12: AIClient integration not yet done", strict=True
+    )
     def test_client_has_call_with_fallback(self):
         from src.ai.client import AIClient
 
         assert hasattr(AIClient, "call_with_fallback")
 
-    @pytest.mark.xfail(reason="Phase 3 Task 14: Settings integration not yet done")
+    @pytest.mark.xfail(
+        reason="Phase 3 Task 14: Settings integration not yet done", strict=True
+    )
     def test_settings_has_feature_flags(self):
         from config.settings import Settings
 
         settings = Settings()
         assert hasattr(settings, "FEATURE_FLAGS")
 
-    @pytest.mark.xfail(reason="Phase 3 Task 14: Settings integration not yet done")
+    @pytest.mark.xfail(
+        reason="Phase 3 Task 14: Settings integration not yet done", strict=True
+    )
     def test_settings_has_model_fallback_chain(self):
         from config.settings import Settings
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from src.database.models import Game, GameState, SessionLocal, User, init_db
+from src.database.models import Game, GameState, SessionLocal, User
 from src.services.life_summary_grounding import build_grounded_fallback
 import pytest
 
@@ -13,7 +13,6 @@ pytestmark = [pytest.mark.integration]
 
 
 def test_saved_four_week_history_builds_grounded_summary_after_real_read() -> None:
-    init_db()
     session = SessionLocal()
     user_id: int | None = None
     game_id: int | None = None
@@ -64,4 +63,3 @@ def test_saved_four_week_history_builds_grounded_summary_after_real_read() -> No
             session.query(User).filter(User.user_id == user_id).delete()
         session.commit()
         session.close()
-

@@ -15,7 +15,6 @@ from src.database.models import (
     User,
     VoiceReadingJob,
     VoiceReadingSetting,
-    init_db,
 )
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 from src.services.minimax_config import MiniMaxConfig
@@ -74,7 +73,6 @@ def test_asset_version_schema_migration_is_additive_and_idempotent(tmp_path, mon
 
 
 def test_voice_settings_save_read_chain_uses_real_database() -> None:
-    init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
     public_id = f"pub_{uuid4().hex[:6]}"
 
@@ -107,7 +105,6 @@ def test_voice_settings_save_read_chain_uses_real_database() -> None:
 
 
 def test_voice_settings_use_env_auto_read_default_for_new_user(monkeypatch) -> None:
-    init_db()
     monkeypatch.setenv("STORY_TTS_AUTO_READ_DEFAULT_ENABLED", "true")
     private_id = f"priv_{uuid4().hex[:16]}"
     public_id = f"pub_{uuid4().hex[:6]}"
@@ -130,7 +127,6 @@ def test_voice_settings_use_env_auto_read_default_for_new_user(monkeypatch) -> N
 
 
 def test_voice_job_and_asset_reuse_by_text_hash_uses_real_database() -> None:
-    init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
     public_id = f"pub_{uuid4().hex[:6]}"
 
@@ -190,7 +186,6 @@ def test_voice_job_and_asset_reuse_by_text_hash_uses_real_database() -> None:
 
 
 def test_v1_voice_assets_are_retained_but_excluded_from_v3_reuse() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -259,7 +254,6 @@ def test_v1_voice_assets_are_retained_but_excluded_from_v3_reuse() -> None:
 
 
 def test_v3_request_deduplication_isolated_from_legacy_jobs() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -324,7 +318,6 @@ def test_v3_request_deduplication_isolated_from_legacy_jobs() -> None:
 
 
 def test_process_job_regenerates_missing_or_corrupt_v3_cached_assets(tmp_path) -> None:
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -394,7 +387,6 @@ def test_process_job_regenerates_missing_or_corrupt_v3_cached_assets(tmp_path) -
 
 
 def test_two_sessions_can_claim_a_queued_job_only_once() -> None:
-    init_db()
     setup_session = SessionLocal()
     try:
         user = User(
@@ -465,7 +457,6 @@ def test_processing_job_loser_exits_without_synthesizing() -> None:
         def synthesize(self, context, voice_id, speed, on_progress=None):
             raise AssertionError("a losing worker must not synthesize")
 
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -507,7 +498,6 @@ def test_processing_job_loser_exits_without_synthesizing() -> None:
 
 
 def test_repeated_read_requeues_a_stale_processing_job() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -549,7 +539,6 @@ def test_repeated_read_requeues_a_stale_processing_job() -> None:
 
 
 def test_repeated_read_does_not_reclaim_a_fresh_processing_job() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -590,7 +579,6 @@ def test_repeated_read_does_not_reclaim_a_fresh_processing_job() -> None:
 
 
 def test_force_retry_requeues_a_fresh_processing_job() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -634,7 +622,6 @@ def test_force_retry_requeues_a_fresh_processing_job() -> None:
 
 
 def test_lease_heartbeat_prevents_stale_recovery() -> None:
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -717,7 +704,6 @@ def test_process_job_refreshes_lease_during_provider_synthesis() -> None:
                 observer.close()
             return super().synthesize(context, voice_id, speed, on_progress=on_progress)
 
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -764,7 +750,6 @@ def test_process_job_refreshes_lease_during_provider_synthesis() -> None:
 
 
 def test_replaced_worker_token_cannot_refresh_or_commit_stale_results() -> None:
-    init_db()
     setup_session = SessionLocal()
     try:
         user = User(
@@ -879,7 +864,6 @@ def test_replaced_worker_token_cannot_refresh_or_commit_stale_results() -> None:
 
 
 def test_same_round_different_text_hash_does_not_reuse_old_audio() -> None:
-    init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
     public_id = f"pub_{uuid4().hex[:6]}"
 
@@ -922,7 +906,6 @@ def test_same_round_different_text_hash_does_not_reuse_old_audio() -> None:
 
 
 def test_provider_model_identity_prevents_wrong_audio_reuse() -> None:
-    init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
     public_id = f"pub_{uuid4().hex[:6]}"
 
@@ -1004,7 +987,6 @@ def test_tts_model_upgrade_retains_old_asset_without_reusing_it() -> None:
                 paragraph_cues=(ParagraphCue(0, 0, 2_200),),
             )
 
-    init_db()
     session = SessionLocal()
     try:
         user = User(
@@ -1082,7 +1064,6 @@ def test_tts_model_upgrade_retains_old_asset_without_reusing_it() -> None:
 
 
 def test_unavailable_provider_saves_failed_job_without_audio_asset() -> None:
-    init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
     public_id = f"pub_{uuid4().hex[:6]}"
 
@@ -1128,7 +1109,6 @@ def test_unavailable_provider_saves_failed_job_without_audio_asset() -> None:
 
 
 def test_provider_backed_request_saves_and_reuses_asset() -> None:
-    init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
     public_id = f"pub_{uuid4().hex[:6]}"
 
@@ -1207,7 +1187,6 @@ def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
             self.synthesize_calls += 1
             raise AssertionError("a valid v3 chapter cache must bypass the provider")
 
-    init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
     public_id = f"pub_{uuid4().hex[:6]}"
 
@@ -1271,7 +1250,6 @@ def test_cached_minimax_mp3_asset_reports_mpeg_media_type() -> None:
 
 
 def test_provider_backed_request_does_not_reuse_other_users_voice_asset() -> None:
-    init_db()
     session = SessionLocal()
     try:
         owner = User(
@@ -1340,7 +1318,6 @@ def test_provider_backed_request_does_not_reuse_other_users_voice_asset() -> Non
 
 
 def test_cached_mp3_voice_asset_returns_mpeg_media_type() -> None:
-    init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
     public_id = f"pub_{uuid4().hex[:6]}"
 
@@ -1401,7 +1378,6 @@ def test_cached_mp3_voice_asset_returns_mpeg_media_type() -> None:
 
 
 def test_job_response_for_mp3_voice_asset_returns_mpeg_media_type() -> None:
-    init_db()
     private_id = f"priv_{uuid4().hex[:16]}"
     public_id = f"pub_{uuid4().hex[:6]}"
 

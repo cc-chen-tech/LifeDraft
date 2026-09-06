@@ -7,6 +7,7 @@
 import asyncio
 import json
 import time
+import threading
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -166,14 +167,31 @@ class TestOpeningStoryAPIContract:
         assert response.status_code == 200, f"超时后应允许新请求，实际返回 {response.status_code}"
 
     def test_opening_story_heartbeat_on_slow_generation(self, mock_auth):
-        """AI 生成缓慢时应发送 heartbeat status 事件保持连接活跃"""
-        import time
+        """AI 生成缓慢时应发送 heartbeat status 事件保持连接活跃。"""
+        release_generation = threading.Event()
+        finish_generation = threading.Event()
 
         with patch("src.api.routers.character.CharacterCreator") as mock_creator_cls:
-            # 模拟缓慢生成器：第一个 chunk 延迟 6 秒后返回
+            # 用事件模拟仍在运行的后台生成器，不让测试真的等待心跳周期。
             def slow_stream():
-                time.sleep(6)
+                release_generation.wait()
                 yield MagicMock(choices=[MagicMock(delta=MagicMock(content="慢速故事"))])
+                finish_generation.wait()
+
+            wait_for_calls = {"count": 0}
+            original_wait_for = asyncio.wait_for
+
+            async def timeout_and_release(awaitable, *args, **kwargs):
+                wait_for_calls["count"] += 1
+                if wait_for_calls["count"] == 1:
+                    if hasattr(awaitable, "close"):
+                        awaitable.close()
+                    release_generation.set()
+                    raise asyncio.TimeoutError()
+                return await original_wait_for(awaitable, *args, **kwargs)
+
+            async def release_after_heartbeat(_seconds):
+                finish_generation.set()
 
             mock_creator = MagicMock()
             mock_creator.generate_opening_story.return_value = slow_stream()
@@ -184,16 +202,23 @@ class TestOpeningStoryAPIContract:
             with char_module._cache_lock:
                 char_module._opening_story_cache.clear()
 
-            response = client.post(
-                "/api/character/opening-story",
-                json={
-                    "character_settings": {"era": "现代"},
-                    "player_name": "TestHeartbeat",
-                    "life_vision": "探索世界",
-                    "language": "zh",
-                },
-                headers={"Authorization": "Bearer test_token"},
-            )
+            with patch(
+                "src.api.routers.character.asyncio.wait_for",
+                timeout_and_release,
+            ), patch(
+                "src.api.routers.character.asyncio.sleep",
+                release_after_heartbeat,
+            ):
+                response = client.post(
+                    "/api/character/opening-story",
+                    json={
+                        "character_settings": {"era": "现代"},
+                        "player_name": "TestHeartbeat",
+                        "life_vision": "探索世界",
+                        "language": "zh",
+                    },
+                    headers={"Authorization": "Bearer test_token"},
+                )
 
             assert response.status_code == 200
             body = response.text
@@ -350,17 +375,25 @@ class TestOpeningStoryAPIContract:
             call_count = {"wait_for": 0}
             original_wait_for = asyncio.wait_for
 
+            release_first_chunk = threading.Event()
+            finish_after_heartbeat = threading.Event()
+
             def slow_first_chunk_stream():
-                time.sleep(0.05)
+                release_first_chunk.wait()
                 yield MagicMock(choices=[MagicMock(delta=MagicMock(content="最终故事"))])
+                finish_after_heartbeat.wait()
 
             async def first_wait_times_out(awaitable, *args, **kwargs):
                 call_count["wait_for"] += 1
                 if call_count["wait_for"] == 1:
                     if hasattr(awaitable, "close"):
                         awaitable.close()
+                    release_first_chunk.set()
                     raise asyncio.TimeoutError()
                 return await original_wait_for(awaitable, *args, **kwargs)
+
+            async def release_after_heartbeat(_seconds):
+                finish_after_heartbeat.set()
 
             mock_creator = MagicMock()
             mock_creator.generate_opening_story.return_value = slow_first_chunk_stream()
@@ -371,7 +404,12 @@ class TestOpeningStoryAPIContract:
             with char_module._cache_lock:
                 char_module._opening_story_cache.clear()
 
-            with patch("src.api.routers.character.asyncio.wait_for", first_wait_times_out):
+            with patch(
+                "src.api.routers.character.asyncio.wait_for", first_wait_times_out
+            ), patch(
+                "src.api.routers.character.asyncio.sleep",
+                release_after_heartbeat,
+            ):
                 response = client.post(
                     "/api/character/opening-story",
                     json={
