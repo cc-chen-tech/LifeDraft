@@ -86,9 +86,9 @@ class MiniMaxWebSocketTTSClient:
             close_timeout=self.config.request_timeout_seconds,
         ) as websocket:
             # MiniMax WebSocket protocol: connected_success, task_start,
-            # task_started, task_continue, audio chunks, task_finish,
-            # task_finished.  The old implementation sent the HTTP-shaped
-            # payload as one frame, which could not provide scene-first TTS.
+            # task_started, task_continue, audio chunks, task_finished. The
+            # task_finish close signal is sent only after the final audio frame;
+            # sending it after the first chunk can truncate the MP3 stream.
             connected = json.loads(str(websocket.recv()))
             if str(connected.get("event") or connected.get("status") or "") not in {
                 "connected_success",
@@ -100,17 +100,15 @@ class MiniMaxWebSocketTTSClient:
             if str(started.get("event") or "") != "task_started":
                 raise RuntimeError("MiniMax WebSocket did not start the task")
             websocket.send(_json_dumps({"event": "task_continue", "text": payload.get("text", "")}))
-            finish_sent = False
             for _ in range(10000):
                 message = websocket.recv()
                 payload_obj = json.loads(str(message))
                 audio_hex = _extract_audio_hex(payload_obj)
                 if audio_hex:
                     audio_chunks.append(bytes.fromhex(audio_hex))
-                if not finish_sent and audio_chunks:
-                    websocket.send(_json_dumps({"event": "task_finish"}))
-                    finish_sent = True
                 if _is_done_message(payload_obj):
+                    if _is_final_audio_message(payload_obj):
+                        websocket.send(_json_dumps({"event": "task_finish"}))
                     break
         if not audio_chunks:
             raise RuntimeError("MiniMax WebSocket synthesis returned no audio")
@@ -779,7 +777,7 @@ def _extract_audio_hex(payload: Mapping[str, Any]) -> Optional[str]:
 
 
 def _is_done_message(payload: Mapping[str, Any]) -> bool:
-    if payload.get("is_final") is True:
+    if _is_final_audio_message(payload):
         return True
     candidates = [payload.get("status"), payload.get("event")]
     data = payload.get("data")
@@ -791,6 +789,13 @@ def _is_done_message(payload: Mapping[str, Any]) -> bool:
         str(candidate).lower() in {"done", "finished", "complete", "task_finished", "task_failed"}
         for candidate in candidates
     )
+
+
+def _is_final_audio_message(payload: Mapping[str, Any]) -> bool:
+    if payload.get("is_final") is True:
+        return True
+    data = payload.get("data")
+    return isinstance(data, Mapping) and data.get("is_final") is True
 
 
 def _raise_for_base_resp(payload: Mapping[str, Any]) -> None:
