@@ -28,7 +28,10 @@ from src.ai.narration_plan import (
     parse_narration_plan,
 )
 from src.services.minimax_voice_catalog import (
+    canonical_voice_id,
     is_supported_voice,
+    is_story_voice_supported,
+    normalize_story_voice_id,
     preview_text_for_voice,
     voice_options,
 )
@@ -131,16 +134,17 @@ class StoryVoiceReadingService:
     def get_settings(self, user_id: int) -> VoiceReadingSettingsResponse:
         settings = self.repository.get_settings(user_id)
         provider_metadata = self.provider.metadata()
-        catalog = voice_options(include_legacy=True)
+        catalog = voice_options()
+        selected_voice = normalize_story_voice_id(
+            str(settings.selected_voice_color)
+            if settings is not None and settings.selected_voice_color is not None
+            else None
+        )
         return VoiceReadingSettingsResponse(
             member_required=False,
             enabled=True,
             available_voice_colors=[voice["voice_id"] for voice in catalog],
-            selected_voice_color=(
-                str(settings.selected_voice_color)
-                if settings is not None and settings.selected_voice_color is not None
-                else "warm_female"
-            ),
+            selected_voice_color=selected_voice,
             uploaded_voice_available=False,
             auto_read_enabled=(
                 bool(settings.auto_read_enabled)
@@ -167,7 +171,7 @@ class StoryVoiceReadingService:
         auto_read_enabled: Optional[bool],
         selected_speed: Optional[float] = None,
     ) -> VoiceReadingSettingsResponse:
-        if selected_voice_color is not None and not is_supported_voice(selected_voice_color):
+        if selected_voice_color is not None and not is_story_voice_supported(selected_voice_color):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
@@ -176,14 +180,19 @@ class StoryVoiceReadingService:
                     "field": "selected_voice_color",
                 },
             )
+        canonical_voice = (
+            canonical_voice_id(selected_voice_color)
+            if selected_voice_color is not None
+            else None
+        )
         self.repository.upsert_settings(
-            user_id, selected_voice_color, auto_read_enabled, selected_speed
+            user_id, canonical_voice, auto_read_enabled, selected_speed
         )
         return self.get_settings(user_id)
 
     def preview_voice(self, voice_id: str) -> Dict[str, Any]:
         """Generate/cache a short preview without creating a reading job."""
-        if not is_supported_voice(voice_id):
+        if not is_story_voice_supported(voice_id):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
@@ -192,6 +201,7 @@ class StoryVoiceReadingService:
                     "field": "voice_id",
                 },
             )
+        canonical_voice = canonical_voice_id(voice_id)
         provider = self.provider
         metadata = provider.metadata()
         if not metadata.backend_audio_enabled:
@@ -202,7 +212,7 @@ class StoryVoiceReadingService:
                     "message": "High-quality narration is temporarily unavailable",
                 },
             )
-        text = preview_text_for_voice(voice_id)
+        text = preview_text_for_voice(canonical_voice)
         context = {
             "source_type": "voice_preview",
             "game_id": 0,
@@ -212,9 +222,9 @@ class StoryVoiceReadingService:
         }
         synthesize_scene = getattr(provider, "synthesize_scene", None)
         speech = (
-            synthesize_scene(context, voice_id, 1.0)
+            synthesize_scene(context, canonical_voice, 1.0)
             if callable(synthesize_scene)
-            else provider.synthesize(context, voice_id, 1.0)
+            else provider.synthesize(context, canonical_voice, 1.0)
         )
         if speech.playback_mode != "audio" or not speech.storage_path or speech.duration_ms is None:
             raise HTTPException(
@@ -225,7 +235,7 @@ class StoryVoiceReadingService:
                 },
             )
         return {
-            "voice_id": voice_id,
+            "voice_id": canonical_voice,
             "audio_url": speech.storage_path,
             "media_type": speech.media_type or media_type_for_voice_asset(speech.storage_path),
             "duration_ms": int(speech.duration_ms),

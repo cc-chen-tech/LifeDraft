@@ -61,13 +61,53 @@ def test_voice_settings_persist_through_service_with_real_database() -> None:
         updated = service.update_settings(user_id, "calm_male", True)
         recovered = service.get_settings(user_id)
 
-        assert initial.selected_voice_color == "warm_female"
+        assert initial.selected_voice_color == "female-shaonv"
         assert initial.auto_read_enabled is True
         assert initial.playback_mode == "audio"
-        assert updated.selected_voice_color == "calm_male"
+        assert updated.selected_voice_color == "male-qn-qingse"
         assert updated.auto_read_enabled is True
         assert recovered.tts_model == "deterministic-v1"
         assert session.query(GeneratedVoiceAsset).filter_by(user_id=user_id).count() == 0
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_voice_settings_replace_saved_non_chinese_voice_with_story_default() -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user_id = _add_user(session)
+        repository = StoryVoiceReadingRepository(session)
+        repository.upsert_settings(user_id, "English_CalmWoman", True)
+
+        service = StoryVoiceReadingService(
+            repository,
+            provider=DeterministicTTSProvider(),
+        )
+        settings = service.get_settings(user_id)
+
+        assert settings.selected_voice_color == "female-shaonv"
+        assert {voice["language"] for voice in settings.voice_catalog} == {"普通话", "粤语"}
+        assert all("_" not in voice["label"] for voice in settings.voice_catalog)
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_voice_preview_normalizes_legacy_alias_before_provider_call() -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        service = StoryVoiceReadingService(
+            StoryVoiceReadingRepository(session),
+            provider=DeterministicTTSProvider(),
+        )
+
+        preview = service.preview_voice("warm_female")
+
+        assert preview["voice_id"] == "female-shaonv"
+        assert preview["audio_url"].endswith("-female-shaonv.wav")
     finally:
         session.rollback()
         session.close()

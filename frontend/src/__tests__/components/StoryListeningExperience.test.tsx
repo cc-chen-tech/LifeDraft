@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import {
   STORY_VOICE_POLL_TIMEOUT_MS,
@@ -85,6 +85,50 @@ function setupApi() {
     tts_provider_available: true,
     backend_audio_enabled: true,
     playback_mode: "audio",
+    voice_catalog: [
+      {
+        voice_id: "female-shaonv",
+        label: "少女音色",
+        language: "普通话",
+        group: "标准音色",
+        recommended: true,
+      },
+      {
+        voice_id: "male-qn-qingse",
+        label: "青涩青年音色",
+        language: "普通话",
+        group: "标准音色",
+        recommended: true,
+      },
+      {
+        voice_id: "female-yujie",
+        label: "御姐音色",
+        language: "普通话",
+        group: "标准音色",
+        recommended: true,
+      },
+      {
+        voice_id: "female-chengshu",
+        label: "成熟女性音色",
+        language: "普通话",
+        group: "标准音色",
+        recommended: true,
+      },
+      {
+        voice_id: "Chinese (Mandarin)_Gentleman",
+        label: "温润男声",
+        language: "普通话",
+        group: "主播与叙事",
+        recommended: false,
+      },
+      {
+        voice_id: "Cantonese_GentleLady",
+        label: "温柔女声",
+        language: "粤语",
+        group: "粤语音色",
+        recommended: false,
+      },
+    ],
   });
   voiceApi.updateSettings.mockResolvedValue({} as never);
   voiceApi.requestReading.mockResolvedValue({
@@ -473,12 +517,34 @@ describe("StoryListeningExperience", () => {
     renderExperience();
     await waitFor(() => expect(voiceApi.requestReading).toHaveBeenCalledTimes(1));
 
-    fireEvent.change(screen.getByLabelText("音色"), { target: { value: "calm_male" } });
+    fireEvent.click(screen.getByRole("button", { name: "查看全部中文音色" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "全部中文音色" })).getByRole("button", { name: "选择青涩青年音色" }));
     fireEvent.change(screen.getByLabelText("语速"), { target: { value: "1.25" } });
 
-    expect(voiceApi.updateSettings).toHaveBeenCalledWith({ selected_voice_color: "calm_male" });
+    expect(voiceApi.updateSettings).toHaveBeenCalledWith({ selected_voice_color: "male-qn-qingse" });
     expect(voiceApi.updateSettings).toHaveBeenCalledWith({ selected_speed: 1.25 });
     await waitFor(() => expect(voiceApi.requestReading).toHaveBeenCalledTimes(3));
+  });
+
+  it("shows a clean Chinese voice picker with searchable Mandarin and Cantonese catalog", async () => {
+    renderExperience();
+
+    expect((await screen.findAllByText("少女音色")).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("warm_female")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看全部中文音色" }));
+    expect(screen.getByRole("dialog", { name: "全部中文音色" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "温润" } });
+    expect(screen.getByRole("button", { name: "选择温润男声" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "试听温润男声" })).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "全部中文音色" })).queryByRole("button", { name: "选择青涩青年音色" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("tab", { name: "粤语" }));
+    expect(screen.getByRole("button", { name: "选择温柔女声" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "试听温柔女声" })).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "全部中文音色" })).queryByRole("button", { name: "选择青涩青年音色" })).not.toBeInTheDocument();
   });
 
   it("waits for metadata before applying a cross-paragraph seek and refines chapter duration from the media", async () => {
@@ -694,17 +760,30 @@ describe("StoryListeningExperience", () => {
     expect(load).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ["音色", "calm_male"],
-    ["语速", "1.25"],
-  ])("cancels the silent-stall deadline when %s changes", async (label, value) => {
+  it("cancels the silent-stall deadline when the voice changes", async () => {
     jest.useFakeTimers();
     renderExperience();
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
 
     const audio = document.querySelector("audio") as HTMLAudioElement;
     fireEvent.playing(audio);
-    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    fireEvent.click(screen.getByRole("button", { name: "查看全部中文音色" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "全部中文音色" })).getByRole("button", { name: "选择青涩青年音色" }));
+    await act(async () => {
+      jest.advanceTimersByTime(8_000);
+    });
+
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("cancels the silent-stall deadline when the speed changes", async () => {
+    jest.useFakeTimers();
+    renderExperience();
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19));
+
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    fireEvent.playing(audio);
+    fireEvent.change(screen.getByLabelText("语速"), { target: { value: "1.25" } });
     await act(async () => {
       jest.advanceTimersByTime(8_000);
     });

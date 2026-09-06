@@ -1,9 +1,9 @@
-"""MiniMax system voice catalog used by the story-reader selector."""
+"""MiniMax system voices exposed by the Chinese story reader."""
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Iterable
+from typing import Any, Collection, Iterable, Optional
 
 
 @dataclass(frozen=True)
@@ -15,30 +15,87 @@ class MiniMaxVoice:
     recommended: bool = False
 
 
-# Keep legacy aliases at the top while exposing real MiniMax IDs to new users.
-_CURATED_VOICES: tuple[MiniMaxVoice, ...] = (
-    MiniMaxVoice("female-shaonv", "少女·灵动", "中文", "故事推荐", True),
-    MiniMaxVoice("male-qn-qingse", "青年·清朗", "中文", "故事推荐", True),
-    MiniMaxVoice("female-yujie", "御姐·沉稳", "中文", "故事推荐", True),
-    MiniMaxVoice("male-qn-jingying", "青年·精英", "中文", "中文", False),
-    MiniMaxVoice("female-chengshu", "成熟女声", "中文", "中文", False),
-    MiniMaxVoice("male-qn-badao", "霸道青年", "中文", "中文", False),
-    MiniMaxVoice("English_Trustworthy_Man", "Trustworthy Man", "English", "English", False),
-    MiniMaxVoice("English_CalmWoman", "Calm Woman", "English", "English", False),
-    MiniMaxVoice("English_CaptivatingStoryteller", "Captivating Storyteller", "English", "English", True),
-    MiniMaxVoice("Japanese_CalmLady", "Calm Lady", "日本語", "日本語", False),
-    MiniMaxVoice("Korean_SweetGirl", "Sweet Girl", "한국어", "한국어", False),
+DEFAULT_STORY_VOICE_ID = "female-shaonv"
+STORY_VOICE_LANGUAGES = ("普通话", "粤语")
+
+
+# These names and IDs mirror MiniMax's official Chinese system voice table.
+# ``label`` is the only user-facing name; IDs remain provider implementation
+# details and are never used to build UI copy.
+_CHINESE_VOICES: tuple[MiniMaxVoice, ...] = (
+    MiniMaxVoice("male-qn-qingse", "青涩青年音色", "普通话", "标准音色", True),
+    MiniMaxVoice("male-qn-jingying", "精英青年音色", "普通话", "标准音色", False),
+    MiniMaxVoice("male-qn-badao", "霸道青年音色", "普通话", "标准音色", False),
+    MiniMaxVoice("male-qn-daxuesheng", "青年大学生音色", "普通话", "标准音色", False),
+    MiniMaxVoice("female-shaonv", "少女音色", "普通话", "标准音色", True),
+    MiniMaxVoice("female-yujie", "御姐音色", "普通话", "标准音色", True),
+    MiniMaxVoice("female-chengshu", "成熟女性音色", "普通话", "标准音色", True),
+    MiniMaxVoice("female-tianmei", "甜美女性音色", "普通话", "标准音色", False),
+    MiniMaxVoice("male-qn-qingse-jingpin", "青涩青年音色 · 精品版", "普通话", "精品音色", False),
+    MiniMaxVoice("male-qn-jingying-jingpin", "精英青年音色 · 精品版", "普通话", "精品音色", False),
+    MiniMaxVoice("male-qn-badao-jingpin", "霸道青年音色 · 精品版", "普通话", "精品音色", False),
+    MiniMaxVoice("male-qn-daxuesheng-jingpin", "青年大学生音色 · 精品版", "普通话", "精品音色", False),
+    MiniMaxVoice("female-shaonv-jingpin", "少女音色 · 精品版", "普通话", "精品音色", False),
+    MiniMaxVoice("female-yujie-jingpin", "御姐音色 · 精品版", "普通话", "精品音色", False),
+    MiniMaxVoice("female-chengshu-jingpin", "成熟女性音色 · 精品版", "普通话", "精品音色", False),
+    MiniMaxVoice("female-tianmei-jingpin", "甜美女性音色 · 精品版", "普通话", "精品音色", False),
+    MiniMaxVoice("clever_boy", "聪明男童", "普通话", "角色音色", False),
+    MiniMaxVoice("cute_boy", "可爱男童", "普通话", "角色音色", False),
+    MiniMaxVoice("lovely_girl", "萌萌女童", "普通话", "角色音色", False),
+    MiniMaxVoice("cartoon_pig", "卡通猪小琪", "普通话", "角色音色", False),
+    MiniMaxVoice("bingjiao_didi", "病娇弟弟", "普通话", "角色音色", False),
+    MiniMaxVoice("junlang_nanyou", "俊朗男友", "普通话", "角色音色", False),
+    MiniMaxVoice("chunzhen_xuedi", "纯真学弟", "普通话", "角色音色", False),
+    MiniMaxVoice("lengdan_xiongzhang", "冷淡学长", "普通话", "角色音色", False),
+    MiniMaxVoice("badao_shaoye", "霸道少爷", "普通话", "角色音色", False),
+    MiniMaxVoice("tianxin_xiaoling", "甜心小玲", "普通话", "角色音色", False),
+    MiniMaxVoice("qiaopi_mengmei", "俏皮萌妹", "普通话", "角色音色", False),
+    MiniMaxVoice("wumei_yujie", "妩媚御姐", "普通话", "角色音色", False),
+    MiniMaxVoice("diadia_xuemei", "嗲嗲学妹", "普通话", "角色音色", False),
+    MiniMaxVoice("danya_xuejie", "淡雅学姐", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Reliable_Executive", "沉稳高管", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_News_Anchor", "新闻女声", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_Mature_Woman", "傲娇御姐", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_Unrestrained_Young_Man", "不羁青年", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Arrogant_Miss", "嚣张小姐", "普通话", "角色音色", False),
+    MiniMaxVoice("Robot_Armor", "机械战甲", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Kind-hearted_Antie", "热心大婶", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_HK_Flight_Attendant", "港普空姐", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_Humorous_Elder", "搞笑大爷", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Gentleman", "温润男声", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_Warm_Bestie", "温暖闺蜜", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Male_Announcer", "播报男声", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_Sweet_Lady", "甜美女声", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_Southern_Young_Man", "南方小哥", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Wise_Women", "阅历姐姐", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_Gentle_Youth", "温润青年", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_Warm_Girl", "温暖少女", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Kind-hearted_Elder", "花甲奶奶", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Cute_Spirit", "憨憨萌兽", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Radio_Host", "电台男主播", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_Lyrical_Voice", "抒情男声", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_Straightforward_Boy", "率真弟弟", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Sincere_Adult", "真诚青年", "普通话", "主播与叙事", False),
+    MiniMaxVoice("Chinese (Mandarin)_Gentle_Senior", "温柔学姐", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Stubborn_Friend", "嘴硬竹马", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Crisp_Girl", "清脆少女", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Pure-hearted_Boy", "清澈邻家弟弟", "普通话", "角色音色", False),
+    MiniMaxVoice("Chinese (Mandarin)_Soft_Girl", "柔和少女", "普通话", "角色音色", False),
+    MiniMaxVoice("Cantonese_ProfessionalHost（F)", "专业女主持", "粤语", "粤语音色", False),
+    MiniMaxVoice("Cantonese_GentleLady", "温柔女声", "粤语", "粤语音色", False),
+    MiniMaxVoice("Cantonese_ProfessionalHost（M)", "专业男主持", "粤语", "粤语音色", False),
+    MiniMaxVoice("Cantonese_PlayfulMan", "活泼男声", "粤语", "粤语音色", False),
+    MiniMaxVoice("Cantonese_CuteGirl", "可爱女孩", "粤语", "粤语音色", False),
+    MiniMaxVoice("Cantonese_KindWoman", "善良女声", "粤语", "粤语音色", False),
 )
 
-# The official page is a catalog, not a stable API endpoint. Keep the IDs in
-# source so the UI can search/select them without making a provider request.
-# Curated entries above carry human labels; these additional official IDs use
-# their provider names as labels and are grouped by the language prefix.
+
+# Keep provider-level support for the other official IDs so old assets and
+# MiniMax provider validation remain compatible. Story settings use the
+# Chinese-only filter below and never return these entries to the UI.
 _ADDITIONAL_SYSTEM_VOICE_IDS = """
-female-shaonv-jingpin female-tianmei female-tianmei-jingpin female-yujie-jingpin
-male-qn-badao-jingpin male-qn-daxuesheng male-qn-daxuesheng-jingpin male-qn-jingying-jingpin male-qn-qingse-jingpin
-English_Aussie_Bloke English_Diligent_Man English_Gentle-voiced_man English_Graceful_Lady English_Whispering_girl
-Arabic_CalmWoman Arabic_FriendlyGuy Cantonese_CuteGirl Cantonese_GentleLady Cantonese_KindWoman Cantonese_PlayfulMan Cantonese_ProfessionalHost
+English_Trustworthy_Man English_CalmWoman English_CaptivatingStoryteller English_Aussie_Bloke English_Diligent_Man English_Gentle-voiced_man English_Graceful_Lady English_Whispering_girl
+Arabic_CalmWoman Arabic_FriendlyGuy Korean_SweetGirl Cantonese_ProfessionalHost
 French_CasualMan French_FemaleAnchor French_Female_News French_MaleNarrator French_Male_Speech_New French_MovieLeadFemale
 German_FriendlyMan German_PlayfulMan German_SweetLady
 Indonesian_BossyLeader Indonesian_CalmWoman Indonesian_CaringMan Indonesian_CharmingGirl Indonesian_ConfidentWoman Indonesian_DeterminedBoy Indonesian_GentleGirl Indonesian_ReservedYoungMan Indonesian_SweetGirl
@@ -51,16 +108,16 @@ Portuguese_AngryMan Portuguese_AnimeCharacter Portuguese_Arnold Portuguese_Asser
 Thai_female_1_sample1 Thai_female_2_sample2 Thai_male_1_sample8 Thai_male_2_sample2 Turkish_CalmWoman Turkish_Trustworthyman Vietnamese_kindhearted_girl
 """.split()
 
-_CURATED_IDS = {voice.voice_id for voice in _CURATED_VOICES}
-MINIMAX_VOICES: tuple[MiniMaxVoice, ...] = _CURATED_VOICES + tuple(
+_CHINESE_IDS = {voice.voice_id for voice in _CHINESE_VOICES}
+MINIMAX_VOICES: tuple[MiniMaxVoice, ...] = _CHINESE_VOICES + tuple(
     MiniMaxVoice(
         voice_id=voice_id,
         label=voice_id,
-        language=voice_id.split("_", 1)[0] if "_" in voice_id else "中文",
-        group="全部音色库",
+        language=voice_id.split("_", 1)[0] if "_" in voice_id else "未知",
+        group="其他语言",
     )
     for voice_id in _ADDITIONAL_SYSTEM_VOICE_IDS
-    if voice_id not in _CURATED_IDS
+    if voice_id not in _CHINESE_IDS
 )
 
 LEGACY_VOICE_ALIASES = {
@@ -70,12 +127,22 @@ LEGACY_VOICE_ALIASES = {
 }
 
 
-def voice_options(query: str = "", *, include_legacy: bool = False) -> list[dict[str, Any]]:
+def voice_options(
+    query: str = "",
+    *,
+    languages: Optional[Collection[str]] = STORY_VOICE_LANGUAGES,
+    include_legacy: bool = False,
+) -> list[dict[str, Any]]:
+    """Return display-ready voices, filtered to story languages by default."""
     normalized = query.strip().lower()
-    voices: Iterable[MiniMaxVoice] = MINIMAX_VOICES
+    voices: Iterable[MiniMaxVoice] = tuple(
+        voice
+        for voice in MINIMAX_VOICES
+        if languages is None or voice.language in languages
+    )
     if include_legacy:
         voices = tuple(voices) + tuple(
-            MiniMaxVoice(alias, f"兼容 · {alias}", "中文", "兼容旧设置")
+            MiniMaxVoice(alias, f"兼容 · {alias}", "普通话", "兼容旧设置")
             for alias in LEGACY_VOICE_ALIASES
         )
     if normalized:
@@ -99,11 +166,22 @@ def is_supported_voice(voice_id: str) -> bool:
     return canonical in {voice.voice_id for voice in MINIMAX_VOICES}
 
 
+def is_story_voice_supported(voice_id: str) -> bool:
+    """Return whether an ID is selectable in the Chinese story reader."""
+    return canonical_voice_id(voice_id) in _CHINESE_IDS
+
+
+def normalize_story_voice_id(voice_id: Optional[str]) -> str:
+    """Map legacy/missing/non-Chinese settings to the story default."""
+    canonical = canonical_voice_id(voice_id or DEFAULT_STORY_VOICE_ID)
+    return canonical if is_story_voice_supported(canonical) else DEFAULT_STORY_VOICE_ID
+
+
 def preview_text_for_voice(voice_id: str) -> str:
     """Return a short neutral sentence suitable for an on-demand preview."""
     canonical = canonical_voice_id(voice_id)
     voice = next((item for item in MINIMAX_VOICES if item.voice_id == canonical), None)
-    if voice is None or voice.language == "中文":
+    if voice is None or voice.language in STORY_VOICE_LANGUAGES:
         return "夜色渐深，故事才刚刚开始。"
     if voice.language == "日本語":
         return "夜が更けても、物語は始まったばかりです。"
