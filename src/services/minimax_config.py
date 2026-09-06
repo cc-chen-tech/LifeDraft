@@ -41,7 +41,7 @@ class MiniMaxConfig:
             tts_model=source.get("MINIMAX_TTS_MODEL", "speech-2.8-turbo"),
             tts_websocket_url=source.get(
                 "MINIMAX_TTS_WEBSOCKET_URL",
-                "wss://api.minimax.chat/ws/v1/t2a_v2",
+                "wss://api.minimaxi.com/ws/v1/t2a_v2",
             ),
             tts_async_create_url=source.get(
                 "MINIMAX_TTS_ASYNC_CREATE_URL",
