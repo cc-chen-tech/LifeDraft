@@ -406,6 +406,7 @@ export interface GameListItem {
   player_name: string;
   age?: number;
   week?: number;
+  has_progress?: boolean;
   updated_at?: string;
   created_at?: string;
 }
