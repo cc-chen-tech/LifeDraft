@@ -6,8 +6,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import struct
-import subprocess
+import subprocess  # nosec B404 - fixed ffmpeg argv, shell execution is disabled
 import tarfile
 import tempfile
 import time
@@ -587,9 +588,12 @@ class MiniMaxTTSProvider:
                     + "\n",
                     encoding="utf-8",
                 )
-                subprocess.run(
+                ffmpeg_binary = shutil.which("ffmpeg")
+                if ffmpeg_binary is None:
+                    raise FileNotFoundError("ffmpeg is required to assemble scene audio")
+                subprocess.run(  # nosec B603 - fixed argv and validated local paths
                     [
-                        "ffmpeg",
+                        ffmpeg_binary,
                         "-nostdin",
                         "-y",
                         "-f",
@@ -726,9 +730,12 @@ def _append_silence_to_mp3(
 ) -> None:
     """Append a planned scene pause while keeping the cached asset self-contained."""
     pause_seconds = max(0.0, float(pause_after_ms) / 1000.0)
-    subprocess.run(
+    ffmpeg_binary = shutil.which("ffmpeg")
+    if ffmpeg_binary is None:
+        raise FileNotFoundError("ffmpeg is required to append scene silence")
+    subprocess.run(  # nosec B603 - fixed argv and validated temporary paths
         [
-            "ffmpeg",
+            ffmpeg_binary,
             "-nostdin",
             "-y",
             "-i",
