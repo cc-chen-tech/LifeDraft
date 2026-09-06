@@ -819,6 +819,58 @@ class TestActiveGameSession:
 class TestListSavedGamesPerformance:
     """list_saved_games 查询性能测试 - 对应 H-06"""
 
+    def test_daily_timeline_uses_timeline_week_for_saved_game_display(self, db_session):
+        """日历模式的存档列表应从 timeline 推导显示周数。"""
+        from unittest.mock import patch
+
+        from src.database.game_repository import GameRepository
+        from src.database.models import Game, GameState, User
+
+        user = User(
+            private_id="daily_timeline_save_list_user",
+            public_id="dailylist1",
+            display_name="Daily Timeline User",
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        game = Game(
+            user_id=user.user_id,
+            language="zh",
+            initial_state={
+                "player_name": "日历角色",
+                "age": 28,
+                "week": 0,
+                "timeline": {"version": 2, "week_number": 1, "day_index": 0},
+            },
+        )
+        db_session.add(game)
+        db_session.commit()
+
+        db_session.add(
+            GameState(
+                game_id=game.game_id,
+                week=0,
+                age=28,
+                state_json={
+                    "player_name": "日历角色",
+                    "age": 28,
+                    "week": 0,
+                    "timeline": {
+                        "version": 2,
+                        "week_number": 2,
+                        "day_index": 13,
+                    },
+                },
+            )
+        )
+        db_session.commit()
+
+        with patch("src.database.game_repository.SessionLocal", return_value=db_session):
+            games = GameRepository().list_saved_games(user_id=user.user_id)
+
+        assert games[0]["week"] == 1
+
     def test_list_games_with_multiple_games(self, db_session):
         """多个游戏时查询应正常工作"""
         from src.database.models import Game, User
