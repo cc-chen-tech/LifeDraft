@@ -33,6 +33,7 @@ ENV PYTHONUNBUFFERED=1 \
 # 安装运行时依赖（仅需要的最小依赖）
 RUN apt-get update && apt-get install -y \
     postgresql-client \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # 从 builder 阶段复制虚拟环境
