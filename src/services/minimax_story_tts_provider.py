@@ -779,11 +779,18 @@ def _extract_audio_hex(payload: Mapping[str, Any]) -> Optional[str]:
 
 
 def _is_done_message(payload: Mapping[str, Any]) -> bool:
+    if payload.get("is_final") is True:
+        return True
     candidates = [payload.get("status"), payload.get("event")]
     data = payload.get("data")
     if isinstance(data, Mapping):
+        if data.get("is_final") is True:
+            return True
         candidates.extend([data.get("status"), data.get("event")])
-    return any(str(candidate).lower() in {"done", "finished", "complete"} for candidate in candidates)
+    return any(
+        str(candidate).lower() in {"done", "finished", "complete", "task_finished", "task_failed"}
+        for candidate in candidates
+    )
 
 
 def _raise_for_base_resp(payload: Mapping[str, Any]) -> None:
