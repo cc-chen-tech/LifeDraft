@@ -1,5 +1,6 @@
 """Provider-free MiniMax TTS protocol parser contracts."""
 
+import json
 import tarfile
 from io import BytesIO
 from pathlib import Path
@@ -53,6 +54,12 @@ def test_tts_protocol_helpers_accept_nested_audio_and_completion_shapes() -> Non
     assert _extract_audio_hex({"audio": ""}) is None
     assert _is_done_message({"data": {"event": "finished"}}) is True
     assert _is_done_message({"status": "running"}) is False
+
+
+def test_tts_protocol_recognizes_minimax_task_finished_and_final_audio() -> None:
+    """The real WebSocket stream has two distinct completion signals."""
+    assert _is_done_message({"event": "task_finished"}) is True
+    assert _is_done_message({"event": "task_continued", "is_final": True}) is True
 
 
 def test_minimax_narration_payload_uses_native_emotion_and_vocal_cue() -> None:
@@ -111,6 +118,69 @@ def test_minimax_websocket_scene_frames_follow_official_task_protocol() -> None:
     assert start["voice_setting"]["emotion"] == "fearful"
     assert continue_frame == {"event": "task_continue", "text": "门后传来一声轻响。"}
     assert finish == {"event": "task_finish"}
+
+
+def test_minimax_websocket_client_writes_audio_and_stops_on_task_finished(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Exercise the receive loop with the frames returned by MiniMax."""
+    from websockets.sync import client as websocket_client
+
+    from src.services.minimax_story_tts_provider import (
+        MiniMaxWebSocketTTSClient,
+    )
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.messages = [
+                {"event": "connected_success"},
+                {"event": "task_started"},
+                {"event": "task_continued", "data": {"audio": "4944332d31"}},
+                {"event": "task_continued", "is_final": True},
+                {"event": "task_finished"},
+            ]
+            self.sent: list[dict[str, object]] = []
+
+        def __enter__(self) -> "FakeWebSocket":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def recv(self) -> str:
+            if not self.messages:
+                raise AssertionError("client waited past the MiniMax terminal frame")
+            return json.dumps(self.messages.pop(0))
+
+        def send(self, message: str) -> None:
+            self.sent.append(json.loads(message))
+
+    fake_websocket = FakeWebSocket()
+
+    def fake_connect(*args: object, **kwargs: object) -> FakeWebSocket:
+        return fake_websocket
+
+    monkeypatch.delenv("MINIMAX_E2E_LOCAL_AUDIO", raising=False)
+    monkeypatch.setattr(websocket_client, "connect", fake_connect)
+
+    client = MiniMaxWebSocketTTSClient(
+        MiniMaxConfig.from_env(
+            env={"MINIMAX_API_KEY": "configured"},
+            voice_asset_dir=tmp_path,
+        )
+    )
+    output_path = tmp_path / "scene.mp3"
+    client.synthesize_to_file(
+        {"model": "speech-2.8-turbo", "text": "测试。"},
+        output_path,
+    )
+
+    assert output_path.read_bytes() == b"ID3-1"
+    assert [message["event"] for message in fake_websocket.sent] == [
+        "task_start",
+        "task_continue",
+        "task_finish",
+    ]
 
 
 def test_tts_protocol_rejects_provider_error_and_parses_nested_download_url() -> None:
