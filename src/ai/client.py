@@ -520,6 +520,7 @@ class AIClient:
         model: Optional[str] = None,
         thinking: Optional[bool] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
+        allow_truncation_recovery: bool = True,
     ) -> Optional[Dict[str, Any]]:
         """
         Call AI and parse response as JSON.
@@ -531,6 +532,7 @@ class AIClient:
             max_tokens: Maximum tokens to generate
             model: Optional model override
             thinking: Disable thinking for DeepSeek V4 when False
+            allow_truncation_recovery: Whether to recover length-truncated output
 
         Returns:
             Parsed JSON dict, or None if extraction fails
@@ -543,6 +545,7 @@ class AIClient:
             model=model,
             thinking=thinking,
             generation_tracker=generation_tracker,
+            _allow_truncation_recovery=allow_truncation_recovery,
         )
         return extract_json(content)
 

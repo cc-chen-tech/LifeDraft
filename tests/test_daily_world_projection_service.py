@@ -100,6 +100,12 @@ class FakeRepository:
         self.state.retry_calls.append((args, kwargs))
         return self.state.retry_result
 
+    def mark_degraded_unknown_and_finish_attempt(
+        self, *args: Any, **kwargs: Any
+    ) -> bool:
+        self.state.degraded_calls.append((args, kwargs))
+        return self.state.degraded_result
+
 
 class WorkerState:
     def __init__(self, row: Any, *, daily_attempts: int = 0) -> None:
@@ -114,11 +120,13 @@ class WorkerState:
         self.release_calls: list[Any] = []
         self.ready_calls: list[Any] = []
         self.retry_calls: list[Any] = []
+        self.degraded_calls: list[Any] = []
         self.ensured: list[Any] = []
         self.renew_results: list[bool] = []
         self.release_results: list[Any] = []
         self.ready_result = True
         self.retry_result = True
+        self.degraded_result = True
         self.closed_sessions = 0
         self.commits = 0
         self.rollbacks = 0
@@ -1013,6 +1021,47 @@ def test_file_sqlite_typed_failure_commits_retry_and_finished_attempt(tmp_path) 
             "extraction_error",
             "invalid_schema",
         )
+
+
+def test_fifth_provider_failure_becomes_terminal_unknown_without_retry() -> None:
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    row = _row(now)
+    row.attempt_count = 5
+    state = WorkerState(row)
+    service = _service(
+        state,
+        now,
+        lambda *_args: (_ for _ in ()).throw(
+            WorldProjectionExtractionError("bad response", code="invalid_schema")
+        ),
+    )
+
+    service._process_claim(row.projection_id, now)
+
+    assert len(state.degraded_calls) == 1
+    assert state.retry_calls == []
+    assert state.degraded_calls[0][0][2] == "invalid_schema"
+
+
+def test_worker_daily_extraction_uses_one_provider_call_per_reservation(
+    monkeypatch,
+) -> None:
+    from src.services.daily_world_projection import DailyWorldProjectionService
+
+    calls: list[dict[str, Any]] = []
+
+    class _Generator:
+        def extract_daily_world_projection(self, *args: Any, **kwargs: Any) -> Any:
+            calls.append({"args": args, "kwargs": kwargs})
+            return "payload"
+
+    monkeypatch.setattr("src.ai.generator.EventGenerator", _Generator)
+    service = DailyWorldProjectionService(extractor=None)
+
+    assert service._extract("故事", ["选项"], {}) == "payload"
+    assert calls[0]["kwargs"]["retry_count"] == 1
 
 
 def test_replace_after_canonical_validation_is_fenced_without_provider_or_attempt(

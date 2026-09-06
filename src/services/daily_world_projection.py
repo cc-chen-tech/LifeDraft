@@ -59,6 +59,7 @@ logger = logging.getLogger(__name__)
 
 RETRY_DELAYS = (5, 30, 120, 300, 1800, 7200)
 MAX_DAILY_MODEL_CALLS = 8
+MAX_FAILED_EXTRACTION_ATTEMPTS = 5
 DEFAULT_TIME_ZONE = "Asia/Shanghai"
 LOCK_RETRY_ATTEMPTS = 3
 MAX_LEASE_OWNER_BYTES = 96
@@ -1400,6 +1401,27 @@ class DailyWorldProjectionService:
             return False
 
         def retry(session: Any, repo: Any) -> tuple[bool, bool]:
+            if (
+                row.attempt_count >= MAX_FAILED_EXTRACTION_ATTEMPTS
+                and outcome in {"extraction_error", "unexpected_error"}
+            ):
+                terminal = getattr(
+                    repo, "mark_degraded_unknown_and_finish_attempt", None
+                )
+                if terminal is not None:
+                    return (
+                        bool(
+                            terminal(
+                                row.projection_id,
+                                owner,
+                                error_code,
+                                source_hash=row.source_hash,
+                                attempt_id=attempt_id,
+                                now=self._as_utc_naive(self.now_fn()),
+                            )
+                        ),
+                        True,
+                    )
             method = getattr(repo, "mark_retryable_and_finish_attempt", None)
             if method is not None:
                 return (
@@ -1466,7 +1488,7 @@ class DailyWorldProjectionService:
         from src.ai.generator import EventGenerator
 
         return EventGenerator().extract_daily_world_projection(
-            story, list(options), tracked_state
+            story, list(options), tracked_state, retry_count=1
         )
 
     def _process_claim(
