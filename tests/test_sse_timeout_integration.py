@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from src.api.routers.gameplay import sse_helpers
 from src.api.routers.gameplay.sse_helpers import (make_sse_event,
                                                   stream_round_event)
 
@@ -19,20 +20,27 @@ class TestSSEStreamTimeout:
     """验证 SSE 流在长时间无产出时的超时行为。"""
 
     @pytest.mark.asyncio
-    async def test_sse_stream_sends_heartbeat_when_no_output(self):
+    async def test_sse_stream_sends_heartbeat_when_no_output(self, monkeypatch):
         """当生成器无产出时，SSE 流应定期发送 heartbeat 保持连接。
 
         验证心跳机制：即使 generate_round_event 阻塞，
-        SSE 流也应每 5 秒发送一次 heartbeat status 事件。
+        SSE 流也应按配置发送 heartbeat status 事件。
         """
+        async def immediate_sleep(_seconds):
+            return None
+
+        monkeypatch.setattr(sse_helpers, "HEARTBEAT_INTERVAL", 0)
+        monkeypatch.setattr(sse_helpers.asyncio, "sleep", immediate_sleep)
+
         game_loop = MagicMock()
-        # 模拟一个永远不会完成的生成（同步阻塞，在线程池中执行）
+        # 模拟一个永远不会完成的生成（同步阻塞，在线程池中执行）。
+        # 由测试结束时的 Event 显式释放，避免等待真实的 10 秒超时。
         import threading
 
         stop_event = threading.Event()
 
         def blocking_generation(**kwargs):
-            stop_event.wait(timeout=10)  # 阻塞 10 秒或直到测试结束
+            stop_event.wait()
             return None
 
         game_loop.generate_round_event = MagicMock(side_effect=blocking_generation)
@@ -67,10 +75,6 @@ class TestSSEStreamTimeout:
             for i in range(3):
                 if stream_cb:
                     stream_cb(f"chunk {i}")
-                # 在线程中不能使用 asyncio.sleep，用 time.sleep
-                import time
-
-                time.sleep(0.05)
             # 返回一个 mock event，model_dump 必须返回可 JSON 序列化的数据
             mock_event = MagicMock()
             mock_event.event_description = "test story"

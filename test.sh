@@ -823,21 +823,40 @@ run_e2e_browser_impl() {
     return $result
 }
 
-# 单元测试 (pytest -m unit)
+# 单元测试 (pytest -m 'unit and not slow')
 run_unit() {
     echo -e "${BLUE}========================================${NC}"
-    echo -e "${YELLOW}运行单元测试 (pytest -m unit)...${NC}"
+    echo -e "${YELLOW}运行快速单元测试 (pytest -m 'unit and not slow')...${NC}"
     echo -e "${BLUE}========================================${NC}"
     cd "$PROJECT_DIR"
     activate_python_env
     
-    run_pytest_with_isolated_database tests/ -m unit -v
+    run_pytest_with_isolated_database tests/ -m 'unit and not slow' -v
     local result=$?
     
     if [ $result -eq 0 ]; then
-        echo -e "${GREEN}✓ 单元测试通过${NC}"
+        echo -e "${GREEN}✓ 快速单元测试通过${NC}"
     else
-        echo -e "${RED}✗ 单元测试失败${NC}"
+        echo -e "${RED}✗ 快速单元测试失败${NC}"
+    fi
+    return $result
+}
+
+# 慢速/压力测试 (pytest -m slow)
+run_slow() {
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${YELLOW}运行慢速与压力测试 (pytest -m slow)...${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    cd "$PROJECT_DIR"
+    activate_python_env
+
+    run_pytest_with_isolated_database tests/ -m slow -v
+    local result=$?
+
+    if [ $result -eq 0 ]; then
+        echo -e "${GREEN}✓ 慢速与压力测试通过${NC}"
+    else
+        echo -e "${RED}✗ 慢速与压力测试失败${NC}"
     fi
     return $result
 }
@@ -1168,7 +1187,8 @@ show_help() {
     echo "  e2e-mobile    - 仅运行 Mobile Safari E2E"
     echo ""
     echo -e "${YELLOW}按标记运行:${NC}"
-    echo "  unit          - 运行 pytest -m unit"
+    echo "  unit          - 快速单元测试 (pytest -m 'unit and not slow')"
+    echo "  slow          - 显式运行慢速与压力测试 (pytest -m slow)"
     echo "  integration   - 运行 pytest -m integration"
     echo "  api           - 运行 pytest -m api"
     echo ""
@@ -1233,6 +1253,9 @@ case "${1:-}" in
         ;;
     unit)
         run_unit
+        ;;
+    slow)
+        run_slow
         ;;
     integration)
         run_integration

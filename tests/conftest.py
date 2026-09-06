@@ -592,13 +592,31 @@ def mock_sse_manager():
 
 
 @pytest.fixture
+def fake_clock():
+    """Return a deterministic clock for TTL tests without wall-clock sleeps."""
+
+    class FakeClock:
+        def __init__(self):
+            self.current = 0.0
+
+        def __call__(self):
+            return self.current
+
+        def advance(self, seconds):
+            self.current += seconds
+
+    return FakeClock()
+
+
+@pytest.fixture
 def mock_cache_with_ttl():
     """提供带 TTL 和大小限制的测试缓存"""
 
     class TTLCache:
-        def __init__(self, max_size=10, ttl=60):
+        def __init__(self, max_size=10, ttl=60, clock=None):
             self.max_size = max_size
             self.ttl = ttl
+            self._clock = clock or time.time
             self._cache = {}
             self._access_times = {}
             self._creation_times = {}
@@ -606,7 +624,7 @@ def mock_cache_with_ttl():
 
         def get(self, key):
             if key in self._cache:
-                if time.time() - self._creation_times[key] > self.ttl:
+                if self._clock() - self._creation_times[key] > self.ttl:
                     self.delete(key)
                     return None
                 self._access_counter += 1
@@ -620,7 +638,7 @@ def mock_cache_with_ttl():
             self._cache[key] = value
             self._access_counter += 1
             self._access_times[key] = self._access_counter
-            self._creation_times[key] = time.time()
+            self._creation_times[key] = self._clock()
 
         def delete(self, key):
             self._cache.pop(key, None)
