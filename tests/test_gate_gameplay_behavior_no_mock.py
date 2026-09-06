@@ -688,7 +688,7 @@ def test_quick_validator_flags_key_people_dilution_with_invented_cast() -> None:
 
     assert not result.passed
     assert any("名单外命名角色" in issue for issue in result.issues)
-    assert any("覆盖低于建议值" in warning for warning in result.warnings)
+    assert not any("覆盖低于建议值" in warning for warning in result.warnings)
 
 
 def test_event_generation_retries_when_story_dilutes_key_people_with_invented_cast() -> None:
