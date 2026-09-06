@@ -729,9 +729,9 @@ class StoryVoiceReadingService:
                 fallback_reason=reason,
             )
             logger.warning(
-                "AI narration plan failed; using deterministic fallback reason=%s: %s",
+                "AI narration plan failed; using deterministic fallback reason=%s error_type=%s",
                 reason,
-                error,
+                type(error).__name__,
             )
             return fallback_plan, metrics
 
