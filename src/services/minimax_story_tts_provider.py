@@ -713,7 +713,13 @@ def _validated_audio_duration_ms(audio_path: Path, extension: str) -> int:
             raise ValueError(f"expected valid {extension} audio")
         duration_seconds = getattr(audio.info, "length", None)
         if duration_seconds is None or duration_seconds <= 0:
-            raise ValueError("audio duration is missing or invalid")
+            bitrate = getattr(audio.info, "bitrate", None)
+            if extension != "mp3" or not bitrate or audio_path.stat().st_size <= 0:
+                raise ValueError("audio duration is missing or invalid")
+            # Streaming MP3 responses can omit a usable frame-count header while
+            # still being parseable audio. Estimate duration from the bitrate so
+            # the asset can be validated and cached instead of discarded.
+            duration_seconds = audio_path.stat().st_size * 8 / float(bitrate)
     except Exception as error:
         raise RuntimeError("MiniMax TTS generated invalid audio") from error
     return max(1, int(round(float(duration_seconds) * 1000)))

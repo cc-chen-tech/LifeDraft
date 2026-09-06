@@ -194,6 +194,27 @@ def test_minimax_websocket_client_writes_audio_and_stops_on_task_finished(
     assert fake_websocket.finish_sent_before_recv == [False, False, False, False]
 
 
+def test_streamed_mp3_with_zero_frame_metadata_uses_bitrate_duration(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import src.services.minimax_story_tts_provider as provider_module
+    from src.services.minimax_story_tts_provider import _validated_audio_duration_ms
+
+    class FakeInfo:
+        length = 0.0
+        bitrate = 128_000
+
+    class FakeMP3:
+        info = FakeInfo()
+
+    audio_path = tmp_path / "streamed.mp3"
+    audio_path.write_bytes(b"x" * 128_000)
+    monkeypatch.setattr(provider_module, "MP3", FakeMP3)
+    monkeypatch.setattr(provider_module.mutagen, "File", lambda path: FakeMP3())
+
+    assert _validated_audio_duration_ms(audio_path, "mp3") == 8_000
+
+
 def test_tts_protocol_rejects_provider_error_and_parses_nested_download_url() -> None:
     with pytest.raises(RuntimeError, match="1008 quota exhausted"):
         _raise_for_base_resp({"base_resp": {"status_code": 1008, "status_msg": "quota exhausted"}})
