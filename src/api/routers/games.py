@@ -574,11 +574,22 @@ async def update_character_settings(
 
     game_session = session_store.get(game_id, user_id)
     if game_session and game_session.game_loop and game_session.game_loop.player_state:
-        game_session.game_loop.player_state.character_settings = merged_settings
-        if req.player_name is not None and req.player_name.strip():
-            game_session.game_loop.player_state.player_name = req.player_name.strip()
-        if req.life_vision is not None:
-            game_session.game_loop.player_state.life_vision = req.life_vision
+        from src.api.routers.gameplay.sse_helpers import _get_game_state_lock
+        from src.services.daily_recommended_prefetch import (
+            refresh_daily_recommended_prefetch_for_current_event,
+        )
+
+        with _get_game_state_lock(game_id):
+            game_session.game_loop.player_state.character_settings = merged_settings
+            if req.player_name is not None and req.player_name.strip():
+                game_session.game_loop.player_state.player_name = req.player_name.strip()
+            if req.life_vision is not None:
+                game_session.game_loop.player_state.life_vision = req.life_vision
+            refresh_daily_recommended_prefetch_for_current_event(
+                game_id=game_id,
+                user_id=user_id,
+                game_loop=game_session.game_loop,
+            )
     return MessageResponse(success=True, message="Character settings updated")
 
 
@@ -701,6 +712,16 @@ async def update_game_settings(
                     if game:
                         setattr(game, "constraint_level", req.constraint_level)
                         db_session.commit()
+                    if game_loop:
+                        from src.services.daily_recommended_prefetch import (
+                            refresh_daily_recommended_prefetch_for_current_event,
+                        )
+
+                        refresh_daily_recommended_prefetch_for_current_event(
+                            game_id=game_id,
+                            user_id=user_id,
+                            game_loop=game_loop,
+                        )
                 except Exception:
                     db_session.rollback()
                     if live_changed and previous_live_quality is not None:
@@ -807,9 +828,20 @@ async def update_narrative_style(
     # 同步更新会话中的 style
     game_session = session_store.get(game_id, user_id=user_id)
     if game_session and game_session.game_loop:
-        game_session.game_loop.narrative_style_id = req.style_id  # type: ignore[attr-defined]
-        if game_session.game_loop.player_state:
-            game_session.game_loop.player_state.narrative_style_id = req.style_id
+        from src.api.routers.gameplay.sse_helpers import _get_game_state_lock
+        from src.services.daily_recommended_prefetch import (
+            refresh_daily_recommended_prefetch_for_current_event,
+        )
+
+        with _get_game_state_lock(game_id):
+            game_session.game_loop.narrative_style_id = req.style_id  # type: ignore[attr-defined]
+            if game_session.game_loop.player_state:
+                game_session.game_loop.player_state.narrative_style_id = req.style_id
+            refresh_daily_recommended_prefetch_for_current_event(
+                game_id=game_id,
+                user_id=user_id,
+                game_loop=game_session.game_loop,
+            )
 
     return MessageResponse(success=True, message="Narrative style updated")
 

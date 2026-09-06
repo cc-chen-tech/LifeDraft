@@ -237,6 +237,101 @@ def test_prefetch_repository_deduplicates_and_fences_worker_writes(db_session) -
     assert repository.find_valid(**identity).status == "story_ready"
 
 
+def test_prefetch_repository_reuses_active_identity_when_state_changes(db_session) -> None:
+    repository = DailyRecommendedPrefetchRepository(db_session)
+
+    first = repository.enqueue(
+        game_id=43,
+        user_id=None,
+        event_id="day-0-event",
+        revision=1,
+        day_index=0,
+        option_index=1,
+        state_fingerprint="state-v1",
+    )
+    reused = repository.enqueue(
+        game_id=43,
+        user_id=None,
+        event_id="day-0-event",
+        revision=1,
+        day_index=0,
+        option_index=1,
+        state_fingerprint="state-v2",
+    )
+
+    assert reused.prefetch_id == first.prefetch_id
+    assert reused.state_fingerprint == "state-v1"
+
+
+def test_prefetch_repository_requeues_terminal_identity_without_unique_conflict(
+    db_session,
+) -> None:
+    repository = DailyRecommendedPrefetchRepository(db_session)
+    task = repository.enqueue(
+        game_id=44,
+        user_id=None,
+        event_id="day-0-event",
+        revision=1,
+        day_index=0,
+        option_index=1,
+        state_fingerprint="state-v1",
+    )
+    task.status = "invalidated"
+    task.demanded = True
+    db_session.flush()
+
+    fresh = repository.enqueue(
+        game_id=44,
+        user_id=None,
+        event_id="day-0-event",
+        revision=1,
+        day_index=0,
+        option_index=1,
+        state_fingerprint="state-v1",
+    )
+
+    assert fresh.prefetch_id == task.prefetch_id
+    assert fresh.status == "queued"
+    assert fresh.demanded is False
+
+
+def test_prefetch_repository_prefers_ready_task_for_duplicate_identity(db_session) -> None:
+    repository = DailyRecommendedPrefetchRepository(db_session)
+    story_ready = repository.enqueue(
+        game_id=45,
+        user_id=None,
+        event_id="day-0-event",
+        revision=1,
+        day_index=0,
+        option_index=1,
+        state_fingerprint="state-v1",
+    )
+    story_ready.status = "story_ready"
+    ready = DailyRecommendedPrefetch(
+        game_id=45,
+        user_id=None,
+        event_id="day-0-event",
+        revision=1,
+        day_index=0,
+        option_index=1,
+        state_fingerprint="state-v2",
+        status="ready",
+    )
+    db_session.add(ready)
+    db_session.flush()
+
+    found = repository.find_active_by_identity(
+        game_id=45,
+        event_id="day-0-event",
+        revision=1,
+        day_index=0,
+        option_index=1,
+    )
+
+    assert found is not None
+    assert found.prefetch_id == ready.prefetch_id
+
+
 def test_prefetch_repository_invalidates_other_choice_and_consumes_ready_hit(
     db_session,
 ) -> None:
@@ -259,6 +354,7 @@ def test_prefetch_repository_invalidates_other_choice_and_consumes_ready_hit(
             game_id=42,
             event_id="day-0-event",
             revision=1,
+            day_index=0,
             option_index=1,
             state_fingerprint="state-v2",
         )
@@ -382,6 +478,167 @@ def test_ready_recommended_choice_resolves_event_while_other_choice_invalidates(
         db_session.get(DailyRecommendedPrefetch, task.prefetch_id).status
         == "invalidated"
     )
+
+
+def test_ready_recommended_choice_hits_after_background_state_drift(
+    db_session, caplog
+) -> None:
+    state = _state()
+    event = _event()
+    event.options[1].likely_choice = True
+    repository = DailyRecommendedPrefetchRepository(db_session)
+    task = repository.enqueue(
+        game_id=56,
+        user_id=None,
+        event_id=event.event_id,
+        revision=event.revision,
+        day_index=0,
+        option_index=1,
+        state_fingerprint=canonical_prefetch_fingerprint(state, event),
+    )
+    token = repository.claim(task.prefetch_id)
+    assert token
+    assert repository.mark_story_ready(task.prefetch_id, token, event.model_dump())
+
+    state.characters["杨戬立"] = {"name": "杨戬立", "description": "新识别人物"}
+    state.relationships["杨戬立"] = 1
+    state.established_facts.append({"fact": "新的事实"})
+    state.pending_storylines.append({"title": "新的伏笔"})
+
+    hit = resolve_choice_prefetch(
+        repository,
+        game_id=56,
+        state=state,
+        event=event,
+        option_index=1,
+    )
+
+    assert hit.next_event is not None
+    assert hit.task_id == task.prefetch_id
+    assert "identity_hit=true" in caplog.text
+    assert "state_drift=true" in caplog.text
+
+
+def test_ready_recommended_choice_falls_back_for_invalid_payload(db_session, caplog) -> None:
+    state = _state()
+    event = _event()
+    event.options[1].likely_choice = True
+    repository = DailyRecommendedPrefetchRepository(db_session)
+    task = repository.enqueue(
+        game_id=57,
+        user_id=None,
+        event_id=event.event_id,
+        revision=event.revision,
+        day_index=0,
+        option_index=1,
+        state_fingerprint=canonical_prefetch_fingerprint(state, event),
+    )
+    token = repository.claim(task.prefetch_id)
+    assert token
+    assert repository.mark_story_ready(
+        task.prefetch_id,
+        token,
+        {"event_id": event.event_id},
+    )
+
+    resolution = resolve_choice_prefetch(
+        repository,
+        game_id=57,
+        state=state,
+        event=event,
+        option_index=1,
+    )
+
+    assert resolution.next_event is None
+    assert resolution.task_id == task.prefetch_id
+    assert "identity_hit=true" in caplog.text
+    assert "fallback_reason=invalid_payload" in caplog.text
+
+
+def test_consume_ready_prefetch_ignores_background_state_drift(db_session) -> None:
+    repository = DailyRecommendedPrefetchRepository(db_session)
+    task = repository.enqueue(
+        game_id=58,
+        user_id=None,
+        event_id="day-0-event",
+        revision=1,
+        day_index=0,
+        option_index=1,
+        state_fingerprint="state-v1",
+    )
+    token = repository.claim(task.prefetch_id)
+    assert token
+    assert repository.mark_story_ready(task.prefetch_id, token, _event().model_dump())
+
+    consumed = repository.consume_if_ready(
+        game_id=58,
+        event_id="day-0-event",
+        revision=1,
+        day_index=0,
+        option_index=1,
+        state_fingerprint="state-v2",
+    )
+
+    assert consumed is not None
+    assert consumed.prefetch_id == task.prefetch_id
+    assert consumed.status == "consumed"
+
+
+def test_refresh_prefetch_requeues_after_semantic_setting_change(
+    db_engine, db_session, monkeypatch
+) -> None:
+    import src.services.daily_recommended_prefetch as prefetch_service
+    from sqlalchemy.orm import sessionmaker
+
+    monkeypatch.setattr("src.database.models.SessionLocal", sessionmaker(bind=db_engine))
+
+    state = _state()
+    event = _event()
+    event.options[1].likely_choice = True
+    game_loop = SimpleNamespace(
+        player_state=state,
+        current_event=event,
+        language="zh",
+    )
+    task = DailyRecommendedPrefetchRepository(db_session).enqueue(
+        game_id=59,
+        user_id=None,
+        event_id=event.event_id,
+        revision=event.revision,
+        day_index=0,
+        option_index=1,
+        state_fingerprint="state-before-setting-change",
+    )
+    db_session.commit()
+    submitted = []
+    monkeypatch.setattr(
+        "config.feature_flags.get_feature",
+        lambda name: name == "daily_recommended_prefetch",
+    )
+
+    refresh = getattr(
+        prefetch_service,
+        "refresh_daily_recommended_prefetch_for_current_event",
+        None,
+    )
+    assert callable(refresh)
+    new_task_id = refresh(
+        game_id=59,
+        user_id=None,
+        game_loop=game_loop,
+        submitter=lambda callback: submitted.append(callback),
+    )
+
+    assert new_task_id != task.prefetch_id
+    assert submitted
+    db_session.expire_all()
+    invalidated = db_session.get(DailyRecommendedPrefetch, task.prefetch_id)
+    requeued = db_session.get(DailyRecommendedPrefetch, new_task_id)
+    assert invalidated is not None
+    assert invalidated.status == "invalidated"
+    assert requeued is not None
+    assert requeued.status == "queued"
+    assert requeued.state_fingerprint != "state-before-setting-change"
 
 
 def test_inflight_recommended_choice_marks_task_demanded_without_duplicate(

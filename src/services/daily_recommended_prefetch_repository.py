@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 from uuid import uuid4
 
-from sqlalchemy import or_
+from sqlalchemy import case, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -34,17 +34,29 @@ class DailyRecommendedPrefetchRepository:
         voice_id: Optional[str] = None,
         voice_speed: Optional[float] = None,
     ) -> DailyRecommendedPrefetch:
-        existing = self.find_valid(
+        existing = self.find_active_by_identity(
             game_id=game_id,
-            user_id=user_id,
+            event_id=event_id,
+            revision=revision,
+            day_index=day_index,
+            option_index=option_index,
+        )
+        if existing is not None:
+            return existing
+        terminal = self.find_valid(
+            game_id=game_id,
             event_id=event_id,
             revision=revision,
             day_index=day_index,
             option_index=option_index,
             state_fingerprint=state_fingerprint,
         )
-        if existing is not None:
-            return existing
+        if terminal is not None and terminal.status in TERMINAL_STATUSES:
+            return self._requeue_terminal(
+                terminal,
+                voice_id=voice_id,
+                voice_speed=voice_speed,
+            )
         task = DailyRecommendedPrefetch(
             game_id=game_id,
             user_id=user_id,
@@ -62,18 +74,54 @@ class DailyRecommendedPrefetchRepository:
             self.db.flush()
         except IntegrityError:
             self.db.rollback()
-            existing = self.find_valid(
+            existing = self.find_active_by_identity(
                 game_id=game_id,
-                user_id=user_id,
+                event_id=event_id,
+                revision=revision,
+                day_index=day_index,
+                option_index=option_index,
+            )
+            if existing is not None:
+                return existing
+            terminal = self.find_valid(
+                game_id=game_id,
                 event_id=event_id,
                 revision=revision,
                 day_index=day_index,
                 option_index=option_index,
                 state_fingerprint=state_fingerprint,
             )
-            if existing is None:
+            if terminal is None or terminal.status not in TERMINAL_STATUSES:
                 raise
-            return existing
+            return self._requeue_terminal(
+                terminal,
+                voice_id=voice_id,
+                voice_speed=voice_speed,
+            )
+        return task
+
+    def _requeue_terminal(
+        self,
+        task: DailyRecommendedPrefetch,
+        *,
+        voice_id: Optional[str],
+        voice_speed: Optional[float],
+    ) -> DailyRecommendedPrefetch:
+        """Reuse a terminal row when the legacy fingerprint index blocks insert."""
+
+        setattr(task, "status", "queued")
+        setattr(task, "next_event_json", None)
+        setattr(task, "tts_job_id", None)
+        setattr(task, "voice_id", voice_id)
+        setattr(task, "voice_speed", voice_speed)
+        setattr(task, "demanded", False)
+        setattr(task, "lease_token", None)
+        setattr(task, "lease_expires_at", None)
+        setattr(task, "error_code", None)
+        setattr(task, "error_message", None)
+        setattr(task, "consumed_at", None)
+        setattr(task, "updated_at", datetime.utcnow())
+        self.db.flush()
         return task
 
     def find_valid(
@@ -99,6 +147,43 @@ class DailyRecommendedPrefetchRepository:
         if day_index is not None:
             query = query.filter(DailyRecommendedPrefetch.day_index == day_index)
         return query.one_or_none()
+
+    def find_active_by_identity(
+        self,
+        *,
+        game_id: int,
+        event_id: str,
+        revision: int,
+        day_index: int,
+        option_index: int,
+    ) -> Optional[DailyRecommendedPrefetch]:
+        """Find the reusable task for one versioned daily choice.
+
+        The source state fingerprint is retained as provenance, but derived
+        background state can change after a task is queued. Event identity is
+        the durable compatibility boundary for a speculative branch.
+        """
+
+        status_priority = case(
+            (DailyRecommendedPrefetch.status == "ready", 0),
+            (DailyRecommendedPrefetch.status == "story_ready", 1),
+            (DailyRecommendedPrefetch.status == "processing", 2),
+            (DailyRecommendedPrefetch.status == "queued", 3),
+            else_=4,
+        )
+        return (
+            self.db.query(DailyRecommendedPrefetch)
+            .filter(
+                DailyRecommendedPrefetch.game_id == game_id,
+                DailyRecommendedPrefetch.event_id == event_id,
+                DailyRecommendedPrefetch.revision == revision,
+                DailyRecommendedPrefetch.day_index == day_index,
+                DailyRecommendedPrefetch.option_index == option_index,
+                DailyRecommendedPrefetch.status.notin_(TERMINAL_STATUSES),
+            )
+            .order_by(status_priority, DailyRecommendedPrefetch.prefetch_id.desc())
+            .first()
+        )
 
     def find_demanded_after_choice(
         self,
@@ -231,15 +316,16 @@ class DailyRecommendedPrefetchRepository:
         game_id: int,
         event_id: str,
         revision: int,
+        day_index: int,
         option_index: int,
         state_fingerprint: str,
     ) -> Optional[DailyRecommendedPrefetch]:
-        task = self.find_valid(
+        task = self.find_active_by_identity(
             game_id=game_id,
             event_id=event_id,
             revision=revision,
+            day_index=day_index,
             option_index=option_index,
-            state_fingerprint=state_fingerprint,
         )
         if task is None or task.status not in {"story_ready", "ready"}:
             return None
@@ -265,17 +351,18 @@ class DailyRecommendedPrefetchRepository:
         game_id: int,
         event_id: str,
         revision: int,
+        day_index: int,
         option_index: int,
         state_fingerprint: str,
     ) -> Optional[DailyRecommendedPrefetch]:
-        task = self.find_valid(
+        task = self.find_active_by_identity(
             game_id=game_id,
             event_id=event_id,
             revision=revision,
+            day_index=day_index,
             option_index=option_index,
-            state_fingerprint=state_fingerprint,
         )
-        if task is not None and task.status not in TERMINAL_STATUSES:
+        if task is not None:
             setattr(task, "demanded", True)
             self.db.flush()
         return task

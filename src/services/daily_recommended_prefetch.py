@@ -42,7 +42,7 @@ class DemandedPrefetchProbe:
 
 
 def canonical_prefetch_fingerprint(state: Any, event: GameEvent) -> str:
-    """Hash canonical prompt state and current event identity deterministically."""
+    """Hash source state and event for provenance and drift diagnostics."""
 
     if hasattr(state, "model_dump"):
         state_data = state.model_dump(mode="json")
@@ -94,9 +94,20 @@ def resolve_choice_prefetch(
     event: GameEvent,
     option_index: int,
 ) -> ChoicePrefetchResolution:
-    """Resolve a ready hit or mark the matching in-flight task as demanded."""
+    """Resolve a ready hit or mark the matching in-flight task as demanded.
+
+    Task identity is the versioned daily branch. The full state fingerprint is
+    retained only to report source drift caused by harmless background updates.
+    """
 
     fingerprint = canonical_prefetch_fingerprint(state, event)
+    timeline = (
+        state.get("timeline")
+        if isinstance(state, dict)
+        else getattr(state, "timeline", None)
+    )
+    raw_day_index = timeline.get("day_index") if isinstance(timeline, dict) else 0
+    day_index = int(raw_day_index or 0)
     recommended = [
         index for index, option in enumerate(event.options) if option.likely_choice
     ]
@@ -110,7 +121,9 @@ def resolve_choice_prefetch(
         )
         logger.info(
             "daily_recommended_prefetch_metric action=choice selected=false "
-            "game_id=%s event_id=%s option_index=%s",
+            "identity_hit=false state_drift=false status=invalidated "
+            "fallback_reason=non_recommended_selection game_id=%s event_id=%s "
+            "option_index=%s",
             game_id,
             event.event_id,
             option_index,
@@ -126,19 +139,39 @@ def resolve_choice_prefetch(
         game_id=game_id,
         event_id=event.event_id,
         revision=event.revision,
+        day_index=day_index,
         option_index=option_index,
         state_fingerprint=fingerprint,
     )
     next_event = None
+    fallback_reason = "none"
     if task is not None and task.status in {"story_ready", "ready"}:
         payload = task.next_event_json
         if isinstance(payload, dict):
-            next_event = GameEvent.model_validate(payload)
+            try:
+                next_event = GameEvent.model_validate(payload)
+            except (TypeError, ValueError):
+                fallback_reason = "invalid_payload"
+        else:
+            fallback_reason = "missing_payload"
+    elif task is None:
+        fallback_reason = "identity_miss"
+    else:
+        fallback_reason = "prefetch_pending"
+    identity_hit = task is not None
+    state_drift = bool(
+        task is not None
+        and getattr(task, "state_fingerprint", None) != fingerprint
+    )
     logger.info(
         "daily_recommended_prefetch_metric action=choice selected=true "
-        "hit=%s status=%s game_id=%s event_id=%s option_index=%s",
-        next_event is not None,
+        "hit=%s identity_hit=%s state_drift=%s status=%s "
+        "fallback_reason=%s game_id=%s event_id=%s option_index=%s",
+        str(next_event is not None).lower(),
+        str(identity_hit).lower(),
+        str(state_drift).lower(),
         getattr(task, "status", "absent"),
+        fallback_reason,
         game_id,
         event.event_id,
         option_index,
@@ -226,6 +259,27 @@ def invalidate_daily_recommended_prefetch_for_current_event(
         return 0
     finally:
         db.close()
+
+
+def refresh_daily_recommended_prefetch_for_current_event(
+    *,
+    game_id: int,
+    user_id: Optional[int],
+    game_loop: Any,
+    submitter: Optional[Callable[[Callable[[], None]], Any]] = None,
+) -> Optional[int]:
+    """Rebuild the speculative branch after a semantic generation-setting edit."""
+
+    invalidate_daily_recommended_prefetch_for_current_event(
+        game_id=game_id,
+        game_loop=game_loop,
+    )
+    return ensure_daily_recommended_prefetch(
+        game_id=game_id,
+        user_id=user_id,
+        game_loop=game_loop,
+        submitter=submitter,
+    )
 
 
 def _get_prefetch_executor() -> ThreadPoolExecutor:

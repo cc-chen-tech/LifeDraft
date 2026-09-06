@@ -83,19 +83,28 @@ class TestNarrativeStyleSelectionContract:
         game_loop = SimpleNamespace(
             narrative_style_id="chinese_classic_saga",
             player_state=PlayerState(),
+            current_event=SimpleNamespace(event_id="day-0-event", revision=1),
         )
         game_session = SimpleNamespace(game_loop=game_loop)
 
         with patch("src.api.routers.games.SessionLocal", return_value=db_session):
             with patch("src.api.routers.games.session_store") as session_store:
                 session_store.get.return_value = game_session
-                asyncio.run(
-                    update_narrative_style(
-                        game_id=42,
-                        req=UpdateNarrativeStyleRequest(style_id="cyberpunk"),
-                        user_id=7,
+                with patch(
+                    "src.services.daily_recommended_prefetch.refresh_daily_recommended_prefetch_for_current_event"
+                ) as refresh:
+                    asyncio.run(
+                        update_narrative_style(
+                            game_id=42,
+                            req=UpdateNarrativeStyleRequest(style_id="cyberpunk"),
+                            user_id=7,
+                        )
                     )
-                )
+                    refresh.assert_called_once_with(
+                        game_id=42,
+                        user_id=7,
+                        game_loop=game_loop,
+                    )
 
         assert game.narrative_style_id == "cyberpunk"
         assert game_loop.narrative_style_id == "cyberpunk"
