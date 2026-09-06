@@ -33,7 +33,7 @@ jobs:
       MINIMAX_E2E_LOCAL_AUDIO: "0"
       MINIMAX_E2E_LOCAL_IMAGE: "0"
       E2E_NO_SANDBOX: "1"
-      TEST_RUN_ROOT: ${{ runner.temp }}/story2-model-smoke
+      TEST_RUN_ROOT: ${{ github.workspace }}/.model-smoke-run
     steps:
       - name: Checkout release candidate
         uses: actions/checkout@v4
@@ -74,6 +74,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: model-smoke-evidence
-          path: ${{ runner.temp }}/story2-model-smoke/
+          path: ${{ github.workspace }}/.model-smoke-run/
           if-no-files-found: warn
           retention-days: 14
