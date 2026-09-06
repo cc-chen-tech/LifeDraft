@@ -3021,6 +3021,16 @@ export interface components {
              * @default
              */
             message: string;
+            /** Narration Plan Source */
+            narration_plan_source?: string | null;
+            /** Narration Plan Fallback Reason */
+            narration_plan_fallback_reason?: string | null;
+            /** Narration Plan Ai Attempts */
+            narration_plan_ai_attempts?: number | null;
+            /** Narration Plan Duration Ms */
+            narration_plan_duration_ms?: number | null;
+            /** Narration Plan Output Token Budgets */
+            narration_plan_output_token_budgets?: number[];
             /** Segments */
             segments?: components["schemas"]["VoiceReadingSegmentResponse"][];
         };
@@ -3121,6 +3131,16 @@ export interface components {
              * @default
              */
             message: string;
+            /** Narration Plan Source */
+            narration_plan_source?: string | null;
+            /** Narration Plan Fallback Reason */
+            narration_plan_fallback_reason?: string | null;
+            /** Narration Plan Ai Attempts */
+            narration_plan_ai_attempts?: number | null;
+            /** Narration Plan Duration Ms */
+            narration_plan_duration_ms?: number | null;
+            /** Narration Plan Output Token Budgets */
+            narration_plan_output_token_budgets?: number[];
             /** Segments */
             segments?: components["schemas"]["VoiceReadingSegmentResponse"][];
         };
