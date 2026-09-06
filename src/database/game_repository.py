@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 
 from src.database.models import Game, GameState, SessionLocal, get_db
 
@@ -126,6 +126,31 @@ class GameRepository:
             initial_state_json = func.coalesce(Game.initial_state, "{}")
             latest_state_json = func.coalesce(GameState.state_json, "{}")
 
+            # 日历模式保留 legacy week=0 作为兼容字段，存档列表的显示周数
+            # 必须使用 timeline.week_number（1-based），再转换成前端约定的 0-based week。
+            latest_legacy_week = func.json_extract(latest_state_json, "$.week")
+            initial_legacy_week = func.json_extract(initial_state_json, "$.week")
+            latest_timeline_week = func.json_extract(
+                latest_state_json, "$.timeline.week_number"
+            )
+            initial_timeline_week = func.json_extract(
+                initial_state_json, "$.timeline.week_number"
+            )
+            latest_display_week = func.coalesce(
+                case(
+                    (latest_timeline_week.isnot(None), latest_timeline_week - 1),
+                    else_=latest_legacy_week,
+                ),
+                latest_legacy_week,
+            )
+            initial_display_week = func.coalesce(
+                case(
+                    (initial_timeline_week.isnot(None), initial_timeline_week - 1),
+                    else_=initial_legacy_week,
+                ),
+                initial_legacy_week,
+            )
+
             results = (
                 db.query(
                     Game.game_id,
@@ -140,11 +165,9 @@ class GameRepository:
                         func.nullif(func.json_extract(initial_state_json, "$.player_name"), ""),
                         "",
                     ).label("player_name"),
-                    func.coalesce(
-                        func.json_extract(latest_state_json, "$.week"),
-                        func.json_extract(initial_state_json, "$.week"),
-                        1,
-                    ).label("week"),
+                    func.coalesce(latest_display_week, initial_display_week, 1).label(
+                        "week"
+                    ),
                     func.coalesce(
                         func.json_extract(latest_state_json, "$.age"),
                         func.json_extract(initial_state_json, "$.age"),
