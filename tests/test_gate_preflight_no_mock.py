@@ -574,10 +574,16 @@ def test_story_voice_production_settings_do_not_duplicate_test_controls() -> Non
     component = (
         ROOT / "frontend" / "src" / "components" / "game" / "StoryListeningExperience.tsx"
     ).read_text(encoding="utf-8")
+    picker = (
+        ROOT / "frontend" / "src" / "components" / "game" / "VoicePicker.tsx"
+    ).read_text(encoding="utf-8")
 
     assert "showTestControls" not in component
     assert "SPEEDS.map" in component
-    assert "VOICES.map" in component
+    assert "VoicePicker" in component
+    assert "VOICES.map" not in component
+    assert "查看全部中文音色" in picker
+    assert 'role="dialog"' in picker
 
 
 def test_preflight_runs_dialog_and_sheet_a11y_regressions() -> None:

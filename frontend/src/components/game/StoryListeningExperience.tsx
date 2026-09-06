@@ -35,6 +35,7 @@ import type {
 import { cn } from "@/lib/utils";
 
 import { OptionCards } from "./OptionCards";
+import { VoicePicker } from "./VoicePicker";
 
 type ListeningStatus =
   | "preparing"
@@ -51,12 +52,19 @@ interface StoryListeningExperienceProps {
   media?: ReactNode;
 }
 
-const VOICES = [
-  { id: "warm_female", label: "温暖女声" },
-  { id: "calm_male", label: "沉静男声" },
-  { id: "clear_neutral", label: "清澈中性" },
-];
 const SPEEDS = [0.75, 1, 1.25, 1.5];
+const DEFAULT_VOICE_ID = "female-shaonv";
+const LEGACY_VOICE_IDS: Record<string, string> = {
+  warm_female: "female-shaonv",
+  calm_male: "male-qn-qingse",
+  clear_neutral: "female-yujie",
+};
+const FALLBACK_VOICE_IDS = new Set([
+  "female-shaonv",
+  "male-qn-qingse",
+  "female-yujie",
+  "female-chengshu",
+]);
 const STALL_WATCHDOG_MS = 8_000;
 export const STORY_VOICE_POLL_TIMEOUT_MS = 210_000;
 const STORY_VOICE_POLL_INTERVAL_MS = 700;
@@ -154,9 +162,8 @@ export function StoryListeningExperience({
   const [jobId, setJobId] = useState<number | null>(null);
   const [status, setStatus] = useState<ListeningStatus>("preparing");
   const [errorMessage, setErrorMessage] = useState("");
-  const [selectedVoice, setSelectedVoice] = useState("warm_female");
+  const [selectedVoice, setSelectedVoice] = useState(DEFAULT_VOICE_ID);
   const [voiceCatalog, setVoiceCatalog] = useState<MiniMaxVoiceOption[]>([]);
-  const [voiceSearch, setVoiceSearch] = useState("");
   const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [speed, setSpeed] = useState(1);
@@ -174,11 +181,6 @@ export function StoryListeningExperience({
   const currentSegment = segments.find(
     (segment) => segment.paragraph_index === activeParagraph,
   );
-  const visibleVoices = voiceCatalog.filter((voice) => {
-    const query = voiceSearch.trim().toLowerCase();
-    return !query || [voice.voice_id, voice.label, voice.language, voice.group]
-      .some((value) => value.toLowerCase().includes(query));
-  });
   const previewVoice = async (voiceId: string) => {
     previewAudioRef.current?.pause();
     setPreviewingVoice(voiceId);
@@ -287,8 +289,17 @@ export function StoryListeningExperience({
     void Promise.all([api.voice_reading.getSettings(), storyVoiceTextToHash(storyText)])
       .then(([settings, hash]) => {
         if (cancelledRef.current) return;
-        setSelectedVoice(settings.selected_voice_color || "warm_female");
-        setVoiceCatalog(settings.voice_catalog || []);
+        const catalog = (settings.voice_catalog || []).filter((voice) =>
+          voice.language === "普通话" || voice.language === "粤语",
+        );
+        const canonicalVoice = LEGACY_VOICE_IDS[settings.selected_voice_color || ""]
+          || settings.selected_voice_color
+          || DEFAULT_VOICE_ID;
+        const availableVoiceIds = catalog.length > 0
+          ? new Set(catalog.map((voice) => voice.voice_id))
+          : FALLBACK_VOICE_IDS;
+        setSelectedVoice(availableVoiceIds.has(canonicalVoice) ? canonicalVoice : DEFAULT_VOICE_ID);
+        setVoiceCatalog(catalog);
         setSpeed(settings.selected_speed || 1);
         setAutoRead(settings.auto_read_enabled);
         autoReadRef.current = settings.auto_read_enabled;
@@ -941,9 +952,8 @@ export function StoryListeningExperience({
     }
   };
 
-  const handleVoiceChange = (event: ChangeEvent<HTMLSelectElement>) => {
+  const handleVoiceSelect = (value: string) => {
     cancelActivePlayback();
-    const value = event.target.value;
     setSelectedVoice(value);
     void api.voice_reading.updateSettings({ selected_voice_color: value });
   };
@@ -1186,33 +1196,15 @@ export function StoryListeningExperience({
             ) : null}
           </div>
 
-          <div className="mt-7 grid grid-cols-2 gap-3 border-y border-[var(--border-default)] py-4 sm:grid-cols-3">
-            <div className="text-xs text-[var(--text-secondary)]">
-              <label htmlFor="voice-search">搜索音色</label>
-              <input
-                id="voice-search"
-                value={voiceSearch}
-                onChange={(event) => setVoiceSearch(event.target.value)}
-                placeholder="搜索全部音色"
-                className="mt-1 block w-full border-b border-[var(--border-default)] bg-transparent py-1 text-xs text-[var(--text-primary)] outline-none"
-              />
-              <label htmlFor="voice-select" className="mt-1 block">音色</label>
-              <select id="voice-select" value={selectedVoice} onChange={handleVoiceChange} className="block w-full bg-transparent py-2 text-sm text-[var(--text-primary)]">
-                {voiceCatalog.length === 0 ? VOICES.map((voice) => <option key={voice.id} value={voice.id}>{voice.label}</option>) : null}
-                {visibleVoices.map((voice) => <option key={voice.voice_id} value={voice.voice_id}>{voice.recommended ? "推荐 · " : ""}{voice.label} · {voice.language}</option>)}
-              </select>
-              <Button
-                type="button"
-                variant="quiet"
-                size="sm"
-                className="mt-1"
-                onClick={() => void previewVoice(selectedVoice)}
-                disabled={previewingVoice === selectedVoice}
-              >
-                <Play className="mr-1 h-3 w-3" />
-                {previewingVoice === selectedVoice ? "试听中" : "试听当前音色"}
-              </Button>
-            </div>
+          <VoicePicker
+            voices={voiceCatalog}
+            selectedVoiceId={selectedVoice}
+            previewingVoice={previewingVoice}
+            onSelectVoice={handleVoiceSelect}
+            onPreviewVoice={(voiceId) => void previewVoice(voiceId)}
+          />
+
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
             <label className="text-xs text-[var(--text-secondary)]">
               语速
               <select value={speed} onChange={handleSpeedChange} className="mt-1 block w-full bg-transparent py-2 text-sm text-[var(--text-primary)]">
