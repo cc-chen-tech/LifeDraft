@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from src.ai.narration_plan import (
@@ -5,6 +7,7 @@ from src.ai.narration_plan import (
     NarrationPlanGenerator,
     parse_narration_plan,
 )
+from src.services.story_voice_reading import StoryVoiceReadingService
 
 
 def test_narration_plan_accepts_only_minimax_native_emotions() -> None:
@@ -77,3 +80,134 @@ def test_narration_plan_generator_retries_with_validation_feedback() -> None:
     assert plan["segments"][0]["emotion"] == "fearful"
     assert "Unsupported" not in client.prompts[1]
     assert "emotion must be one of" in client.prompts[1]
+
+
+def test_narration_plan_generation_disables_text_truncation_recovery() -> None:
+    class Client:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def call(self, **kwargs):
+            self.calls.append(kwargs)
+            return (
+                '{"segments":[{"paragraph_index":0,"emotion":"calm",'
+                '"speed":1,"pause_after_ms":0,"vocal_cue":""}]}'
+            )
+
+    client = Client()
+    NarrationPlanGenerator(client).generate("门后传来一声轻响。")
+
+    assert client.calls[0]["response_format"] == {"type": "json_object"}
+    assert client.calls[0]["_allow_truncation_recovery"] is False
+
+
+def test_narration_plan_budget_is_structured_and_grows_for_long_chapters() -> None:
+    paragraphs = [f"第 {index} 段故事内容。" for index in range(28)]
+
+    class Client:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def call(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return '{"segments": []}'
+            return json.dumps(
+                {
+                    "segments": [
+                        {
+                            "paragraph_index": index,
+                            "emotion": "calm",
+                            "speed": 1.0,
+                            "pause_after_ms": 0,
+                            "vocal_cue": "",
+                        }
+                        for index in range(len(paragraphs))
+                    ]
+                }
+            )
+
+    client = Client()
+    NarrationPlanGenerator(client).generate("\n\n".join(paragraphs))
+
+    assert client.calls[0]["max_tokens"] > 3360
+    assert client.calls[1]["max_tokens"] > client.calls[0]["max_tokens"]
+
+
+def test_ensure_narration_plan_prefers_valid_ai_plan_by_default(monkeypatch) -> None:
+    class Client:
+        api_key = "configured"
+
+        def call(self, **kwargs):
+            return (
+                '{"segments":[{"paragraph_index":0,"emotion":"happy",'
+                '"speed":1,"pause_after_ms":0,"vocal_cue":""}]}'
+            )
+
+    monkeypatch.delenv("ENABLE_AI_NARRATION_PLAN", raising=False)
+    monkeypatch.delenv("STORY_TTS_DISABLE_NARRATION_PLAN_AI", raising=False)
+    monkeypatch.setattr("src.ai.client.AIClient", lambda: Client())
+
+    plan = StoryVoiceReadingService._ensure_narration_plan({}, ["门后传来一声轻响。"])
+
+    assert plan["source"] == "story-model"
+    assert plan["segments"][0]["emotion"] == "happy"
+
+
+def test_ensure_narration_plan_falls_back_when_ai_plan_is_invalid(monkeypatch) -> None:
+    class Client:
+        api_key = "configured"
+
+    class BrokenGenerator:
+        def __init__(self, client) -> None:
+            pass
+
+        def generate(self, *args, **kwargs):
+            raise NarrationPlanValidationError(["invalid model plan"])
+
+    monkeypatch.setattr("src.ai.client.AIClient", lambda: Client())
+    monkeypatch.setattr("src.services.story_voice_reading.NarrationPlanGenerator", BrokenGenerator)
+
+    plan = StoryVoiceReadingService._ensure_narration_plan({}, ["黑暗中传来危险的脚步声。"])
+
+    assert plan["source"] == "deterministic-fallback"
+    assert plan["segments"][0]["emotion"] == "fearful"
+
+
+def test_ensure_narration_plan_falls_back_when_ai_returns_truncated_json(
+    monkeypatch,
+) -> None:
+    class Client:
+        api_key = "configured"
+
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def call(self, **kwargs):
+            self.calls.append(kwargs)
+            return '{"segments": ['
+
+    client = Client()
+    monkeypatch.setattr("src.ai.client.AIClient", lambda: client)
+
+    plan = StoryVoiceReadingService._ensure_narration_plan({}, ["黑暗中传来脚步声。"])
+
+    assert plan["source"] == "deterministic-fallback"
+    assert client.calls
+    assert all(call["_allow_truncation_recovery"] is False for call in client.calls)
+
+
+def test_ensure_narration_plan_can_disable_ai_and_use_local_plan(monkeypatch) -> None:
+    class Client:
+        api_key = "configured"
+
+        def call(self, **kwargs):
+            raise AssertionError("AI narration plan must be disabled")
+
+    monkeypatch.setenv("ENABLE_AI_NARRATION_PLAN", "false")
+    monkeypatch.setattr("src.ai.client.AIClient", lambda: Client())
+
+    plan = StoryVoiceReadingService._ensure_narration_plan({}, ["开心地笑了起来。"])
+
+    assert plan["source"] == "deterministic-fallback"
+    assert plan["segments"][0]["emotion"] == "happy"

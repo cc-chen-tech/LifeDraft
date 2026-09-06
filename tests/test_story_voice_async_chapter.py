@@ -5,14 +5,22 @@ from threading import Barrier, Event, Thread
 from uuid import uuid4
 
 from src.api.schemas import StoryVoiceReadingRequest
-from src.database.models import GeneratedVoiceAsset, SessionLocal, User, VoiceReadingJob, init_db
+from src.database.models import (
+    GeneratedVoiceAsset,
+    SessionLocal,
+    User,
+    VoiceReadingJob,
+    init_db,
+)
 from src.services.story_tts_provider import DeterministicTTSProvider
-from src.services.story_voice_reading import StoryVoiceReadingService, normalize_text_hash
+from src.services.story_voice_reading import (
+    StoryVoiceReadingService,
+    normalize_text_hash,
+)
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 import pytest
 
 pytestmark = [pytest.mark.unit]
-
 
 
 def _request(text: str) -> StoryVoiceReadingRequest:
@@ -78,7 +86,10 @@ def test_chapter_request_is_idempotent_and_processes_ordered_paragraph_audio() -
         assert [segment.status for segment in ready.segments] == ["ready", "ready"]
         assert len(provider.contexts) == 1
         assert provider.contexts[0]["text"] == "第一段完整故事。\n\n第二段继续故事。"
-        assert provider.contexts[0]["paragraphs"] == ["第一段完整故事。", "第二段继续故事。"]
+        assert provider.contexts[0]["paragraphs"] == [
+            "第一段完整故事。",
+            "第二段继续故事。",
+        ]
         assert ready.segments[0].audio_url == ready.segments[1].audio_url
         assert ready.segments[0].asset_id == ready.segments[1].asset_id
         assert ready.segments[0].start_ms == 0
@@ -260,9 +271,7 @@ def test_failed_chapter_retry_reuses_the_same_job_and_can_recover() -> None:
         session.flush()
         user_id = int(user.user_id)
         provider = RecoveringProvider()
-        service = StoryVoiceReadingService(
-            StoryVoiceReadingRepository(session), provider=provider
-        )
+        service = StoryVoiceReadingService(StoryVoiceReadingRepository(session), provider=provider)
         request = _request("暂时失败的章节可以重试。")
 
         queued = service.request_reading(user_id, request)
@@ -276,6 +285,56 @@ def test_failed_chapter_retry_reuses_the_same_job_and_can_recover() -> None:
         assert retried.status == "queued"
         assert ready.status == "ready"
         assert ready.segments[0].audio_url
+    finally:
+        session.close()
+
+
+def test_narration_plan_failure_finishes_job_instead_of_leaving_processing(
+    monkeypatch,
+) -> None:
+    init_db()
+    session = SessionLocal()
+    try:
+        user = User(
+            private_id=f"plan-fail-{uuid4().hex[:20]}",
+            public_id=f"PF{uuid4().hex[:7]}",
+            display_name="Narration plan failure listener",
+        )
+        session.add(user)
+        session.flush()
+        user_id = int(user.user_id)
+        service = StoryVoiceReadingService(
+            StoryVoiceReadingRepository(session), provider=DeterministicTTSProvider()
+        )
+
+        def fail_fallback(paragraphs):
+            raise RuntimeError("deterministic narration plan failed")
+
+        class BrokenGenerator:
+            def __init__(self, client) -> None:
+                pass
+
+            def generate(self, *args, **kwargs):
+                raise RuntimeError("AI narration plan failed")
+
+        class Client:
+            api_key = "configured"
+
+        monkeypatch.setattr(
+            "src.services.story_voice_reading.build_legacy_narration_plan",
+            fail_fallback,
+        )
+        monkeypatch.setattr(
+            "src.services.story_voice_reading.NarrationPlanGenerator", BrokenGenerator
+        )
+        monkeypatch.setattr("src.ai.client.AIClient", lambda: Client())
+
+        queued = service.request_reading(user_id, _request("旁白计划失败也不能卡住。"))
+        result = service.process_job(user_id, queued.job_id)
+
+        assert result.status == "failed"
+        assert result.error_code == "narration_plan_failed"
+        assert all(segment.status == "failed" for segment in result.segments)
     finally:
         session.close()
 
@@ -305,7 +364,8 @@ def test_concurrent_identical_requests_converge_on_one_chapter_job() -> None:
         try:
             barrier.wait(timeout=5)
             response = StoryVoiceReadingService(
-                StoryVoiceReadingRepository(session), provider=DeterministicTTSProvider()
+                StoryVoiceReadingRepository(session),
+                provider=DeterministicTTSProvider(),
             ).request_reading(user_id, request)
             session.commit()
             job_ids.append(response.job_id)

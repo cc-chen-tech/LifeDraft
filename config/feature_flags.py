@@ -36,6 +36,7 @@ class FeatureFlags(TypedDict, total=False):
     daily_recommended_prefetch: bool
     daily_recommended_tts_prefetch: bool
     daily_world_projection_v1: bool
+    ai_narration_plan: bool
 
 
 # Mapping from feature flag name -> environment variable name
@@ -57,6 +58,7 @@ _ENV_VAR_MAP: Dict[str, str] = {
     "daily_recommended_prefetch": "ENABLE_DAILY_RECOMMENDED_PREFETCH",
     "daily_recommended_tts_prefetch": "ENABLE_DAILY_RECOMMENDED_TTS_PREFETCH",
     "daily_world_projection_v1": "ENABLE_DAILY_WORLD_PROJECTION_V1",
+    "ai_narration_plan": "ENABLE_AI_NARRATION_PLAN",
 }
 
 FEATURE_DEFAULTS: FeatureFlags = {
@@ -77,6 +79,9 @@ FEATURE_DEFAULTS: FeatureFlags = {
     "daily_recommended_prefetch": False,
     "daily_recommended_tts_prefetch": False,
     "daily_world_projection_v1": False,
+    # AI narration plans are the preferred path; the service has a deterministic
+    # fallback and can be forced to use it with ENABLE_AI_NARRATION_PLAN=false.
+    "ai_narration_plan": True,
 }
 
 

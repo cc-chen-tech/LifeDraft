@@ -1594,7 +1594,8 @@ def test_scheduled_event_fails_closed_when_fallback_omits_required_cast() -> Non
             player_state=PlayerState(),
         )
 
-    assert len(client.calls) == 3
+    # expert 档当前允许 5 次 prose 尝试；连续缺失必需角色后才终止。
+    assert len(client.calls) == 5
     failure = build_generation_failure(
         caught.value,
         quality_level="expert",

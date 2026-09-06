@@ -33,6 +33,23 @@ MINIMAX_VOCAL_CUES = frozenset(
     }
 )
 
+# Narration plans are a structured-output task, not prose. Keep their budget
+# independent from story-generation budgets and leave enough headroom for one
+# compact object per paragraph.
+NARRATION_PLAN_MIN_OUTPUT_TOKENS = 2048
+NARRATION_PLAN_TOKENS_PER_PARAGRAPH = 192
+NARRATION_PLAN_MAX_OUTPUT_TOKENS = 8192
+
+
+def narration_plan_output_tokens(paragraph_count: int, attempt: int = 0) -> int:
+    """Return an independent structured-output budget for a narration plan."""
+    count = max(1, int(paragraph_count))
+    baseline = max(
+        NARRATION_PLAN_MIN_OUTPUT_TOKENS,
+        512 + count * NARRATION_PLAN_TOKENS_PER_PARAGRAPH,
+    )
+    return min(NARRATION_PLAN_MAX_OUTPUT_TOKENS, baseline * (max(0, attempt) + 1))
+
 
 @dataclass(frozen=True)
 class NarrationSegmentPlan:
@@ -82,9 +99,7 @@ def parse_narration_plan(raw: Any, *, paragraph_count: int) -> NarrationPlan:
             errors.append(f"segment {expected_index} speed must be between 0.5 and 1.5")
         pause_after_ms = raw_segment.get("pause_after_ms")
         if not isinstance(pause_after_ms, int) or not 0 <= pause_after_ms <= 3000:
-            errors.append(
-                f"segment {expected_index} pause_after_ms must be between 0 and 3000"
-            )
+            errors.append(f"segment {expected_index} pause_after_ms must be between 0 and 3000")
         vocal_cue = raw_segment.get("vocal_cue", "")
         if vocal_cue not in MINIMAX_VOCAL_CUES:
             errors.append(
@@ -138,7 +153,7 @@ def build_legacy_narration_plan(paragraphs: list[str]) -> dict[str, Any]:
                 "vocal_cue": "",
             }
         )
-    return {"segments": segments, "source": "legacy-migration"}
+    return {"segments": segments, "source": "deterministic-fallback"}
 
 
 class NarrationPlanGenerator:
@@ -157,8 +172,9 @@ class NarrationPlanGenerator:
     ) -> dict[str, Any]:
         paragraphs = [part.strip() for part in re.split(r"\n\s*\n+", story_text) if part.strip()]
         system_prompt = (
-            "You are a narration director. Return JSON only. Use exactly one "
-            "segment per paragraph and only the listed MiniMax values."
+            "You are a narration director. Return compact JSON only. Do not return "
+            "prose, explanations, paragraph text, Markdown, SSML, or extra keys. "
+            "Use exactly one segment per paragraph and only the listed MiniMax values."
         )
         user_prompt = self._prompt(story_text, language)
         last_error: Optional[NarrationPlanValidationError] = None
@@ -167,11 +183,12 @@ class NarrationPlanGenerator:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=0.2,
-                max_tokens=max(1200, len(paragraphs) * 120),
+                max_tokens=narration_plan_output_tokens(len(paragraphs), attempt),
                 stream_callback=None,
                 generation_tracker=generation_tracker,
                 response_format={"type": "json_object"},
                 thinking=False,
+                _allow_truncation_recovery=False,
             )
             from src.ai.utils import extract_json
 
@@ -184,7 +201,11 @@ class NarrationPlanGenerator:
                 }
             except NarrationPlanValidationError as error:
                 last_error = error
-                user_prompt = self._prompt(story_text, language) + "\n\n" + narration_plan_retry_instruction(error)
+                user_prompt = (
+                    self._prompt(story_text, language)
+                    + "\n\n"
+                    + narration_plan_retry_instruction(error)
+                )
         assert last_error is not None
         raise last_error
 
@@ -192,10 +213,10 @@ class NarrationPlanGenerator:
     def _prompt(story_text: str, language: str) -> str:
         return (
             f"Language: {language}\n"
-            "Return exactly {\"segments\":[{\"paragraph_index\":0,"
-            "\"emotion\":\"calm\",\"speed\":1.0,\"pause_after_ms\":0,"
-            "\"vocal_cue\":\"\"}]} for this story. Native emotions are: "
+            'Return exactly {"segments":[{"paragraph_index":0,'
+            '"emotion":"calm","speed":1.0,"pause_after_ms":0,'
+            '"vocal_cue":""}]} for this story. Native emotions are: '
             + ", ".join(sorted(MINIMAX_NATIVE_EMOTIONS))
-            + ". Allowed vocal cues are the MiniMax inline cues; use empty string when none.\n\n"
-            + story_text
+            + ". Allowed vocal cues are the MiniMax inline cues; use empty string when none. "
+            "Return no keys other than the five fields shown above.\n\n" + story_text
         )
