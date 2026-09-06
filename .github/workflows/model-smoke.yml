@@ -14,8 +14,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: model-smoke-${{ github.event.release.tag_name || inputs.ref || github.sha }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   model-smoke:

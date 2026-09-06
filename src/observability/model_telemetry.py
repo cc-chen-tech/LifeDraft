@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -150,6 +151,27 @@ def sanitize_error_message(error: BaseException) -> str:
     status_code = _status_code(error)
     suffix = f" status={status_code}" if status_code is not None else ""
     return f"{type(error).__name__}{suffix}"[:240]
+
+
+def retry_feedback_message(error: BaseException) -> str:
+    """Return bounded, redacted detail for internal retry feedback.
+
+    Retry prompts and raised application errors still need actionable provider
+    detail.  This is deliberately separate from ``sanitize_error_message``:
+    terminal telemetry must remain type/status-only, while retry behavior must
+    preserve stable provider diagnostics without carrying credentials or large
+    payloads.
+    """
+
+    message = str(error).strip() or type(error).__name__
+    message = re.sub(r"(?i)bearer\s+\S+", "Bearer [redacted]", message)
+    message = re.sub(
+        r"(?i)(api[_-]?key|authorization|token|secret)\s*[=:]\s*\S+",
+        r"\1=[redacted]",
+        message,
+    )
+    message = re.sub(r"\bsk-[A-Za-z0-9_-]+\b", "[redacted]", message)
+    return " ".join(message.split())[:240]
 
 
 def _usage_value(usage: Any, name: str) -> Optional[int]:

@@ -68,19 +68,20 @@ jobs:
 
             // Real-provider smoke is always required, including emergency/manual
             // deployments.  It is the release gate for production model behavior.
-            const requiredWorkflows = ['Model Smoke'];
-            if (!bypassCi) {
-              requiredWorkflows.unshift(
-                'Backend Tests',
-                'Python Code Quality',
-                'Frontend Build',
-                'Frontend Code Quality',
-                'Frontend Tests',
-                'Coverage Report',
-                'CI',
-                'Wiki Check',
-                'E2E Tests',
-              );
+            const requiredWorkflows = [
+              'Backend Tests',
+              'Python Code Quality',
+              'Frontend Build',
+              'Frontend Code Quality',
+              'Frontend Tests',
+              'Coverage Report',
+              'CI',
+              'Wiki Check',
+              'E2E Tests',
+              'Model Smoke',
+            ];
+            if (bypassCi) {
+              requiredWorkflows.splice(0, requiredWorkflows.length - 1);
             }
             const sha = '${{ steps.resolve.outputs.deploy_sha }}';
             const deadline = Date.now() + 15 * 60 * 1000;

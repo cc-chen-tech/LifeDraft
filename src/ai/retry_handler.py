@@ -10,7 +10,7 @@ import logging
 from typing import Callable, Optional, TypeVar
 
 from src.ai.client import AIClient
-from src.observability.model_telemetry import sanitize_error_message
+from src.observability.model_telemetry import retry_feedback_message
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ class AIRetryHandler:
                 return content
 
             except Exception as e:
-                last_error = sanitize_error_message(e)
+                last_error = retry_feedback_message(e)
 
         raise ValueError(f"AI call failed after {retry_count} attempts. Last error: {last_error}")
 
@@ -191,7 +191,7 @@ class AIRetryHandler:
                 last_error = "Invalid JSON format"
 
             except Exception as e:
-                last_error = sanitize_error_message(e)
+                last_error = retry_feedback_message(e)
 
         raise ValueError(
             f"JSON AI call failed after {retry_count} attempts. Last error: {last_error}"

@@ -26,7 +26,7 @@ from src.ai.utils import extract_json
 from src.observability.model_telemetry import (
     ModelCallContext,
     emit_model_call,
-    sanitize_error_message,
+    retry_feedback_message,
 )
 from src.observability.request_context import current_request_context
 
@@ -822,13 +822,13 @@ class AIClient:
             except GenerationBudgetError:
                 raise
             except openai.APIError as e:
-                last_error = sanitize_error_message(e)
+                last_error = retry_feedback_message(e)
                 if attempt == retry_count - 1:
                     raise ValueError(
                         f"AI call failed after {retry_count} attempts: {last_error}"
                     )
             except Exception as e:
-                last_error = sanitize_error_message(e)
+                last_error = retry_feedback_message(e)
                 if attempt == retry_count - 1:
                     raise ValueError(
                         f"AI call failed after {retry_count} attempts: {last_error}"

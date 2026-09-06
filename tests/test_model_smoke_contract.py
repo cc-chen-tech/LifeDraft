@@ -136,7 +136,8 @@ def test_deployment_requires_model_smoke_and_workflow_is_protected():
     workflow = (root / ".github/workflows/model-smoke.yml").read_text(encoding="utf-8")
     test_script = (root / "test.sh").read_text(encoding="utf-8")
 
-    assert "const requiredWorkflows = ['Model Smoke'];" in deploy
+    assert "const requiredWorkflows = [" in deploy
+    assert "'Model Smoke'" in deploy
     assert "workflow_id: 'model-smoke.yml'" in deploy
     assert "environment:\n      name: model-smoke" in workflow
     assert "MODEL_SMOKE_ENABLED: \"1\"" in workflow
