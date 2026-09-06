@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 18 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
@@ -64,10 +66,18 @@ jobs:
         working-directory: frontend
         run: npx playwright install chromium
 
-      - name: Run E2E tests
-        run: ./test.sh e2e
+      - name: Run core E2E tests
+        if: github.event_name != 'schedule'
+        run: ./test.sh e2e-core
         env:
           CI: true
+
+      - name: Run full E2E tests
+        if: github.event_name == 'schedule'
+        run: ./test.sh e2e-full
+        env:
+          CI: true
+          E2E_INCLUDE_MOBILE: '1'
 
       - name: Upload test results
         if: always()
