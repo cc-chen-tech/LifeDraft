@@ -62,6 +62,12 @@ def test_tts_protocol_recognizes_minimax_task_finished_and_final_audio() -> None
     assert _is_done_message({"event": "task_continued", "is_final": True}) is True
 
 
+def test_minimax_config_defaults_to_official_websocket_endpoint() -> None:
+    config = MiniMaxConfig.from_env(env={"MINIMAX_API_KEY": "configured"})
+
+    assert config.tts_websocket_url == "wss://api.minimaxi.com/ws/v1/t2a_v2"
+
+
 def test_minimax_narration_payload_uses_native_emotion_and_vocal_cue() -> None:
     from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
 
@@ -140,6 +146,7 @@ def test_minimax_websocket_client_writes_audio_and_stops_on_task_finished(
                 {"event": "task_finished"},
             ]
             self.sent: list[dict[str, object]] = []
+            self.finish_sent_before_recv: list[bool] = []
 
         def __enter__(self) -> "FakeWebSocket":
             return self
@@ -150,6 +157,9 @@ def test_minimax_websocket_client_writes_audio_and_stops_on_task_finished(
         def recv(self) -> str:
             if not self.messages:
                 raise AssertionError("client waited past the MiniMax terminal frame")
+            self.finish_sent_before_recv.append(
+                any(message.get("event") == "task_finish" for message in self.sent)
+            )
             return json.dumps(self.messages.pop(0))
 
         def send(self, message: str) -> None:
@@ -181,6 +191,7 @@ def test_minimax_websocket_client_writes_audio_and_stops_on_task_finished(
         "task_continue",
         "task_finish",
     ]
+    assert fake_websocket.finish_sent_before_recv == [False, False, False, False]
 
 
 def test_tts_protocol_rejects_provider_error_and_parses_nested_download_url() -> None:
