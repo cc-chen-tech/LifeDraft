@@ -568,6 +568,19 @@ def _generate_with_isolated_game_loop(
     return event
 
 
+def _validate_prefetch_event_date(state: Any, event: GameEvent) -> None:
+    """Reject generated events that are not for the projected next day."""
+
+    from src.game.daily_timeline import normalize_daily_timeline
+
+    expected_story_date = normalize_daily_timeline(state.timeline)["current_date"]
+    if event.story_date != expected_story_date:
+        raise RuntimeError(
+            "recommended_prefetch_story_date_mismatch: "
+            f"expected {expected_story_date}, got {event.story_date}"
+        )
+
+
 def _run_prefetch_worker(
     *,
     task_id: int,
@@ -605,6 +618,7 @@ def _run_prefetch_worker(
             language=language,
         )
         next_event = _generate_with_isolated_game_loop(source_loop, projection.state)
+        _validate_prefetch_event_date(projection.state, next_event)
         ready_db = SessionLocal()
         try:
             stored = DailyRecommendedPrefetchRepository(ready_db).mark_story_ready(
@@ -694,6 +708,7 @@ def _run_demanded_prefetch_worker(
     generation_started = time.monotonic()
     try:
         next_event = _generate_with_isolated_game_loop(source_loop, projected_state)
+        _validate_prefetch_event_date(projected_state, next_event)
         ready_db = SessionLocal()
         try:
             stored = DailyRecommendedPrefetchRepository(ready_db).mark_story_ready(
@@ -961,6 +976,7 @@ def _promote_demanded_prefetch(*, task_id: int, game_id: int, game_loop: Any) ->
 
     from src.database.models import DailyRecommendedPrefetch, SessionLocal
     from src.database.singletons import get_game_db
+    from src.game.daily_timeline import normalize_daily_timeline
 
     db = SessionLocal()
     try:
@@ -975,6 +991,18 @@ def _promote_demanded_prefetch(*, task_id: int, game_id: int, game_loop: Any) ->
         next_event = GameEvent.model_validate(task.next_event_json)
         lock = getattr(game_loop, "_daily_mutation_lock", threading.RLock())
         with lock:
+            # Invalidation and promotion share the live game lock. Re-read the
+            # row after acquiring it so a waiting promotion cannot resurrect a
+            # task that a semantic setting edit just fenced.
+            task = db.get(DailyRecommendedPrefetch, task_id)
+            if (
+                task is None
+                or not task.demanded
+                or task.status not in {"story_ready", "ready", "consumed"}
+                or not isinstance(task.next_event_json, dict)
+            ):
+                return False
+            next_event = GameEvent.model_validate(task.next_event_json)
             state = getattr(game_loop, "player_state", None)
             if state is None or game_loop.current_event is not None:
                 return False
@@ -985,6 +1013,8 @@ def _promote_demanded_prefetch(*, task_id: int, game_id: int, game_loop: Any) ->
                 latest.get("event_id") != task.event_id
                 or latest.get("choice_option_index") != task.option_index
                 or int(timeline.get("day_index") or -1) != task.day_index + 1
+                or next_event.story_date
+                != normalize_daily_timeline(timeline)["current_date"]
             ):
                 return False
             state.current_event_data = next_event.model_dump()

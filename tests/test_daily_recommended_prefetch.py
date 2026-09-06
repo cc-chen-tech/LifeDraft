@@ -334,11 +334,15 @@ def test_prefetch_repository_prefers_ready_task_for_duplicate_identity(db_sessio
 
 
 def test_prefetch_repository_concurrent_drifted_enqueue_converges_on_one_task(
-    db_engine,
+    tmp_path,
 ) -> None:
+    from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+    from src.database.models import Base
 
-    Session = sessionmaker(bind=db_engine)
+    engine = create_engine(f"sqlite:///{tmp_path / 'prefetch-concurrency.sqlite'}")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
 
     def enqueue(fingerprint: str) -> int:
         with Session() as session:
@@ -1202,6 +1206,65 @@ def test_enqueue_snapshots_auto_read_voice_and_speed_at_task_creation(
         assert len(callbacks) == 1
     finally:
         observer.close()
+
+
+def test_prefetch_worker_rejects_story_for_wrong_date(db_engine, monkeypatch) -> None:
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=db_engine)
+    setup = Session()
+    state = _state()
+    event = _event()
+    event.options[1].likely_choice = True
+    task = DailyRecommendedPrefetchRepository(setup).enqueue(
+        game_id=711,
+        user_id=None,
+        event_id=event.event_id,
+        revision=event.revision,
+        day_index=0,
+        option_index=1,
+        state_fingerprint=canonical_prefetch_fingerprint(state, event),
+    )
+    task_id = task.prefetch_id
+    setup.commit()
+    setup.close()
+    source_loop = SimpleNamespace(
+        language="zh",
+        player_state=state,
+        current_event=event,
+        _daily_mutation_lock=RLock(),
+    )
+    wrong_date_event = GameEvent(
+        event_id="day-1-wrong-date",
+        revision=1,
+        story_date="2026-08-15",
+        event_description="日期不属于投影日的故事。",
+        options=[
+            EventOption(text="继续", effects={}, likely_choice=True),
+            EventOption(text="停下", effects={}),
+        ],
+    )
+    monkeypatch.setattr("src.database.models.SessionLocal", Session)
+    monkeypatch.setattr(
+        "src.services.daily_recommended_prefetch._generate_with_isolated_game_loop",
+        lambda _loop, _projected: wrong_date_event,
+    )
+
+    _run_prefetch_worker(
+        task_id=task_id,
+        source_loop=source_loop,
+        snapshot_state=state.model_copy(deep=True),
+        snapshot_event=event.model_copy(deep=True),
+        option_index=1,
+        language="zh",
+        user_id=None,
+        game_id=711,
+    )
+
+    with Session() as observer:
+        stored = observer.get(DailyRecommendedPrefetch, task_id)
+        assert stored.status == "failed"
+        assert "story_date_mismatch" in stored.error_message
 
 
 def test_demanded_prefetch_recovers_from_committed_state_without_second_pipeline(

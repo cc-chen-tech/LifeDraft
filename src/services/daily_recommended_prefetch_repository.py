@@ -11,7 +11,7 @@ from sqlalchemy import case, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from src.database.models import DailyRecommendedPrefetch
+from src.database.models import DailyRecommendedPrefetch, Game
 
 
 LEASE_DURATION = timedelta(minutes=5)
@@ -65,6 +65,11 @@ class DailyRecommendedPrefetchRepository:
         voice_id: Optional[str],
         voice_speed: Optional[float],
     ) -> DailyRecommendedPrefetch:
+        # On transactional databases this row lock spans the caller's later
+        # commit, closing the window where two drifted fingerprints could both
+        # pass the identity lookup. SQLite ignores FOR UPDATE and still uses
+        # the process-local lock above for the single-process runtime.
+        self.db.query(Game).filter(Game.game_id == game_id).with_for_update().first()
         existing = self.find_active_by_identity(
             game_id=game_id,
             event_id=event_id,
@@ -398,14 +403,26 @@ class DailyRecommendedPrefetchRepository:
         return task
 
     def consume_task(self, prefetch_id: int) -> bool:
-        task = self.db.get(DailyRecommendedPrefetch, prefetch_id)
-        if task is None or task.status not in {"story_ready", "ready"}:
-            return False
-        setattr(task, "status", "consumed")
-        setattr(task, "demanded", True)
-        setattr(task, "consumed_at", datetime.utcnow())
+        consumed_at = datetime.utcnow()
+        updated = (
+            self.db.query(DailyRecommendedPrefetch)
+            .filter(
+                DailyRecommendedPrefetch.prefetch_id == prefetch_id,
+                DailyRecommendedPrefetch.status.in_({"story_ready", "ready"}),
+            )
+            .update(
+                {
+                    DailyRecommendedPrefetch.status: "consumed",
+                    DailyRecommendedPrefetch.demanded: True,
+                    DailyRecommendedPrefetch.consumed_at: consumed_at,
+                    DailyRecommendedPrefetch.updated_at: consumed_at,
+                },
+                synchronize_session=False,
+            )
+        )
         self.db.flush()
-        return True
+        self.db.expire_all()
+        return updated == 1
 
     def mark_demanded(
         self,
