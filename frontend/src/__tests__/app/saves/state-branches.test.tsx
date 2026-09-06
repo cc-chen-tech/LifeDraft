@@ -265,6 +265,28 @@ describe('SavesPage - 4 State Rendering', () => {
         expect(screen.getByText('新角色')).toBeInTheDocument();
       });
     });
+
+    it('does not show new character badge for progressed week 0 saves', async () => {
+      fetchSavedGamesSpy.mockResolvedValue(undefined);
+      useGameStore.setState({ savedGames: [
+        {
+          game_id: 153,
+          player_name: '狄仁杰',
+          age: 60,
+          week: 0,
+          has_progress: true,
+          updated_at: '2026-08-13T13:22:04Z',
+        },
+      ] });
+
+      render(<SavesPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('狄仁杰')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('新角色')).not.toBeInTheDocument();
+    });
   });
 });
 

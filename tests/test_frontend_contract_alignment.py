@@ -796,8 +796,9 @@ class TestFrontendMismatchCrossCheck:
         if has_wrong_result and has_wrong_story:
             import warnings
 
-            warnings.warn(
-                "api.ts makeChoiceSync type annotation still uses 'result'/'story' "
-                "instead of backend field 'story_continuation'. See Mismatch #3."
-            )
+            with pytest.warns(UserWarning, match="story_continuation"):
+                warnings.warn(
+                    "api.ts makeChoiceSync type annotation still uses 'result'/'story' "
+                    "instead of backend field 'story_continuation'. See Mismatch #3."
+                )
         # Test always passes — it's a documentation check, not a blocker

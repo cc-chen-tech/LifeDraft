@@ -70,7 +70,7 @@ class ReadingContextValidator:
         source_type = context.source_type
         if source_type not in {"current_story", "recommended_prefetch"}:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={
                     "error_code": "current_story_only",
                     "message": "Only the current day's story can be narrated",
@@ -79,7 +79,7 @@ class ReadingContextValidator:
             )
         if source_type == "recommended_prefetch" and not allow_recommended_prefetch:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={
                     "error_code": "internal_source_only",
                     "message": "Recommended prefetch narration is internal only",
@@ -98,7 +98,7 @@ class ReadingContextValidator:
             ]
             if missing:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail={
                         "error_code": "missing_context_identity",
                         "message": "Story reading context is missing round identity",
@@ -109,7 +109,7 @@ class ReadingContextValidator:
         normalized_hash = normalize_text_hash(context.text)
         if context.text_hash != normalized_hash:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={
                     "error_code": "text_hash_mismatch",
                     "message": "Reading text hash does not match text",
@@ -173,7 +173,7 @@ class StoryVoiceReadingService:
     ) -> VoiceReadingSettingsResponse:
         if selected_voice_color is not None and not is_supported_voice(selected_voice_color):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={
                     "error_code": "unsupported_voice",
                     "message": "Selected voice is not available",
@@ -189,7 +189,7 @@ class StoryVoiceReadingService:
         """Generate/cache a short preview without creating a reading job."""
         if not is_supported_voice(voice_id):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={
                     "error_code": "unsupported_voice",
                     "message": "Selected voice is not available",
@@ -268,7 +268,7 @@ class StoryVoiceReadingService:
     ) -> StoryVoiceReadingResponse:
         if not is_supported_voice(request.voice_id):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={
                     "error_code": "unsupported_voice",
                     "message": "Selected voice is not available",
@@ -289,7 +289,7 @@ class StoryVoiceReadingService:
                 )
             except NarrationPlanValidationError as error:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail={
                         "error_code": "narration_plan_invalid",
                         "message": narration_plan_retry_instruction(error),

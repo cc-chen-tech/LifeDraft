@@ -150,7 +150,7 @@ def test_required_cast_constraints_include_all_preset_people() -> None:
     assert "不得替换" in text
     assert "至少使用1位预设关键人物" in text
     assert "陆昊然、陈晓雨、林一凡至少一位" in text
-    assert "80%" in text
+    assert "80%" not in text
     assert "预设关系网" in text
     assert "苏婉清" not in text
 
@@ -300,7 +300,7 @@ def test_quick_validator_uses_relationships_list_for_required_cast() -> None:
 
     assert not result.passed
     assert any("名单外命名角色" in issue for issue in result.issues)
-    assert any("覆盖低于建议值" in warning for warning in result.warnings)
+    assert not any("覆盖低于建议值" in warning for warning in result.warnings)
 
 
 def test_quick_validator_rejects_unapproved_role_alias_with_single_preset_person() -> None:
@@ -329,8 +329,8 @@ def test_quick_validator_rejects_unapproved_role_alias_with_single_preset_person
     assert any("名单外命名角色" in issue for issue in result.issues)
 
 
-def test_quick_validator_warns_for_two_of_three_key_people_with_heuristic_names() -> None:
-    """A majority preset cast must not be rejected by surname-shaped object names."""
+def test_quick_validator_allows_two_of_three_key_people_with_heuristic_names() -> None:
+    """Partial preset coverage must not warn on surname-shaped object names."""
     from config.prompts._helpers import _collect_available_people
     from src.ai.quick_validator import quick_validate_story
 
@@ -355,7 +355,7 @@ def test_quick_validator_warns_for_two_of_three_key_people_with_heuristic_names(
 
     assert result.passed
     assert result.issues == []
-    assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
+    assert not any("覆盖低于建议值" in warning for warning in result.warnings)
 
 
 def test_quick_validator_rejects_invented_cast_that_drives_the_plot() -> None:
@@ -385,7 +385,7 @@ def test_quick_validator_rejects_invented_cast_that_drives_the_plot() -> None:
     assert any("名单外人物主导剧情" in issue for issue in result.issues)
 
 
-def test_quick_validator_warns_for_action_bearing_product_labels() -> None:
+def test_quick_validator_allows_action_bearing_product_labels_without_warning() -> None:
     """Product labels with operational verbs are not established as people."""
     from config.prompts._helpers import _collect_available_people
     from src.ai.quick_validator import quick_validate_story
@@ -410,10 +410,10 @@ def test_quick_validator_warns_for_action_bearing_product_labels() -> None:
 
     assert result.passed
     assert result.issues == []
-    assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
+    assert not any("覆盖低于建议值" in warning for warning in result.warnings)
 
 
-def test_quick_validator_warns_for_explicit_non_person_governance_actors() -> None:
+def test_quick_validator_allows_non_person_governance_actors_without_warning() -> None:
     """Explicit product/module/data labels remain non-person actors."""
     from src.ai.quick_validator import quick_validate_story
 
@@ -432,7 +432,7 @@ def test_quick_validator_warns_for_explicit_non_person_governance_actors() -> No
 
     assert result.passed
     assert result.issues == []
-    assert any("要求多人关系戏至少80%" in warning for warning in result.warnings)
+    assert not any("覆盖低于建议值" in warning for warning in result.warnings)
 
 
 def test_quick_validator_rejects_long_governance_action_descriptions() -> None:
@@ -1197,8 +1197,8 @@ def test_quick_validator_rejects_single_new_role_substitute_for_preset_network()
     assert any("名单外关键角色替代预设关系网" in issue for issue in result.issues)
 
 
-def test_quick_validator_warns_for_family_only_story_when_network_is_missing() -> None:
-    """Whole-network coverage is a metric unless today's scene requires someone."""
+def test_quick_validator_allows_family_only_story_without_coverage_warning() -> None:
+    """Whole-network coverage is not a per-round finding."""
     from config.prompts._helpers import _collect_available_people
     from src.ai.quick_validator import quick_validate_story
 
@@ -1220,7 +1220,7 @@ def test_quick_validator_warns_for_family_only_story_when_network_is_missing() -
     )
 
     assert result.passed
-    assert any("覆盖低于建议值" in warning for warning in result.warnings)
+    assert not any("覆盖低于建议值" in warning for warning in result.warnings)
 
 
 def test_quick_validator_rejects_active_action_from_deceased_family_member() -> None:

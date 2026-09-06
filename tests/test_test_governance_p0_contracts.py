@@ -57,10 +57,10 @@ def test_browser_gate_runs_core_once_and_only_selects_ai_heavy_followups() -> No
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     e2e_body = script.split("run_e2e_browser_impl()", 1)[1].split("run_coverage()", 1)[0]
 
-    assert e2e_body.count('run_playwright_command "') == 2
-    assert 'run_playwright_command "core" npx playwright test --project=core' in e2e_body
+    assert e2e_body.count('run_playwright_command "$e2e_suite"') == 1
+    assert 'playwright_args+=(--project=core)' in e2e_body
     assert 'run_playwright_command "music-player"' not in e2e_body
-    assert 'run_playwright_command "character-settings"' in e2e_body
+    assert 'run_playwright_command "character-settings"' not in e2e_body
     for duplicated_core_label in (
         "realistic-style-alignment",
         "accessible-control-names",

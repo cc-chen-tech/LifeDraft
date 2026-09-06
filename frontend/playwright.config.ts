@@ -11,6 +11,7 @@ const parseBooleanEnv = (value: string | undefined): boolean | null => {
 };
 
 const ciEnabled = parseBooleanEnv(process.env.CI) === true;
+const includeMobileInCI = process.env.E2E_INCLUDE_MOBILE === '1';
 const hasExplicitNoSandbox = process.env.E2E_NO_SANDBOX !== undefined;
 const explicitNoSandbox = parseBooleanEnv(process.env.E2E_NO_SANDBOX);
 const noSandbox = hasExplicitNoSandbox ? explicitNoSandbox === true : ciEnabled;
@@ -87,8 +88,13 @@ export default defineConfig({
   /* 工作线程: 限制并发以减少服务器压力 */
   workers: process.env.CI ? 1 : 2,
 
-  /* Reporter */
-  reporter: 'html',
+  /* CI 同时保留可读日志和可上传的 HTML 报告 */
+  reporter: ciEnabled
+    ? [
+        ['line'],
+        ['html', { outputFolder: 'playwright-report', open: 'never' }],
+      ]
+    : 'html',
 
   /* 级联失败保护: 累计 N 个失败后停止整个测试套件 */
   maxFailures: process.env.CI ? 10 : 5,
@@ -122,6 +128,14 @@ export default defineConfig({
           retries: 2,           // AI 测试多重试
           fullyParallel: false,  // 串行执行, 减少资源竞争
         },
+        ...(includeMobileInCI
+          ? [{
+              name: 'Mobile Safari',
+              testIgnore: [...AI_HEAVY_TESTS, ...MANUAL_EXPLORATION_TESTS],
+              use: { ...devices['iPhone 13'] },
+              dependencies: ['core'],
+            }]
+          : []),
         ...(process.env.STORY101_DEEP_EXPLORATION === '1'
           ? [{
               name: 'story101-exploration',

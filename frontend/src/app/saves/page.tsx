@@ -334,7 +334,7 @@ export default function SavesPage() {
                             <span>
                               {save.age}岁 · 第{(save.week ?? 0) + 1}周
                             </span>
-                            {(save.week ?? 0) === 0 ? (
+                            {(save.week ?? 0) === 0 && !save.has_progress ? (
                               <span className="text-[var(--warning-foreground)]">
                                 新角色
                               </span>

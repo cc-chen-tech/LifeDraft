@@ -459,6 +459,7 @@ class SummaryGenerator:
         tracked_state: Any = None,
         *,
         language: str = "zh",
+        retry_count: int = 2,
     ) -> "WorldProjectionPayload":
         """Extract a typed daily projection without converting failures to empty data."""
         from config.prompts import get_daily_world_projection_prompt
@@ -472,18 +473,23 @@ class SummaryGenerator:
         )
         system_prompt = get_system_prompt("story_compressor", language)
         last_error: Optional[WorldProjectionExtractionError] = None
-        for attempt in range(2):
+        attempts = max(1, int(retry_count))
+        for attempt in range(attempts):
             try:
-                content = self.client.call(
+                data = self.client.call_json(
                     system_prompt=system_prompt,
                     user_prompt=prompt,
                     temperature=0.5,
                     max_tokens=4096,
+                    thinking=False,
+                    allow_truncation_recovery=False,
                 )
-                data = extract_json(content)
                 if not isinstance(data, dict):
+                    response_type = type(data).__name__
+                    if data is None:
+                        response_type = "empty response"
                     raise WorldProjectionExtractionError(
-                        f"Daily world projection response was {type(data).__name__}, not a JSON object",
+                        f"Daily world projection response was {response_type}, not a JSON object",
                         code="invalid_json",
                     )
                 return validate_projection_payload(data, story, options, tracked_state)
@@ -500,8 +506,9 @@ class SummaryGenerator:
                     code="provider_error",
                 )
             logger.warning(
-                "[DailyWorldProjection] attempt %s/2 failed: %s",
+                "[DailyWorldProjection] attempt %s/%s failed: %s",
                 attempt + 1,
+                attempts,
                 last_error,
             )
 

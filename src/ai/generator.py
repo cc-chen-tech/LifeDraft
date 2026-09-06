@@ -164,6 +164,7 @@ class EventGenerator:
         model: Optional[str] = None,
         thinking: Optional[bool] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
+        allow_truncation_recovery: bool = True,
     ) -> Optional[Dict[str, Any]]:
         """Public AI JSON generation interface."""
         if generation_tracker is not None:
@@ -176,6 +177,7 @@ class EventGenerator:
             model=model,
             thinking=thinking,
             generation_tracker=generation_tracker,
+            allow_truncation_recovery=allow_truncation_recovery,
         )
 
     def generate_stream(
@@ -449,10 +451,15 @@ class EventGenerator:
         tracked_state: Any = None,
         *,
         language: str = "zh",
+        retry_count: int = 2,
     ):
         """Extract the typed daily projection; legacy weekly extraction stays separate."""
         return self.summary_gen.extract_daily_world_projection(
-            story, options, tracked_state, language=language
+            story,
+            options,
+            tracked_state,
+            language=language,
+            retry_count=retry_count,
         )
 
     def compress_and_extract(

@@ -229,7 +229,7 @@ async def upload_voice_consent(
 ) -> MessageResponse:
     if not request.consent_confirmed:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "error_code": "voice_consent_required",
                 "message": "Voice upload requires explicit consent",

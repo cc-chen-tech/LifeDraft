@@ -353,7 +353,6 @@ def test_first_round_receives_persisted_opening_as_non_repeating_context() -> No
     assert "不得复述" in context
 
 
-@pytest.mark.xfail(reason="origin/main drift: retry flow now exhausts the prose budget before the specific rejection path")
 def test_round_generation_rejects_provider_output_repeated_after_retry(
     monkeypatch,
     constraint_harness_disabled,
@@ -422,7 +421,6 @@ def test_round_generation_disables_thinking_for_quick_consistency_rewrite(
     assert option_generator.story_descriptions == [repaired_story]
 
 
-@pytest.mark.xfail(reason="origin/main drift: retry flow now exhausts the prose budget before the specific rejection path")
 def test_round_generation_rejects_blank_ai_consistency_rewrite(
     monkeypatch,
     constraint_harness_disabled,
@@ -582,7 +580,6 @@ def test_round_generation_uses_a_bounded_provider_timeout(
     assert client.call.call_args.kwargs["request_timeout"] == 120.0
 
 
-@pytest.mark.xfail(reason="origin/main drift: retry flow now exhausts the prose budget before the specific rejection path")
 def test_round_generation_rejects_an_overlong_story_after_shape_retry(
     monkeypatch,
     constraint_harness_disabled,

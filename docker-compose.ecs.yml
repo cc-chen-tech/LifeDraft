@@ -3,7 +3,6 @@ version: '3.8'
 services:
   nginx:
     image: nginx:alpine
-    container_name: story2-nginx
     ports:
       - "80:80"
       - "443:443"
@@ -23,7 +22,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: story2-backend
     environment:
       - ENVIRONMENT=production
       - API_HOST=0.0.0.0
@@ -47,7 +45,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
-    container_name: story2-frontend
     environment:
       - PORT=3000
       - NODE_ENV=production

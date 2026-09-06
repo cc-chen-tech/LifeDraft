@@ -28,7 +28,9 @@ logger = logging.getLogger(__name__)
 LEASE_DURATION = timedelta(minutes=5)
 CLAIMABLE_STATUSES = ("pending", "failed_retryable")
 READY_STATUSES = ("ready", "ready_no_change")
-REPROCESSABLE_STATUSES = CLAIMABLE_STATUSES + ("running",) + READY_STATUSES
+REPROCESSABLE_STATUSES = (
+    CLAIMABLE_STATUSES + ("running",) + READY_STATUSES + ("degraded_unknown",)
+)
 
 
 class JsonModel(Protocol):
@@ -532,6 +534,69 @@ class DailyWorldProjectionRepository:
             now,
         )
         return retried
+
+    def mark_degraded_unknown(
+        self,
+        projection_id: int,
+        worker_id: str,
+        error_code: str,
+        *,
+        source_hash: str,
+        now: datetime,
+    ) -> bool:
+        """Persist a terminal unknown without publishing or advancing state."""
+
+        updated = (
+            self.db.query(DailyWorldProjection)
+            .filter(
+                DailyWorldProjection.projection_id == projection_id,
+                DailyWorldProjection.status == "running",
+                DailyWorldProjection.lease_owner == worker_id,
+                DailyWorldProjection.lease_expires_at > now,
+                DailyWorldProjection.source_hash == source_hash,
+            )
+            .update(
+                {
+                    DailyWorldProjection.status: "degraded_unknown",
+                    DailyWorldProjection.error_code: error_code,
+                    DailyWorldProjection.next_attempt_at: now,
+                    DailyWorldProjection.lease_owner: None,
+                    DailyWorldProjection.lease_expires_at: None,
+                    DailyWorldProjection.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
+        return self._finish_fenced_update(
+            "mark_degraded_unknown", projection_id, updated
+        )
+
+    def mark_degraded_unknown_and_finish_attempt(
+        self,
+        projection_id: int,
+        worker_id: str,
+        error_code: str,
+        *,
+        source_hash: str,
+        attempt_id: int,
+        now: datetime,
+    ) -> bool:
+        """Atomically close the terminal projection and provider ledger row."""
+
+        degraded = self.mark_degraded_unknown(
+            projection_id,
+            worker_id,
+            error_code,
+            source_hash=source_hash,
+            now=now,
+        )
+        self._finish_attempt_update(
+            attempt_id,
+            "degraded_unknown" if degraded else "lease_lost",
+            error_code if degraded else "lease_lost",
+            now,
+        )
+        return degraded
 
     def release_lease_and_finish_attempt(
         self,

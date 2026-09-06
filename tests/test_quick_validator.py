@@ -8,6 +8,34 @@ from src.ai.quick_validator import (QuickValidationResult, QuickValidator,
 pytestmark = [pytest.mark.unit]
 
 
+def _seven_person_character_settings():
+    return {
+        "relationships": {
+            "key_people": [
+                {"name": "陆昊然", "role": "导师"},
+                {"name": "陈晓雨", "role": "闺蜜"},
+                {"name": "林一凡", "role": "同期"},
+                {"name": "王天成", "role": "创业伙伴"},
+                {"name": "周梅", "role": "同事"},
+                {"name": "顾建国", "role": "投资人"},
+                {"name": "林清", "role": "朋友"},
+            ]
+        }
+    }
+
+
+def _seven_person_names():
+    return [
+        "陆昊然",
+        "陈晓雨",
+        "林一凡",
+        "王天成",
+        "周梅",
+        "顾建国",
+        "林清",
+    ]
+
+
 
 class TestQuickValidator:
     """Test QuickValidator class."""
@@ -48,20 +76,31 @@ class TestQuickValidator:
             for finding in result.findings
         )
 
-    def test_full_relationship_network_coverage_is_warning_only(self):
+    def test_partial_relationship_network_coverage_is_not_a_finding(self):
         validator = QuickValidator()
 
         result = validator.validate(
-            "你独自在工作室整理材料，确认明天再联系其他人。",
-            available_people=["陆昊然", "陈晓雨", "林一凡"],
+            "陆昊然、陈晓雨、林一凡和王天成一起核对方案。"
+            "安神香是产品代号，雷火阵是风控模块，云梯果是测试数据集。",
+            character_settings=_seven_person_character_settings(),
+            available_people=_seven_person_names(),
         )
 
         assert result.passed is True
-        assert any(
-            finding.code == "CAST_COVERAGE_LOW"
-            and finding.severity.value == "warning"
-            for finding in result.findings
+        assert not any(finding.code == "CAST_COVERAGE_LOW" for finding in result.findings)
+
+    def test_five_of_seven_relationship_network_is_not_a_finding(self):
+        validator = QuickValidator()
+
+        result = validator.validate(
+            "陆昊然、陈晓雨、林一凡、王天成和周梅一起核对方案。"
+            "花果山是项目代号，水帘洞是测试环境，金箍棒是工具名称。",
+            character_settings=_seven_person_character_settings(),
+            available_people=_seven_person_names(),
         )
+
+        assert result.passed is True
+        assert not any(finding.code == "CAST_COVERAGE_LOW" for finding in result.findings)
 
     def test_unknown_person_with_identity_and_plot_duty_is_hard(self):
         validator = QuickValidator()

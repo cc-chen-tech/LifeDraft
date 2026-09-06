@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from src.database.db import GameDatabase
-from src.database.models import Game, SessionLocal, User, init_db
+from src.database.models import Game, SessionLocal, User
 from src.game.game_initializer import GameInitializer
 from src.game.world_fact_safety import qualify_generated_world_facts
 import pytest
@@ -15,7 +15,6 @@ pytestmark = [pytest.mark.integration]
 
 
 def test_qualified_world_setting_survives_real_database_round_trip() -> None:
-    init_db()
     suffix = uuid4().hex[:10]
     session = SessionLocal()
     user_id: int | None = None
@@ -65,4 +64,3 @@ def test_qualified_world_setting_survives_real_database_round_trip() -> None:
             session.query(User).filter(User.user_id == user_id).delete()
         session.commit()
         session.close()
-

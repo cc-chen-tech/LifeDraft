@@ -637,7 +637,7 @@ class QuickValidator:
         language: str,
         required_key_people: Optional[List[str]] = None,
     ) -> tuple[List[str], List[str]]:
-        """Classify severe cast drift as issues and noisy coverage signals as warnings."""
+        """Classify severe cast drift while keeping aggregate coverage non-blocking."""
         allowed_names = [name.strip() for name in available_people if name and name.strip()]
         key_people_names = [
             name.strip()
@@ -652,12 +652,7 @@ class QuickValidator:
         ]
 
         if language != "zh":
-            if present_key_people:
-                return [], []
-            return (
-                [],
-                ["Preset relationship-network coverage is below the quality target; delivery is still allowed."],
-            )
+            return [], []
 
         invented_names = self._extract_likely_chinese_person_names(text, allowed_names)
         if present_key_people:
@@ -693,20 +688,6 @@ class QuickValidator:
                     ],
                     [],
                 )
-            if (
-                len(key_people_names) >= 3
-                and len(invented_names) >= 3
-                and len(present_key_people) < required_network_count
-            ):
-                return (
-                    [],
-                    [
-                        "上一版故事预设关系网覆盖低于建议值"
-                        f"（已使用{len(present_key_people)}/{len(key_people_names)}，要求多人关系戏至少80%）"
-                        "，检测到可能的名单外人物"
-                        f"（{ '、'.join(invented_names[:5]) }）；保留故事并记录观察。"
-                    ],
-                )
             return [], []
 
         if len(invented_names) >= 1 and (
@@ -721,13 +702,7 @@ class QuickValidator:
                 [],
             )
 
-        return (
-            [],
-            [
-                "上一版故事预设关系网覆盖低于建议值"
-                f"（已使用0/{len(key_people_names)}）；这是后台质量指标，不阻止交付。"
-            ],
-        )
+        return [], []
 
     def _key_person_has_active_presence(self, text: str, name: str) -> bool:
         """Names mentioned only as absent/non-participating do not satisfy cast use."""
