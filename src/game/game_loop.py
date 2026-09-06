@@ -482,11 +482,21 @@ class GameLoop(RoundSystemMixin):
             WorldModelUpdater.process_causal_updates(
                 state, world.get("causal_updates", [])
             )
+            from src.services.entity_recognition_materializer import (
+                materialize_recognized_entities,
+            )
+
+            entities_materialized = materialize_recognized_entities(
+                state,
+                entities,
+                source_event_id=event_id,
+            )
             record["summary"] = narrative.get("summary", "")
             record["postprocessing"] = {
                 "narrative": narrative,
                 "world": world,
                 "entities": entities,
+                "entities_materialized": entities_materialized,
             }
             self._generate_daily_milestone_summaries(record)
             record["postprocessing_status"] = "complete"
@@ -496,16 +506,29 @@ class GameLoop(RoundSystemMixin):
             record["postprocessing_error"] = str(exc)
             logger.warning("Daily post-processing failed for %s: %s", event_id, exc)
         finally:
-            persist = getattr(self, "_daily_postprocess_persist_callback", None)
-            if callable(persist):
-                try:
-                    persist()
-                except Exception as exc:
+            persisted = self._persist_daily_postprocess_state()
+            if not persisted and record.get("postprocessing_status") == "complete":
+                record["postprocessing_status"] = "failed"
+                record["postprocessing_error"] = (
+                    "daily post-processing persistence was not confirmed"
+                )
+                if not self._persist_daily_postprocess_state():
                     logger.warning(
-                        "Daily post-processing persistence failed for %s: %s",
+                        "Daily post-processing failure state was not persisted for %s",
                         event_id,
-                        exc,
                     )
+
+    def _persist_daily_postprocess_state(self) -> bool:
+        """Persist enrichment state and require an explicit success result."""
+        persist = getattr(self, "_daily_postprocess_persist_callback", None)
+        if not callable(persist):
+            logger.error("Daily post-processing has no persistence callback")
+            return False
+        try:
+            return bool(persist())
+        except Exception as exc:
+            logger.warning("Daily post-processing persistence failed: %s", exc)
+            return False
 
     def _recognize_daily_entities(self, record: Dict[str, Any]) -> Dict[str, Any]:
         """Recognize recurring entities off the choice path for later collection use."""
@@ -513,9 +536,10 @@ class GameLoop(RoundSystemMixin):
         if state is None:
             return {"items": [], "characters": [], "landmarks": []}
         ai_client = getattr(self.ai_generator, "ai_client", None)
-        if ai_client is None:
-            return {"items": [], "characters": [], "landmarks": []}
 
+        from src.services.entity_recognition_history import (
+            build_entity_recognition_history,
+        )
         from src.services.entity_recognition_service import EntityRecognitionService
 
         settings = state.character_settings or {}
@@ -525,7 +549,7 @@ class GameLoop(RoundSystemMixin):
             existing_characters.append(protagonist)
         service = EntityRecognitionService(ai_client)
         return service.recognize_from_history(
-            round_history=state.day_history,
+            round_history=build_entity_recognition_history(state),
             existing_items=list(state.items.keys()),
             existing_characters=existing_characters,
             existing_landmarks=list(state.landmarks.keys()),

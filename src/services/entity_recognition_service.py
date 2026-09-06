@@ -15,6 +15,13 @@ from collections import OrderedDict
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from src.services.base_extraction import BaseExtractionService
+from src.services.collection_entity_types import (
+    KNOWN_ITEM_NAMES,
+    KNOWN_LANDMARK_NAMES,
+    classify_known_entity_name,
+    is_invalid_character_name,
+    is_known_non_person_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +125,18 @@ class EntityRecognitionService(BaseExtractionService):
                 f"min_appearances={min_appearances}"
             )
 
+            # 识别是增强能力，不应让 AI 临时不可用时把明确的物品和标志物
+            # 直接变成空收藏。确定性词表仍然可以提供安全的最低保障。
+            if self.ai_client is None:
+                return self._recognize_deterministic_fallback(
+                    story_text=story_text,
+                    existing_items=existing_items,
+                    existing_characters=existing_characters,
+                    existing_landmarks=existing_landmarks,
+                    min_appearances=min_appearances,
+                    eligible_character_names=eligible_character_names,
+                )
+
             # P1-成本修复：命中缓存直接返回，跳过 LLM 调用与后续解析。
             cache_key = _build_entity_recognition_cache_key(
                 story_text=story_text,
@@ -169,6 +188,11 @@ class EntityRecognitionService(BaseExtractionService):
                 story_text,
                 known_person_names=existing_characters,
             )
+            result = self._filter_cross_category_entities(
+                result,
+                story_character_names=story_character_names,
+                existing_characters=existing_characters,
+            )
             effective_character_names = self._ordered_unique(
                 [*(eligible_character_names or []), *story_character_names]
             )
@@ -187,6 +211,11 @@ class EntityRecognitionService(BaseExtractionService):
                 existing_landmarks=existing_landmarks,
                 min_appearances=min_appearances,
                 eligible_character_names=effective_character_names,
+            )
+            result = self._filter_cross_category_entities(
+                result,
+                story_character_names=story_character_names,
+                existing_characters=existing_characters,
             )
             result = self._normalize_recognized_entities(
                 result,
@@ -210,7 +239,24 @@ class EntityRecognitionService(BaseExtractionService):
 
         except Exception as e:
             logger.error(f"Entity recognition failed: {e}", exc_info=True)
-            return {"items": [], "characters": [], "landmarks": []}
+            try:
+                fallback_story = self._truncate_recognition_story(
+                    self._build_story_text(round_history)
+                )
+                return self._recognize_deterministic_fallback(
+                    story_text=fallback_story,
+                    existing_items=existing_items,
+                    existing_characters=existing_characters,
+                    existing_landmarks=existing_landmarks,
+                    min_appearances=min_appearances,
+                    eligible_character_names=eligible_character_names,
+                )
+            except Exception as fallback_error:
+                logger.error(
+                    f"Deterministic entity recognition fallback failed: {fallback_error}",
+                    exc_info=True,
+                )
+                return {"items": [], "characters": [], "landmarks": []}
 
     def extract_item_description(
         self,
@@ -429,6 +475,91 @@ class EntityRecognitionService(BaseExtractionService):
             min_appearances=min_appearances,
         )
         return supplemented
+
+    def _recognize_deterministic_fallback(
+        self,
+        story_text: str,
+        existing_items: List[str],
+        existing_characters: List[str],
+        existing_landmarks: List[str],
+        min_appearances: int,
+        eligible_character_names: Optional[List[str]],
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Recognize only high-confidence text entities without an AI call."""
+        story_character_names = self._extract_named_people(
+            story_text,
+            known_person_names=existing_characters,
+        )
+        effective_character_names = self._ordered_unique(
+            [*(eligible_character_names or []), *story_character_names]
+        )
+        result = self._supplement_with_story_entities(
+            result={"items": [], "characters": [], "landmarks": []},
+            story_text=story_text,
+            existing_items=existing_items,
+            existing_characters=existing_characters,
+            existing_landmarks=existing_landmarks,
+            min_appearances=min_appearances,
+            eligible_character_names=effective_character_names,
+        )
+        if eligible_character_names is not None:
+            result["characters"] = self._filter_character_entities_by_metadata(
+                result.get("characters", []),
+                eligible_character_names=effective_character_names,
+                story_character_names=story_character_names,
+                existing_characters=existing_characters,
+            )
+        result = self._filter_cross_category_entities(
+            result,
+            story_character_names=story_character_names,
+            existing_characters=existing_characters,
+        )
+        return self._normalize_recognized_entities(
+            result,
+            existing_characters=existing_characters,
+            existing_landmarks=existing_landmarks,
+        )
+
+    def _filter_cross_category_entities(
+        self,
+        result: Dict[str, List[Dict[str, Any]]],
+        story_character_names: List[str],
+        existing_characters: List[str],
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Enforce high-confidence category boundaries after AI parsing.
+
+        The model is allowed to provide rich descriptions, but it cannot
+        override an explicit object/place vocabulary or turn a known-person
+        plus an action character into a new person.
+        """
+        known_person_names = [
+            name
+            for name in self._ordered_unique(
+                [*existing_characters, *story_character_names]
+            )
+            if name and not is_known_non_person_name(name)
+        ]
+
+        characters = []
+        for entity in result.get("characters", []):
+            name = str(entity.get("name", "")).strip()
+            if is_invalid_character_name(name, tuple(known_person_names)):
+                continue
+            characters.append(entity)
+
+        items = [
+            entity
+            for entity in result.get("items", [])
+            if classify_known_entity_name(entity.get("name", ""))
+            not in {"landmark", "non_person"}
+        ]
+        landmarks = [
+            entity
+            for entity in result.get("landmarks", [])
+            if classify_known_entity_name(entity.get("name", ""))
+            not in {"item", "non_person"}
+        ]
+        return {"items": items, "characters": characters, "landmarks": landmarks}
 
     def _filter_character_entities_by_metadata(
         self,
@@ -649,6 +780,9 @@ class EntityRecognitionService(BaseExtractionService):
             "守",
             "来",
             "去",
+            "立",
+            "转",
+            "照",
         )
         return any(
             known_name
@@ -687,6 +821,9 @@ class EntityRecognitionService(BaseExtractionService):
             "苦",
             "来",
             "去",
+            "立",
+            "转",
+            "照",
         )
         return any(
             full_name
@@ -736,8 +873,13 @@ class EntityRecognitionService(BaseExtractionService):
 
     def _extract_named_items(self, story_text: str) -> List[str]:
         """提取明确的道具名，保持范围保守。"""
+        known_item_pattern = "|".join(
+            re.escape(name)
+            for name in sorted(KNOWN_ITEM_NAMES, key=len, reverse=True)
+        )
         patterns = [
             r"(?:金|银|铜|铁|玉)?钥匙",
+            rf"{known_item_pattern}",
             r"账册|账本|玉佩|印章|信件|书信|契约|地图|令牌|玉坠|匕首|短刀|长剑|宝剑|药瓶",
         ]
         names = []
@@ -747,8 +889,15 @@ class EntityRecognitionService(BaseExtractionService):
 
     def _extract_named_landmarks(self, story_text: str) -> List[str]:
         """提取明确命名的地点。"""
+        explicit_names = "|".join(
+            re.escape(name)
+            for name in sorted(KNOWN_LANDMARK_NAMES, key=len, reverse=True)
+        )
         suffixes = "船行|客栈|书院|武馆|医馆|茶楼|酒楼|码头|祠堂|商行|镖局|药铺"
-        raw_names = re.findall(rf"[\u4e00-\u9fff]{{2,8}}(?:{suffixes})", story_text)
+        raw_names = re.findall(
+            rf"(?:{explicit_names})|[\u4e00-\u9fff]{{2,8}}(?:{suffixes})",
+            story_text,
+        )
         names = []
         for raw_name in raw_names:
             name = re.sub(
@@ -843,6 +992,12 @@ class EntityRecognitionService(BaseExtractionService):
         return excerpt
 
     def _guess_item_category(self, name: str) -> str:
+        if name in {"金箍棒", "九环锡杖"}:
+            return "weapon"
+        if name in {"天外石", "龙鳞", "水珠", "青石"}:
+            return "treasure"
+        if name in {"玉简", "帛书"}:
+            return "document"
         if any(token in name for token in ("账册", "账本", "信件", "书信", "契约", "地图")):
             return "document"
         if any(token in name for token in ("玉佩", "玉坠", "令牌", "印章")):

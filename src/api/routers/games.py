@@ -502,6 +502,9 @@ async def load_save_point(
     # 创建 GameLoop 并加载状态
     constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
     game_loop = GameLoop(language=language, quality_level=constraint_level)
+    game_loop._daily_postprocess_persist_callback = lambda: db.save_game_progress(
+        game_id, game_loop.get_state()
+    )
     game_loop.load_game(state_data)
 
     # 存储到会话

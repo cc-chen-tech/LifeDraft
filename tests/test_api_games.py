@@ -411,6 +411,39 @@ class TestLoadGame:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
+    def test_load_save_point_installs_daily_postprocess_persistence_callback(
+        self, client, mock_db, mock_session_store, mock_auth, auth_headers
+    ):
+        """Restored daily saves must persist background collection enrichment."""
+        mock_db.load_save_point.return_value = {
+            "_game_id": 1,
+            "player_name": "Test",
+            "timeline_version": 2,
+            "day_history": [],
+            "round_history": [],
+            "decision_history": [],
+            "yearly_summaries": [],
+        }
+        mock_db.save_game_progress.return_value = True
+
+        with patch("src.api.routers.games.GameLoop") as MockLoop:
+            mock_game_loop = MagicMock()
+            mock_state = MagicMock()
+            mock_state.to_dict.return_value = {"player_name": "Test"}
+            mock_game_loop.get_state.return_value = mock_state
+            mock_game_loop.get_progress.return_value = {}
+            mock_game_loop.get_round_info.return_value = {}
+            mock_game_loop.current_event = None
+            MockLoop.return_value = mock_game_loop
+
+            response = client.get("/api/games/load-save-point/1", headers=auth_headers)
+
+        assert response.status_code == 200
+        persist = mock_game_loop._daily_postprocess_persist_callback
+        assert callable(persist)
+        assert persist() is True
+        mock_db.save_game_progress.assert_called_once_with(1, mock_state)
+
     def test_load_game_no_auth(self, client):
         """Test loading game without authentication."""
         response = client.get("/api/games/1")

@@ -3,7 +3,7 @@ import { CollectionPanel } from '@/components/game/CollectionPanel';
 import { useCollectionStore } from '@/stores/useCollectionStore';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
 
-describe('CollectionPanel auto collection UI', () => {
+describe('CollectionPanel collection hydration UI', () => {
   beforeEach(() => {
     useCollectionStore.setState({
       characters: [],
@@ -28,7 +28,7 @@ describe('CollectionPanel auto collection UI', () => {
     global.fetch = jest.fn();
   });
 
-  it('renders newly auto-collected story items in the item tab after mount', async () => {
+  it('does not auto-add recognition results during initial mount', async () => {
     const initialCollection = {
       game_id: 515,
       characters: [
@@ -52,69 +52,19 @@ describe('CollectionPanel auto collection UI', () => {
       total_items: 0,
       total_landmarks: 0,
     };
-    const recognizedEntities = {
-      characters: [],
-      items: [
-        {
-          name: 'SemantLink API文档U盘',
-          description: '第4周推进AI协作工具时反复查阅的技术资料。',
-          category: 'document',
-          importance: 'critical',
-          appear_count: 2,
-          appear_contexts: ['第4周周一：梳理接口限制'],
-        },
-      ],
-      landmarks: [],
-    };
-    const refreshedCollection = {
-      ...initialCollection,
-      items: [
-        {
-          name: 'SemantLink API文档U盘',
-          description: '第4周推进AI协作工具时反复查阅的技术资料。',
-          importance: 'critical',
-          category: 'document',
-          acquired_week: 4,
-          acquired_context: '第4周周一：梳理接口限制',
-          is_key_item: true,
-          image_url: null,
-          image_generated: false,
-          description_generated: true,
-          metadata: {},
-        },
-      ],
-      total_items: 1,
-    };
-
-    (global.fetch as jest.Mock)
-      .mockResolvedValueOnce(jsonResponse(initialCollection))
-      .mockResolvedValueOnce(jsonResponse(recognizedEntities))
-      .mockResolvedValueOnce(jsonResponse({
-        message: '成功添加 1 个物品, 0 个人物, 0 个地点',
-        added_items: ['SemantLink API文档U盘'],
-        added_characters: [],
-        added_landmarks: [],
-      }))
-      .mockResolvedValueOnce(jsonResponse(refreshedCollection));
+    (global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(initialCollection));
 
     render(<CollectionPanel gameId={515} />);
 
-    expect(await screen.findByText('SemantLink API文档U盘')).toBeInTheDocument();
-    expect(screen.getByText(/物品 \(1\)/)).toBeInTheDocument();
-    expect(screen.queryByText('暂无物品记录')).not.toBeInTheDocument();
+    expect(await screen.findByText('暂无物品记录')).toBeInTheDocument();
+    expect(screen.getByText(/物品 \(0\)/)).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/collection/515/add-entities'),
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.stringContaining('SemantLink API文档U盘'),
-        }),
-      );
+      expect(global.fetch).toHaveBeenCalledTimes(1);
     });
   });
 
-  it('auto-collects story characters even when item and landmark collections already contain entries', async () => {
+  it('does not auto-add story characters when other collections already contain entries', async () => {
     useCollectionStore.setState({ activeTab: 'characters' });
 
     const initialCollection = {
@@ -167,65 +117,15 @@ describe('CollectionPanel auto collection UI', () => {
       total_items: 1,
       total_landmarks: 1,
     };
-    const recognizedEntities = {
-      characters: [
-        {
-          name: '方蕾',
-          description: '故事中明确出现的债务相关人物。',
-          role: '故事人物',
-          importance: 'normal',
-          appear_count: 1,
-          appear_contexts: ['方蕾要求林见微立刻接手债务'],
-        },
-      ],
-      items: [],
-      landmarks: [],
-    };
-    const refreshedCollection = {
-      ...initialCollection,
-      characters: [
-        ...initialCollection.characters,
-        {
-          name: '方蕾',
-          role: '故事人物',
-          description: '故事中明确出现的债务相关人物。',
-          affinity: 50,
-          age: null,
-          gender: null,
-          occupation: null,
-          personality_traits: [],
-          image_url: null,
-          image_generated: false,
-          description_generated: true,
-        },
-      ],
-      total_characters: 2,
-    };
-
-    (global.fetch as jest.Mock)
-      .mockResolvedValueOnce(jsonResponse(initialCollection))
-      .mockResolvedValueOnce(jsonResponse(recognizedEntities))
-      .mockResolvedValueOnce(jsonResponse({
-        message: '成功添加 0 个物品, 1 个人物, 0 个地点',
-        added_items: [],
-        added_characters: ['方蕾'],
-        added_landmarks: [],
-      }))
-      .mockResolvedValueOnce(jsonResponse(refreshedCollection));
+    (global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(initialCollection));
 
     render(<CollectionPanel gameId={516} />);
 
-    expect(await screen.findByText('方蕾')).toBeInTheDocument();
-    expect(screen.getByText(/人物 \(2\)/)).toBeInTheDocument();
+    expect(await screen.findByText('林见微')).toBeInTheDocument();
+    expect(screen.getByText(/人物 \(1\)/)).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/collection/516/add-entities'),
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.stringContaining('方蕾'),
-        }),
-      );
+      expect(global.fetch).toHaveBeenCalledTimes(1);
     });
   });
 });

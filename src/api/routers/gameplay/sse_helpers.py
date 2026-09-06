@@ -645,18 +645,22 @@ def _enqueue_accepted_daily_projection(
         )
 
 
-def _persist_choice_state(game_loop, game_id: int) -> None:
+def _persist_choice_state(game_loop, game_id: int) -> bool:
     """Persist choice result state immediately after worker choice processing returns."""
     try:
         db = get_db()
         state = game_loop.get_state()
         if state:
-            db.save_game_progress(game_id, state)
+            persisted = bool(db.save_game_progress(game_id, state))
             logger.info(f"Auto-saved game state after choice: game_id={game_id}")
+            return persisted
+        return False
     except (OSError, IOError) as e:
         logger.warning(f"Auto-save IO error after choice: {e}")
+        return False
     except Exception as e:
         logger.exception(f"Auto-save unexpected error after choice: {e}")
+        return False
 
 
 def build_event_generation_key(game_id: int, game_loop) -> EventGenerationKey:
@@ -970,7 +974,7 @@ async def stream_choice(
                     db = get_db()
 
                     def persist_postprocess():
-                        _persist_choice_state(game_loop, game_id)
+                        return _persist_choice_state(game_loop, game_id)
 
                     game_loop._daily_postprocess_persist_callback = persist_postprocess
 
