@@ -215,6 +215,12 @@ def test_streamed_mp3_with_zero_frame_metadata_uses_bitrate_duration(
     assert _validated_audio_duration_ms(audio_path, "mp3") == 8_000
 
 
+def test_runtime_image_installs_ffmpeg_for_scene_assembly() -> None:
+    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+
+    assert "ffmpeg" in dockerfile
+
+
 def test_tts_protocol_rejects_provider_error_and_parses_nested_download_url() -> None:
     with pytest.raises(RuntimeError, match="1008 quota exhausted"):
         _raise_for_base_resp({"base_resp": {"status_code": 1008, "status_msg": "quota exhausted"}})
