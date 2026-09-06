@@ -1652,6 +1652,23 @@ export interface paths {
         patch: operations["update_voice_reading_settings_api_voice_reading_settings_patch"];
         trace?: never;
     };
+    "/api/voice-reading/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Voice */
+        post: operations["preview_voice_api_voice_reading_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice-reading/read": {
         parameters: {
             query?: never;
@@ -2526,6 +2543,10 @@ export interface components {
             text_hash: string;
             /** Text */
             text: string;
+            /** Narration Plan */
+            narration_plan?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * RecognizedEntityWrite
@@ -3048,6 +3069,22 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** VoicePreviewRequest */
+        VoicePreviewRequest: {
+            /** Voice Id */
+            voice_id: string;
+        };
+        /** VoicePreviewResponse */
+        VoicePreviewResponse: {
+            /** Voice Id */
+            voice_id: string;
+            /** Audio Url */
+            audio_url: string;
+            /** Media Type */
+            media_type: string;
+            /** Duration Ms */
+            duration_ms: number;
+        };
         /** VoiceReadingJobResponse */
         VoiceReadingJobResponse: {
             /** Job Id */
@@ -3232,6 +3269,10 @@ export interface components {
              * @default unavailable
              */
             playback_mode: string;
+            /** Voice Catalog */
+            voice_catalog?: {
+                [key: string]: unknown;
+            }[];
         };
         /** VoiceReadingSettingsUpdateRequest */
         VoiceReadingSettingsUpdateRequest: {
@@ -5953,6 +5994,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VoiceReadingSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_voice_api_voice_reading_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoicePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoicePreviewResponse"];
                 };
             };
             /** @description Validation Error */

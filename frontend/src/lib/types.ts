@@ -28,6 +28,22 @@ export interface VoiceReadingSettingsResponse {
   tts_provider_available: boolean;
   backend_audio_enabled: boolean;
   playback_mode: "audio" | "unavailable";
+  voice_catalog: MiniMaxVoiceOption[];
+}
+
+export interface MiniMaxVoiceOption {
+  voice_id: string;
+  label: string;
+  language: string;
+  group: string;
+  recommended: boolean;
+}
+
+export interface VoicePreviewResponse {
+  voice_id: string;
+  audio_url: string;
+  media_type: string;
+  duration_ms: number;
 }
 
 export interface VoiceReadingSettingsUpdateRequest {

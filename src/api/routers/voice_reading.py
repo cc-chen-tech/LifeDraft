@@ -19,6 +19,8 @@ from src.api.schemas import (
     VoiceReadingProgressResponse,
     VoiceReadingSettingsResponse,
     VoiceReadingSettingsUpdateRequest,
+    VoicePreviewRequest,
+    VoicePreviewResponse,
     VoiceUploadConsentRequest,
 )
 from src.database.models import SessionLocal
@@ -74,6 +76,19 @@ async def update_voice_reading_settings(
     )
     db.commit()
     return response
+
+
+@router.post("/preview", response_model=VoicePreviewResponse)
+async def preview_voice(
+    request: VoicePreviewRequest,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> VoicePreviewResponse:
+    # user_id is intentionally resolved for the same ownership/auth boundary
+    # as the rest of voice-reading APIs; previews are shared cache artifacts.
+    del user_id
+    result = get_service(db).preview_voice(request.voice_id)
+    return VoicePreviewResponse(**result)
 
 
 @router.post("/read", response_model=StoryVoiceReadingResponse)

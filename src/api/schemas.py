@@ -302,6 +302,18 @@ class VoiceReadingSettingsResponse(BaseModel):
     tts_provider_available: bool = False
     backend_audio_enabled: bool = False
     playback_mode: str = "unavailable"
+    voice_catalog: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class VoicePreviewRequest(BaseModel):
+    voice_id: str
+
+
+class VoicePreviewResponse(BaseModel):
+    voice_id: str
+    audio_url: str
+    media_type: str
+    duration_ms: int
 
 
 class VoiceReadingSettingsUpdateRequest(BaseModel):
@@ -326,6 +338,7 @@ class ReadingContext(BaseModel):
     story_date: Optional[str] = None
     text_hash: str
     text: str = Field(..., min_length=1, max_length=VOICE_TEXT_MAX_CHARS)
+    narration_plan: Optional[Dict[str, Any]] = None
 
 
 class StoryVoiceReadingRequest(BaseModel):

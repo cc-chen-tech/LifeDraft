@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -19,6 +20,18 @@ from src.api.schemas import (
 )
 from src.database.models import VOICE_ASSET_VERSION
 from src.services.minimax_config import build_minimax_config
+from src.ai.narration_plan import (
+    NarrationPlanGenerator,
+    NarrationPlanValidationError,
+    build_legacy_narration_plan,
+    narration_plan_retry_instruction,
+    parse_narration_plan,
+)
+from src.services.minimax_voice_catalog import (
+    is_supported_voice,
+    preview_text_for_voice,
+    voice_options,
+)
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 from src.services.story_tts_provider import (
     DeterministicTTSProvider,
@@ -118,10 +131,11 @@ class StoryVoiceReadingService:
     def get_settings(self, user_id: int) -> VoiceReadingSettingsResponse:
         settings = self.repository.get_settings(user_id)
         provider_metadata = self.provider.metadata()
+        catalog = voice_options(include_legacy=True)
         return VoiceReadingSettingsResponse(
             member_required=False,
             enabled=True,
-            available_voice_colors=AVAILABLE_VOICES,
+            available_voice_colors=[voice["voice_id"] for voice in catalog],
             selected_voice_color=(
                 str(settings.selected_voice_color)
                 if settings is not None and settings.selected_voice_color is not None
@@ -143,6 +157,7 @@ class StoryVoiceReadingService:
             tts_provider_available=provider_metadata.available,
             backend_audio_enabled=provider_metadata.backend_audio_enabled,
             playback_mode=("audio" if provider_metadata.backend_audio_enabled else "unavailable"),
+            voice_catalog=catalog,
         )
 
     def update_settings(
@@ -152,7 +167,7 @@ class StoryVoiceReadingService:
         auto_read_enabled: Optional[bool],
         selected_speed: Optional[float] = None,
     ) -> VoiceReadingSettingsResponse:
-        if selected_voice_color is not None and selected_voice_color not in AVAILABLE_VOICES:
+        if selected_voice_color is not None and not is_supported_voice(selected_voice_color):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
@@ -165,6 +180,56 @@ class StoryVoiceReadingService:
             user_id, selected_voice_color, auto_read_enabled, selected_speed
         )
         return self.get_settings(user_id)
+
+    def preview_voice(self, voice_id: str) -> Dict[str, Any]:
+        """Generate/cache a short preview without creating a reading job."""
+        if not is_supported_voice(voice_id):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "error_code": "unsupported_voice",
+                    "message": "Selected voice is not available",
+                    "field": "voice_id",
+                },
+            )
+        provider = self.provider
+        metadata = provider.metadata()
+        if not metadata.backend_audio_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error_code": "tts_provider_unavailable",
+                    "message": "High-quality narration is temporarily unavailable",
+                },
+            )
+        text = preview_text_for_voice(voice_id)
+        context = {
+            "source_type": "voice_preview",
+            "game_id": 0,
+            "text": text,
+            "text_hash": normalize_text_hash(text),
+            "paragraphs": [text],
+        }
+        synthesize_scene = getattr(provider, "synthesize_scene", None)
+        speech = (
+            synthesize_scene(context, voice_id, 1.0)
+            if callable(synthesize_scene)
+            else provider.synthesize(context, voice_id, 1.0)
+        )
+        if speech.playback_mode != "audio" or not speech.storage_path or speech.duration_ms is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error_code": "preview_generation_failed",
+                    "message": "Voice preview could not be generated",
+                },
+            )
+        return {
+            "voice_id": voice_id,
+            "audio_url": speech.storage_path,
+            "media_type": speech.media_type or media_type_for_voice_asset(speech.storage_path),
+            "duration_ms": int(speech.duration_ms),
+        }
 
     def request_reading(
         self,
@@ -197,7 +262,7 @@ class StoryVoiceReadingService:
         *,
         allow_recommended_prefetch: bool,
     ) -> StoryVoiceReadingResponse:
-        if request.voice_id not in AVAILABLE_VOICES:
+        if not is_supported_voice(request.voice_id):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
@@ -213,6 +278,34 @@ class StoryVoiceReadingService:
         provider = self.provider
         provider_metadata = provider.metadata()
         paragraphs = split_story_paragraphs(str(context["text"]))
+        if context.get("narration_plan") is not None:
+            try:
+                validated_plan = parse_narration_plan(
+                    context["narration_plan"], paragraph_count=len(paragraphs)
+                )
+            except NarrationPlanValidationError as error:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "error_code": "narration_plan_invalid",
+                        "message": narration_plan_retry_instruction(error),
+                        "field": "narration_plan",
+                        "validation_errors": list(error.errors),
+                    },
+                ) from error
+            context["narration_plan"] = {
+                "segments": [
+                    {
+                        "paragraph_index": item.paragraph_index,
+                        "emotion": item.emotion,
+                        "speed": item.speed,
+                        "pause_after_ms": item.pause_after_ms,
+                        "vocal_cue": item.vocal_cue,
+                    }
+                    for item in validated_plan.segments
+                ],
+                "source": "request",
+            }
         dedupe_key = normalize_text_hash(
             ":".join(
                 [
@@ -294,9 +387,30 @@ class StoryVoiceReadingService:
         if next_token is None:
             return self.get_job(user_id, job_id)
         lease_token = next_token
+        job = self.repository.get_job(job_id, user_id)
+        if job is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
         chapter_context = dict(job.context_json)
         chapter_context["paragraphs"] = [str(segment.text_content) for segment in job.segments]
+        chapter_context["narration_plan"] = self._ensure_narration_plan(
+            chapter_context, chapter_context["paragraphs"]
+        )
+        setattr(job, "context_json", chapter_context)
+        # Persist the plan before the next fenced heartbeat. The JSON update
+        # itself triggers SQLAlchemy's on-update timestamp, so it must not be
+        # mixed into commit_processing_changes (which intentionally compares
+        # the pre-flush lease token).
+        self.repository.db.flush()
+        self.repository.db.commit()
+        self.repository.db.expire_all()
+        job = self.repository.get_job(job_id, user_id)
+        if job is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        lease_token = cast(Any, getattr(job, "updated_at"))
+        job = self.repository.get_job(job_id, user_id)
+        if job is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
         cached_asset, cached_cues = self._find_reusable_asset_with_cues(
             user_id=user_id,
@@ -358,12 +472,87 @@ class StoryVoiceReadingService:
             lease_token = next_lease_token
 
         try:
-            speech = self.provider.synthesize(
-                chapter_context,
-                str(job.voice_id),
-                float(job.speed),
-                on_progress=refresh_processing_lease,
-            )
+            # MiniMax scene-capable providers commit each independently valid
+            # MP3 before the chapter bundle is generated.  This is the point
+            # where the polling client can begin queue playback while this
+            # worker continues with later scenes and final assembly.
+            synthesize_scene = getattr(self.provider, "synthesize_scene", None)
+            if callable(synthesize_scene):
+                for segment in job.segments:
+                    if str(segment.status) == "ready" and segment.asset is not None:
+                        continue
+                    scene_context = dict(chapter_context)
+                    scene_context["text"] = str(segment.text_content)
+                    scene_context["text_hash"] = str(segment.text_hash)
+                    scene_context["paragraphs"] = [str(segment.text_content)]
+                    narration_plan = chapter_context.get("narration_plan")
+                    plan_segments = (
+                        narration_plan.get("segments")
+                        if isinstance(narration_plan, dict)
+                        else narration_plan
+                    )
+                    scene_speed = float(job.speed)
+                    if isinstance(plan_segments, list) and int(segment.paragraph_index) < len(plan_segments):
+                        plan_entry = plan_segments[int(segment.paragraph_index)]
+                        if isinstance(plan_entry, dict):
+                            scene_context.update(plan_entry)
+                            if isinstance(plan_entry.get("speed"), (int, float)):
+                                scene_speed = float(plan_entry["speed"])
+                    speech = synthesize_scene(
+                        scene_context,
+                        str(job.voice_id),
+                        scene_speed,
+                        on_progress=refresh_processing_lease,
+                    )
+                    if (
+                        speech.playback_mode != "audio"
+                        or speech.storage_path is None
+                        or speech.duration_ms is None
+                    ):
+                        raise RuntimeError(
+                            f"provider returned no audio for scene {segment.paragraph_index}"
+                        )
+                    scene_asset_context = dict(scene_context)
+                    scene_asset_context["paragraph_cues"] = [
+                        {"paragraph_index": 0, "start_ms": 0, "end_ms": int(speech.duration_ms)}
+                    ]
+                    scene_asset = self.repository.create_asset(
+                        user_id=user_id,
+                        context=scene_asset_context,
+                        voice_id=str(job.voice_id),
+                        speed=scene_speed,
+                        provider=speech.provider,
+                        model=speech.model,
+                        storage_path=speech.storage_path,
+                        duration_ms=int(speech.duration_ms),
+                        status="ready",
+                    )
+                    segment.asset = scene_asset
+                    segment.start_ms = 0
+                    segment.end_ms = int(speech.duration_ms)
+                    segment.status = "ready"
+                    segment.error_code = None
+                    segment.error_message = None
+                    refresh_processing_lease()
+
+            assemble_scenes = getattr(self.provider, "assemble_scenes", None)
+            if callable(assemble_scenes) and all(
+                segment.asset is not None for segment in job.segments
+            ):
+                speech = assemble_scenes(
+                    [str(segment.asset.storage_path) for segment in job.segments],
+                    chapter_context,
+                    str(job.voice_id),
+                    float(job.speed),
+                    on_progress=refresh_processing_lease,
+                )
+            else:
+                speech = self.provider.synthesize(
+                    chapter_context,
+                    str(job.voice_id),
+                    float(job.speed),
+                    on_progress=refresh_processing_lease,
+                )
             if (
                 speech.playback_mode != "audio"
                 or speech.storage_path is None
@@ -443,6 +632,44 @@ class StoryVoiceReadingService:
             ):
                 return self.get_job(user_id, job_id)
         return self.get_job(user_id, job_id)
+
+    @staticmethod
+    def _ensure_narration_plan(
+        context: Dict[str, Any], paragraphs: list[str]
+    ) -> Dict[str, Any]:
+        raw_plan = context.get("narration_plan")
+        if raw_plan is not None:
+            try:
+                plan = parse_narration_plan(raw_plan, paragraph_count=len(paragraphs))
+            except NarrationPlanValidationError:
+                raise
+            return {
+                "segments": [segment.__dict__ for segment in plan.segments],
+                "source": str(raw_plan.get("source") or "story-model")
+                if isinstance(raw_plan, dict)
+                else "story-model",
+            }
+
+        # New stories can ask the configured story model for a plan. Historical
+        # stories without one get a valid, persisted migration plan instead of
+        # sending an implicit provider default to MiniMax.
+        try:
+            from src.ai.client import AIClient
+
+            client = AIClient()
+            if client.api_key and os.getenv("STORY_TTS_DISABLE_NARRATION_PLAN_AI") != "1":
+                generated = NarrationPlanGenerator(client).generate(
+                    "\n\n".join(paragraphs)
+                )
+                parse_narration_plan(generated, paragraph_count=len(paragraphs))
+                return generated
+        except NarrationPlanValidationError:
+            raise
+        except Exception:
+            # A legacy migration must remain available when the optional plan
+            # call cannot run; this branch never repairs an invalid model plan.
+            pass
+        return build_legacy_narration_plan(paragraphs)
 
     def _find_reusable_asset_with_cues(
         self,

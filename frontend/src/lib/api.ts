@@ -17,6 +17,7 @@ import type {
   VoiceReadingSettingsResponse,
   VoiceReadingSettingsUpdateRequest,
   VoiceUploadConsentRequest,
+  VoicePreviewResponse,
   GameStateResponse,
 } from './types';
 import { resolveApiBase } from './apiBase';
@@ -572,6 +573,11 @@ export const api = {
   voice_reading: {
     getSettings: () =>
       fetchJson<VoiceReadingSettingsResponse>('/voice-reading/settings'),
+    preview: (voice_id: string) =>
+      fetchJson<VoicePreviewResponse>('/voice-reading/preview', {
+        method: 'POST',
+        body: JSON.stringify({ voice_id }),
+      }),
     updateSettings: (data: VoiceReadingSettingsUpdateRequest) =>
       fetchJson<VoiceReadingSettingsResponse>('/voice-reading/settings', {
         method: 'PATCH',

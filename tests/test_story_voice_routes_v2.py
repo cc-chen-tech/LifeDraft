@@ -102,6 +102,41 @@ def test_progress_routes_round_trip_only_for_current_user(monkeypatch) -> None:
         app.dependency_overrides.clear()
 
 
+def test_voice_preview_route_returns_cached_audio_contract(monkeypatch) -> None:
+    user_id = _create_user()
+    app.dependency_overrides[get_current_user] = lambda: user_id
+
+    def fake_preview(self, voice_id: str):
+        assert voice_id == "female-shaonv"
+        return {
+            "voice_id": voice_id,
+            "audio_url": "/api/voice-reading/audio/preview-female-shaonv.mp3",
+            "media_type": "audio/mpeg",
+            "duration_ms": 1800,
+        }
+
+    monkeypatch.setattr(
+        "src.services.story_voice_reading.StoryVoiceReadingService.preview_voice",
+        fake_preview,
+    )
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/voice-reading/preview",
+                json={"voice_id": "female-shaonv"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "voice_id": "female-shaonv",
+            "audio_url": "/api/voice-reading/audio/preview-female-shaonv.mp3",
+            "media_type": "audio/mpeg",
+            "duration_ms": 1800,
+        }
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_health_exposes_daily_tts_and_music_runtime_capabilities(monkeypatch) -> None:
     monkeypatch.setenv("ENABLE_DAILY_TIMELINE_V2", "true")
     monkeypatch.setenv("ENABLE_DAILY_WORLD_PROJECTION_V1", "true")
