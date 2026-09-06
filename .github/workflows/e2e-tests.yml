@@ -66,6 +66,11 @@ jobs:
         working-directory: frontend
         run: npx playwright install chromium
 
+      - name: Install Playwright WebKit for scheduled E2E
+        if: github.event_name == 'schedule'
+        working-directory: frontend
+        run: npx playwright install --with-deps webkit
+
       - name: Run core E2E tests
         if: github.event_name != 'schedule'
         run: ./test.sh e2e-core

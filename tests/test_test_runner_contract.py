@@ -40,6 +40,20 @@ def test_e2e_workflow_separates_pr_core_and_scheduled_full_runs():
     assert "run: ./test.sh e2e-full" in workflow
 
 
+def test_scheduled_e2e_cannot_trigger_production_deploy():
+    deploy_workflow = (PROJECT_ROOT / ".github/workflows/deploy-production.yml").read_text()
+
+    assert "github.event.workflow_run.event != 'schedule'" in deploy_workflow
+    assert "github.event.workflow_run.conclusion == 'success'" in deploy_workflow
+
+
+def test_scheduled_mobile_e2e_installs_webkit_dependencies():
+    workflow = (PROJECT_ROOT / ".github/workflows/e2e-tests.yml").read_text()
+
+    assert "npx playwright install --with-deps webkit" in workflow
+    assert workflow.count("github.event_name == 'schedule'") >= 2
+
+
 def test_playwright_ci_reporter_keeps_console_and_html_reports():
     config = (PROJECT_ROOT / "frontend/playwright.config.ts").read_text()
 

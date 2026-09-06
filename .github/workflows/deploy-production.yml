@@ -25,6 +25,11 @@ concurrency:
 jobs:
   verify-ci:
     name: Verify all main checks passed
+    # Scheduled E2E is observability only; it must never deploy production.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event != 'schedule' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     outputs:
       deploy_ref: ${{ steps.resolve.outputs.deploy_ref }}
