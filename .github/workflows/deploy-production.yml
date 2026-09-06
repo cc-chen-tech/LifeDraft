@@ -144,7 +144,7 @@ jobs:
         env:
           ECS_HOST: ${{ secrets.ECS_HOST }}
           ECS_USER: ${{ secrets.ECS_USER || 'root' }}
-          ECS_DEPLOY_PATH: ${{ vars.ECS_DEPLOY_PATH || '/opt/story2' }}
+          ECS_DEPLOY_PATH: /opt/story2
           DEPLOY_REF: ${{ needs.verify-ci.outputs.deploy_ref }}
           DEPLOY_SHA: ${{ needs.verify-ci.outputs.deploy_sha }}
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
@@ -161,7 +161,12 @@ jobs:
           ssh -i ~/.ssh/ecs_deploy_key "${ECS_USER}@${ECS_HOST}" \
             "DEPLOY_REF='${DEPLOY_REF}' DEPLOY_SHA='${DEPLOY_SHA}' ECS_DEPLOY_PATH='${ECS_DEPLOY_PATH}' MINIMAX_API_KEY_B64='${MINIMAX_API_KEY_B64}' GITHUB_DEPLOY_TOKEN_B64='${GITHUB_DEPLOY_TOKEN_B64}' bash -s" <<'EOF'
           set -euo pipefail
-          cd "${ECS_DEPLOY_PATH}"
+          CANONICAL_DEPLOY_PATH="/opt/story2"
+          if [ "${ECS_DEPLOY_PATH}" != "${CANONICAL_DEPLOY_PATH}" ]; then
+            echo "Refusing deployment outside ${CANONICAL_DEPLOY_PATH}." >&2
+            exit 1
+          fi
+          cd "${CANONICAL_DEPLOY_PATH}"
           GITHUB_DEPLOY_TOKEN="$(printf '%s' "${GITHUB_DEPLOY_TOKEN_B64}" | base64 -d)"
           unset GITHUB_DEPLOY_TOKEN_B64
           cleanup_git_remote() {
@@ -234,24 +239,8 @@ jobs:
           env_path.write_text("\n".join(output) + "\n", encoding="utf-8")
           env_path.chmod(0o600)
           PY
-          docker compose -f docker-compose.ecs.yml up -d --build
           docker rm -f story2-music 2>/dev/null || true
-          docker compose -f docker-compose.ecs.yml ps
-
-          for attempt in $(seq 1 36); do
-            backend_status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' story2-backend 2>/dev/null || true)"
-            if [ "${backend_status}" = "healthy" ]; then
-              echo "Backend container is healthy."
-              exit 0
-            fi
-
-            echo "Waiting for backend health (${attempt}/36): ${backend_status:-unknown}"
-            sleep 5
-          done
-
-          docker compose -f docker-compose.ecs.yml logs --tail=120 backend
-          echo "Backend container did not become healthy in time." >&2
-          exit 1
+          GITHUB_ACTIONS=true ./scripts/deploy.sh
           EOF
 
       - name: Smoke test

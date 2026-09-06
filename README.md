@@ -85,11 +85,11 @@ npm run dev
 
 访问：`http://localhost:3000`
 
-### 方式三：容器部署（ECS 配置）
+### 方式三：生产部署（ECS）
 
-```bash
-docker compose -f docker-compose.ecs.yml up -d --build
-```
+生产环境只允许通过 GitHub Actions 部署到 `/opt/story2`。请提交并合并 PR，
+由 `Deploy Production` workflow 统一执行构建、Compose 启动和公开健康检查；
+不要在服务器上手动执行 Docker Compose，也不要启动第二套部署目录。
 
 ## 环境变量（核心）
 
