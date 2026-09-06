@@ -45,3 +45,10 @@ class TestDockerComposeContract:
         for name, svc in services.items():
             svc_nets = svc.get("networks", [])
             assert network_name in svc_nets, f"{name} 必须使用 {network_name} 网络"
+
+    def test_services_do_not_pin_container_names(self, compose):
+        """Compose 服务不能固定容器名，避免不同项目互相覆盖。"""
+        for name, service in compose.get("services", {}).items():
+            assert "container_name" not in service, (
+                f"{name} 不应设置 container_name；容器名必须由 Compose project 管理"
+            )

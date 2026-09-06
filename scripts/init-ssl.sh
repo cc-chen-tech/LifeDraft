@@ -1,7 +1,17 @@
 #!/bin/bash
 # SSL 证书初始化脚本
 
-DOMAIN=$1
+set -euo pipefail
+
+CANONICAL_DEPLOY_PATH="/opt/story2"
+COMPOSE_PROJECT="story2"
+
+if [ "$(pwd -P)" != "${CANONICAL_DEPLOY_PATH}" ]; then
+    echo "Error: production SSL operations must run from ${CANONICAL_DEPLOY_PATH}." >&2
+    exit 1
+fi
+
+DOMAIN="${1:-}"
 
 if [ -z "$DOMAIN" ]; then
     echo "Usage: $0 <domain>"
@@ -34,4 +44,4 @@ ln -sf /etc/letsencrypt/live/$DOMAIN/privkey.pem nginx/ssl/privkey.pem
 
 echo "SSL certificate initialized successfully!"
 echo "Please restart nginx container to apply the certificate:"
-echo "  docker compose -f docker-compose.ecs.yml restart nginx"
+echo "  docker compose -p \"${COMPOSE_PROJECT}\" -f docker-compose.ecs.yml restart nginx"

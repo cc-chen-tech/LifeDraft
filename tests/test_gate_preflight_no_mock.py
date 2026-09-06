@@ -712,6 +712,53 @@ def test_production_deploy_fetches_private_repo_without_persisting_github_token(
     )
 
 
+def test_production_deploy_uses_only_canonical_compose_project_and_path() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+        encoding="utf-8"
+    )
+    deploy_script = (ROOT / "scripts" / "deploy.sh").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "ECS_DEPLOY_PATH: /opt/story2" in workflow
+    assert "vars.ECS_DEPLOY_PATH" not in workflow
+    assert 'CANONICAL_DEPLOY_PATH="/opt/story2"' in workflow
+    assert "GITHUB_ACTIONS=true ./scripts/deploy.sh" in workflow
+    assert "docker-compose.ecs.yml up -d --build" not in workflow
+    assert 'COMPOSE_PROJECT="story2"' in deploy_script
+    assert 'docker compose -p "${COMPOSE_PROJECT}" -f docker-compose.ecs.yml' in deploy_script
+    assert 'docker compose -p "${COMPOSE_PROJECT}" -f docker-compose.ecs.yml ps -q backend' in deploy_script
+    assert 'docker inspect -f' in deploy_script
+    assert 'LEGACY_COMPOSE_PROJECT="story2-main"' in deploy_script
+    assert 'label=com.docker.compose.project=${LEGACY_COMPOSE_PROJECT}' in deploy_script
+    assert 'story2-backend 2>/dev/null' not in workflow
+    assert "docker compose -f docker-compose.ecs.yml up -d --build" not in readme
+
+
+def test_production_deploy_checks_public_api_health_after_container_health() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'for endpoint in /health /api/health' in workflow
+    assert 'curl -fsS "${base}${endpoint}"' in workflow
+    deploy_script = (ROOT / "scripts" / "deploy.sh").read_text(encoding="utf-8")
+    assert "Backend container is healthy." in deploy_script
+    assert 'curl -fsS http://localhost/api/health' in deploy_script
+
+
+def test_operator_scripts_cannot_start_a_second_production_compose_project() -> None:
+    deploy_script = (ROOT / "scripts" / "deploy.sh").read_text(encoding="utf-8")
+    ssl_script = (ROOT / "scripts" / "init-ssl.sh").read_text(encoding="utf-8")
+    renew_script = (ROOT / "scripts" / "renew-ssl.sh").read_text(encoding="utf-8")
+
+    for script in (deploy_script, ssl_script, renew_script):
+        assert 'CANONICAL_DEPLOY_PATH="/opt/story2"' in script
+        assert 'COMPOSE_PROJECT="story2"' in script
+        assert 'docker compose -p' in script
+
+    assert 'if [ "$(pwd -P)" != "${CANONICAL_DEPLOY_PATH}" ]; then' in deploy_script
+
+
 def test_production_deploy_has_explicit_manual_local_preflight_override() -> None:
     workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
         encoding="utf-8"
