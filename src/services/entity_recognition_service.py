@@ -162,8 +162,6 @@ class EntityRecognitionService(BaseExtractionService):
                 max_tokens=2048,
             )
 
-            logger.info(f"AI raw response (first 500 chars): {response[:500]}")
-
             result = self._parse_recognition_response(response)
             story_character_names = self._extract_named_people(
                 story_text,

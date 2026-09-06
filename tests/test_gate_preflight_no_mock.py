@@ -207,8 +207,6 @@ def test_frontend_layout_does_not_depend_on_google_font_network() -> None:
     assert "--font-serif-sc" in globals_css
 
 
-
-
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
@@ -765,7 +763,7 @@ def test_operator_scripts_cannot_start_a_second_production_compose_project() -> 
     assert 'if [ "$(pwd -P)" != "${CANONICAL_DEPLOY_PATH}" ]; then' in deploy_script
 
 
-def test_production_deploy_has_explicit_manual_local_preflight_override() -> None:
+def test_production_deploy_keeps_model_smoke_gate_for_manual_override() -> None:
     workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
         encoding="utf-8"
     )
@@ -774,9 +772,11 @@ def test_production_deploy_has_explicit_manual_local_preflight_override() -> Non
     assert "Local preflight passed and GitHub checks are unavailable" in workflow
     assert "'${{ github.event_name }}' === 'workflow_dispatch'" in workflow
     assert "core.warning('Manual production deployment is bypassing GitHub CI after local preflight.')" in workflow
-    assert "return;" in workflow.split("Manual production deployment is bypassing GitHub CI", 1)[1].split(
+    gate_block = workflow.split("Manual production deployment is bypassing GitHub CI", 1)[1].split(
         "const requiredWorkflows", 1
     )[0]
+    assert "return;" not in gate_block
+    assert "const requiredWorkflows = ['Model Smoke'];" in workflow
 
 
 def test_env_example_documents_minimax_production_audio_settings() -> None:

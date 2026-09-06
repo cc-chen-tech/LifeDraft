@@ -79,5 +79,5 @@ def extract_json(text: str) -> Optional[Dict[str, Any]]:
         except json.JSONDecodeError:
             pass
 
-    logger.warning(f"Failed to extract JSON from text (length={len(text)}): {text[:200]}...")
+    logger.warning("Failed to extract JSON from model output (length=%d)", len(text))
     return None

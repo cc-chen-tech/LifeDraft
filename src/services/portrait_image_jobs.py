@@ -11,6 +11,7 @@ from src.database.models import (Game, GameState, Image,
                                  PortraitImageGenerationJob, SessionLocal)
 from src.services.image import ImageContentError, ImageProviderServiceError, ImageServiceError
 from src.services.image_service import ImageService, get_image_thread_pool
+from src.observability.request_context import bind_current_context
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +221,7 @@ def schedule_portrait_image_job(job_id: int) -> None:
             with _job_lock:
                 _scheduled_job_ids.discard(job_id)
 
-    get_image_thread_pool().submit(_run)
+    get_image_thread_pool().submit(bind_current_context(_run))
 
 
 def recover_pending_portrait_image_jobs() -> list[int]:

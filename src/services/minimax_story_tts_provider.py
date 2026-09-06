@@ -24,6 +24,8 @@ from mutagen.mp3 import MP3
 from mutagen.wave import WAVE
 
 from src.database.models import VOICE_ASSET_VERSION
+from src.observability.model_telemetry import ModelCallContext, emit_model_call
+from src.observability.request_context import current_request_context
 from src.services.minimax_config import MiniMaxConfig, build_minimax_config
 from src.services.minimax_voice_catalog import LEGACY_VOICE_ALIASES, is_supported_voice
 from src.services.story_tts_provider import (
@@ -271,6 +273,18 @@ class MiniMaxTTSProvider:
         self.client = client or MiniMaxAsyncTTSClient(self.config)
         self.websocket_client = MiniMaxWebSocketTTSClient(self.config)
 
+    def _telemetry_context(self, operation: str) -> ModelCallContext:
+        request = current_request_context()
+        return ModelCallContext(
+            request_id=request.request_id if request is not None else "untracked",
+            operation_id=request.operation_id if request is not None else None,
+            feature=(request.feature if request and request.feature else "tts"),
+            operation=operation,
+            phase="provider",
+            provider=self.provider,
+            model=self.model,
+        )
+
     def metadata(self) -> StoryTTSProviderMetadata:
         available = bool(self.config.api_key) or self.config.local_audio_enabled
         media_type = "audio/wav" if self.config.local_audio_enabled else "audio/mpeg"
@@ -400,6 +414,8 @@ class MiniMaxTTSProvider:
             )
             temporary_path: Optional[Path] = None
             temporary_subtitle: Optional[Path] = None
+            attempt_started_at = time.monotonic()
+            telemetry_context: Optional[ModelCallContext] = None
             try:
                 descriptor, temporary_name = tempfile.mkstemp(
                     dir=self.config.voice_asset_dir,
@@ -408,6 +424,7 @@ class MiniMaxTTSProvider:
                 )
                 os.close(descriptor)
                 temporary_path = Path(temporary_name)
+                telemetry_context = self._telemetry_context("tts_synthesis")
                 subtitle_text = self.client.synthesize_to_file(
                     payload,
                     temporary_path,
@@ -431,8 +448,21 @@ class MiniMaxTTSProvider:
                     os.replace(temporary_subtitle, subtitle_path)
                     temporary_subtitle = None
                 os.replace(temporary_path, output_path)
+                emit_model_call(
+                    telemetry_context,
+                    "success",
+                    attempt_started_at,
+                    output_size=output_path.stat().st_size,
+                )
                 temporary_path = None
             except Exception as error:
+                if telemetry_context is not None:
+                    emit_model_call(
+                        telemetry_context,
+                        "failure",
+                        attempt_started_at,
+                        error=error,
+                    )
                 if temporary_path is not None:
                     temporary_path.unlink(missing_ok=True)
                 if temporary_subtitle is not None:
@@ -495,7 +525,10 @@ class MiniMaxTTSProvider:
             )
             os.close(descriptor)
             temporary_path = Path(temporary_name)
+            attempt_started_at = time.monotonic()
+            telemetry_context: Optional[ModelCallContext] = None
             try:
+                telemetry_context = self._telemetry_context("tts_scene")
                 self.websocket_client.synthesize_to_file(
                     payload, temporary_path, on_progress=on_progress
                 )
@@ -520,7 +553,20 @@ class MiniMaxTTSProvider:
                         padded_path.unlink(missing_ok=True)
                 duration_ms = _validated_audio_duration_ms(temporary_path, "mp3")
                 os.replace(temporary_path, output_path)
+                emit_model_call(
+                    telemetry_context,
+                    "success",
+                    attempt_started_at,
+                    output_size=output_path.stat().st_size,
+                )
             except Exception as error:
+                if telemetry_context is not None:
+                    emit_model_call(
+                        telemetry_context,
+                        "failure",
+                        attempt_started_at,
+                        error=error,
+                    )
                 temporary_path.unlink(missing_ok=True)
                 raise TTSProviderUnavailableError(
                     "MiniMax WebSocket scene TTS generation failed"

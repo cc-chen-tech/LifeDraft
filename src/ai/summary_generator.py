@@ -670,8 +670,6 @@ class SummaryGenerator:
                     temperature=0.7,
                     max_tokens=4096,
                 )
-                logger.info(f"Weekly summary response: {content[:200]}...")
-
                 # Extract JSON
                 data = extract_json(content)
                 if data:
@@ -696,17 +694,13 @@ class SummaryGenerator:
                         if isinstance(val, (int, float)) and -20 <= val <= 20:
                             valid_bonus[key] = int(val)
 
-                    logger.info(f"Weekly summary: {summary[:50]}...")
-                    logger.info(f"Bonus effects: {valid_bonus}")
-
                     return {"summary": summary, "bonus_effects": valid_bonus}
 
                 last_error = "JSON解析失败，未能提取有效结果"
                 logger.warning(f"Attempt {attempt + 1}/2: {last_error}")
 
             except Exception as e:
-                last_error = str(e)
-                logger.warning(f"Attempt {attempt + 1}/2 failed: {e}")
+                last_error = type(e).__name__
 
         # Fallback
         logger.error("generate_weekly_summary failed after 2 attempts, using fallback")

@@ -73,7 +73,6 @@ class OptionGenerator:
         logger.info("=" * 80)
         logger.info("GENERATING OPTIONS ONLY")
         logger.info(f"Story length: {len(story_description)} characters")
-        logger.debug(f"Story preview (first 300 chars): {story_description[:300]}...")
         logger.info(f"Language: {language}")
         logger.info("=" * 80)
 
@@ -94,7 +93,6 @@ class OptionGenerator:
             )
         prompt = prepend_history_prefix(history_prefix or "", prompt)
         logger.info(f"Prompt length: {len(prompt)} characters")
-        logger.debug(f"Prompt preview (first 500 chars):\n{prompt[:500]}...")
 
         last_error: Optional[str] = None
         allowed_option_calls = min(
@@ -169,7 +167,6 @@ class OptionGenerator:
 
                 content = content.strip()
                 logger.info(f"AI response length: {len(content)} characters")
-                logger.debug(f"AI response preview:\n{content[:500]}...")
 
                 # Extract JSON from response
                 data = extract_json(content)

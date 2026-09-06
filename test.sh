@@ -823,6 +823,139 @@ run_e2e_browser_impl() {
     return $result
 }
 
+run_model_smoke() {
+    if [ "${MODEL_SMOKE_ENABLED:-0}" != "1" ]; then
+        echo -e "${RED}model-smoke 需要显式设置 MODEL_SMOKE_ENABLED=1。${NC}" >&2
+        return 1
+    fi
+    for secret_name in OPENAI_API_KEY MINIMAX_API_KEY; do
+        local secret_value="${!secret_name:-}"
+        if [ -z "$secret_value" ] || [[ "$secret_value" == *dummy* ]] || [[ "$secret_value" == *test-key* ]]; then
+            echo -e "${RED}model-smoke 需要真实的 ${secret_name}，禁止 dummy/test key。${NC}" >&2
+            return 1
+        fi
+    done
+    with_e2e_lock run_model_smoke_impl
+}
+
+run_model_smoke_impl() {
+    print_layer_header "6" "真实模型发布前 smoke" "受保护 provider、独立数据库、结构化日志和报告"
+    ensure_test_dirs
+    cleanup_e2e_runtimes
+
+    local smoke_db_path="$TEST_DATA_DIR/model-smoke.sqlite"
+    local smoke_artifact_dir="$TEST_DATA_DIR/model-smoke"
+    local smoke_report="$TEST_RUN_DIR/smoke-summary.json"
+    local smoke_events="$TEST_RUN_DIR/model-events.jsonl"
+    local smoke_screenshot="$TEST_RUN_DIR/model-smoke-screenshot.png"
+    E2E_BACKEND_PORT="$(find_free_port "${E2E_BACKEND_PORT:-}" "$(port_of_namespace_seed "$TEST_E2E_BACKEND_PORT_BASE")" "$TEST_E2E_PORT_SCAN_RANGE")"
+    E2E_FRONTEND_PORT="$(find_free_port "${E2E_FRONTEND_PORT:-}" "$(port_of_namespace_seed "$TEST_E2E_FRONTEND_PORT_BASE")" "$TEST_E2E_PORT_SCAN_RANGE")"
+    if [ -z "$E2E_BACKEND_PORT" ] || [ -z "$E2E_FRONTEND_PORT" ]; then
+        print_layer_result "model-smoke" 1
+        return 1
+    fi
+
+    rm -f "$smoke_report" "$smoke_events" "$smoke_screenshot"
+    rm -rf "$smoke_artifact_dir"
+    mkdir -p "$smoke_artifact_dir"
+    local smoke_db_url="sqlite:///$smoke_db_path"
+    export MODEL_SMOKE_REPORT="$smoke_report"
+    export MODEL_SMOKE_SCREENSHOT="$smoke_screenshot"
+    export MODEL_SMOKE_BASE_URL="http://127.0.0.1:$E2E_BACKEND_PORT"
+
+    DATABASE_URL="$smoke_db_url" DATABASE_PATH="$smoke_db_path" \
+        IMAGE_LOCAL_PATH="$smoke_artifact_dir/images" \
+        STORY_TTS_ASSET_DIR="$smoke_artifact_dir/voice" \
+        python -c "from src.database.models import init_db; init_db()"
+    local init_result=$?
+    if [ $init_result -ne 0 ]; then
+        print_layer_result "model-smoke" $init_result
+        return $init_result
+    fi
+
+    echo -e "${YELLOW}启动真实 provider smoke 后端 (端口: $E2E_BACKEND_PORT)...${NC}"
+    ENVIRONMENT=production MODEL_SMOKE_ENABLED=1 \
+    JWT_SECRET="${JWT_SECRET:-model-smoke-test-secret}" \
+    API_HOST=127.0.0.1 API_PORT="$E2E_BACKEND_PORT" \
+    DATABASE_URL="$smoke_db_url" DATABASE_PATH="$smoke_db_path" \
+    IMAGE_LOCAL_PATH="$smoke_artifact_dir/images" \
+    STORY_TTS_ASSET_DIR="$smoke_artifact_dir/voice" \
+    E2E_CONTRACT_PROBE_FAST=0 E2E_DETERMINISTIC_STORY=0 \
+    MINIMAX_E2E_LOCAL_AUDIO=0 MINIMAX_E2E_LOCAL_IMAGE=0 \
+    STORY_TTS_PROVIDER=minimax API_RELOAD=false \
+    python run_api.py > "$BACKEND_LOG" 2>&1 &
+    BACKEND_PID=$!
+    echo "$BACKEND_PID" > "$BACKEND_PID_FILE"
+    local backend_ready=0
+    for backend_ready_attempt in $(seq 1 60); do
+        if curl -fsS "http://127.0.0.1:$E2E_BACKEND_PORT/api/health" >/dev/null 2>&1; then
+            backend_ready=1
+            break
+        fi
+        if ! kill -0 "$BACKEND_PID" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+    if [ "$backend_ready" -ne 1 ]; then
+        echo -e "${RED}真实 provider smoke 后端启动失败，日志: $BACKEND_LOG${NC}" >&2
+        cat "$BACKEND_LOG" 2>/dev/null || true
+        print_layer_result "model-smoke" 1
+        return 1
+    fi
+
+    cd "$PROJECT_DIR"
+    python scripts/model_smoke.py \
+        --report "$smoke_report" \
+        --events "$smoke_events" \
+        --artifact-dir "$smoke_artifact_dir" \
+        --base-url "$MODEL_SMOKE_BASE_URL"
+    local smoke_result=$?
+
+    echo -e "${YELLOW}启动生产模式前端以生成 smoke Playwright 证据...${NC}"
+    cd "$PROJECT_DIR/frontend"
+    NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$MODEL_SMOKE_BASE_URL" NEXT_PUBLIC_API_URL="/api" npm run build
+    local frontend_build_result=$?
+    local playwright_result=1
+    if [ $frontend_build_result -eq 0 ]; then
+        NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$MODEL_SMOKE_BASE_URL" NEXT_PUBLIC_API_URL="/api" \
+        CI=1 E2E_FRONTEND_PORT="$E2E_FRONTEND_PORT" npm run start -- --hostname 127.0.0.1 --port "$E2E_FRONTEND_PORT" > "$FRONTEND_LOG" 2>&1 &
+        FRONTEND_PID=$!
+        echo "$FRONTEND_PID" > "$FRONTEND_PID_FILE"
+        local frontend_ready=0
+        for frontend_ready_attempt in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:$E2E_FRONTEND_PORT" >/dev/null 2>&1; then
+                frontend_ready=1
+                break
+            fi
+            if ! kill -0 "$FRONTEND_PID" >/dev/null 2>&1; then
+                break
+            fi
+            sleep 1
+        done
+        if [ "$frontend_ready" -eq 1 ]; then
+            export CI=1
+            export E2E_BACKEND_HOST=127.0.0.1
+            export E2E_BACKEND_PORT
+            export E2E_FRONTEND_PORT
+            export MODEL_SMOKE_REPORT="$smoke_report"
+            export MODEL_SMOKE_SCREENSHOT="$smoke_screenshot"
+            run_playwright_command "model-smoke" npx playwright test e2e/model-smoke.spec.ts --project=core --workers=1 --trace=on
+            playwright_result=$?
+        else
+            echo -e "${RED}smoke 前端启动失败，日志: $FRONTEND_LOG${NC}" >&2
+        fi
+    fi
+
+    local result=0
+    if [ $smoke_result -ne 0 ] || [ $frontend_build_result -ne 0 ] || [ $playwright_result -ne 0 ]; then
+        result=1
+    fi
+    cleanup_e2e_runtimes
+    print_layer_result "model-smoke" $result
+    return $result
+}
+
 # 单元测试 (pytest -m 'unit and not slow')
 run_unit() {
     echo -e "${BLUE}========================================${NC}"
@@ -1185,6 +1318,7 @@ show_help() {
     echo "  e2e-core      - Layer 5: core E2E 浏览器测试 (Playwright)"
     echo "  e2e-full      - 完整 E2E: core + ai-heavy（可选 Mobile Safari）"
     echo "  e2e-mobile    - 仅运行 Mobile Safari E2E"
+    echo "  model-smoke   - 受保护的真实 provider 发布前 smoke（需要真实密钥）"
     echo ""
     echo -e "${YELLOW}按标记运行:${NC}"
     echo "  unit          - 快速单元测试 (pytest -m 'unit and not slow')"
@@ -1250,6 +1384,9 @@ case "${1:-}" in
         ;;
     e2e-mobile)
         run_e2e_mobile
+        ;;
+    model-smoke)
+        run_model_smoke
         ;;
     unit)
         run_unit

@@ -23,12 +23,19 @@ from src.ai.budgets import (
     resolve_narrative_budget,
 )
 from src.ai.cache import EventCache
-from src.ai.client import AIClient, _thinking_request_params
+from src.ai.client import AIClient
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_generator import StoryGenerator
 from src.ai.story_rewriter import StoryRewriter
 from src.ai.summary_generator import SummaryGenerator
+from src.observability.request_context import (
+    RequestContext,
+    current_request_context,
+    request_context,
+    resolve_operation_id,
+    resolve_request_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +149,6 @@ class EventGenerator:
             )
         if generation_tracker is not None:
             generation_tracker.consume("prose")
-            generation_tracker.assert_before_provider_call()
         return self.ai_client.call(
             system_prompt=system_prompt,
             user_prompt=prompt,
@@ -201,22 +207,15 @@ class EventGenerator:
         """
         if generation_tracker is not None:
             generation_tracker.consume("prose")
-        use_model = model or self.ai_client.model
-        client = self.ai_client.require_openai_client()
-        request_params = _thinking_request_params(use_model, thinking)
-        if generation_tracker is not None:
-            generation_tracker.assert_before_provider_call()
-        return client.chat.completions.create(
-            model=use_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
+        return self.ai_client.stream(
+            system_prompt=system_prompt,
+            user_prompt=prompt,
             temperature=temperature,
             max_tokens=max_tokens,
-            stream=True,
-            **({"timeout": request_timeout} if request_timeout is not None else {}),
-            **request_params,
+            model=model,
+            thinking=thinking,
+            generation_tracker=generation_tracker,
+            request_timeout=request_timeout,
         )
 
     # ==================== Preset Events ====================
@@ -341,29 +340,50 @@ class EventGenerator:
         operation_id: Optional[str] = None,
     ) -> GameEvent:
         """Generate a single round's story and options."""
-        return self.story_gen.generate_round_event(
-            player_state=player_state,
-            language=language,
-            round_number=round_number,
-            round_context=round_context,
-            character_settings=character_settings,
-            stream_callback=stream_callback,
-            relationship_events=relationship_events,
-            historical_weekly_summary=historical_weekly_summary,
-            historical_yearly_summary=historical_yearly_summary,
-            game_date_info=game_date_info,
-            pending_storylines=pending_storylines,
-            established_facts=established_facts,
-            last_event_concluded=last_event_concluded,
-            last_round_full_story=last_round_full_story,
-            activated_foreshadowing=activated_foreshadowing,
-            character_habits=character_habits,
-            world_model=world_model,
-            option_generator=self.option_gen,
-            new_character=new_character,
-            status_callback=status_callback,
-            operation_id=operation_id,
+        parent_context = current_request_context()
+        effective_operation_id = (
+            operation_id
+            or (parent_context.operation_id if parent_context is not None else None)
+            or resolve_operation_id(None)
         )
+        context = RequestContext(
+            request_id=(
+                parent_context.request_id
+                if parent_context is not None
+                else resolve_request_id(None)
+            ),
+            operation_id=effective_operation_id,
+            feature=(
+                parent_context.feature
+                if parent_context is not None and parent_context.feature
+                else "story_generation"
+            ),
+            operation="round_generation",
+        )
+        with request_context(context):
+            return self.story_gen.generate_round_event(
+                player_state=player_state,
+                language=language,
+                round_number=round_number,
+                round_context=round_context,
+                character_settings=character_settings,
+                stream_callback=stream_callback,
+                relationship_events=relationship_events,
+                historical_weekly_summary=historical_weekly_summary,
+                historical_yearly_summary=historical_yearly_summary,
+                game_date_info=game_date_info,
+                pending_storylines=pending_storylines,
+                established_facts=established_facts,
+                last_event_concluded=last_event_concluded,
+                last_round_full_story=last_round_full_story,
+                activated_foreshadowing=activated_foreshadowing,
+                character_habits=character_habits,
+                world_model=world_model,
+                option_generator=self.option_gen,
+                new_character=new_character,
+                status_callback=status_callback,
+                operation_id=effective_operation_id,
+            )
 
     def generate_options_only(
         self,

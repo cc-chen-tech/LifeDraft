@@ -59,25 +59,29 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            if (
+            const bypassCi =
               '${{ github.event_name }}' === 'workflow_dispatch' &&
-              '${{ inputs.force_after_local_preflight }}' === 'true'
-            ) {
+              '${{ inputs.force_after_local_preflight }}' === 'true';
+            if (bypassCi) {
               core.warning('Manual production deployment is bypassing GitHub CI after local preflight.');
-              return;
             }
 
-            const requiredWorkflows = [
-              'Backend Tests',
-              'Python Code Quality',
-              'Frontend Build',
-              'Frontend Code Quality',
-              'Frontend Tests',
-              'Coverage Report',
-              'CI',
-              'Wiki Check',
-              'E2E Tests',
-            ];
+            // Real-provider smoke is always required, including emergency/manual
+            // deployments.  It is the release gate for production model behavior.
+            const requiredWorkflows = ['Model Smoke'];
+            if (!bypassCi) {
+              requiredWorkflows.unshift(
+                'Backend Tests',
+                'Python Code Quality',
+                'Frontend Build',
+                'Frontend Code Quality',
+                'Frontend Tests',
+                'Coverage Report',
+                'CI',
+                'Wiki Check',
+                'E2E Tests',
+              );
+            }
             const sha = '${{ steps.resolve.outputs.deploy_sha }}';
             const deadline = Date.now() + 15 * 60 * 1000;
 
@@ -93,6 +97,19 @@ jobs:
               const byName = new Map();
               for (const run of data.workflow_runs) {
                 if (!byName.has(run.name)) byName.set(run.name, run);
+              }
+
+              // Model Smoke may be a release/tag run rather than a main-branch
+              // run, so look it up separately without the branch filter above.
+              if (requiredWorkflows.includes('Model Smoke')) {
+                const { data: smokeData } = await github.rest.actions.listWorkflowRuns({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: 'model-smoke.yml',
+                  per_page: 100,
+                });
+                const smokeRun = smokeData.workflow_runs.find(run => run.head_sha === sha);
+                if (smokeRun) byName.set('Model Smoke', smokeRun);
               }
 
               const missing = requiredWorkflows.filter(name => !byName.has(name));

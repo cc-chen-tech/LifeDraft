@@ -19,6 +19,7 @@ from src.api.session_store import GameLoopSession, session_store
 from src.database.models import SessionLocal  # ★ 添加 SessionLocal 导入
 from src.database.singletons import get_game_db
 from src.game.game_loop import GameLoop
+from src.observability.request_context import bind_current_context
 from src.utils.language import detect_language_from_state
 
 logger = logging.getLogger(__name__)
@@ -428,7 +429,9 @@ class SessionService:
                 )
 
         # 启动后台线程
-        thread = threading.Thread(target=regenerate_in_background, daemon=True)
+        thread = threading.Thread(
+            target=bind_current_context(regenerate_in_background), daemon=True
+        )
         thread.start()
 
     def _extract_era_from_settings(self, char_settings: Dict[str, Any]) -> Optional[str]:
@@ -630,7 +633,9 @@ class SessionService:
                 logger.error(f"[SessionService] Failed to generate illustration in background: {e}")
 
         # 启动后台线程
-        thread = threading.Thread(target=generate_in_background, daemon=True)
+        thread = threading.Thread(
+            target=bind_current_context(generate_in_background), daemon=True
+        )
         thread.start()
 
 

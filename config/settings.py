@@ -52,7 +52,9 @@ class Settings:
 
     # 图片存储配置
     IMAGE_STORAGE_TYPE: str = os.getenv("IMAGE_STORAGE_TYPE", "local")  # local | oss
-    IMAGE_LOCAL_PATH: Path = PROJECT_ROOT / "data" / "images"
+    IMAGE_LOCAL_PATH: Path = Path(
+        os.getenv("IMAGE_LOCAL_PATH", str(PROJECT_ROOT / "data" / "images"))
+    )
 
     # OSS配置（长期使用）
     OSS_ACCESS_KEY_ID: Optional[str] = os.getenv("OSS_ACCESS_KEY_ID")
@@ -114,7 +116,9 @@ class Settings:
     # Database Configuration
     # Priority: DATABASE_URL (cloud) > DATABASE_PATH (local SQLite)
     DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")
-    DATABASE_PATH: Path = PROJECT_ROOT / "data" / "game.db"
+    DATABASE_PATH: Path = Path(
+        os.getenv("DATABASE_PATH", str(PROJECT_ROOT / "data" / "game.db"))
+    )
 
     @classmethod
     def get_image_api_key(cls) -> Optional[str]:
