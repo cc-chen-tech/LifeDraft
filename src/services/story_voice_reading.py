@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -396,7 +396,7 @@ class StoryVoiceReadingService:
         chapter_context["narration_plan"] = self._ensure_narration_plan(
             chapter_context, chapter_context["paragraphs"]
         )
-        job.context_json = chapter_context
+        setattr(job, "context_json", chapter_context)
         # Persist the plan before the next fenced heartbeat. The JSON update
         # itself triggers SQLAlchemy's on-update timestamp, so it must not be
         # mixed into commit_processing_changes (which intentionally compares
@@ -407,7 +407,7 @@ class StoryVoiceReadingService:
         job = self.repository.get_job(job_id, user_id)
         if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-        lease_token = job.updated_at
+        lease_token = cast(Any, getattr(job, "updated_at"))
         job = self.repository.get_job(job_id, user_id)
         if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")

@@ -4234,6 +4234,52 @@
         ]
       }
     },
+    "/api/voice-reading/preview": {
+      "post": {
+        "tags": [
+          "VoiceReading"
+        ],
+        "summary": "Preview Voice",
+        "operationId": "preview_voice_api_voice_reading_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoicePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoicePreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/voice-reading/read": {
       "post": {
         "tags": [
@@ -6163,6 +6209,18 @@
             "maxLength": 32000,
             "minLength": 1,
             "title": "Text"
+          },
+          "narration_plan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narration Plan"
           }
         },
         "type": "object",
@@ -7250,13 +7308,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",
@@ -7266,6 +7317,47 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VoicePreviewRequest": {
+        "properties": {
+          "voice_id": {
+            "type": "string",
+            "title": "Voice Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "voice_id"
+        ],
+        "title": "VoicePreviewRequest"
+      },
+      "VoicePreviewResponse": {
+        "properties": {
+          "voice_id": {
+            "type": "string",
+            "title": "Voice Id"
+          },
+          "audio_url": {
+            "type": "string",
+            "title": "Audio Url"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "title": "Duration Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "voice_id",
+          "audio_url",
+          "media_type",
+          "duration_ms"
+        ],
+        "title": "VoicePreviewResponse"
       },
       "VoiceReadingJobResponse": {
         "properties": {
@@ -7674,6 +7766,14 @@
             "type": "string",
             "title": "Playback Mode",
             "default": "unavailable"
+          },
+          "voice_catalog": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Voice Catalog"
           }
         },
         "type": "object",
