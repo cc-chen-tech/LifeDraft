@@ -10,7 +10,7 @@ import pytest
 
 from config.feature_flags import reset_features, set_feature
 from src.ai.budgets import GenerationCallTracker, resolve_narrative_budget
-from src.ai.client import AIClient
+from src.ai.client import AIClient, AIResponseTruncatedError
 from src.ai.generator import EventGenerator
 
 pytestmark = [pytest.mark.unit]
@@ -330,6 +330,32 @@ def test_call_json_can_disable_generic_truncation_recovery() -> None:
     assert result == {"value": 1}
     assert len(seen) == 1
     assert seen[0]["thinking"] == {"type": "disabled"}
+
+
+def test_structured_call_raises_typed_error_for_length_without_text_recovery() -> None:
+    seen: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body)
+        return _completion_response(
+            request,
+            body,
+            content='{"segments": [',
+            finish_reason="length",
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = _ai_client("deepseek-v4-flash", http_client)
+        with pytest.raises(AIResponseTruncatedError):
+            client.call(
+                "system",
+                "user",
+                response_format={"type": "json_object"},
+                _allow_truncation_recovery=False,
+            )
+
+    assert len(seen) == 1
 
 
 def test_call_with_retry_preserves_disabled_thinking_on_every_attempt() -> None:

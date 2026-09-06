@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import time
 from typing import Any, Mapping, Optional
 
 from src.services.minimax_story_tts_provider import MINIMAX_NATIVE_EMOTIONS
@@ -32,6 +33,23 @@ MINIMAX_VOCAL_CUES = frozenset(
         "(crying)",
     }
 )
+
+# Narration plans are a structured-output task, not prose. Keep their budget
+# independent from story-generation budgets and leave enough headroom for one
+# compact object per paragraph.
+NARRATION_PLAN_MIN_OUTPUT_TOKENS = 2048
+NARRATION_PLAN_TOKENS_PER_PARAGRAPH = 192
+NARRATION_PLAN_MAX_OUTPUT_TOKENS = 8192
+
+
+def narration_plan_output_tokens(paragraph_count: int, attempt: int = 0) -> int:
+    """Return an independent structured-output budget for a narration plan."""
+    count = max(1, int(paragraph_count))
+    baseline = max(
+        NARRATION_PLAN_MIN_OUTPUT_TOKENS,
+        512 + count * NARRATION_PLAN_TOKENS_PER_PARAGRAPH,
+    )
+    return min(NARRATION_PLAN_MAX_OUTPUT_TOKENS, baseline * (max(0, attempt) + 1))
 
 
 @dataclass(frozen=True)
@@ -82,9 +100,7 @@ def parse_narration_plan(raw: Any, *, paragraph_count: int) -> NarrationPlan:
             errors.append(f"segment {expected_index} speed must be between 0.5 and 1.5")
         pause_after_ms = raw_segment.get("pause_after_ms")
         if not isinstance(pause_after_ms, int) or not 0 <= pause_after_ms <= 3000:
-            errors.append(
-                f"segment {expected_index} pause_after_ms must be between 0 and 3000"
-            )
+            errors.append(f"segment {expected_index} pause_after_ms must be between 0 and 3000")
         vocal_cue = raw_segment.get("vocal_cue", "")
         if vocal_cue not in MINIMAX_VOCAL_CUES:
             errors.append(
@@ -138,7 +154,7 @@ def build_legacy_narration_plan(paragraphs: list[str]) -> dict[str, Any]:
                 "vocal_cue": "",
             }
         )
-    return {"segments": segments, "source": "legacy-migration"}
+    return {"segments": segments, "source": "deterministic-fallback"}
 
 
 class NarrationPlanGenerator:
@@ -146,6 +162,13 @@ class NarrationPlanGenerator:
 
     def __init__(self, client: Any):
         self.client = client
+        self.last_metrics: dict[str, Any] = {
+            "source": "ai",
+            "fallback_reason": None,
+            "ai_attempts": 0,
+            "output_token_budgets": [],
+            "duration_ms": 0,
+        }
 
     def generate(
         self,
@@ -157,45 +180,121 @@ class NarrationPlanGenerator:
     ) -> dict[str, Any]:
         paragraphs = [part.strip() for part in re.split(r"\n\s*\n+", story_text) if part.strip()]
         system_prompt = (
-            "You are a narration director. Return JSON only. Use exactly one "
-            "segment per paragraph and only the listed MiniMax values."
+            "You are a narration director. Return compact JSON only. Do not return "
+            "prose, explanations, paragraph text, Markdown, SSML, or extra keys. "
+            "Use exactly one segment per paragraph and only the listed MiniMax values."
         )
         user_prompt = self._prompt(story_text, language)
-        last_error: Optional[NarrationPlanValidationError] = None
-        for attempt in range(max_attempts):
-            response = self.client.call(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                temperature=0.2,
-                max_tokens=max(1200, len(paragraphs) * 120),
-                stream_callback=None,
-                generation_tracker=generation_tracker,
-                response_format={"type": "json_object"},
-                thinking=False,
-            )
-            from src.ai.utils import extract_json
+        started_at = time.monotonic()
+        output_token_budgets: list[int] = []
+        attempts = 0
+        last_error: Optional[Exception] = None
+        last_reason: Optional[str] = None
+        attempt_limit = max(1, int(max_attempts))
+        from src.ai.client import AIResponseTruncatedError
+        from src.ai.utils import extract_json
 
-            raw = extract_json(response)
+        for attempt in range(attempt_limit):
+            budget = narration_plan_output_tokens(len(paragraphs), attempt)
+            output_token_budgets.append(budget)
+            attempts += 1
             try:
+                response = self.client.call(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=0.2,
+                    max_tokens=budget,
+                    stream_callback=None,
+                    generation_tracker=generation_tracker,
+                    response_format={"type": "json_object"},
+                    thinking=False,
+                    _allow_truncation_recovery=False,
+                )
+                raw = extract_json(response)
+                if raw is None:
+                    raise NarrationPlanValidationError(["response did not contain valid JSON"])
                 plan = parse_narration_plan(raw, paragraph_count=len(paragraphs))
+                self.last_metrics = self._metrics(
+                    fallback_reason=None,
+                    attempts=attempts,
+                    output_token_budgets=output_token_budgets,
+                    started_at=started_at,
+                )
                 return {
                     "segments": [segment.__dict__ for segment in plan.segments],
                     "source": "story-model",
                 }
+            except AIResponseTruncatedError as error:
+                last_error = error
+                last_reason = "truncated"
+                if attempt + 1 < attempt_limit:
+                    continue
+                break
             except NarrationPlanValidationError as error:
                 last_error = error
-                user_prompt = self._prompt(story_text, language) + "\n\n" + narration_plan_retry_instruction(error)
-        assert last_error is not None
+                last_reason = (
+                    "json_parse_error" if "valid JSON" in str(error) else "validation_error"
+                )
+                if attempt + 1 >= attempt_limit:
+                    break
+                user_prompt = (
+                    self._prompt(story_text, language)
+                    + "\n\n"
+                    + narration_plan_retry_instruction(error)
+                )
+            except Exception as error:
+                self.last_metrics = self._metrics(
+                    fallback_reason=self._classify_error(error),
+                    attempts=attempts,
+                    output_token_budgets=output_token_budgets,
+                    started_at=started_at,
+                )
+                raise
+
+        if last_error is None:
+            last_error = RuntimeError("narration plan generation made no attempts")
+            last_reason = "api_error"
+        self.last_metrics = self._metrics(
+            fallback_reason=last_reason or self._classify_error(last_error),
+            attempts=attempts,
+            output_token_budgets=output_token_budgets,
+            started_at=started_at,
+        )
         raise last_error
+
+    @staticmethod
+    def _classify_error(error: Exception) -> str:
+        name = type(error).__name__.lower()
+        if isinstance(error, TimeoutError) or "timeout" in name:
+            return "timeout"
+        if "truncated" in name:
+            return "truncated"
+        return "api_error"
+
+    @staticmethod
+    def _metrics(
+        *,
+        fallback_reason: Optional[str],
+        attempts: int,
+        output_token_budgets: list[int],
+        started_at: float,
+    ) -> dict[str, Any]:
+        return {
+            "source": "ai",
+            "fallback_reason": fallback_reason,
+            "ai_attempts": attempts,
+            "output_token_budgets": list(output_token_budgets),
+            "duration_ms": max(0, int((time.monotonic() - started_at) * 1000)),
+        }
 
     @staticmethod
     def _prompt(story_text: str, language: str) -> str:
         return (
             f"Language: {language}\n"
-            "Return exactly {\"segments\":[{\"paragraph_index\":0,"
-            "\"emotion\":\"calm\",\"speed\":1.0,\"pause_after_ms\":0,"
-            "\"vocal_cue\":\"\"}]} for this story. Native emotions are: "
+            'Return exactly {"segments":[{"paragraph_index":0,'
+            '"emotion":"calm","speed":1.0,"pause_after_ms":0,'
+            '"vocal_cue":""}]} for this story. Native emotions are: '
             + ", ".join(sorted(MINIMAX_NATIVE_EMOTIONS))
-            + ". Allowed vocal cues are the MiniMax inline cues; use empty string when none.\n\n"
-            + story_text
+            + ". Allowed vocal cues are the MiniMax inline cues; use empty string when none. "
+            "Return no keys other than the five fields shown above.\n\n" + story_text
         )

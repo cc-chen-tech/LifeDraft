@@ -19,6 +19,15 @@ DEFAULT_CONTINUATION_PROMPT_ZH = (
 )
 DEFAULT_CONTINUATION_PROMPT_EN = "Continue output from where it was cut off. Do not restart, apologize, or summarize. Continue writing directly."
 
+# ★ 软限制 cap：续写时 max_tokens 升级的上限。
+# 比 max_tokens 默认值大，避免续写也立即被截断（陷入死循环）。
+# 8k 是 deepseek 推荐的稳定上限，超过有概率触发 rate limit。
+DEFAULT_CONTINUATION_MAX_TOKENS_CAP = 8000
+
+# ★ 续写时 max_tokens 的放大倍数。
+# 第一次续写用 1.5x（避免续写也被同样截断），后续轮次用同一值（保持稳定）。
+DEFAULT_CONTINUATION_GROWTH_FACTOR = 1.5
+
 
 @dataclass
 class TruncationRecoveryConfig:
@@ -27,10 +36,16 @@ class TruncationRecoveryConfig:
     max_continuations: int = 3
     continuation_prompt_zh: str = DEFAULT_CONTINUATION_PROMPT_ZH
     continuation_prompt_en: str = DEFAULT_CONTINUATION_PROMPT_EN
+    continuation_max_tokens_cap: int = DEFAULT_CONTINUATION_MAX_TOKENS_CAP
+    continuation_growth_factor: float = DEFAULT_CONTINUATION_GROWTH_FACTOR
 
 
 class TruncationRecovery:
-    """Detects output truncation and automatically continues generation."""
+    """Detects output truncation and automatically continues generation.
+
+    续写时把 max_tokens 提升到原值的 1.5x（封顶到 cap），保证续写不会立即
+    被同样的限制再次截断——这是把"硬截断"变成"软限制"的关键。
+    """
 
     def __init__(self, config: Optional[TruncationRecoveryConfig] = None) -> None:
         self._config = config or TruncationRecoveryConfig()
@@ -70,6 +85,22 @@ class TruncationRecovery:
         prompt = f"以下是之前的输出（已被截断）:\n\n...{tail}\n\n{continuation_instruction}"
         return prompt
 
+    def _compute_continuation_max_tokens(
+        self,
+        original_max_tokens: Optional[int],
+    ) -> Optional[int]:
+        """Compute the max_tokens to use for a continuation call.
+
+        升级原值的 growth_factor 倍，封顶到 cap。如果原值未知或已经超过 cap，
+        直接用 cap。
+        """
+        if original_max_tokens is None:
+            return self._config.continuation_max_tokens_cap
+        grown = int(original_max_tokens * self._config.continuation_growth_factor)
+        # 至少比原值大 256，避免持平
+        grown = max(grown, original_max_tokens + 256)
+        return min(grown, self._config.continuation_max_tokens_cap)
+
     def recover(
         self,
         client_call: Callable[..., str],
@@ -87,6 +118,10 @@ class TruncationRecovery:
         """
         full_text = partial_response
         terminal_puncts = set("。！？.!?")
+        # ★ 软限制：续写时升级 max_tokens，避免反复被同样的限制截断
+        continuation_max_tokens = self._compute_continuation_max_tokens(
+            call_kwargs.get("max_tokens")
+        )
 
         recovery_scope = (
             generation_tracker.recovery_scope() if generation_tracker is not None else nullcontext()
@@ -94,9 +129,10 @@ class TruncationRecovery:
         with recovery_scope:
             for i in range(self._config.max_continuations):
                 logger.info(
-                    "Truncation recovery: continuation attempt %d/%d",
+                    "Truncation recovery: continuation attempt %d/%d (max_tokens=%s)",
                     i + 1,
                     self._config.max_continuations,
+                    continuation_max_tokens,
                 )
                 try:
                     if generation_tracker is not None:
@@ -113,6 +149,9 @@ class TruncationRecovery:
                 # Remove stream_callback for continuation calls and prohibit re-entry.
                 kwargs = {k: v for k, v in call_kwargs.items() if k != "stream_callback"}
                 kwargs["_allow_truncation_recovery"] = False
+                # ★ 软限制：续写用升级后的 max_tokens
+                if continuation_max_tokens is not None:
+                    kwargs["max_tokens"] = continuation_max_tokens
                 if generation_tracker is not None:
                     kwargs["request_timeout"] = generation_tracker.cap_timeout(
                         kwargs.get("request_timeout")

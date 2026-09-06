@@ -49,6 +49,14 @@ class AIUsage:
     streamed: bool
 
 
+class AIResponseTruncatedError(RuntimeError):
+    """The provider stopped at the output-token limit without text recovery."""
+
+    def __init__(self, max_tokens: int):
+        self.max_tokens = max_tokens
+        super().__init__(f"AI response truncated at max_tokens={max_tokens}")
+
+
 def _usage_value(usage: Any, name: str) -> Optional[int]:
     value = usage.get(name) if isinstance(usage, dict) else getattr(usage, name, None)
     return int(value) if isinstance(value, (int, float)) else None
@@ -370,7 +378,7 @@ class AIClient:
                         if choices and choices[0].finish_reason:
                             finish_reason = choices[0].finish_reason
                         if getattr(chunk, "usage", None) is not None:
-                            terminal_usage = chunk.usage
+                            terminal_usage = getattr(chunk, "usage", None)
                     logger.info(
                         f"[AIClient] Streaming complete: {chunk_count} chunks, {len(full_text)} chars"
                     )
@@ -396,6 +404,12 @@ class AIClient:
                                     thinking=thinking,
                                     generation_tracker=generation_tracker,
                                 )
+                        elif (
+                            not _allow_truncation_recovery
+                            and isinstance(response_format, dict)
+                            and response_format.get("type") == "json_object"
+                        ):
+                            raise AIResponseTruncatedError(current_max_tokens)
 
                     self._emit_usage(terminal_usage, use_model, True, usage_callback)
                     return full_text.strip()
@@ -448,10 +462,18 @@ class AIClient:
                                     thinking=thinking,
                                     generation_tracker=generation_tracker,
                                 )
+                        elif (
+                            not _allow_truncation_recovery
+                            and isinstance(response_format, dict)
+                            and response_format.get("type") == "json_object"
+                        ):
+                            raise AIResponseTruncatedError(current_max_tokens)
 
                     return content.strip()
 
             except GenerationBudgetError:
+                raise
+            except AIResponseTruncatedError:
                 raise
             except openai.APIError as e:
                 error_msg = str(e)

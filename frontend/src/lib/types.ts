@@ -91,6 +91,11 @@ export interface StoryVoiceReadingResponse {
   media_type?: string | null;
   error_code?: string | null;
   message: string;
+  narration_plan_source?: "ai" | "deterministic-fallback" | "stored" | null;
+  narration_plan_fallback_reason?: string | null;
+  narration_plan_ai_attempts?: number | null;
+  narration_plan_duration_ms?: number | null;
+  narration_plan_output_token_budgets: number[];
   segments: VoiceReadingSegment[];
 }
 
@@ -106,6 +111,11 @@ export interface VoiceReadingJobResponse {
   media_type?: string | null;
   error_code?: string | null;
   message: string;
+  narration_plan_source?: "ai" | "deterministic-fallback" | "stored" | null;
+  narration_plan_fallback_reason?: string | null;
+  narration_plan_ai_attempts?: number | null;
+  narration_plan_duration_ms?: number | null;
+  narration_plan_output_token_budgets: number[];
   segments: VoiceReadingSegment[];
 }
 

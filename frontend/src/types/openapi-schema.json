@@ -7160,6 +7160,57 @@
             "title": "Message",
             "default": ""
           },
+          "narration_plan_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narration Plan Source"
+          },
+          "narration_plan_fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narration Plan Fallback Reason"
+          },
+          "narration_plan_ai_attempts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narration Plan Ai Attempts"
+          },
+          "narration_plan_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narration Plan Duration Ms"
+          },
+          "narration_plan_output_token_budgets": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Narration Plan Output Token Budgets"
+          },
           "segments": {
             "items": {
               "$ref": "#/components/schemas/VoiceReadingSegmentResponse"
@@ -7450,6 +7501,57 @@
             "type": "string",
             "title": "Message",
             "default": ""
+          },
+          "narration_plan_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narration Plan Source"
+          },
+          "narration_plan_fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narration Plan Fallback Reason"
+          },
+          "narration_plan_ai_attempts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narration Plan Ai Attempts"
+          },
+          "narration_plan_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narration Plan Duration Ms"
+          },
+          "narration_plan_output_token_budgets": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Narration Plan Output Token Budgets"
           },
           "segments": {
             "items": {

@@ -252,7 +252,11 @@ class TestFeatureFlagContracts:
         """
         from config.feature_flags import FEATURE_DEFAULTS
 
-        intentionally_enabled_by_default = {"story_voice_reading"}
+        intentionally_enabled_by_default = {
+            "story_voice_reading",
+            "truncation_recovery",
+            "ai_narration_plan",
+        }
 
         for flag_name, default_value in FEATURE_DEFAULTS.items():
             expected = True if flag_name in intentionally_enabled_by_default else False
@@ -275,8 +279,7 @@ class TestFeatureFlagContracts:
 
         契约：_ENV_VAR_MAP 不能有 FeatureFlags 中不存在的 key，反之亦然。
         """
-        from config.feature_flags import (_ENV_VAR_MAP, FEATURE_DEFAULTS,
-                                          FeatureFlags)
+        from config.feature_flags import _ENV_VAR_MAP, FEATURE_DEFAULTS, FeatureFlags
 
         flag_keys = set(FeatureFlags.__annotations__.keys())
         default_keys = set(FEATURE_DEFAULTS.keys())
@@ -297,14 +300,8 @@ class TestFeatureFlagContracts:
         from config.feature_flags import _ENV_VAR_MAP
 
         assert _ENV_VAR_MAP["soft_narrative_lengths"] == "ENABLE_SOFT_NARRATIVE_LENGTHS"
-        assert (
-            _ENV_VAR_MAP["unified_narrative_budgets"]
-            == "ENABLE_UNIFIED_NARRATIVE_BUDGETS"
-        )
-        assert (
-            _ENV_VAR_MAP["structured_story_memory"]
-            == "ENABLE_STRUCTURED_STORY_MEMORY"
-        )
+        assert _ENV_VAR_MAP["unified_narrative_budgets"] == "ENABLE_UNIFIED_NARRATIVE_BUDGETS"
+        assert _ENV_VAR_MAP["structured_story_memory"] == "ENABLE_STRUCTURED_STORY_MEMORY"
 
 
 # ============================================================
@@ -415,8 +412,10 @@ class TestReactiveCompressorContracts:
 
         契约：受保护字段永远不能被削减，因此不应出现在削减优先级列表中。
         """
-        from src.ai.reactive_compressor import (DEFAULT_BUDGET_TRIM_ORDER,
-                                                PROTECTED_FIELDS)
+        from src.ai.reactive_compressor import (
+            DEFAULT_BUDGET_TRIM_ORDER,
+            PROTECTED_FIELDS,
+        )
 
         overlap = set(PROTECTED_FIELDS) & set(DEFAULT_BUDGET_TRIM_ORDER)
         assert (
@@ -465,8 +464,7 @@ class TestReactiveCompressorContracts:
 
         契约：调用 compact() 后，PROTECTED_FIELDS 中的字段必须保留在结果中。
         """
-        from src.ai.reactive_compressor import (PROTECTED_FIELDS,
-                                                ReactiveCompressor)
+        from src.ai.reactive_compressor import PROTECTED_FIELDS, ReactiveCompressor
 
         compressor = ReactiveCompressor()
         constraint_texts = {

@@ -90,7 +90,17 @@ class InformationBudget:
 
 @dataclass(frozen=True)
 class GenerationBudget:
-    """One-release adapter for callers of the former round-only budget API."""
+    """One-release adapter for callers of the former round-only budget API.
+
+    Attributes:
+        max_tokens: Recommended (soft) token budget. Truncation beyond this is
+            acceptable; the provider and post-processing layers will recover
+            rather than hard-fail.
+        soft_max_tokens: Hard ceiling only used as a final safety net against
+            runaway generation. Defaults to ``2 * max_tokens`` so the soft
+            budget has room to grow when the LLM produces a longer-than-expected
+            draft, while still bounding worst-case cost and latency.
+    """
 
     level: str
     min_length: int
@@ -100,6 +110,15 @@ class GenerationBudget:
     allow_ai_consistency: bool
     expected_min_seconds: int
     expected_seconds: int
+    soft_max_tokens: int = 0  # 0 = derive as 2 * max_tokens
+
+    def __post_init__(self) -> None:
+        # Soft budget must always be ≥ recommended budget; otherwise the soft
+        # limit becomes meaningless.
+        if self.soft_max_tokens == 0:
+            object.__setattr__(self, "soft_max_tokens", self.max_tokens * 2)
+        elif self.soft_max_tokens < self.max_tokens:
+            object.__setattr__(self, "soft_max_tokens", self.max_tokens * 2)
 
     def length_requirement(self, language: str) -> str:
         if _normalized_language(language) == "zh":
@@ -146,20 +165,26 @@ _EN_KIND_BANDS = {
     NarrativeKind.OPENING: (200, 350, 700),
     NarrativeKind.CONTINUATION: (250, 450, 900),
 }
-# fast keeps 2048 output tokens (not 1024) so a Chinese daily continuation can
-# still reach its 1400-char compression threshold without truncation. A
-# truncated story fails the constraint harness and, with fast's single-attempt
-# budget, leaves no fallback draft to promote.
-_ROUND_OUTPUT_TOKENS = {"fast": 2048, "expert": 2048, "master": 4096}
+# fast keeps 4096 output tokens (raised from 2048) so a Chinese daily
+# continuation can reach its 1400-char compression threshold without
+# truncation. A truncated story fails the constraint harness and leaves no
+# fallback draft to promote. The soft ceiling is enforced by
+# ``soft_max_tokens`` and the continuation loop in ``TruncationRecovery``.
+_ROUND_OUTPUT_TOKENS = {"fast": 4096, "expert": 4096, "master": 4096}
 _KIND_OUTPUT_TOKENS = {
     NarrativeKind.OPENING: 1024,
     NarrativeKind.CONTINUATION: 1536,
 }
 _CALL_LIMITS = {
-    "fast": (1, 0, 1),
+    # ★ 软化：fast 档从 1 次提到 2 次，给单次失败留一次兜底。
+    # 2026-09-05 那次 expert 档 3/3 耗尽，fast 档只有 1 次根本没有任何弹性。
+    "fast": (2, 0, 1),
     # Expert needs one initial consistency judgement plus one verification of
-    # the targeted repair. These calls are separate from the 3 prose requests.
-    "expert": (3, 2, 2),
+    # the targeted repair. These calls are separate from the prose requests.
+    # 3 → 5：加 2 次冗余，让 best-of-N 在 3 个原始候选全超长/全质量不足时
+    # 仍能继续采样，而不是直接 budget 耗尽。deadline 120s 内 5 次 deepseek
+    # 平均 24s 一次，刚好够。API 成本 +67% 但只在软失败路径触发。
+    "expert": (5, 2, 2),
     "master": (10, 2, 2),
 }
 _DEADLINES = {"fast": 60, "expert": 120, "master": None}
@@ -184,7 +209,9 @@ _DISPLAY_SUMMARY_COVERAGE = {
 }
 _EN_WORD_PATTERN = re.compile(r"\b\w+(?:[-'’]\w+)*\b", re.UNICODE)
 _LEGACY_GENERATION_BUDGETS = {
-    "fast": GenerationBudget("fast", 350, 600, 2048, False, False, 20, 45),
+    # fast 档 max_tokens 2048 → 4096（与 generation_budget.py 的 _DAILY_BUDGETS
+    # 以及 _ROUND_OUTPUT_TOKENS 对齐）。500 字符目标长度需要更大的 token 预算。
+    "fast": GenerationBudget("fast", 350, 600, 4096, False, False, 20, 45),
     "expert": GenerationBudget("expert", 800, 1200, 4096, True, True, 45, 90),
     "master": GenerationBudget("master", 1500, 2000, 8192, True, True, 90, 180),
 }

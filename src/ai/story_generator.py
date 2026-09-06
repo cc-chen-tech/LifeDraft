@@ -1370,6 +1370,10 @@ class StoryGenerator:
 
                 hard_shape_issues = _hard_shape_issues(story_text)
                 final_shape_issues = hard_shape_issues
+                # 软化路径：length 类问题仍走 best-of-N 3 次采样重试（保留
+                # _soft_narrative_lengths 的语义），但 max_tokens 已经从 2048 提
+                # 到 4096 配合 truncation_recovery 升级，9-5 那类"3 次都截断"
+                # 的概率大幅下降。
                 requires_shape_retry = (
                     not quick_retry_used or "story_too_long" in hard_shape_issues
                 )

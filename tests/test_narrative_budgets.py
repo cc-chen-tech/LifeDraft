@@ -29,11 +29,11 @@ pytestmark = [pytest.mark.unit]
         "call_limits",
     ),
     [
-        ("fast", "zh", 400, 700, 1400, 2048, 60, (1, 0, 1)),
-        ("expert", "zh", 800, 1400, 2400, 2048, 120, (3, 2, 2)),
+        ("fast", "zh", 400, 700, 1400, 4096, 60, (2, 0, 1)),
+        ("expert", "zh", 800, 1400, 2400, 4096, 120, (5, 2, 2)),
         ("master", "zh", 1200, 2200, 4000, 4096, None, (10, 2, 2)),
-        ("fast", "en", 250, 450, 900, 2048, 60, (1, 0, 1)),
-        ("expert", "en", 500, 900, 1500, 2048, 120, (3, 2, 2)),
+        ("fast", "en", 250, 450, 900, 4096, 60, (2, 0, 1)),
+        ("expert", "en", 500, 900, 1500, 4096, 120, (5, 2, 2)),
         ("master", "en", 800, 1400, 2500, 4096, None, (10, 2, 2)),
     ],
 )
@@ -133,8 +133,8 @@ def test_rewrite_derives_soft_band_but_keeps_request_execution_budget() -> None:
     )
 
     assert (budget.length.target_min, budget.length.target_max) == (1600, 2400)
-    assert budget.max_output_tokens == 2048
-    assert budget.prose_call_limit == 3
+    assert budget.max_output_tokens == 4096
+    assert budget.prose_call_limit == 5
     assert budget.validation_call_limit == 2
     assert budget.total_deadline_seconds == 120
 
@@ -207,9 +207,11 @@ def test_call_tracker_consumes_before_overflowing_each_category() -> None:
     assert tracker.consume("prose") == 1
     assert tracker.consume("prose") == 2
     assert tracker.consume("prose") == 3
+    assert tracker.consume("prose") == 4
+    assert tracker.consume("prose") == 5
     with pytest.raises(GenerationBudgetExceeded, match="prose"):
         tracker.consume("prose")
-    assert tracker.prose_calls == 3
+    assert tracker.prose_calls == 5
 
     assert tracker.consume("validation") == 1
     assert tracker.consume("validation") == 2
@@ -218,7 +220,7 @@ def test_call_tracker_consumes_before_overflowing_each_category() -> None:
     assert tracker.validation_calls == 2
 
 
-@pytest.mark.parametrize("quality,total", [("fast", 2), ("expert", 7), ("master", 14)])
+@pytest.mark.parametrize("quality,total", [("fast", 3), ("expert", 9), ("master", 14)])
 def test_quality_total_call_ceiling_matches_product_contract(quality: str, total: int) -> None:
     budget = resolve_narrative_budget(
         NarrativeKind.ROUND,
@@ -300,7 +302,9 @@ def test_provider_retry_consumes_the_preceding_call_category() -> None:
 
 
 def test_provider_retry_cannot_bypass_category_limit() -> None:
+    # fast 档 prose_call_limit=2；填满 2 次后，retry（第 3 次）必须 raise。
     tracker = GenerationCallTracker(resolve_narrative_budget("round", "generate", "fast", "zh"))
+    tracker.consume("prose")
     tracker.consume("prose")
 
     with pytest.raises(GenerationBudgetExceeded):
@@ -315,7 +319,7 @@ def test_legacy_budget_import_keeps_flag_off_contract(
     fast = get_generation_budget("fast")
 
     assert CompatibilityNarrativeKind is NarrativeKind
-    assert (fast.min_length, fast.max_length, fast.max_tokens) == (350, 600, 2048)
+    assert (fast.min_length, fast.max_length, fast.max_tokens) == (350, 600, 4096)
     assert fast.allow_quick_regeneration is False
     assert fast.allow_ai_consistency is False
 
@@ -330,7 +334,7 @@ def test_legacy_budget_import_adapts_to_unified_budget_when_enabled(
     assert (expert.min_length, expert.max_length, expert.max_tokens) == (
         800,
         1400,
-        2048,
+        4096,
     )
     assert expert.allow_quick_regeneration is True
     assert expert.allow_ai_consistency is True

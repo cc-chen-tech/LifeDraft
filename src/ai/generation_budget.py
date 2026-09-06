@@ -27,11 +27,14 @@ from src.ai.budgets import (
 )
 
 _DAILY_BUDGETS = {
+    # ★ soft limit: max_tokens 是"推荐预算"，soft_max_tokens 由 GenerationBudget
+    # 自动按 2x 计算（见 budgets.GenerationBudget.__post_init__）。truncation_recovery
+    # 续写时会用 soft_max_tokens 升级 max_tokens，避免续写也被同样截断。
     "fast": GenerationBudget(
         level="fast",
         min_length=350,
         max_length=500,
-        max_tokens=2048,
+        max_tokens=4096,  # ★ 2048 装不下 500 字符故事, 提至 4096
         allow_quick_regeneration=False,
         allow_ai_consistency=False,
         expected_min_seconds=20,
