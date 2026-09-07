@@ -140,7 +140,12 @@ def test_daily_listener_uses_chapter_audio_with_browser_speech_fallback() -> Non
 
     assert "api.voice_reading.requestReading" in component
     assert "api.voice_reading.getProgress" in component
-    assert "api.voice_reading.updateProgress" in component
+    progress_helper = (
+        ROOT / "frontend" / "src" / "lib" / "storyVoiceProgress.ts"
+    ).read_text(encoding="utf-8")
+    assert "createStoryVoiceProgressSession" in component
+    assert ".write(progress, retainAfterRelease)" in component
+    assert "api.voice_reading.updateProgress" in progress_helper
     assert "storyVoiceTextToHash" in component
     assert "crypto.subtle.digest" in hash_helper
     assert "speechSynthesis" in component

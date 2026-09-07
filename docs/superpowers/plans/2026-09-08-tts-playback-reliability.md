@@ -43,7 +43,7 @@ The design was a proposal, not an instruction to migrate every protocol. Impleme
 - [x] Run typecheck/build/lint and browser regression for timeout/recovery where needed; independently review the full diff.
 - [x] Fix and retest actionable findings. Delivery uses only this worktree's changes and a PR against main with exact validation and limitations; do not merge/deploy.
 
-## Verification record
+## Initial verification record (97fe7acf)
 
 Tests were added first and observed failing on the intended behavior before implementation. The initial frontend regressions caught unsolicited fallback, the whole-job deadline, missing cancellation, overlapping progress writes and audio source replacement. File-backed SQLite tests reproduced an event-loop stall and unstructured lock failure. Real local WebSocket tests reproduced unbounded receives; a follow-up regression caught non-audio messages incorrectly extending the idle deadline. Recovery tests cover partial synthesis/assembly failure, asset identity, abandoned leases, stale-worker fencing and bounded admission.
 
@@ -62,3 +62,28 @@ Independent review found three additional playback defects: cumulative scene see
 The core browser skip is the protected model-smoke report test; it requires `MODEL_SMOKE_REPORT`. Existing backend skips/expected failures remain visible. Live paid-provider/model-smoke and manual production exploration were not run; deterministic browser fixtures decode real WAV audio, and WebSocket timeout tests use a local transport server. No production changes, schema migration, journal-mode change, merge or deployment were performed.
 
 Full backend verification also exposed eight failures reproducible on untouched `origin/main`: seven incomplete OpenAI response mocks and one scanner false positive on a redaction regex literal. The PR repairs those test fixtures, keeps real telemetry active, and adds scanner regressions proving credentials adjacent to the regex are still detected. No corresponding AI production behavior was changed.
+
+## Task 5: GitHub review follow-up and merge
+
+The user subsequently authorized following CI and CR until merge. This supersedes the initial PR-only delivery boundary above. Follow-up work stays in the same isolated branch, preserves unrelated work, and does not bypass checks or unresolved findings.
+
+- [x] Reproduce and repair regenerated scene URLs being masked by old buffered URLs, while preserving uninterrupted scene playback when a chapter is assembled.
+- [x] Reproduce and repair the final progress snapshot being dropped on `503 progress_store_busy`; honor Retry-After with bounded, coalesced, identity-safe retries.
+- [x] Include a real browser HTTP 503 / Retry-After regression after pause, with no subsequent playback event required for persistence.
+- [x] Independently review the fixes and validate the integrated latest-main tree.
+Delivery: push one complete revision for CI and CR, resolve verified review findings, confirm checks on the exact PR head, merge, and verify containment in origin/main. GitHub PR #371 records the final merge state.
+
+The latest base was explicitly fetched into origin/main (830c4961, PR #370) because the remote has no configured fetch refspec; `git fetch origin main` alone updates FETCH_HEAD. Its model-smoke runtime changes were merged before final verification.
+
+### Follow-up verification
+
+Both GitHub findings were reproduced before repair. The review also caught mixed chapter/local-scene timing during retry; two additional red regressions covered the first and later active paragraphs before normalizing a coherent chapter suffix. The final scoped independent review found no unresolved actionable P1/P2.
+
+- Playback component: 76 tests; all 55 component suites / 652 tests passed, with strict types and focused ESLint.
+- Full Python: 5045 passed, 1 skipped, 4 expected failures. The source contract follows progress saving into the shared helper after extraction.
+- Full frontend: strict typecheck, 2135 unit tests and 2 integration tests passed.
+- `./test.sh all`: PASS, Preflight + 5/5 layers, including production build and 324 core E2E passed / 1 protected smoke skipped / 0 flaky.
+- Mobile Safari / WebKit: all 7 voice transport cases passed using the same production build.
+- Chromium and WebKit both verify actual 20-second poll timeout recovery and final paused progress persistence after HTTP 503 / Retry-After, without new playback events.
+
+Progress retries are bounded to three retries beyond the first attempt; final choice snapshots survive component unmount within the loaded application, not closing/reloading the browser. Retries coalesce across remounts and finish without React state; ordinary released sessions cancel queued work. A new database schema or durable browser background queue is outside this repair.

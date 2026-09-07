@@ -268,6 +268,54 @@ describe("StoryListeningExperience", () => {
     expect(audio.currentTime).toBe(2);
   });
 
+  it.each([
+    { cachedStatus: "ready", assembled: false, missingUrl: true },
+    { cachedStatus: "failed", assembled: false, missingUrl: true },
+    { cachedStatus: "ready", assembled: true, missingUrl: true },
+    { cachedStatus: "failed", assembled: true, missingUrl: true },
+    { cachedStatus: "ready", assembled: true, missingUrl: false },
+    { cachedStatus: "failed", assembled: true, missingUrl: false },
+  ])("replaces a cached $cachedStatus scene after same-job regeneration (assembled=$assembled, missingUrl=$missingUrl) and resumes its local position", async ({ cachedStatus, assembled, missingUrl }) => {
+    const completion = deferred<Awaited<ReturnType<typeof api.voice_reading.getJob>>>();
+    const sceneSegments = [
+      { ...segments[0], audio_url: "/first.mp3" },
+      { ...segments[1], status: cachedStatus, start_ms: 0, end_ms: 5000, audio_url: "/old-second.mp3" },
+    ];
+    voiceApi.getProgress.mockResolvedValueOnce({ paragraph_index: 1, position_ms: 1500 } as never);
+    voiceApi.requestReading.mockResolvedValueOnce({ job_id: 19, status: "failed", segments: sceneSegments } as never);
+    voiceApi.requestReading.mockResolvedValueOnce({ job_id: 19, status: "processing", segments: missingUrl ? [sceneSegments[0], { ...sceneSegments[1], status: "processing", audio_url: null }] : sceneSegments } as never);
+    voiceApi.getJob.mockReturnValueOnce(completion.promise);
+    renderExperience();
+    const oldAudio = await waitFor(() => {
+      expect(document.querySelector("audio")).toHaveAttribute("src", "/old-second.mp3");
+      return document.querySelector("audio")!;
+    });
+    Object.defineProperty(oldAudio, "duration", { configurable: true, value: 5 });
+    fireEvent.loadedMetadata(oldAudio);
+    expect(oldAudio.currentTime).toBe(1.5);
+    fireEvent.playing(oldAudio);
+    oldAudio.currentTime = 2;
+    fireEvent.click(screen.getByRole("button", { name: "重试高质量语音" }));
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalled());
+    expect(voiceApi.requestReading).toHaveBeenLastCalledWith(expect.objectContaining({ force_retry: true }), expect.any(AbortSignal));
+    expect(document.querySelector("audio")).toBe(oldAudio);
+    expect(oldAudio.currentTime).toBe(2);
+
+    await act(async () => completion.resolve(assembled
+      ? { job_id: 19, status: "ready", audio_url: "/regenerated-chapter.mp3", segments: segments.map(segment => ({ ...segment, asset_id: 3, audio_url: "/regenerated-chapter.mp3" })) } as never
+      : { job_id: 19, status: "ready", segments: [sceneSegments[0], { ...sceneSegments[1], status: "ready", asset_id: 3, audio_url: "/regenerated-second.mp3" }] } as never));
+
+    const replacement = document.querySelector("audio")!;
+    expect(replacement).toHaveAttribute("src", assembled ? "/regenerated-chapter.mp3" : "/regenerated-second.mp3");
+    Object.defineProperty(replacement, "duration", { configurable: true, value: assembled ? 9 : 5 });
+    fireEvent.loadedMetadata(replacement);
+    expect(replacement.currentTime).toBe(assembled ? 6 : 2);
+    expect(screen.getByText("第 2 段")).toBeInTheDocument();
+    fireEvent.playing(replacement);
+    fireEvent.click(screen.getByRole("button", { name: "暂停朗读" }));
+    expect(voiceApi.updateProgress).toHaveBeenLastCalledWith(expect.objectContaining({ game_id: 42, day_index: 7, text_hash: "chapter-text-hash", paragraph_index: 1, position_ms: 2000 }));
+  });
+
   it("aborts polling on voice change and ignores the old response", async () => {
     const old = deferred<Awaited<ReturnType<typeof api.voice_reading.getJob>>>();
     voiceApi.getJob.mockReturnValueOnce(old.promise);
@@ -279,6 +327,55 @@ describe("StoryListeningExperience", () => {
     expect(signal?.aborted).toBe(true);
     await act(async () => { old.resolve({ job_id: 19, status: "ready", segments: [{ ...segments[0], audio_url: "/obsolete.mp3" }] } as never); });
     expect(document.querySelector("audio")).not.toHaveAttribute("src", "/obsolete.mp3");
+  });
+
+  it.each([0, 1])("keeps coherent chapter cues when a mixed retry completes with paragraph %s active", async (paragraphIndex) => {
+    const completion = deferred<Awaited<ReturnType<typeof api.voice_reading.getJob>>>();
+    const oldScenes = [
+      { ...segments[0], audio_url: "/old-first.mp3" },
+      { ...segments[1], start_ms: 0, end_ms: 5000, audio_url: "/old-second.mp3" },
+    ];
+    voiceApi.getProgress.mockResolvedValueOnce({ paragraph_index: paragraphIndex, position_ms: 0 } as never);
+    voiceApi.requestReading.mockResolvedValueOnce({ job_id: 19, status: "failed", segments: oldScenes } as never);
+    voiceApi.requestReading.mockResolvedValueOnce({ job_id: 19, status: "processing", segments: [oldScenes[0], { ...oldScenes[1], audio_url: "/new-second.mp3", asset_id: 3 }] } as never);
+    voiceApi.getJob.mockReturnValueOnce(completion.promise);
+    renderExperience();
+    const original = await waitFor(() => {
+      expect(document.querySelector("audio")).toHaveAttribute("src", paragraphIndex === 0 ? "/old-first.mp3" : "/old-second.mp3");
+      return document.querySelector("audio")!;
+    });
+    Object.defineProperty(original, "duration", { configurable: true, value: paragraphIndex === 0 ? 4 : 5 });
+    fireEvent.loadedMetadata(original);
+    fireEvent.playing(original);
+    original.currentTime = 2;
+    fireEvent.click(screen.getByRole("button", { name: "重试高质量语音" }));
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalled());
+    const partial = document.querySelector("audio")!;
+    expect(partial).toHaveAttribute("src", paragraphIndex === 0 ? "/old-first.mp3" : "/new-second.mp3");
+    if (paragraphIndex === 1) {
+      Object.defineProperty(partial, "duration", { configurable: true, value: 5 });
+      fireEvent.loadedMetadata(partial);
+      fireEvent.playing(partial);
+    }
+    expect(partial.currentTime).toBe(2);
+
+    await act(async () => completion.resolve({ job_id: 19, status: "ready", audio_url: "/chapter.mp3", segments: segments.map(segment => ({ ...segment, audio_url: "/chapter.mp3", asset_id: 4 })) } as never));
+    const chapter = document.querySelector("audio")!;
+    expect(chapter).toHaveAttribute("src", "/chapter.mp3");
+    Object.defineProperty(chapter, "duration", { configurable: true, value: 9 });
+    fireEvent.loadedMetadata(chapter);
+    expect(document.querySelector("audio")).toBe(chapter);
+    expect(chapter.currentTime).toBe(paragraphIndex === 0 ? 2 : 6);
+    expect(screen.getByText(`第 ${paragraphIndex + 1} 段`)).toBeInTheDocument();
+    fireEvent.playing(chapter);
+    chapter.currentTime = paragraphIndex === 0 ? 4.5 : 6.5;
+    fireEvent.timeUpdate(chapter);
+    expect(document.querySelector("audio")).toBe(chapter);
+    expect(screen.getByText("第 2 段")).toBeInTheDocument();
+    expect(screen.getByRole("slider")).toHaveValue(paragraphIndex === 0 ? "4500" : "6500");
+    fireEvent.click(screen.getByRole("button", { name: "暂停朗读" }));
+    await act(async () => {});
+    expect(voiceApi.updateProgress).toHaveBeenLastCalledWith(expect.objectContaining({ paragraph_index: 1, position_ms: paragraphIndex === 0 ? 500 : 2500 }));
   });
 
   it("coalesces progress while a write is in flight and does not interrupt playback on failure", async () => {
@@ -298,6 +395,182 @@ describe("StoryListeningExperience", () => {
     expect(voiceApi.updateProgress.mock.calls[1][0]).toMatchObject({ position_ms: 3000 });
     expect(document.querySelector("audio")).toBe(audio);
     expect(screen.queryByText("这一章暂时无法朗读")).not.toBeInTheDocument();
+  });
+
+  it.each(["paused", "completed"])("recovers the final %s progress snapshot after Retry-After without another media event", async (ending) => {
+    jest.useFakeTimers();
+    jest.spyOn(console, "warn").mockImplementation();
+    voiceApi.updateProgress.mockRejectedValueOnce(Object.assign(new Error("busy"), { status: 503, code: "progress_store_busy", retryAfterMs: 12_000 }));
+    renderExperience();
+    const audio = await waitFor(() => { expect(document.querySelector("audio")).not.toBeNull(); return document.querySelector("audio")!; });
+    fireEvent.playing(audio);
+    audio.currentTime = 2;
+    if (ending === "paused") fireEvent.click(screen.getByRole("button", { name: "暂停朗读" }));
+    else fireEvent.ended(audio);
+    await act(async () => { await jest.advanceTimersByTimeAsync(11_999); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+    await act(async () => { await jest.advanceTimersByTimeAsync(1); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+    expect(voiceApi.updateProgress.mock.calls[1][0]).toEqual({
+      game_id: 42, day_index: 7, story_date: "2026-08-15", text_hash: "chapter-text-hash", voice_id: "female-shaonv", speed: 1,
+      paragraph_index: ending === "paused" ? 0 : 1,
+      position_ms: ending === "paused" ? 2000 : 5000,
+      completed: ending === "completed",
+    });
+    expect(document.querySelector("audio")).toBe(audio);
+    expect(play).not.toHaveBeenCalled();
+    expect(screen.queryByText("浏览器语音")).not.toBeInTheDocument();
+    await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries only the newest queued progress while keeping one write in flight", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(console, "warn").mockImplementation();
+    const firstWrite = deferred<Awaited<ReturnType<typeof api.voice_reading.updateProgress>>>();
+    const retryWrite = deferred<Awaited<ReturnType<typeof api.voice_reading.updateProgress>>>();
+    voiceApi.updateProgress.mockReturnValueOnce(firstWrite.promise).mockReturnValueOnce(retryWrite.promise);
+    renderExperience();
+    await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "1000" } });
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "2000" } });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+    await act(async () => firstWrite.reject(Object.assign(new Error("busy"), { status: 503, code: "progress_store_busy", retryAfterMs: 2000 })));
+    await act(async () => { await jest.advanceTimersByTimeAsync(1000); });
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "3000" } });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+    await act(async () => { await jest.advanceTimersByTimeAsync(1000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+    expect(voiceApi.updateProgress.mock.calls[1][0]).toMatchObject({ position_ms: 3000 });
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "4000" } });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+    await act(async () => retryWrite.resolve({} as never));
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(3);
+    expect(voiceApi.updateProgress.mock.calls[2][0]).toMatchObject({ paragraph_index: 1, position_ms: 0 });
+  });
+
+  it("bounds repeated busy progress retries and accepts a later fresh snapshot", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(console, "warn").mockImplementation();
+    voiceApi.updateProgress.mockRejectedValue(Object.assign(new Error("busy"), { status: 503, code: "progress_store_busy" }));
+    renderExperience();
+    await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "1000" } });
+    await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(4);
+    await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(4);
+    voiceApi.updateProgress.mockResolvedValue({} as never);
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "3000" } });
+    await act(async () => {});
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(5);
+    expect(voiceApi.updateProgress.mock.calls[4][0]).toMatchObject({ position_ms: 3000 });
+  });
+
+  it.each(["unmount", "story change"])("cancels delayed progress retries on %s", async (change) => {
+    jest.useFakeTimers();
+    jest.spyOn(console, "warn").mockImplementation();
+    voiceApi.updateProgress.mockRejectedValueOnce(Object.assign(new Error("busy"), { status: 503, code: "progress_store_busy", retryAfterMs: 2000 }));
+    const view = renderExperience();
+    await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "1000" } });
+    await act(async () => { await jest.advanceTimersByTimeAsync(1000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+    if (change === "unmount") view.unmount();
+    else view.rerender(<StoryListeningExperience context={{ ...context, day_index: 8 }} storyText="新的一天。" options={[]} onSelectChoice={jest.fn()} />);
+    await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+    if (change === "story change") {
+      fireEvent.change(screen.getByRole("slider"), { target: { value: "2000" } });
+      await act(async () => {});
+      expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+      expect(voiceApi.updateProgress.mock.calls[1][0]).toMatchObject({ day_index: 8, position_ms: 2000 });
+    }
+  });
+
+  it("discards old queued progress after identity changes while an old write is unresolved", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(console, "warn").mockImplementation();
+    const oldWrite = deferred<Awaited<ReturnType<typeof api.voice_reading.updateProgress>>>();
+    voiceApi.updateProgress.mockReturnValueOnce(oldWrite.promise);
+    const view = renderExperience();
+    await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "1000" } });
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "3000" } });
+    view.rerender(<StoryListeningExperience context={{ ...context, day_index: 8 }} storyText="新的一天。" options={[]} onSelectChoice={jest.fn()} />);
+    await act(async () => {});
+    await act(async () => oldWrite.reject(Object.assign(new Error("busy"), { status: 503, code: "progress_store_busy", retryAfterMs: 2000 })));
+    await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "2000" } });
+    await act(async () => {});
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+    expect(voiceApi.updateProgress.mock.calls[1][0]).toMatchObject({ day_index: 8, position_ms: 2000 });
+  });
+
+  it("finishes a bounded final-choice progress retry after immediate unmount", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(console, "warn").mockImplementation();
+    const finalWrite = deferred<Awaited<ReturnType<typeof api.voice_reading.updateProgress>>>();
+    voiceApi.updateProgress.mockReturnValueOnce(finalWrite.promise);
+    const view = renderExperience();
+    const audio = await waitFor(() => { expect(document.querySelector("audio")).not.toBeNull(); return document.querySelector("audio")!; });
+    audio.currentTime = 2;
+    fireEvent.click(screen.getByRole("button", { name: /推开那扇门/ }));
+    view.unmount();
+    await act(async () => finalWrite.reject(Object.assign(new Error("busy"), { status: 503, code: "progress_store_busy", retryAfterMs: 2000 })));
+    await act(async () => { await jest.advanceTimersByTimeAsync(1999); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+    await act(async () => { await jest.advanceTimersByTimeAsync(1); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+    expect(voiceApi.updateProgress.mock.calls[1][0]).toMatchObject({ day_index: 7, text_hash: "chapter-text-hash", position_ms: 2000 });
+    await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets a remounted listener supersede an older retained choice snapshot for the same story", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(console, "warn").mockImplementation();
+    voiceApi.updateProgress.mockRejectedValueOnce(Object.assign(new Error("busy"), { status: 503, code: "progress_store_busy", retryAfterMs: 2000 }));
+    const view = renderExperience();
+    const audio = await waitFor(() => { expect(document.querySelector("audio")).not.toBeNull(); return document.querySelector("audio")!; });
+    audio.currentTime = 1;
+    fireEvent.click(screen.getByRole("button", { name: /推开那扇门/ }));
+    view.unmount();
+    await act(async () => { await jest.advanceTimersByTimeAsync(1000); });
+    renderExperience();
+    await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "3000" } });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+    await act(async () => { await jest.advanceTimersByTimeAsync(2000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+    expect(voiceApi.updateProgress.mock.calls[1][0]).toMatchObject({ day_index: 7, position_ms: 3000 });
+    await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a retained choice snapshot independent from another story session", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(console, "warn").mockImplementation();
+    voiceApi.updateProgress.mockRejectedValueOnce(Object.assign(new Error("busy"), { status: 503, code: "progress_store_busy", retryAfterMs: 2000 }));
+    const oldView = renderExperience();
+    const oldAudio = await waitFor(() => { expect(document.querySelector("audio")).not.toBeNull(); return document.querySelector("audio")!; });
+    oldAudio.currentTime = 1;
+    fireEvent.click(screen.getByRole("button", { name: /推开那扇门/ }));
+    oldView.unmount();
+    await act(async () => { await jest.advanceTimersByTimeAsync(1000); });
+    const nextView = render(<StoryListeningExperience context={{ ...context, day_index: 8 }} storyText="新的一天。" options={[]} onSelectChoice={jest.fn()} />);
+    await waitFor(() => expect(document.querySelector("audio")).not.toBeNull());
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "3000" } });
+    await act(async () => {});
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+    expect(voiceApi.updateProgress.mock.calls[1][0]).toMatchObject({ day_index: 8, position_ms: 3000 });
+    nextView.unmount();
+    await act(async () => { await jest.advanceTimersByTimeAsync(2000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(3);
+    expect(voiceApi.updateProgress.mock.calls[2][0]).toMatchObject({ day_index: 7, position_ms: 1000 });
+    await act(async () => { await jest.advanceTimersByTimeAsync(60_000); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(3);
   });
 
   it("lets the listener start from a selected paragraph", async () => {

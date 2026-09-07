@@ -315,6 +315,41 @@ test.describe('StoryListeningExperience audio transport', () => {
     expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));
   });
 
+  test('retries the final paused progress after HTTP 503 without new playback events', async ({ page }) => {
+    await installFixture(page);
+    let failNextWrite = false;
+    const writes: { body: unknown; at: number }[] = [];
+    await page.route('**/api/voice-reading/progress**', async (route) => {
+      if (route.request().method() === 'GET') return route.fallback();
+      if (!failNextWrite && writes.length === 0) return route.fallback();
+      writes.push({ body: route.request().postDataJSON(), at: Date.now() });
+      if (failNextWrite) {
+        failNextWrite = false;
+        return route.fulfill({
+          status: 503,
+          headers: { 'retry-after': '2' },
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: { error_code: 'progress_store_busy', message: 'store busy' } }),
+        });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+    await page.goto(`/play?gameId=${GAME_ID}`);
+    await expectRealPlayback(page);
+    const audio = page.locator('audio[data-active="true"]');
+    await expect.poll(() => audio.evaluate((element) => (element as HTMLAudioElement).currentTime)).toBeGreaterThan(0.8);
+    failNextWrite = true;
+    await page.getByRole('button', { name: '暂停朗读' }).click();
+    await expect(page.getByRole('button', { name: '播放朗读' })).toBeVisible();
+    await expect.poll(() => writes.length, { timeout: 8_000 }).toBe(2);
+    expect(writes[1].body).toEqual(writes[0].body);
+    expect(writes[1].at - writes[0].at).toBeGreaterThanOrEqual(1_800);
+    expect(writes[1].body).toMatchObject({ paragraph_index: 0, completed: false });
+    expect((writes[1].body as { position_ms: number }).position_ms).toBeGreaterThan(500);
+    expect(await audio.evaluate((element) => (element as HTMLAudioElement).paused)).toBe(true);
+    await expect(page.getByText('高质量语音暂时不可用，已切换浏览器朗读')).toHaveCount(0);
+  });
+
   test('autoplays generated WAV audio through the Range-aware fixture', async ({ page }) => {
     const fixture = await installFixture(page);
     await page.goto(`/play?gameId=${GAME_ID}`);
