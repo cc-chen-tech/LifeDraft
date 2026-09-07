@@ -78,6 +78,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Install production audio runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          python -c "from scripts.model_smoke import _check_audio_runtime; _check_audio_runtime()"
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci

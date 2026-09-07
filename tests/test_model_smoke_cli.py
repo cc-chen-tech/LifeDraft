@@ -6,7 +6,20 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
 from scripts import model_smoke
+
+
+def test_missing_audio_runtime_fails_before_model_initialization(monkeypatch, tmp_path):
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setenv("MODEL_SMOKE_ENABLED", "1")
+    monkeypatch.setenv("OPENAI_API_KEY", "offline-placeholder")
+    monkeypatch.setenv("MINIMAX_API_KEY", "offline-placeholder")
+    for name in ("E2E_DETERMINISTIC_STORY", "MINIMAX_E2E_LOCAL_AUDIO", "MINIMAX_E2E_LOCAL_IMAGE"):
+        monkeypatch.setenv(name, "0")
+    with pytest.raises(FileNotFoundError, match="ffmpeg"):
+        model_smoke.run(tmp_path / "report.json", tmp_path / "assets", None)
 
 
 def test_generator_and_game_public_exports_import_in_fresh_process():
