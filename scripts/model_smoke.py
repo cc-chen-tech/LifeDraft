@@ -11,7 +11,10 @@ import argparse
 import json
 import logging
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from datetime import datetime, timezone
@@ -26,6 +29,34 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 REPORT_SCHEMA_VERSION = 1
 FIXTURE_PREFIX = "release-model-smoke"
+
+
+def _check_audio_runtime() -> None:
+    """Exercise real scene assembly offline before any paid provider calls."""
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise FileNotFoundError("ffmpeg is required for production scene assembly")
+
+    from src.services.minimax_config import MiniMaxConfig
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    with tempfile.TemporaryDirectory(prefix="model-smoke-audio-runtime-") as directory:
+        root = Path(directory)
+        scene = root / "silence.mp3"
+        subprocess.run(
+            [ffmpeg, "-nostdin", "-y", "-f", "lavfi", "-i",
+             "anullsrc=r=24000:cl=mono", "-t", "0.1", str(scene)],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30,
+        )
+        provider = MiniMaxTTSProvider(config=MiniMaxConfig.from_env(env={}, voice_asset_dir=root))
+        speech = provider.assemble_scenes(
+            ["/api/voice-reading/audio/silence.mp3"] * 2,
+            {"text_hash": "runtime-preflight", "text": "Synthetic audio check.",
+             "paragraphs": ["Synthetic audio check."]},
+            "warm_female", 1.0,
+        )
+        if not provider.is_valid_cached_asset(speech.storage_path):
+            raise ValueError("offline scene assembly produced invalid audio")
 
 
 class ModelEventCollector(logging.Handler):
@@ -432,6 +463,7 @@ def run(
     event_log_path: Optional[Path] = None,
 ) -> int:
     _require_real_credentials()
+    _check_audio_runtime()
 
     from src.ai.generator import EventGenerator
     from src.ai.image_generator import ImageGenerator

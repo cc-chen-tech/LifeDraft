@@ -28,6 +28,8 @@ Environment Variables 可配置 `OPENAI_BASE_URL`、`OPENAI_MODEL`、`IMAGE_API_
 
 ## 本地命令
 
+运行环境须安装 FFmpeg（生产 Dockerfile 已包含）。smoke 在任何付费调用前生成两段本地静音 MP3，使用生产 `assemble_scenes` 完成组装并验证音频；缺少可执行文件、编码器或组装失败都会立即阻止验收。GitHub workflow 显式安装该依赖，不依赖 hosted runner 的预装软件。
+
 语音验收通过 `StoryVoiceReadingService` 执行生产任务，覆盖 MiniMax HD scene 生成、章节组装、数据库 ready 终态、授权资源读取和音频有效性。MiniMax 生产 provider 实现了 scene 与 assemble 接口，正常章节任务不走旧的异步整章 `synthesize` 路径。旧 `t2a_async_v2` 在一次真实合成输入检查中超过 180 秒仍未完成；它不属于本验收覆盖的生产 scene 路径，超时必须报告为 timeout，不能视为成功。
 
 每个检查及最终脱敏报告会写入 stdout。GitHub artifact 仅允许上传 `smoke-summary.json`、`model-events.jsonl`、固定合成输入页面的截图和 Playwright trace；不上传数据库、`.env` 或整个运行目录。
