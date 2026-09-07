@@ -50,8 +50,15 @@ jobs:
           pip install -r requirements.txt
 
       - name: Install Node.js dependencies
+        # Offline assembly is checked on ordinary PRs without provider secrets.
         working-directory: frontend
         run: npm ci
+
+      - name: Verify offline production audio assembly
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          python -c "from scripts.model_smoke import _check_audio_runtime; _check_audio_runtime()"
 
       - name: Check API types are up to date
         run: |
