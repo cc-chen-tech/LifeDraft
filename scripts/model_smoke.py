@@ -21,6 +21,9 @@ from typing import Any, Callable, Dict, List, Optional
 from urllib.request import urlopen
 
 
+# Direct CLI execution sets sys.path[0] to scripts/, not the repository root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 REPORT_SCHEMA_VERSION = 1
 FIXTURE_PREFIX = "release-model-smoke"
 
@@ -59,12 +62,16 @@ def _utc_now() -> str:
 
 
 def _safe_error(error: BaseException) -> Dict[str, Any]:
-    from src.observability.model_telemetry import classify_model_error, sanitize_error_message
+    try:
+        from src.observability.model_telemetry import classify_model_error, sanitize_error_message
 
-    return {
-        "error_kind": classify_model_error(error),
-        "error_message": sanitize_error_message(error),
-    }
+        return {
+            "error_kind": classify_model_error(error),
+            "error_message": sanitize_error_message(error),
+        }
+    except Exception:
+        # Startup failures must still produce a report, without raw error text.
+        return {"error_kind": "unknown", "error_message": type(error).__name__}
 
 
 def _check(

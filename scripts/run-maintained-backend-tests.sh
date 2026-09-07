@@ -9,6 +9,8 @@ maintained_tests=(
   tests/test_gate_gameplay_behavior_no_mock.py
   tests/test_gate_static_no_mock.py
   tests/test_imports.py
+  tests/test_model_smoke_cli.py
+  tests/test_model_smoke_contract.py
   tests/test_gate_imports_no_mock.py
   tests/test_api_contract.py
   tests/test_ai_retry_failure_contract_no_mock.py
