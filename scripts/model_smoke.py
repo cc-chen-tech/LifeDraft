@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 
 # Direct CLI execution sets sys.path[0] to scripts/, not the repository root.
@@ -97,6 +97,7 @@ def _check(
         result.update(_safe_error(error))
     result["duration_ms"] = round((time.monotonic() - started) * 1000, 2)
     checks.append(result)
+    print(json.dumps({"smoke_check": result}, ensure_ascii=False), flush=True)
 
 
 def _require_real_credentials() -> None:
@@ -149,6 +150,7 @@ def _run_text_checks(generator: Any) -> Dict[str, Any]:
             language="en",
             retry_count=1,
             max_tokens=240,
+            thinking=False,
         )
         if not story or not story.strip():
             raise ValueError("empty story output")
@@ -158,6 +160,7 @@ def _run_text_checks(generator: Any) -> Dict[str, Any]:
             language="en",
             retry_count=1,
             max_tokens=180,
+            thinking=False,
         )
         if not continuation or not continuation.strip():
             raise ValueError("empty continuation output")
@@ -177,13 +180,41 @@ def _run_text_checks(generator: Any) -> Dict[str, Any]:
             '{"ok": true, "items": ["ready"]}.',
             system_prompt="Return valid JSON only.",
             max_tokens=120,
+            thinking=False,
         )
         if not isinstance(parsed, dict) or parsed.get("ok") is not True:
             raise ValueError("invalid JSON output")
     return {"story_nonempty": True, "continuation_nonempty": True, "options": len(options.options), "json_ok": True}
 
 
+def _create_owned_fixture() -> tuple[int, int]:
+    from src.database.models import Game, SessionLocal, User
+
+    with SessionLocal() as session:
+        user = User(private_id=uuid.uuid4().hex, public_id=uuid.uuid4().hex[:8],
+                    display_name="Release Smoke Traveler")
+        session.add(user)
+        session.flush()
+        game = Game(user_id=user.user_id, language="en", initial_state={})
+        session.add(game)
+        session.commit()
+        return int(user.user_id), int(game.game_id)
+
+
+def _read_owned_resource(base_url: str, resource_path: str, user_id: int) -> None:
+    from src.api.deps import create_token
+
+    request = Request(
+        f"{base_url.rstrip('/')}{resource_path}",
+        headers={"Authorization": f"Bearer {create_token(user_id)}"},
+    )
+    with urlopen(request, timeout=20) as response:  # nosec B310 - isolated smoke API
+        if response.status != 200 or not response.read(32):
+            raise IOError("generated resource is not accessible")
+
+
 def _run_image_check(generator: Any, storage_dir: Path, base_url: Optional[str]) -> Dict[str, Any]:
+    from src.database.models import Image, SessionLocal
     from src.observability.request_context import RequestContext, request_context
     from src.services.image_storage import ImageStorageService
 
@@ -201,10 +232,11 @@ def _run_image_check(generator: Any, storage_dir: Path, base_url: Optional[str])
         )
         if not image_bytes:
             raise ValueError("empty image output")
+        user_id, game_id = _create_owned_fixture()
         storage = ImageStorageService(storage_type="local", local_path=storage_dir)
         storage_path, storage_type = storage.save_image(
             image_bytes,
-            game_id=900001,
+            game_id=game_id,
             image_type="release_smoke",
             entity_name="fixed-fixture",
         )
@@ -214,14 +246,25 @@ def _run_image_check(generator: Any, storage_dir: Path, base_url: Optional[str])
         if not loaded:
             raise IOError("persisted image could not be read")
         resource_path = storage.get_image_url(storage_path, storage_type)
+        with SessionLocal() as session:
+            row = Image(game_id=game_id, image_type="release_smoke", entity_name="fixed-fixture",
+                        prompt_text="Fixed synthetic kite fixture", storage_path=storage_path,
+                        storage_type=storage_type)
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            if row.storage_path != storage_path:
+                raise IOError("image database persistence failed")
         if base_url:
-            with urlopen(f"{base_url.rstrip('/')}{resource_path}", timeout=20) as response:  # nosec B310 - base URL is a smoke target
-                if response.status != 200 or not response.read(32):
-                    raise IOError("image resource is not accessible")
+            _read_owned_resource(base_url, resource_path, user_id)
     return {"bytes": len(image_bytes), "persisted": True, "resource_accessible": bool(base_url)}
 
 
-def _run_tts_check(provider: Any) -> Dict[str, Any]:
+def _run_tts_check(provider: Any, base_url: Optional[str] = None) -> Dict[str, Any]:
+    from src.api.schemas import StoryVoiceReadingRequest
+    from src.database.models import GeneratedVoiceAsset, SessionLocal
+    from src.services.story_voice_reading import StoryVoiceReadingService, normalize_text_hash
+    from src.services.story_voice_repository import StoryVoiceReadingRepository
     from src.observability.request_context import RequestContext, request_context
 
     with request_context(
@@ -231,17 +274,25 @@ def _run_tts_check(provider: Any) -> Dict[str, Any]:
             feature="release_model_smoke",
         )
     ):
-        speech = provider.synthesize(
-            {"text_hash": "fixed-tts-fixture", "text": "A short release validation sentence."},
-            "female-shaonv",
-            1.0,
-        )
-        if not speech.duration_ms or not provider.is_valid_cached_asset(speech.storage_path):
-            raise ValueError("generated audio is not playable")
-        asset_path = provider.config.voice_asset_dir / Path(speech.storage_path).name
-        if not asset_path.is_file() or asset_path.stat().st_size <= 0:
-            raise IOError("audio asset was not persisted")
-    return {"duration_ms": speech.duration_ms, "persisted": True, "playable": True}
+        user_id, game_id = _create_owned_fixture()
+        text = "旅人推开观星台的门，星光照亮了桌上的地图。"
+        with SessionLocal() as session:
+            service = StoryVoiceReadingService(StoryVoiceReadingRepository(session), provider=provider)
+            queued = service.request_reading(user_id, StoryVoiceReadingRequest(context={
+                "source_type": "current_story", "game_id": game_id, "week": 1,
+                "round_number": 1, "stage": "event", "attempt_id": "release-smoke",
+                "text_hash": normalize_text_hash(text), "text": text,
+            }))
+            completed = service.process_job(user_id, int(queued.job_id))
+            if completed.status != "ready" or completed.asset_id is None:
+                raise RuntimeError("production scene narration job did not finish ready")
+            asset = session.query(GeneratedVoiceAsset).filter_by(asset_id=completed.asset_id).one()
+            if asset.status != "ready" or not provider.is_valid_cached_asset(asset.storage_path):
+                raise ValueError("persisted narration audio is not playable")
+            if base_url:
+                _read_owned_resource(base_url, asset.storage_path, user_id)
+            duration_ms = int(asset.duration_ms)
+    return {"duration_ms": duration_ms, "persisted": True, "playable": True, "job_status": "ready"}
 
 
 def _run_projection_check(generator: Any) -> Dict[str, Any]:
@@ -397,13 +448,13 @@ def run(
 
     _check(checks, "text_generation_and_constraints", "openai-compatible", generator.ai_client.model, lambda: _run_text_checks(generator))
     _check(checks, "image_generation_persistence_and_resource", "minimax", image_generator.model, lambda: _run_image_check(image_generator, artifact_dir / "images", base_url))
-    _check(checks, "tts_generation_persistence_and_playability", "minimax", tts_provider.model, lambda: _run_tts_check(tts_provider))
+    _check(checks, "tts_generation_persistence_and_playability", "minimax", tts_provider.model, lambda: _run_tts_check(tts_provider, base_url))
     _check(checks, "daily_world_projection_persistence", "openai-compatible", generator.ai_client.model, lambda: _run_projection_check(generator))
 
     report = _build_report(checks, collector.events, started_at)
     status = report["status"]
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"smoke_report": str(report_path), "status": status}, ensure_ascii=False))
+    print(json.dumps(report, ensure_ascii=False))
     return 0 if status == "passed" else 1
 
 
@@ -431,7 +482,7 @@ def main() -> int:
         }
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(json.dumps({"smoke_report": str(args.report), "status": "failed"}, ensure_ascii=False))
+        print(json.dumps(report, ensure_ascii=False))
         return 1
 
 

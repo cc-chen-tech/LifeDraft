@@ -94,6 +94,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: model-smoke-evidence
-          path: ${{ github.workspace }}/.model-smoke-run/
-          if-no-files-found: warn
+          include-hidden-files: true
+          path: |
+            ${{ github.workspace }}/.model-smoke-run/**/smoke-summary.json
+            ${{ github.workspace }}/.model-smoke-run/**/model-events.jsonl
+            ${{ github.workspace }}/.model-smoke-run/**/model-smoke-screenshot.png
+            ${{ github.workspace }}/frontend/test-results/**/trace.zip
+            ${{ github.workspace }}/frontend/test-results/**/test-failed-*.png
+          if-no-files-found: error
           retention-days: 14
