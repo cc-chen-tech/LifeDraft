@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from src.api.schemas import StoryVoiceReadingRequest
-from src.database.models import GeneratedVoiceAsset, SessionLocal, User, VoiceReadingJob
+from src.database.models import GeneratedVoiceAsset, SessionLocal, User, VoiceReadingJob, init_db
 from src.services.story_tts_provider import DeterministicTTSProvider, UnavailableTTSProvider
 from src.services.story_voice_reading import (
     StoryVoiceReadingService,

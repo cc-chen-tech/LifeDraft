@@ -1491,7 +1491,7 @@ def test_promoted_prefetch_stays_promoted_when_task_bookkeeping_commit_fails(
         assert observer.query(DailyWorldProjection).count() == 1
 
 
-def test_tts_prefetch_uses_saved_auto_read_voice_and_marks_task_ready(
+def test_tts_prefetch_submits_durable_job_and_worker_marks_audio_ready(
     db_engine, monkeypatch
 ) -> None:
     from sqlalchemy.orm import sessionmaker
@@ -1539,6 +1539,9 @@ def test_tts_prefetch_uses_saved_auto_read_voice_and_marks_task_ready(
         "src.services.story_voice_reading.build_story_tts_provider",
         lambda: DeterministicTTSProvider(),
     )
+    # Submission is intentionally saturated: the story remains consumable and
+    # the durable queued audio is recovered once a worker has capacity.
+    monkeypatch.setattr("src.services.story_voice_worker.submit_story_voice_job", lambda *args: False)
     set_feature("daily_recommended_tts_prefetch", True)
     try:
         _prefetch_story_voice(
@@ -1552,6 +1555,18 @@ def test_tts_prefetch_uses_saved_auto_read_voice_and_marks_task_ready(
         )
     finally:
         reset_features()
+
+    with Session() as pending:
+        stored = pending.get(DailyRecommendedPrefetch, task_id)
+        assert stored.status == "story_ready"
+        assert pending.get(VoiceReadingJob, stored.tts_job_id).status == "queued"
+    from src.services.story_voice_worker import StoryVoiceWorker
+    worker = StoryVoiceWorker(session_factory=Session, provider_factory=DeterministicTTSProvider)
+    try:
+        worker.scan_once()
+        worker.stop(wait=True)
+    finally:
+        worker.stop(wait=True)
 
     observer = Session()
     try:

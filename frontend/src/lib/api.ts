@@ -277,6 +277,13 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
         status: response.status,
         code: errorCode,
         retryable,
+        retryAfterMs: (() => {
+          const value = response.headers?.get('Retry-After');
+          if (!value) return undefined;
+          const seconds = Number(value);
+          const milliseconds = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
+          return Number.isFinite(milliseconds) ? Math.max(0, milliseconds) : undefined;
+        })(),
       });
     }
 
@@ -583,14 +590,16 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
-    requestReading: (data: StoryVoiceReadingRequest) =>
+    requestReading: (data: StoryVoiceReadingRequest, signal?: AbortSignal) =>
       fetchJson<StoryVoiceReadingResponse>('/voice-reading/read', {
+        signal,
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    getJob: (jobId: number) =>
+    getJob: (jobId: number, signal?: AbortSignal) =>
       fetchJson<VoiceReadingJobResponse>(`/voice-reading/jobs/${jobId}`, {
         timeout: STORY_VOICE_JOB_REQUEST_TIMEOUT_MS,
+        signal,
       }),
     getProgress: (identity: Pick<VoiceReadingProgress, 'game_id' | 'day_index' | 'text_hash' | 'voice_id' | 'speed'>) => {
       const query = new URLSearchParams({
@@ -604,6 +613,7 @@ export const api = {
     },
     updateProgress: (data: VoiceReadingProgress) =>
       fetchJson<VoiceReadingProgress>('/voice-reading/progress', {
+        timeout: 5_000,
         method: 'PATCH',
         body: JSON.stringify(data),
       }),

@@ -81,33 +81,58 @@ class MiniMaxWebSocketTTSClient:
         from websockets.sync.client import connect
 
         audio_chunks: list[bytes] = []
+        deadline = time.monotonic() + self.config.request_timeout_seconds
+        next_heartbeat = time.monotonic() + 5.0
         with connect(
             self.config.tts_websocket_url,
             additional_headers={"Authorization": f"Bearer {self.config.api_key or ''}"},
-            open_timeout=self.config.request_timeout_seconds,
-            close_timeout=self.config.request_timeout_seconds,
+            open_timeout=min(10.0, self.config.request_timeout_seconds),
+            close_timeout=min(1.0, self.config.request_timeout_seconds),
         ) as websocket:
+            def receive(phase: str, audio_deadline: Optional[float] = None) -> Any:
+                nonlocal next_heartbeat
+                idle_deadline = min(deadline, audio_deadline if audio_deadline is not None else time.monotonic() + 15.0)
+                while True:
+                    now = time.monotonic()
+                    remaining = min(deadline, idle_deadline) - now
+                    if remaining <= 0:
+                        raise TimeoutError(f"MiniMax WebSocket timed out during {phase}")
+                    if now >= next_heartbeat:
+                        _report_progress(on_progress)
+                        next_heartbeat = time.monotonic() + 5.0
+                        continue
+                    try:
+                        message = websocket.recv(timeout=min(remaining, next_heartbeat - now))
+                    except TimeoutError:
+                        # Keep the lease alive during a bounded wait, without
+                        # allowing heartbeat messages to extend the total deadline.
+                        continue
+                    result = json.loads(str(message))
+                    _raise_for_base_resp(result)
+                    return result
+
             # MiniMax WebSocket protocol: connected_success, task_start,
             # task_started, task_continue, audio chunks, task_finished. The
             # task_finish close signal is sent only after the final audio frame;
             # sending it after the first chunk can truncate the MP3 stream.
-            connected = json.loads(str(websocket.recv()))
+            connected = receive("connection")
             if str(connected.get("event") or connected.get("status") or "") not in {
                 "connected_success",
                 "connected",
             }:
                 raise RuntimeError("MiniMax WebSocket did not confirm connection")
             websocket.send(_json_dumps({"event": "task_start", **dict(payload)}))
-            started = json.loads(str(websocket.recv()))
+            started = receive("task_start")
             if str(started.get("event") or "") != "task_started":
                 raise RuntimeError("MiniMax WebSocket did not start the task")
             websocket.send(_json_dumps({"event": "task_continue", "text": payload.get("text", "")}))
+            audio_deadline = time.monotonic() + 15.0
             for _ in range(10000):
-                message = websocket.recv()
-                payload_obj = json.loads(str(message))
+                payload_obj = receive("audio", audio_deadline)
                 audio_hex = _extract_audio_hex(payload_obj)
                 if audio_hex:
                     audio_chunks.append(bytes.fromhex(audio_hex))
+                    audio_deadline = time.monotonic() + 15.0
                 if _is_done_message(payload_obj):
                     if _is_final_audio_message(payload_obj):
                         websocket.send(_json_dumps({"event": "task_finish"}))

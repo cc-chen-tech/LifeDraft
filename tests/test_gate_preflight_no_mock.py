@@ -625,7 +625,7 @@ def test_play_page_missing_game_state_has_actionable_recovery_ui() -> None:
 
 def test_story_voice_e2e_uses_same_origin_api_proxy() -> None:
     api_source = (ROOT / "frontend" / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
-    request_reading_block = api_source.split("requestReading: (data: StoryVoiceReadingRequest) =>")[
+    request_reading_block = api_source.split("requestReading:", 1)[
         1
     ].split("getJob:", 1)[0]
 

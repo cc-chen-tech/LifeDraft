@@ -23,11 +23,12 @@ from src.api.schemas import (
     VoicePreviewResponse,
     VoiceUploadConsentRequest,
 )
-from src.database.models import SessionLocal
 from src.services.minimax_config import build_minimax_config
 from src.services.story_tts_provider import generated_voice_file_path
 from src.services.story_voice_reading import StoryVoiceReadingService, build_deterministic_wav
 from src.services.story_voice_repository import StoryVoiceReadingRepository
+from src.services.story_voice_progress import ProgressStoreBusy, save_voice_progress
+from src.services.story_voice_worker import submit_story_voice_job
 
 router = APIRouter()
 
@@ -54,7 +55,7 @@ def get_service(db: Session) -> StoryVoiceReadingService:
 
 
 @router.get("/settings", response_model=VoiceReadingSettingsResponse)
-async def get_voice_reading_settings(
+def get_voice_reading_settings(
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> VoiceReadingSettingsResponse:
@@ -62,7 +63,7 @@ async def get_voice_reading_settings(
 
 
 @router.patch("/settings", response_model=VoiceReadingSettingsResponse)
-async def update_voice_reading_settings(
+def update_voice_reading_settings(
     request: VoiceReadingSettingsUpdateRequest,
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -79,7 +80,7 @@ async def update_voice_reading_settings(
 
 
 @router.post("/preview", response_model=VoicePreviewResponse)
-async def preview_voice(
+def preview_voice(
     request: VoicePreviewRequest,
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -92,7 +93,7 @@ async def preview_voice(
 
 
 @router.post("/read", response_model=StoryVoiceReadingResponse)
-async def request_story_reading(
+def request_story_reading(
     request: StoryVoiceReadingRequest,
     background_tasks: BackgroundTasks,
     user_id: int = Depends(get_current_user),
@@ -106,19 +107,13 @@ async def request_story_reading(
 
 
 def process_story_voice_job(user_id: int, job_id: int) -> None:
-    db = SessionLocal()
-    try:
-        StoryVoiceReadingService(StoryVoiceReadingRepository(db)).process_job(user_id, job_id)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    # Admission is bounded by the voice worker; excess queued work is durable
+    # and discovered by its recovery scanner rather than a growing Future queue.
+    submit_story_voice_job(user_id, job_id)
 
 
 @router.get("/jobs/{job_id}", response_model=VoiceReadingJobResponse)
-async def get_voice_reading_job(
+def get_voice_reading_job(
     job_id: int,
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -150,7 +145,7 @@ def _progress_response(progress: object) -> VoiceReadingProgressResponse:
 
 
 @router.get("/progress", response_model=VoiceReadingProgressResponse)
-async def get_voice_reading_progress(
+def get_voice_reading_progress(
     game_id: int,
     day_index: int,
     text_hash: str,
@@ -168,24 +163,31 @@ async def get_voice_reading_progress(
 
 
 @router.patch("/progress", response_model=VoiceReadingProgressResponse)
-async def update_voice_reading_progress(
+def update_voice_reading_progress(
     request: VoiceReadingProgressRequest,
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> VoiceReadingProgressResponse:
-    progress = StoryVoiceReadingRepository(db).upsert_progress(
-        user_id=user_id,
-        game_id=request.game_id,
-        day_index=request.day_index,
-        story_date=request.story_date,
-        text_hash=request.text_hash,
-        voice_id=request.voice_id,
-        speed=request.speed,
-        paragraph_index=request.paragraph_index,
-        position_ms=request.position_ms,
-        completed=request.completed,
-    )
-    db.commit()
+    try:
+        progress = save_voice_progress(
+            db,
+            user_id=user_id,
+            game_id=request.game_id,
+            day_index=request.day_index,
+            story_date=request.story_date,
+            text_hash=request.text_hash,
+            voice_id=request.voice_id,
+            speed=request.speed,
+            paragraph_index=request.paragraph_index,
+            position_ms=request.position_ms,
+            completed=request.completed,
+        )
+    except ProgressStoreBusy as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error_code": "progress_store_busy", "message": "Progress will be retried"},
+            headers={"Retry-After": "1"},
+        ) from error
     return _progress_response(progress)
 
 

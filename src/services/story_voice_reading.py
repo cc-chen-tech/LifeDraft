@@ -6,7 +6,7 @@ import hashlib
 import logging
 import os
 import re
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -185,13 +185,9 @@ class StoryVoiceReadingService:
                 },
             )
         canonical_voice = (
-            canonical_voice_id(selected_voice_color)
-            if selected_voice_color is not None
-            else None
+            canonical_voice_id(selected_voice_color) if selected_voice_color is not None else None
         )
-        self.repository.upsert_settings(
-            user_id, canonical_voice, auto_read_enabled, selected_speed
-        )
+        self.repository.upsert_settings(user_id, canonical_voice, auto_read_enabled, selected_speed)
         return self.get_settings(user_id)
 
     def preview_voice(self, voice_id: str) -> Dict[str, Any]:
@@ -371,6 +367,8 @@ class StoryVoiceReadingService:
                 "High-quality narration is temporarily unavailable",
             )
             for segment in job.segments:
+                if segment.status == "ready":
+                    continue
                 segment.status = "failed"
                 segment.error_code = "tts_provider_unavailable"
                 segment.error_message = job.error_message
@@ -378,182 +376,134 @@ class StoryVoiceReadingService:
         return self._reading_response(job, provider_metadata.provider, provider_metadata.model)
 
     def process_job(self, user_id: int, job_id: int) -> VoiceReadingJobResponse:
+        """Synthesize from committed snapshots, fencing every database write."""
         job = self.repository.get_job(job_id, user_id)
         if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-        if str(job.status) == "ready":
+        claimed_token = self.repository.claim_queued_job_for_processing_with_token(user_id, job_id)
+        if claimed_token is None:
             return self.get_job(user_id, job_id)
-
-        claimed_lease_token = self.repository.claim_queued_job_for_processing_with_token(
-            user_id, job_id
-        )
-        if claimed_lease_token is None:
-            return self.get_job(user_id, job_id)
-        lease_token = claimed_lease_token
-        job = self.repository.get_job(job_id, user_id)
-        if job is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-
+        lease_token = claimed_token
         metadata = self.provider.metadata()
-        for segment in job.segments:
-            segment.status = "processing"
-        next_token = self.repository.commit_processing_changes(user_id, job_id, lease_token)
-        if next_token is None:
-            return self.get_job(user_id, job_id)
-        lease_token = next_token
-        job = self.repository.get_job(job_id, user_id)
-        if job is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        active_index: Optional[int] = None
+        phase = "narration_plan_failed"
 
-        chapter_context = dict(job.context_json)
-        chapter_context["paragraphs"] = [str(segment.text_content) for segment in job.segments]
-        try:
-            narration_plan, narration_plan_metrics = self._ensure_narration_plan_with_metrics(
-                chapter_context, chapter_context["paragraphs"]
+        def commit(**changes: Any) -> None:
+            nonlocal lease_token
+            token = self.repository.commit_processing_changes(
+                user_id, job_id, lease_token, **changes
             )
-            chapter_context["narration_plan"] = narration_plan
-            chapter_context["narration_plan_metrics"] = narration_plan_metrics
-            self._log_narration_plan_decision(job_id, narration_plan_metrics)
-            setattr(job, "context_json", chapter_context)
-            # Persist the plan before the next fenced heartbeat. The JSON update
-            # itself triggers SQLAlchemy's on-update timestamp, so it must not be
-            # mixed into commit_processing_changes (which intentionally compares
-            # the pre-flush lease token).
-            self.repository.db.flush()
-            self.repository.db.commit()
-            self.repository.db.expire_all()
+            if token is None:
+                raise RuntimeError("voice reading processing lease was replaced")
+            lease_token = token
+
+        try:
             job = self.repository.get_job(job_id, user_id)
             if job is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-            lease_token = cast(Any, getattr(job, "updated_at"))
-        except Exception as error:
-            logger.exception("Narration plan phase failed for voice job %s", job_id)
-            return self._mark_processing_job_failed(
+                raise RuntimeError("voice reading job disappeared during processing")
+            chapter_context = dict(job.context_json)
+            paragraphs = [str(segment.text_content) for segment in job.segments]
+            chapter_context["paragraphs"] = paragraphs
+            voice_id, speed = str(job.voice_id), float(job.speed)
+            text_hash = str(job.text_hash)
+            if chapter_context.get("narration_plan") is None:
+                plan = build_legacy_narration_plan(paragraphs)
+                metrics = self._narration_metrics(
+                    source="deterministic-fallback", fallback_reason="playback_no_stored_plan"
+                )
+            else:
+                plan, metrics = self._ensure_narration_plan_with_metrics(
+                    chapter_context, paragraphs
+                )
+            chapter_context["narration_plan"] = plan
+            chapter_context["narration_plan_metrics"] = metrics
+            self._log_narration_plan_decision(job_id, metrics)
+            # JSON and heartbeat update share the exact lease comparison. Never
+            # flush a job mutation that changes updated_at before this check.
+            commit(context_json=chapter_context)
+            phase = "tts_generation_failed"
+
+            cached_asset, cached_cues = self._find_reusable_asset_with_cues(
                 user_id=user_id,
-                job_id=job_id,
-                lease_token=lease_token,
-                error_code="narration_plan_failed",
-                error=error,
-                public_message="Narration plan could not be prepared",
+                text_hash=text_hash,
+                voice_id=voice_id,
+                speed=speed,
+                provider=metadata.provider,
+                model=metadata.model,
+                paragraph_count=len(paragraphs),
             )
-        job = self.repository.get_job(job_id, user_id)
-        if job is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-
-        cached_asset, cached_cues = self._find_reusable_asset_with_cues(
-            user_id=user_id,
-            text_hash=str(job.text_hash),
-            voice_id=str(job.voice_id),
-            speed=float(job.speed),
-            provider=metadata.provider,
-            model=metadata.model,
-            paragraph_count=len(job.segments),
-        )
-        if cached_asset is not None and cached_cues is not None:
-            refreshed_job = self.repository.get_job(job_id, user_id)
-            if refreshed_job is None:
-                raise RuntimeError("voice reading job disappeared during cache recovery")
-            self._attach_ready_asset(refreshed_job, cached_asset, cached_cues)
-            if (
-                self.repository.commit_processing_changes(
-                    user_id,
-                    job_id,
-                    lease_token,
-                    primary_asset_id=int(cached_asset.asset_id),
-                    terminal_status="ready",
-                )
-                is None
-            ):
+            if cached_asset is not None and cached_cues is not None:
+                job = self.repository.get_job(job_id, user_id)
+                if job is None:
+                    raise RuntimeError("voice reading job disappeared during processing")
+                self._attach_ready_asset(job, cached_asset, cached_cues)
+                commit(primary_asset_id=int(cached_asset.asset_id), terminal_status="ready")
                 return self.get_job(user_id, job_id)
-            return self.get_job(user_id, job_id)
+            # Asset invalidation, if any, must commit with the lease before I/O.
+            commit()
+            if not metadata.backend_audio_enabled:
+                raise RuntimeError("High-quality narration is temporarily unavailable")
 
-        if not metadata.backend_audio_enabled:
-            failed_job = self.repository.get_job(job_id, user_id)
-            if failed_job is not None:
-                for segment in failed_job.segments:
-                    segment.status = "failed"
-                    segment.error_code = "tts_provider_unavailable"
-                    segment.error_message = "High-quality narration is temporarily unavailable"
-            if (
-                self.repository.commit_processing_changes(
-                    user_id,
-                    job_id,
-                    lease_token,
-                    terminal_status="failed",
-                    error_code="tts_provider_unavailable",
-                    error_message="High-quality narration is temporarily unavailable",
-                )
-                is None
-            ):
-                return self.get_job(user_id, job_id)
-            return self.get_job(user_id, job_id)
-
-        def refresh_processing_lease() -> None:
-            nonlocal lease_token
-            next_lease_token = self.repository.commit_processing_changes(
-                user_id,
-                job_id,
-                lease_token,
-            )
-            if next_lease_token is None:
-                raise RuntimeError("voice reading processing lease was replaced")
-            lease_token = next_lease_token
-
-        try:
-            # MiniMax scene-capable providers commit each independently valid
-            # MP3 before the chapter bundle is generated.  This is the point
-            # where the polling client can begin queue playback while this
-            # worker continues with later scenes and final assembly.
             synthesize_scene = getattr(self.provider, "synthesize_scene", None)
             if callable(synthesize_scene):
-                for segment in job.segments:
-                    if str(segment.status) == "ready" and segment.asset is not None:
-                        continue
+                for index, paragraph in enumerate(paragraphs):
+                    job = self.repository.get_job(job_id, user_id)
+                    if job is None:
+                        raise RuntimeError("voice reading job disappeared during processing")
+                    segment = job.segments[index]
                     scene_context = dict(chapter_context)
-                    scene_context["text"] = str(segment.text_content)
-                    scene_context["text_hash"] = str(segment.text_hash)
-                    scene_context["paragraphs"] = [str(segment.text_content)]
-                    scene_narration_plan: Any = chapter_context.get("narration_plan")
-                    plan_segments = (
-                        scene_narration_plan.get("segments")
-                        if isinstance(scene_narration_plan, dict)
-                        else scene_narration_plan
+                    scene_context.update(
+                        text=paragraph, text_hash=str(segment.text_hash), paragraphs=[paragraph]
                     )
-                    scene_speed = float(job.speed)
-                    if isinstance(plan_segments, list) and int(segment.paragraph_index) < len(
-                        plan_segments
+                    entries = plan.get("segments", [])
+                    scene_speed = speed
+                    if index < len(entries) and isinstance(entries[index], dict):
+                        scene_context.update(entries[index])
+                        if isinstance(entries[index].get("speed"), (int, float)):
+                            scene_speed = float(entries[index]["speed"])
+                    asset = segment.asset
+                    if (
+                        str(segment.status) == "ready"
+                        and asset is not None
+                        and str(asset.status) == "ready"
+                        and int(asset.user_id) == user_id
+                        and str(asset.text_hash) == str(segment.text_hash)
+                        and float(asset.speed) == scene_speed
+                        and str(asset.voice_id) == voice_id
+                        and str(asset.provider) == metadata.provider
+                        and str(asset.model) == metadata.model
+                        and int(asset.asset_version) == VOICE_ASSET_VERSION
+                        and self._is_valid_cached_asset(asset)
                     ):
-                        plan_entry = plan_segments[int(segment.paragraph_index)]
-                        if isinstance(plan_entry, dict):
-                            scene_context.update(plan_entry)
-                            if isinstance(plan_entry.get("speed"), (int, float)):
-                                scene_speed = float(plan_entry["speed"])
+                        self.repository.db.rollback()
+                        continue
+                    active_index = index
+                    segment.asset = None
+                    segment.start_ms = None
+                    segment.end_ms = None
+                    segment.status = "processing"
+                    segment.error_code = None
+                    segment.error_message = None
+                    commit()
+                    # Only plain values cross network boundaries; no ORM lazy
+                    # load or open transaction is needed while MiniMax responds.
                     speech = synthesize_scene(
-                        scene_context,
-                        str(job.voice_id),
-                        scene_speed,
-                        on_progress=refresh_processing_lease,
+                        scene_context, voice_id, scene_speed, on_progress=commit
                     )
                     if (
                         speech.playback_mode != "audio"
                         or speech.storage_path is None
                         or speech.duration_ms is None
                     ):
-                        raise RuntimeError(
-                            f"provider returned no audio for scene {segment.paragraph_index}"
-                        )
-                    scene_asset_context = dict(scene_context)
-                    scene_asset_context["paragraph_cues"] = [
-                        {
-                            "paragraph_index": 0,
-                            "start_ms": 0,
-                            "end_ms": int(speech.duration_ms),
-                        }
+                        raise RuntimeError(f"provider returned no audio for scene {index}")
+                    asset_context = dict(scene_context)
+                    asset_context["paragraph_cues"] = [
+                        {"paragraph_index": 0, "start_ms": 0, "end_ms": int(speech.duration_ms)}
                     ]
-                    scene_asset = self.repository.create_asset(
+                    asset = self.repository.create_asset(
                         user_id=user_id,
-                        context=scene_asset_context,
-                        voice_id=str(job.voice_id),
+                        context=asset_context,
+                        voice_id=voice_id,
                         speed=scene_speed,
                         provider=speech.provider,
                         model=speech.model,
@@ -561,31 +511,42 @@ class StoryVoiceReadingService:
                         duration_ms=int(speech.duration_ms),
                         status="ready",
                     )
-                    segment.asset = scene_asset
-                    segment.start_ms = 0
-                    segment.end_ms = int(speech.duration_ms)
+                    job = self.repository.get_job(job_id, user_id)
+                    if job is None:
+                        raise RuntimeError("voice reading job disappeared during processing")
+                    segment = job.segments[index]
+                    segment.asset = asset
+                    segment.start_ms, segment.end_ms = 0, int(speech.duration_ms)
                     segment.status = "ready"
-                    segment.error_code = None
-                    segment.error_message = None
-                    refresh_processing_lease()
+                    segment.error_code = segment.error_message = None
+                    commit()
+                    active_index = None
+            else:
+                job = self.repository.get_job(job_id, user_id)
+                if job is None:
+                    raise RuntimeError("voice reading job disappeared during processing")
+                for segment in job.segments:
+                    if segment.status != "ready":
+                        segment.status = "processing"
+                commit()
 
+            job = self.repository.get_job(job_id, user_id)
+            if job is None:
+                raise RuntimeError("voice reading job disappeared during processing")
+            paths = [
+                str(segment.asset.storage_path)
+                for segment in job.segments
+                if segment.status == "ready" and segment.asset is not None
+            ]
+            self.repository.db.rollback()
             assemble_scenes = getattr(self.provider, "assemble_scenes", None)
-            if callable(assemble_scenes) and all(
-                segment.asset is not None for segment in job.segments
-            ):
+            if callable(assemble_scenes) and len(paths) == len(paragraphs):
                 speech = assemble_scenes(
-                    [str(segment.asset.storage_path) for segment in job.segments],
-                    chapter_context,
-                    str(job.voice_id),
-                    float(job.speed),
-                    on_progress=refresh_processing_lease,
+                    paths, chapter_context, voice_id, speed, on_progress=commit
                 )
             else:
                 speech = self.provider.synthesize(
-                    chapter_context,
-                    str(job.voice_id),
-                    float(job.speed),
-                    on_progress=refresh_processing_lease,
+                    chapter_context, voice_id, speed, on_progress=commit
                 )
             if (
                 speech.playback_mode != "audio"
@@ -593,78 +554,49 @@ class StoryVoiceReadingService:
                 or speech.duration_ms is None
             ):
                 raise RuntimeError("provider returned no high-quality chapter audio")
-            if len(speech.paragraph_cues) != len(job.segments):
+            if len(speech.paragraph_cues) != len(paragraphs):
                 raise RuntimeError("provider returned incomplete paragraph cues")
-
-            ready_asset, ready_cues = self._find_reusable_asset_with_cues(
+            asset_context = dict(chapter_context)
+            asset_context["paragraph_cues"] = [
+                {
+                    "paragraph_index": cue.paragraph_index,
+                    "start_ms": cue.start_ms,
+                    "end_ms": cue.end_ms,
+                }
+                for cue in speech.paragraph_cues
+            ]
+            asset = self.repository.create_asset(
                 user_id=user_id,
-                text_hash=str(job.text_hash),
-                voice_id=str(job.voice_id),
-                speed=float(job.speed),
-                provider=metadata.provider,
-                model=metadata.model,
-                paragraph_count=len(job.segments),
+                context=asset_context,
+                voice_id=voice_id,
+                speed=speed,
+                provider=speech.provider,
+                model=speech.model,
+                storage_path=speech.storage_path,
+                duration_ms=speech.duration_ms,
+                status="ready",
             )
-            if ready_asset is None:
-                ready_cues = speech.paragraph_cues
-                asset_context = dict(chapter_context)
-                asset_context["paragraph_cues"] = [
-                    {
-                        "paragraph_index": cue.paragraph_index,
-                        "start_ms": cue.start_ms,
-                        "end_ms": cue.end_ms,
-                    }
-                    for cue in ready_cues
-                ]
-                ready_asset = self.repository.create_asset(
-                    user_id=user_id,
-                    context=asset_context,
-                    voice_id=str(job.voice_id),
-                    speed=float(job.speed),
-                    provider=speech.provider,
-                    model=speech.model,
-                    storage_path=speech.storage_path,
-                    duration_ms=speech.duration_ms,
-                    status="ready",
-                )
-            if ready_cues is None:
-                raise RuntimeError("cached chapter audio did not include paragraph cues")
-
-            refreshed_job = self.repository.get_job(job_id, user_id)
-            if refreshed_job is None:
-                raise RuntimeError("voice reading job disappeared during synthesis")
-            self._attach_ready_asset(refreshed_job, ready_asset, ready_cues)
-
-            if (
-                self.repository.commit_processing_changes(
-                    user_id,
-                    job_id,
-                    lease_token,
-                    primary_asset_id=int(ready_asset.asset_id),
-                    terminal_status="ready",
-                )
-                is None
-            ):
-                return self.get_job(user_id, job_id)
+            job = self.repository.get_job(job_id, user_id)
+            if job is None:
+                raise RuntimeError("voice reading job disappeared during processing")
+            self._attach_ready_asset(job, asset, speech.paragraph_cues)
+            commit(primary_asset_id=int(asset.asset_id), terminal_status="ready")
         except Exception as error:
-            failed_job = self.repository.get_job(job_id, user_id)
-            if failed_job is not None:
-                for segment in failed_job.segments:
-                    segment.status = "failed"
-                    segment.error_code = "tts_generation_failed"
-                    segment.error_message = str(error)
-            if (
-                self.repository.commit_processing_changes(
-                    user_id,
-                    job_id,
-                    lease_token,
-                    terminal_status="failed",
-                    error_code="tts_generation_failed",
-                    error_message="High-quality narration could not be generated",
-                )
-                is None
-            ):
-                return self.get_job(user_id, job_id)
+            logger.exception(
+                "Voice generation failed job_id=%s segment=%s phase=%s", job_id, active_index, phase
+            )
+            # Flush/commit failures invalidate the Session. Roll back before any
+            # recovery query, and keep already committed segments untouched.
+            self.repository.db.rollback()
+            return self._mark_processing_job_failed(
+                user_id=user_id,
+                job_id=job_id,
+                lease_token=lease_token,
+                error_code=phase,
+                error=error,
+                public_message="High-quality narration could not be generated",
+                active_index=active_index,
+            )
         return self.get_job(user_id, job_id)
 
     @staticmethod
@@ -828,10 +760,15 @@ class StoryVoiceReadingService:
         error_code: str,
         error: Exception,
         public_message: str,
+        active_index: Optional[int] = None,
     ) -> VoiceReadingJobResponse:
         failed_job = self.repository.get_job(job_id, user_id)
         if failed_job is not None:
             for segment in failed_job.segments:
+                if segment.status == "ready":
+                    continue
+                if active_index is not None and int(segment.paragraph_index) != active_index:
+                    continue
                 segment.status = "failed"
                 segment.error_code = error_code
                 segment.error_message = str(error)
@@ -942,12 +879,6 @@ class StoryVoiceReadingService:
         job = self.repository.get_job(job_id, user_id)
         if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-        if str(job.status) == "processing" and self.repository.fail_stale_processing_job(
-            user_id, job_id
-        ):
-            job = self.repository.get_job(job_id, user_id)
-            if job is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
         metadata = self.provider.metadata()
         response = self._reading_response(job, metadata.provider, metadata.model)
         return VoiceReadingJobResponse(**response.model_dump())
