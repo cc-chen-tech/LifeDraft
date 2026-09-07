@@ -19,6 +19,7 @@ from src.game.round.daily_choice_processor import project_daily_choice
 from src.services.daily_recommended_prefetch_repository import (
     DailyRecommendedPrefetchRepository,
 )
+from src.observability.request_context import bind_current_context
 
 logger = logging.getLogger(__name__)
 _executor: Optional[ThreadPoolExecutor] = None
@@ -475,7 +476,7 @@ def ensure_daily_recommended_prefetch(
     if submitter is not None:
         submitter(callback)
     else:
-        _get_prefetch_executor().submit(callback)
+        _get_prefetch_executor().submit(bind_current_context(callback))
     return task_id
 
 
@@ -766,7 +767,7 @@ def probe_demanded_prefetch(
         if submitter is not None:
             submitter(callback)
         else:
-            _get_prefetch_executor().submit(callback)
+            _get_prefetch_executor().submit(bind_current_context(callback))
     return DemandedPrefetchProbe(task_id, status, True, None)
 
 

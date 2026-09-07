@@ -5,7 +5,6 @@ Inspired by Claude Code's model degradation strategy.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
 
@@ -16,8 +15,6 @@ except ImportError:  # pragma: no cover
 
 if TYPE_CHECKING:
     from src.ai.client import AIClient
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -83,13 +80,6 @@ class FallbackChain:
                 )
 
                 if is_retryable and i < attempts - 1:
-                    next_model = self._models[i + 1]
-                    logger.warning(
-                        "Model %s failed with status %s, falling back to %s",
-                        current_model,
-                        status_code,
-                        next_model,
-                    )
                     if status_callback is not None:
                         status_callback("model_fallback")
                     continue

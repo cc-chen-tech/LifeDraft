@@ -54,6 +54,11 @@ from src.services.daily_world_projection_observability import (
     emit_projection_health,
     summarize_projection_health,
 )
+from src.observability.request_context import (
+    RequestContext,
+    current_request_context,
+    request_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1550,7 +1555,24 @@ class DailyWorldProjectionService:
             # The reservation commit permit is the provider-call linearization
             # point: a stop after that permit still consumes one real call.
             provider_called = True
-            payload = self._extract(story, options, source.get("tracked_state"))
+            parent_context = current_request_context()
+            projection_request_id = (
+                parent_context.request_id
+                if parent_context is not None
+                else f"projection-{row.projection_id}-{attempt_id}"
+            )
+            with request_context(
+                RequestContext(
+                    request_id=projection_request_id,
+                    operation_id=(
+                        f"daily-world-projection:{row.game_id}:"
+                        f"{row.projection_id}:{attempt_id}"
+                    ),
+                    feature="daily_world_projection",
+                    operation="extract",
+                )
+            ):
+                payload = self._extract(story, options, source.get("tracked_state"))
             done.set()
             if cancel is not None and cancel.is_set():
                 outcome, error_code = "cancelled", "cancelled"

@@ -24,6 +24,8 @@ from src.ai.image_exceptions import (ContentInspectionError,
                                      ImageGenerationError,
                                      ImageProviderCategory,
                                      ImageProviderError)
+from src.observability.model_telemetry import ModelCallContext, emit_model_call
+from src.observability.request_context import current_request_context
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,7 @@ _LOCAL_E2E_IMAGE_BYTES = (
 
 def _truthy_env(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
 
 _MINIMAX_ASPECT_RATIOS: Tuple[Tuple[str, int, int], ...] = (
     ("1:1", 1, 1),
@@ -156,6 +159,29 @@ class ImageGenerator:
 
     def _e2e_local_image_enabled(self) -> bool:
         return _truthy_env("MINIMAX_E2E_LOCAL_IMAGE")
+
+    def _telemetry_context(
+        self,
+        *,
+        operation: str,
+        model: str,
+        attempt: int,
+        retry_index: int,
+        fallback_from: Optional[str] = None,
+    ) -> ModelCallContext:
+        request = current_request_context()
+        return ModelCallContext(
+            request_id=request.request_id if request is not None else "untracked",
+            operation_id=request.operation_id if request is not None else None,
+            feature=(request.feature if request and request.feature else "image_generation"),
+            operation=operation,
+            phase="provider",
+            provider="minimax",
+            model=model,
+            attempt=attempt,
+            retry_index=retry_index,
+            fallback_from=fallback_from,
+        )
 
     def _local_e2e_image_url(self) -> str:
         encoded = base64.b64encode(_LOCAL_E2E_IMAGE_BYTES).decode("ascii")
@@ -452,10 +478,19 @@ class ImageGenerator:
         for model_idx, fallback_model in enumerate(self.text_to_image_models):
             is_last_model = model_idx == len(self.text_to_image_models) - 1
 
-            if model_idx > 0:
-                logger.warning(f"[Model Fallback] Switching to fallback model: {fallback_model}")
-
             for attempt in range(self.max_retries):
+                attempt_started_at = time.monotonic()
+                telemetry_context = self._telemetry_context(
+                    operation="image_generation",
+                    model=fallback_model,
+                    attempt=model_idx * self.max_retries + attempt + 1,
+                    retry_index=model_idx * self.max_retries + attempt,
+                    fallback_from=(
+                        self.text_to_image_models[model_idx - 1]
+                        if model_idx > 0
+                        else None
+                    ),
+                )
                 try:
                     result = self._call_api(
                         prompt=prompt,
@@ -470,7 +505,15 @@ class ImageGenerator:
 
                     kind, sources = self._minimax_image_sources(result)
                     image_bytes = self._resolve_minimax_image_source(kind, sources[0])
-                    logger.info(f"Successfully downloaded image: {len(image_bytes)} bytes")
+                    if not image_bytes:
+                        raise self._provider_invalid_response_error()
+
+                    emit_model_call(
+                        telemetry_context,
+                        "success",
+                        attempt_started_at,
+                        output_size=len(image_bytes),
+                    )
 
                     # M-09: 存入缓存
                     cached_result = (image_bytes, prompt)
@@ -479,20 +522,21 @@ class ImageGenerator:
 
                     return cached_result
 
-                except ContentInspectionError:
+                except ContentInspectionError as e:
+                    emit_model_call(
+                        telemetry_context,
+                        "failure",
+                        attempt_started_at,
+                        error=e,
+                    )
                     raise
                 except ImageProviderError as e:
                     last_error = e
-                    logger.warning(
-                        "Image provider failure: provider=minimax code=%s category=%s "
-                        "retryable=%s trace_id=%s model=%s attempt=%s/%s",
-                        e.code,
-                        e.category,
-                        e.retryable,
-                        e.provider_trace_id,
-                        fallback_model,
-                        attempt + 1,
-                        self.max_retries,
+                    emit_model_call(
+                        telemetry_context,
+                        "failure",
+                        attempt_started_at,
+                        error=e,
                     )
                     if not e.retryable:
                         raise
@@ -505,10 +549,13 @@ class ImageGenerator:
                     requests.exceptions.Timeout,
                 ) as e:
                     last_error = e
-                    error_str = str(e)
-                    logger.warning(
-                        f"Image generation attempt {attempt + 1}/{self.max_retries} with model {fallback_model} failed: {e}"
+                    emit_model_call(
+                        telemetry_context,
+                        "failure",
+                        attempt_started_at,
+                        error=e,
                     )
+                    error_str = str(e)
 
                     # 检测 429 速率限制错误
                     is_rate_limit = (
@@ -539,8 +586,11 @@ class ImageGenerator:
                         break
                 except Exception as e:
                     last_error = e
-                    logger.exception(
-                        f"Unexpected error in image generation attempt {attempt + 1}/{self.max_retries} with model {fallback_model}: {e}"
+                    emit_model_call(
+                        telemetry_context,
+                        "failure",
+                        attempt_started_at,
+                        error=e,
                     )
                     if attempt < self.max_retries - 1:
                         time.sleep(2**attempt)
@@ -572,23 +622,43 @@ class ImageGenerator:
             logger.info("MINIMAX_E2E_LOCAL_IMAGE enabled; returning deterministic local image URL")
             return _LOCAL_E2E_IMAGE_BYTES, prompt, self._local_e2e_image_url()
 
-        result = self._call_api(
-            prompt=prompt,
-            size=size,
-            extra_params=extra_params,
-            response_format="url",
+        attempt_started_at = time.monotonic()
+        telemetry_context = self._telemetry_context(
+            operation="image_generation_with_url",
+            model=self.model,
+            attempt=1,
+            retry_index=0,
         )
+        try:
+            result = self._call_api(
+                prompt=prompt,
+                size=size,
+                extra_params=extra_params,
+                response_format="url",
+            )
 
-        kind, sources = self._minimax_image_sources(result)
-        if kind != "url":
-            raise ImageGenerationError("MiniMax response did not include an image URL")
-        image_url = sources[0]
-
-        # 下载图片
-        logger.info(f"Got image URL: {image_url}")
-        image_bytes = self._download_image(image_url)
-
-        return image_bytes, prompt, image_url
+            kind, sources = self._minimax_image_sources(result)
+            if kind != "url":
+                raise ImageGenerationError("MiniMax response did not include an image URL")
+            image_url = sources[0]
+            image_bytes = self._download_image(image_url)
+            if not image_bytes:
+                raise self._provider_invalid_response_error()
+            emit_model_call(
+                telemetry_context,
+                "success",
+                attempt_started_at,
+                output_size=len(image_bytes),
+            )
+            return image_bytes, prompt, image_url
+        except Exception as error:
+            emit_model_call(
+                telemetry_context,
+                "failure",
+                attempt_started_at,
+                error=error,
+            )
+            raise
 
     def _call_api(
         self,
@@ -718,8 +788,6 @@ class ImageGenerator:
             logger.info("MINIMAX_E2E_LOCAL_IMAGE enabled; returning deterministic local edit image")
             return [(_LOCAL_E2E_IMAGE_BYTES, prompt) for _ in range(max(1, num_images))]
 
-        logger.debug(f"Editing image with prompt: {prompt}")
-
         last_error: Optional[Exception] = None
 
         # 支持模型降级：尝试每个图生图模型
@@ -727,12 +795,19 @@ class ImageGenerator:
         for model_idx, fallback_model in enumerate(self.image_edit_models):
             is_last_model = model_idx == len(self.image_edit_models) - 1
 
-            if model_idx > 0:
-                logger.warning(
-                    f"[Model Fallback] Switching to fallback edit model: {fallback_model}"
-                )
-
             for attempt in range(self.max_retries):
+                attempt_started_at = time.monotonic()
+                telemetry_context = self._telemetry_context(
+                    operation="image_edit",
+                    model=fallback_model,
+                    attempt=model_idx * self.max_retries + attempt + 1,
+                    retry_index=model_idx * self.max_retries + attempt,
+                    fallback_from=(
+                        self.image_edit_models[model_idx - 1]
+                        if model_idx > 0
+                        else None
+                    ),
+                )
                 try:
                     result = self._call_edit_api(
                         reference_image=reference_image,
@@ -747,26 +822,35 @@ class ImageGenerator:
                     results = []
                     for i, source in enumerate(sources):
                         image_bytes = self._resolve_minimax_image_source(kind, source)
+                        if not image_bytes:
+                            raise self._provider_invalid_response_error()
                         results.append((image_bytes, f"{prompt} (variant {i+1})"))
-                        logger.info(f"Downloaded edited image {i+1}/{len(sources)}")
+
+                    emit_model_call(
+                        telemetry_context,
+                        "success",
+                        attempt_started_at,
+                        output_size=sum(len(item[0]) for item in results),
+                    )
 
                     return results
 
-                except ContentInspectionError:
+                except ContentInspectionError as e:
                     # 内容审核错误不重试，直接抛出
+                    emit_model_call(
+                        telemetry_context,
+                        "failure",
+                        attempt_started_at,
+                        error=e,
+                    )
                     raise
                 except ImageProviderError as e:
                     last_error = e
-                    logger.warning(
-                        "Image edit provider failure: provider=minimax code=%s category=%s "
-                        "retryable=%s trace_id=%s model=%s attempt=%s/%s",
-                        e.code,
-                        e.category,
-                        e.retryable,
-                        e.provider_trace_id,
-                        fallback_model,
-                        attempt + 1,
-                        self.max_retries,
+                    emit_model_call(
+                        telemetry_context,
+                        "failure",
+                        attempt_started_at,
+                        error=e,
                     )
                     if not e.retryable:
                         raise
@@ -779,10 +863,13 @@ class ImageGenerator:
                     requests.exceptions.Timeout,
                 ) as e:
                     last_error = e
-                    error_str = str(e)
-                    logger.warning(
-                        f"Image edit attempt {attempt + 1}/{self.max_retries} with model {fallback_model} failed: {e}"
+                    emit_model_call(
+                        telemetry_context,
+                        "failure",
+                        attempt_started_at,
+                        error=e,
                     )
+                    error_str = str(e)
 
                     # 检测 429 速率限制错误
                     is_rate_limit = (
@@ -813,8 +900,11 @@ class ImageGenerator:
                         break
                 except Exception as e:
                     last_error = e
-                    logger.exception(
-                        f"Unexpected error in image edit attempt {attempt + 1}/{self.max_retries} with model {fallback_model}: {e}"
+                    emit_model_call(
+                        telemetry_context,
+                        "failure",
+                        attempt_started_at,
+                        error=e,
                     )
                     if attempt < self.max_retries - 1:
                         time.sleep(2**attempt)
@@ -900,7 +990,6 @@ class ImageGenerator:
                         # 提取阿里云返回的完整错误信息
                         api_message = error_data.get("message", "")
                         full_error = f"{error_code}: {api_message}"
-                        logger.warning(f"Content inspection failed: {full_error}")
                         raise ContentInspectionError(
                             "您的修改请求触发了内容安全审核，请尝试使用其他描述方式",
                             original_prompt=prompt,
@@ -908,10 +997,10 @@ class ImageGenerator:
                         )
                 except ContentInspectionError:
                     raise
-                except (KeyError, TypeError) as e:
-                    logger.warning(f"Failed to parse content inspection error response: {e}")
-                except Exception as e:
-                    logger.exception(f"Unexpected error parsing API error response: {e}")
+                except (KeyError, TypeError):
+                    logger.warning("Failed to parse content inspection error response")
+                except Exception:
+                    logger.exception("Unexpected error parsing image API error response")
 
             raise self._provider_error_for_http(
                 response.status_code,
@@ -990,8 +1079,6 @@ class ImageGenerator:
                 prompt_parts.append("全身像，脚部可见。")
 
                 prompt = "".join(prompt_parts)
-
-                logger.debug(f"Edit prompt: {prompt}")
 
                 try:
                     edited = self.edit_image(

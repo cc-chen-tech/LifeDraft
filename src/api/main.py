@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
 from config.feature_flags import get_feature
+from config.logging_config import setup_logging
 from config.settings import SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_TRACES_SAMPLE_RATE
 from src.api.routers import (
     auth,
@@ -33,6 +34,14 @@ from src.api.routers import (
 )
 from src.database.models import init_db
 from src.api.input_limits import PUBLIC_INPUT_LIMITS
+from src.observability.model_telemetry import configure_model_logging
+from src.observability.request_context import (
+    RequestContext,
+    current_request_context,
+    request_context,
+    resolve_operation_id,
+    resolve_request_id,
+)
 
 load_dotenv()
 
@@ -45,12 +54,21 @@ if SENTRY_DSN:
         send_default_pii=False,  # 不发送用户隐私数据
     )
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+# Setup logging. Production emits JSON Lines so the container log collector can
+# filter by request_id and model event fields; local development stays readable.
+if os.getenv("ENVIRONMENT", "development").lower() == "production":
+    setup_logging(
+        log_level=os.getenv("LOG_LEVEL", "INFO"),
+        log_to_file=True,
+        json_output=True,
+    )
+    configure_model_logging()
+else:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 logger = logging.getLogger(__name__)
 
 
@@ -165,6 +183,8 @@ app.add_middleware(
         "Authorization",
         "X-Requested-With",
         "Accept",
+        "X-Request-ID",
+        "X-Operation-ID",
     ],  # H-01: 收紧 headers
 )
 
@@ -191,24 +211,36 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
     """记录所有 API 请求的审计日志"""
 
     async def dispatch(self, request: StarletteRequest, call_next):
-        start_time = time.time()
-        response = await call_next(request)
-        duration = time.time() - start_time
-
-        # 跳过健康检查和静态资源的日志
-        path = request.url.path
-        if not path.startswith("/api/health") and not path.startswith("/_next"):
-            logger.info(
-                "API Request",
-                extra={
-                    "method": request.method,
-                    "path": path,
-                    "status": response.status_code,
-                    "duration_ms": round(duration * 1000, 2),
-                    "client_ip": request.client.host if request.client else "unknown",
-                },
+        request_id = resolve_request_id(request.headers.get("X-Request-ID"))
+        operation_id = resolve_operation_id(request.headers.get("X-Operation-ID"))
+        with request_context(
+            RequestContext(
+                request_id=request_id,
+                operation_id=operation_id,
+                operation=request.method.lower(),
             )
-        return response
+        ):
+            start_time = time.monotonic()
+            response = await call_next(request)
+            duration = time.monotonic() - start_time
+
+            # 跳过健康检查和静态资源的日志
+            path = request.url.path
+            if not path.startswith("/api/health") and not path.startswith("/_next"):
+                logger.info(
+                    "API Request",
+                    extra={
+                        "request_id": request_id,
+                        "method": request.method,
+                        "path": path,
+                        "status": response.status_code,
+                        "duration_ms": round(duration * 1000, 2),
+                        "client_ip": request.client.host if request.client else "unknown",
+                    },
+                )
+            response.headers["X-Request-ID"] = request_id
+            response.headers["X-Operation-ID"] = operation_id
+            return response
 
 
 app.add_middleware(AuditLogMiddleware)
@@ -261,7 +293,12 @@ async def request_validation_exception_handler(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     # H-02: 异常信息隐藏
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    context = current_request_context()
+    logger.error(
+        "Unhandled exception",
+        exc_info=True,
+        extra={"request_id": context.request_id if context is not None else None},
+    )
     if os.getenv("ENVIRONMENT", "production") == "development":
         detail = str(exc)
     else:
@@ -329,15 +366,25 @@ async def client_log(entry: ClientLogEntry, request: Request):
     """Receive and log client-side errors — useful for debugging mobile issues."""
     ua = entry.ua or request.headers.get("user-agent", "unknown")
     ip = request.client.host if request.client else "unknown"
-    tag = f"[{entry.context or 'client'}]" if entry.context else "[client]"
-    log_line = f"{tag} {entry.message}  | page={entry.url} ip={ip} ua={ua}"
+    context = current_request_context()
+    request_id = context.request_id if context is not None else resolve_request_id(
+        request.headers.get("X-Request-ID")
+    )
+    log_fields = {
+        "request_id": request_id,
+        "client_context": entry.context or "client",
+        "client_message_length": len(entry.message),
+        "page": entry.url,
+        "client_ip": ip,
+        "user_agent": ua,
+    }
 
     lvl = entry.level.lower()
     if lvl == "warn":
-        client_logger.warning(log_line)
+        client_logger.warning("Client log", extra=log_fields)
     elif lvl == "info":
-        client_logger.info(log_line)
+        client_logger.info("Client log", extra=log_fields)
     else:
-        client_logger.error(log_line)
+        client_logger.error("Client log", extra=log_fields)
 
-    return {"ok": True}
+    return {"ok": True, "request_id": request_id}

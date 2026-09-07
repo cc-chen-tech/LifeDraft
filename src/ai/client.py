@@ -11,8 +11,9 @@ OpenAI SDK or private methods. This ensures:
 import logging
 import re
 import threading
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+import time
+from dataclasses import dataclass, replace
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 import openai
 
@@ -22,6 +23,12 @@ from src.ai.budgets import GenerationBudgetError, GenerationCallTracker
 from src.ai.model_fallback import FallbackChain, ModelFallbackConfig
 from src.ai.truncation_recovery import TruncationRecovery
 from src.ai.utils import extract_json
+from src.observability.model_telemetry import (
+    ModelCallContext,
+    emit_model_call,
+    retry_feedback_message,
+)
+from src.observability.request_context import current_request_context
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +100,29 @@ class AIClient:
     # C-04: 并发限制，最多5个并发AI调用
     _semaphore = threading.Semaphore(5)
 
+    @staticmethod
+    def _telemetry_context(
+        *,
+        model: str,
+        attempt: int,
+        fallback_attempt_index: int = 0,
+        fallback_from: Optional[str] = None,
+        outer_retry_index: int = 0,
+    ) -> ModelCallContext:
+        request = current_request_context()
+        return ModelCallContext(
+            request_id=request.request_id if request is not None else "untracked",
+            operation_id=request.operation_id if request is not None else None,
+            feature=(request.feature if request is not None and request.feature else "text_generation"),
+            operation=(request.operation if request is not None and request.operation else "chat_completion"),
+            phase="provider",
+            provider="openai-compatible",
+            model=model,
+            attempt=outer_retry_index + attempt + 1 + fallback_attempt_index,
+            retry_index=outer_retry_index + attempt + fallback_attempt_index,
+            fallback_from=fallback_from,
+        )
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -131,6 +161,100 @@ class AIClient:
             raise ValueError("OpenAI API key is required")
         return self.client
 
+    def stream(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.8,
+        max_tokens: int = 2000,
+        model: Optional[str] = None,
+        thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
+        request_timeout: Optional[float] = None,
+    ) -> Iterator[Any]:
+        """Return a raw-compatible stream with one terminal telemetry event."""
+        use_model = model or self.model
+        started_at = time.monotonic()
+        telemetry_context = self._telemetry_context(model=use_model, attempt=0)
+        try:
+            if generation_tracker is not None:
+                generation_tracker.assert_before_provider_call()
+                remaining = generation_tracker.remaining_seconds
+                effective_timeout = (
+                    min(request_timeout, remaining)
+                    if request_timeout is not None and remaining is not None
+                    else request_timeout or remaining
+                )
+            else:
+                effective_timeout = request_timeout
+            client = self.require_openai_client()
+            extra_params: Dict[str, Any] = {}
+            if effective_timeout is not None:
+                extra_params["timeout"] = effective_timeout
+            extra_params.update(_thinking_request_params(use_model, thinking))
+            if _is_deepseek_v4(use_model):
+                extra_params["stream_options"] = {"include_usage": True}
+            source = client.chat.completions.create(
+                model=use_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+                **extra_params,
+            )
+        except BaseException as error:
+            emit_model_call(
+                telemetry_context,
+                "failure",
+                started_at,
+                error=error,
+                streamed=True,
+            )
+            raise
+
+        def iter_with_telemetry() -> Iterator[Any]:
+            output_size = 0
+            finish_reason: Optional[str] = None
+            terminal_usage: Any = None
+            try:
+                for chunk in source:
+                    choices = getattr(chunk, "choices", None) or []
+                    if choices:
+                        delta = getattr(choices[0], "delta", None)
+                        chunk_text = getattr(delta, "content", None)
+                        if chunk_text is not None:
+                            output_size += len(chunk_text)
+                        if choices[0].finish_reason:
+                            finish_reason = choices[0].finish_reason
+                    if getattr(chunk, "usage", None) is not None:
+                        terminal_usage = chunk.usage
+                    yield chunk
+                emit_model_call(
+                    telemetry_context,
+                    "success",
+                    started_at,
+                    usage=terminal_usage,
+                    streamed=True,
+                    finish_reason=finish_reason,
+                    output_size=output_size,
+                )
+            except BaseException as error:
+                emit_model_call(
+                    telemetry_context,
+                    "failure",
+                    started_at,
+                    error=error,
+                    usage=terminal_usage,
+                    streamed=True,
+                    output_size=output_size,
+                )
+                raise
+
+        return iter_with_telemetry()
+
     # -------------------- Core Call --------------------
 
     def call(
@@ -149,6 +273,7 @@ class AIClient:
         generation_tracker: Optional[GenerationCallTracker] = None,
         response_format: Optional[Dict[str, Any]] = None,
         _allow_truncation_recovery: bool = True,
+        _outer_retry_index: int = 0,
     ) -> str:
         """
         Unified AI call method.
@@ -178,7 +303,21 @@ class AIClient:
         # C-04: 使用信号量限制并发调用
         with self._semaphore:
             if generation_tracker is not None:
-                generation_tracker.assert_before_provider_call()
+                budget_check_started_at = time.monotonic()
+                try:
+                    generation_tracker.assert_before_provider_call()
+                except GenerationBudgetError as error:
+                    emit_model_call(
+                        self._telemetry_context(
+                            model=model or self.model,
+                            attempt=0,
+                            outer_retry_index=_outer_retry_index,
+                        ),
+                        "failure",
+                        budget_check_started_at,
+                        error=error,
+                    )
+                    raise
             # ★ 模型降级链：开启时自动切换备选模型
             if get_feature("model_fallback"):
                 return self._call_with_model_fallback(
@@ -196,6 +335,7 @@ class AIClient:
                     generation_tracker=generation_tracker,
                     response_format=response_format,
                     _allow_truncation_recovery=_allow_truncation_recovery,
+                    _outer_retry_index=_outer_retry_index,
                 )
             return self._call_impl(
                 system_prompt=system_prompt,
@@ -212,6 +352,7 @@ class AIClient:
                 generation_tracker=generation_tracker,
                 response_format=response_format,
                 _allow_truncation_recovery=_allow_truncation_recovery,
+                _outer_retry_index=_outer_retry_index,
             )
 
     def _call_with_model_fallback(
@@ -230,6 +371,7 @@ class AIClient:
         generation_tracker: Optional[GenerationCallTracker] = None,
         response_format: Optional[Dict[str, Any]] = None,
         _allow_truncation_recovery: bool = True,
+        _outer_retry_index: int = 0,
     ) -> str:
         """Call AI with automatic model fallback using FallbackChain config.
 
@@ -268,6 +410,9 @@ class AIClient:
                     generation_tracker=generation_tracker,
                     response_format=response_format,
                     _allow_truncation_recovery=_allow_truncation_recovery,
+                    _fallback_attempt_index=i,
+                    _fallback_from=models[i - 1] if i > 0 else None,
+                    _outer_retry_index=_outer_retry_index,
                 )
             except Exception as e:
                 last_error = e
@@ -278,13 +423,6 @@ class AIClient:
                     and status_code in config.retry_on_status_codes
                 )
                 if is_retryable and i < attempts - 1:
-                    next_model = models[i + 1]
-                    logger.warning(
-                        "Model %s failed (status %s), falling back to %s",
-                        current_model,
-                        status_code,
-                        next_model,
-                    )
                     # Clear stream_callback for fallback attempts
                     stream_callback = None
                     continue
@@ -308,6 +446,9 @@ class AIClient:
         generation_tracker: Optional[GenerationCallTracker] = None,
         response_format: Optional[Dict[str, Any]] = None,
         _allow_truncation_recovery: bool = True,
+        _fallback_attempt_index: int = 0,
+        _fallback_from: Optional[str] = None,
+        _outer_retry_index: int = 0,
     ) -> str:
         """Internal implementation of AI call."""
         messages = [
@@ -323,6 +464,14 @@ class AIClient:
 
         last_error = None
         for attempt, current_max_tokens in enumerate(tokens_to_try):
+            attempt_started_at = time.monotonic()
+            telemetry_context = self._telemetry_context(
+                model=use_model,
+                attempt=attempt,
+                fallback_attempt_index=_fallback_attempt_index,
+                fallback_from=_fallback_from,
+                outer_retry_index=_outer_retry_index,
+            )
             try:
                 if attempt > 0 and generation_tracker is not None:
                     generation_tracker.consume_retry()
@@ -338,9 +487,6 @@ class AIClient:
                         )
                 client = self.require_openai_client()
                 if stream_callback:
-                    logger.info(
-                        f"[AIClient] Using streaming mode, stream_callback={stream_callback is not None}"
-                    )
                     # ★ 构建额外参数（仅在非零时传入，避免不支持的API报错）
                     extra_params: Dict[str, Any] = {}
                     if frequency_penalty > 0:
@@ -378,17 +524,8 @@ class AIClient:
                         if choices and choices[0].finish_reason:
                             finish_reason = choices[0].finish_reason
                         if getattr(chunk, "usage", None) is not None:
-                            terminal_usage = getattr(chunk, "usage", None)
-                    logger.info(
-                        f"[AIClient] Streaming complete: {chunk_count} chunks, {len(full_text)} chars"
-                    )
-
+                            terminal_usage = chunk.usage
                     if finish_reason == "length":
-                        logger.warning(
-                            f"⚠️ AI response truncated by max_tokens ({current_max_tokens}). "
-                            f"Output length: {len(full_text)} chars. "
-                            f"Consider increasing max_tokens."
-                        )
                         # ★ 截断恢复：自动续写被截断的输出
                         if _allow_truncation_recovery and get_feature("truncation_recovery"):
                             recovery = TruncationRecovery()
@@ -412,6 +549,15 @@ class AIClient:
                             raise AIResponseTruncatedError(current_max_tokens)
 
                     self._emit_usage(terminal_usage, use_model, True, usage_callback)
+                    emit_model_call(
+                        telemetry_context,
+                        "success",
+                        attempt_started_at,
+                        usage=terminal_usage,
+                        streamed=True,
+                        finish_reason=finish_reason,
+                        output_size=len(full_text),
+                    )
                     return full_text.strip()
                 else:
                     # ★ 构建额外参数（仅在非零时传入）
@@ -435,18 +581,12 @@ class AIClient:
                         **extra_params_sync,
                     )
 
-                    self._emit_usage(
-                        getattr(response, "usage", None), use_model, False, usage_callback
-                    )
+                    response_usage = getattr(response, "usage", None)
+                    self._emit_usage(response_usage, use_model, False, usage_callback)
 
                     finish_reason = response.choices[0].finish_reason
                     content = response.choices[0].message.content or ""
                     if finish_reason == "length":
-                        logger.warning(
-                            f"⚠️ AI response truncated by max_tokens ({current_max_tokens}). "
-                            f"Output length: {len(content)} chars. "
-                            f"Consider increasing max_tokens."
-                        )
                         # ★ 截断恢复：自动续写被截断的输出
                         if _allow_truncation_recovery and get_feature("truncation_recovery"):
                             recovery = TruncationRecovery()
@@ -469,33 +609,54 @@ class AIClient:
                         ):
                             raise AIResponseTruncatedError(current_max_tokens)
 
+                    emit_model_call(
+                        telemetry_context,
+                        "success",
+                        attempt_started_at,
+                        usage=response_usage,
+                        streamed=False,
+                        finish_reason=finish_reason,
+                        output_size=len(content),
+                    )
                     return content.strip()
 
-            except GenerationBudgetError:
+            except GenerationBudgetError as e:
+                emit_model_call(
+                    telemetry_context,
+                    "failure",
+                    attempt_started_at,
+                    error=e,
+                    streamed=stream_callback is not None,
+                )
                 raise
             except AIResponseTruncatedError:
                 raise
             except openai.APIError as e:
                 error_msg = str(e)
                 last_error = e
+                emit_model_call(
+                    telemetry_context,
+                    "failure",
+                    attempt_started_at,
+                    error=e,
+                    streamed=stream_callback is not None,
+                )
 
                 # ★ 检查是否为 max_tokens 错误，如果是则尝试降级
                 if _is_max_tokens_error(error_msg):
                     if attempt < len(tokens_to_try) - 1:
-                        next_tokens = tokens_to_try[attempt + 1]
-                        logger.warning(
-                            f"⚠️ max_tokens={current_max_tokens} failed, "
-                            f"retrying with max_tokens={next_tokens}. Error: {error_msg[:100]}"
-                        )
                         continue
-                    else:
-                        logger.error(f"All max_tokens fallback levels failed: {error_msg}")
                 else:
                     # 非 max_tokens 错误，直接抛出
                     raise
             except Exception as e:
-                # Unexpected errors - log with stack trace
-                logger.exception(f"Unexpected error in AI call: {e}")
+                emit_model_call(
+                    telemetry_context,
+                    "failure",
+                    attempt_started_at,
+                    error=e,
+                    streamed=stream_callback is not None,
+                )
                 raise
 
         # 所有尝试都失败，抛出最后一个错误
@@ -518,15 +679,6 @@ class AIClient:
             prompt_cache_hit_tokens=_usage_value(usage, "prompt_cache_hit_tokens"),
             prompt_cache_miss_tokens=_usage_value(usage, "prompt_cache_miss_tokens"),
             streamed=streamed,
-        )
-        logger.info(
-            "AI usage model=%s streamed=%s prompt=%s completion=%s cache_hit=%s cache_miss=%s",
-            telemetry.model,
-            telemetry.streamed,
-            telemetry.prompt_tokens,
-            telemetry.completion_tokens,
-            telemetry.prompt_cache_hit_tokens,
-            telemetry.prompt_cache_miss_tokens,
         )
         if callback is not None:
             callback(telemetry)
@@ -559,6 +711,7 @@ class AIClient:
         Returns:
             Parsed JSON dict, or None if extraction fails
         """
+        validation_started_at = time.monotonic()
         content = self.call(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
@@ -569,7 +722,27 @@ class AIClient:
             generation_tracker=generation_tracker,
             _allow_truncation_recovery=allow_truncation_recovery,
         )
-        return extract_json(content)
+        parsed = extract_json(content)
+        if parsed is None:
+            request = current_request_context()
+            validation_context = replace(
+                self._telemetry_context(
+                    model=model or self.model,
+                    attempt=0,
+                ),
+                operation="json_parse",
+                phase="validation",
+                request_id=request.request_id if request is not None else "untracked",
+                operation_id=request.operation_id if request is not None else None,
+            )
+            emit_model_call(
+                validation_context,
+                "failure",
+                validation_started_at,
+                error=ValueError("invalid JSON output"),
+                output_size=len(content),
+            )
+        return parsed
 
     # -------------------- Retry with Error Feedback --------------------
 
@@ -643,21 +816,22 @@ class AIClient:
                     request_timeout=request_timeout,
                     thinking=thinking,
                     generation_tracker=generation_tracker,
+                    _outer_retry_index=attempt,
                 )
 
             except GenerationBudgetError:
                 raise
             except openai.APIError as e:
-                last_error = str(e)
-                logger.warning(f"AI call attempt {attempt + 1}/{retry_count} failed: {e}")
+                last_error = retry_feedback_message(e)
                 if attempt == retry_count - 1:
-                    raise ValueError(f"AI call failed after {retry_count} attempts: {e}")
+                    raise ValueError(
+                        f"AI call failed after {retry_count} attempts: {last_error}"
+                    )
             except Exception as e:
-                last_error = str(e)
-                logger.warning(
-                    f"AI call attempt {attempt + 1}/{retry_count} failed (unexpected): {e}"
-                )
+                last_error = retry_feedback_message(e)
                 if attempt == retry_count - 1:
-                    raise ValueError(f"AI call failed after {retry_count} attempts: {e}")
+                    raise ValueError(
+                        f"AI call failed after {retry_count} attempts: {last_error}"
+                    )
 
         raise ValueError("AI call failed after all retries")

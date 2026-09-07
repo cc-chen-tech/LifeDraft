@@ -24,6 +24,7 @@ from src.api.services.event_generation_operation import (
     EventGenerationConflict,
     EventGenerationKey,
 )
+from src.observability.request_context import bind_current_context
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ def submit_background_job(job_name: str, callback: Callable[[], None]) -> bool:
             logger.info("Skipping background job during shutdown: %s", job_name)
             return False
         try:
-            _get_background_thread_pool().submit(callback)
+            _get_background_thread_pool().submit(bind_current_context(callback))
         except RuntimeError:
             logger.info("Skipping unavailable background job: %s", job_name)
             return False
@@ -759,11 +760,13 @@ def get_or_start_round_event_generation(
     if should_start:
         _set_generation_resume_view(game_loop, game_id, "generating")
         _get_sse_thread_pool().submit(
-            _run_event_generation_operation,
-            operation,
-            game_loop,
-            game_id,
-            session,
+            bind_current_context(
+                _run_event_generation_operation,
+                operation,
+                game_loop,
+                game_id,
+                session,
+            )
         )
     return operation, should_start
 
@@ -1040,7 +1043,7 @@ async def stream_choice(
     # Immediately tell the client we're alive and processing
     yield make_sse_event("status", {"phase": "preparing"})
 
-    _get_sse_thread_pool().submit(run)
+    _get_sse_thread_pool().submit(bind_current_context(run))
 
     # Heartbeat + timeout: use module-level constants
     last_event_time = asyncio.get_event_loop().time()
@@ -1260,11 +1263,13 @@ def _get_or_start_daily_operation(
             operation.complete(current_event)
         else:
             _get_sse_thread_pool().submit(
-                _run_daily_operation,
-                operation,
-                game_loop,
-                game_id,
-                session,
+                bind_current_context(
+                    _run_daily_operation,
+                    operation,
+                    game_loop,
+                    game_id,
+                    session,
+                )
             )
     return operation, should_start
 
@@ -1596,7 +1601,7 @@ async def stream_regenerate(
     # Tell client we're starting
     yield make_sse_event("status", {"phase": "regenerating"})
 
-    _get_sse_thread_pool().submit(run)
+    _get_sse_thread_pool().submit(bind_current_context(run))
 
     # Heartbeat + timeout: use module-level constants
     last_event_time = asyncio.get_event_loop().time()
@@ -1837,7 +1842,7 @@ async def stream_rewrite(
     # Tell client we're starting
     yield make_sse_event("status", {"phase": "rewriting"})
 
-    _get_sse_thread_pool().submit(run)
+    _get_sse_thread_pool().submit(bind_current_context(run))
 
     # Heartbeat + timeout: use module-level constants
     last_event_time = asyncio.get_event_loop().time()

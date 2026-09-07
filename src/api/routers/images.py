@@ -37,6 +37,7 @@ from src.services.image_service import (ImageContentError,
 from src.services.image_storage import ImageStorageError, ImageStorageService
 from src.services.portrait_image_jobs import (PortraitImageJobService,
                                               schedule_portrait_image_job)
+from src.observability.request_context import bind_current_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1610,7 +1611,7 @@ def _trigger_scene_generation_in_background(
 
     # 启动后台线程
     thread = threading.Thread(
-        target=generate_in_thread,
+        target=bind_current_context(generate_in_thread),
         name=f"scene-gen-{game_id}-{week}-{round_number}-{stage}",
         daemon=True,
     )

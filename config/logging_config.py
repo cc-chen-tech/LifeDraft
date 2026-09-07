@@ -1,14 +1,83 @@
 """生产环境日志配置"""
 
+import json
 import logging
+import os
 import sys
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Any, Dict
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
+
+
+_BUILTIN_LOG_RECORD_FIELDS = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
+_MODEL_LOGGER_PREFIXES = (
+    "src.ai",
+    "src.services",
+    "src.api.routers",
+    "src.api.services",
+    "src.game",
+)
+_SENSITIVE_LOG_FIELD_NAMES = {
+    "prompt",
+    "user_prompt",
+    "system_prompt",
+    "messages",
+    "content",
+    "response",
+    "output",
+    "story",
+    "story_text",
+    "api_key",
+    "authorization",
+    "token",
+    "secret",
+}
+
+
+class JsonLogFormatter(logging.Formatter):
+    """Render one machine-readable JSON object per application log line."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        is_model_subsystem_log = record.name.startswith(_MODEL_LOGGER_PREFIXES)
+        payload: Dict[str, Any] = {
+            "timestamp": datetime.fromtimestamp(record.created, timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": (
+                "model_subsystem_log_suppressed"
+                if is_model_subsystem_log
+                else record.getMessage()
+            ),
+        }
+        for key, value in record.__dict__.items():
+            if key in _BUILTIN_LOG_RECORD_FIELDS or key.startswith("_"):
+                continue
+            if key in {"message", "asctime", "exc_info", "exc_text", "stack_info"}:
+                continue
+            if is_model_subsystem_log and key.lower() in _SENSITIVE_LOG_FIELD_NAMES:
+                continue
+            try:
+                json.dumps(value, ensure_ascii=False)
+            except (TypeError, ValueError):
+                payload[key] = str(value)
+            else:
+                payload[key] = value
+        if is_model_subsystem_log:
+            # AI-adjacent modules historically logged prompt/response snippets and
+            # provider exception text.  Keep production logs queryable without
+            # allowing those free-form messages to cross the persistence boundary.
+            payload["message_suppressed"] = True
+        if record.exc_info:
+            payload["exception_type"] = type(record.exc_info[1]).__name__
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def setup_logging(
@@ -17,6 +86,7 @@ def setup_logging(
     log_file: str = "app.log",
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
+    json_output: bool = False,
 ):
     """
     配置应用日志
@@ -36,13 +106,19 @@ def setup_logging(
     root_logger.setLevel(level)
 
     # 清除已有的处理器
-    root_logger.handlers.clear()
+    for existing_handler in root_logger.handlers[:]:
+        root_logger.removeHandler(existing_handler)
+        existing_handler.close()
 
     # 日志格式
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    formatter: logging.Formatter
+    if json_output:
+        formatter = JsonLogFormatter()
+    else:
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
     # 控制台处理器（总是启用）
     console_handler = logging.StreamHandler(sys.stdout)
@@ -69,7 +145,9 @@ def setup_logging(
 
 
 # 自动设置（如果环境变量设置了）
-import os
-
 if os.getenv("ENVIRONMENT") == "production":
-    setup_logging(log_level=os.getenv("LOG_LEVEL", "INFO"), log_to_file=True)
+    setup_logging(
+        log_level=os.getenv("LOG_LEVEL", "INFO"),
+        log_to_file=True,
+        json_output=True,
+    )

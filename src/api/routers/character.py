@@ -18,6 +18,7 @@ from src.api.schemas import (GenerateAttributesRequest,
                              GenerateStoryOriginRequest, OpeningStoryRequest,
                              RelationshipsSummaryRequest)
 from src.game.character_creation import CharacterCreator
+from src.observability.request_context import bind_current_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -272,7 +273,7 @@ async def generate_opening_story(req: OpeningStoryRequest):
         # Immediate status so client knows connection is alive
         yield f"event: status\ndata: {json.dumps({'phase': 'preparing'}, ensure_ascii=False)}\n\n"
 
-        thread = threading.Thread(target=run, daemon=True)
+        thread = threading.Thread(target=bind_current_context(run), daemon=True)
         thread.start()
 
         next_heartbeat = time.time() + OPENING_STORY_HEARTBEAT_INTERVAL
