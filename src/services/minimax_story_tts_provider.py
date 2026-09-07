@@ -170,7 +170,7 @@ class MiniMaxAsyncTTSClient:
                     raise
                 # 429/5xx：瞬时错误，继续轮询直到 deadline
                 if time.monotonic() >= deadline:
-                    raise RuntimeError(
+                    raise TimeoutError(
                         "MiniMax async TTS query kept failing until timeout"
                     ) from exc
                 time.sleep(poll_interval_seconds)
@@ -186,7 +186,7 @@ class MiniMaxAsyncTTSClient:
             if status in {"failed", "expired"}:
                 raise RuntimeError(f"MiniMax async TTS task ended with status {status}")
             if time.monotonic() >= deadline:
-                raise RuntimeError("MiniMax async TTS task did not complete before timeout")
+                raise TimeoutError("MiniMax async TTS task did not complete before timeout")
             time.sleep(poll_interval_seconds)
             poll_interval_seconds = min(max_poll_interval_seconds, poll_interval_seconds * 2)
 

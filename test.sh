@@ -905,6 +905,10 @@ run_model_smoke_impl() {
     fi
 
     cd "$PROJECT_DIR"
+    JWT_SECRET="${JWT_SECRET:-model-smoke-test-secret}" \
+    DATABASE_URL="$smoke_db_url" DATABASE_PATH="$smoke_db_path" \
+    IMAGE_LOCAL_PATH="$smoke_artifact_dir/images" \
+    STORY_TTS_ASSET_DIR="$smoke_artifact_dir/voice" \
     python scripts/model_smoke.py \
         --report "$smoke_report" \
         --events "$smoke_events" \

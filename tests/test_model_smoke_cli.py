@@ -9,6 +9,16 @@ import sys
 from scripts import model_smoke
 
 
+def test_generator_and_game_public_exports_import_in_fresh_process():
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-c", "from src.ai.generator import EventGenerator; "
+         "from src.game import GameLoop, PlayerState, assign_sexual_orientation"],
+        cwd=root, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_error_report_survives_unavailable_telemetry(monkeypatch):
     monkeypatch.setitem(sys.modules, "src.observability.model_telemetry", None)
     error = RuntimeError("private prompt and API key must never be reported")
@@ -33,3 +43,4 @@ def test_direct_cli_without_credentials_writes_safe_failure_report(tmp_path):
     assert payload["status"] == "failed"
     assert payload["errors"] == ["smoke_runner_failed"]
     assert payload["runner_error"]["error_message"] == "RuntimeError"
+    assert json.loads(result.stdout)["errors"] == ["smoke_runner_failed"]
