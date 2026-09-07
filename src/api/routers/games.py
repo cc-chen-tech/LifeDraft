@@ -85,6 +85,31 @@ def _timeline_from_state(state: Any) -> Optional[Dict[str, Any]]:
     return timeline if isinstance(timeline, dict) else None
 
 
+def _invalidate_daily_prefetch_for_saved_state(
+    *, game_id: int, state_data: Dict[str, Any]
+) -> None:
+    """Fence a persisted current event when no live GameLoop is loaded."""
+
+    current_event = state_data.get("current_event_data")
+    if not isinstance(current_event, dict):
+        return
+    event_id = current_event.get("event_id")
+    revision = current_event.get("revision")
+    if not isinstance(event_id, str) or not event_id:
+        return
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+        return
+    from src.services.daily_recommended_prefetch import (
+        invalidate_daily_recommended_prefetch_for_event,
+    )
+
+    invalidate_daily_recommended_prefetch_for_event(
+        game_id=game_id,
+        event_id=event_id,
+        revision=revision,
+    )
+
+
 @router.post("", response_model=GameStateResponse, status_code=201)
 async def create_game(
     req: CreateGameRequest,
@@ -536,49 +561,79 @@ async def update_character_settings(
     manually selected settings and merges the generated settings into the saved
     player state before opening story generation starts.
     """
-    db = get_db()
-    state_data = db.load_saved_game(game_id, user_id)
-    if state_data is None:
-        raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+    from src.api.routers.gameplay.sse_helpers import _get_game_state_lock
+    from src.services.daily_recommended_prefetch import (
+        refresh_daily_recommended_prefetch_for_current_event,
+    )
 
-    existing_settings = state_data.get("character_settings") or {}
-    if not isinstance(existing_settings, dict):
-        existing_settings = {}
-    incoming_settings = dict(req.character_settings)
-    if isinstance(existing_settings.get("story_origin"), dict):
-        canonical_settings = canonical_story_settings(existing_settings)
-        for key in ("story_origin", "start_date", "era", "age"):
-            if key in incoming_settings and incoming_settings[key] != canonical_settings.get(key):
-                raise HTTPException(
-                    status_code=409,
-                    detail={"code": "story_origin_update_required"},
-                )
-            incoming_settings.pop(key, None)
-        merged_settings = canonical_story_settings(
-            _deep_merge_dicts(canonical_settings, incoming_settings)
-        )
-    else:
-        merged_settings = _deep_merge_dicts(existing_settings, incoming_settings)
-    merged_settings = strip_retired_wealth_keys(merged_settings)
+    with _get_game_state_lock(game_id):
+        db = get_db()
+        state_data = db.load_saved_game(game_id, user_id)
+        if state_data is None:
+            raise HTTPException(
+                status_code=404, detail="Game not found or not owned by user"
+            )
 
-    updated_state = dict(state_data)
-    updated_state["character_settings"] = merged_settings
-    if req.player_name is not None and req.player_name.strip():
-        updated_state["player_name"] = req.player_name.strip()
-    if req.life_vision is not None:
-        updated_state["life_vision"] = req.life_vision
-    player_state = PlayerState.from_dict(updated_state)
+        existing_settings = state_data.get("character_settings") or {}
+        if not isinstance(existing_settings, dict):
+            existing_settings = {}
+        incoming_settings = dict(req.character_settings)
+        if isinstance(existing_settings.get("story_origin"), dict):
+            canonical_settings = canonical_story_settings(existing_settings)
+            for key in ("story_origin", "start_date", "era", "age"):
+                if key in incoming_settings and incoming_settings[key] != canonical_settings.get(key):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "story_origin_update_required"},
+                    )
+                incoming_settings.pop(key, None)
+            merged_settings = canonical_story_settings(
+                _deep_merge_dicts(canonical_settings, incoming_settings)
+            )
+        else:
+            merged_settings = _deep_merge_dicts(existing_settings, incoming_settings)
+        merged_settings = strip_retired_wealth_keys(merged_settings)
 
-    if not db.save_game_progress(game_id, player_state):
-        raise HTTPException(status_code=500, detail="Failed to save character settings")
-
-    game_session = session_store.get(game_id, user_id)
-    if game_session and game_session.game_loop and game_session.game_loop.player_state:
-        game_session.game_loop.player_state.character_settings = merged_settings
+        updated_state = dict(state_data)
+        updated_state["character_settings"] = merged_settings
         if req.player_name is not None and req.player_name.strip():
-            game_session.game_loop.player_state.player_name = req.player_name.strip()
+            updated_state["player_name"] = req.player_name.strip()
         if req.life_vision is not None:
-            game_session.game_loop.player_state.life_vision = req.life_vision
+            updated_state["life_vision"] = req.life_vision
+        player_state = PlayerState.from_dict(updated_state)
+
+        if not db.save_game_progress(game_id, player_state):
+            raise HTTPException(status_code=500, detail="Failed to save character settings")
+
+        settings_changed = (
+            state_data.get("character_settings") != merged_settings
+            or (
+                req.player_name is not None
+                and req.player_name.strip()
+                and state_data.get("player_name") != req.player_name.strip()
+            )
+            or (
+                req.life_vision is not None
+                and state_data.get("life_vision") != req.life_vision
+            )
+        )
+        game_session = session_store.get(game_id, user_id)
+        if settings_changed and game_session and game_session.game_loop and game_session.game_loop.player_state:
+            game_session.game_loop.player_state.character_settings = merged_settings
+            if req.player_name is not None and req.player_name.strip():
+                game_session.game_loop.player_state.player_name = req.player_name.strip()
+            if req.life_vision is not None:
+                game_session.game_loop.player_state.life_vision = req.life_vision
+            refresh_daily_recommended_prefetch_for_current_event(
+                game_id=game_id,
+                user_id=user_id,
+                game_loop=game_session.game_loop,
+            )
+        elif settings_changed:
+            _invalidate_daily_prefetch_for_saved_state(
+                game_id=game_id,
+                state_data=state_data,
+            )
     return MessageResponse(success=True, message="Character settings updated")
 
 
@@ -698,9 +753,29 @@ async def update_game_settings(
                     if game_loop:
                         game_loop.set_quality_level(req.constraint_level)
                         live_changed = True
+                    setting_changed = bool(
+                        game is not None
+                        and getattr(game, "constraint_level", None)
+                        != req.constraint_level
+                    )
                     if game:
                         setattr(game, "constraint_level", req.constraint_level)
                         db_session.commit()
+                    if setting_changed and game_loop:
+                        from src.services.daily_recommended_prefetch import (
+                            refresh_daily_recommended_prefetch_for_current_event,
+                        )
+
+                        refresh_daily_recommended_prefetch_for_current_event(
+                            game_id=game_id,
+                            user_id=user_id,
+                            game_loop=game_loop,
+                        )
+                    elif setting_changed:
+                        _invalidate_daily_prefetch_for_saved_state(
+                            game_id=game_id,
+                            state_data=state_data,
+                        )
                 except Exception:
                     db_session.rollback()
                     if live_changed and previous_live_quality is not None:
@@ -799,6 +874,7 @@ async def update_narrative_style(
         if not game:
             raise HTTPException(status_code=404, detail="Game not found")
 
+        setting_changed = game.narrative_style_id != req.style_id
         game.narrative_style_id = req.style_id  # type: ignore[assignment]
         db_session.commit()
     finally:
@@ -807,9 +883,28 @@ async def update_narrative_style(
     # 同步更新会话中的 style
     game_session = session_store.get(game_id, user_id=user_id)
     if game_session and game_session.game_loop:
-        game_session.game_loop.narrative_style_id = req.style_id  # type: ignore[attr-defined]
-        if game_session.game_loop.player_state:
-            game_session.game_loop.player_state.narrative_style_id = req.style_id
+        from src.api.routers.gameplay.sse_helpers import _get_game_state_lock
+        from src.services.daily_recommended_prefetch import (
+            refresh_daily_recommended_prefetch_for_current_event,
+        )
+
+        with _get_game_state_lock(game_id):
+            game_session.game_loop.narrative_style_id = req.style_id  # type: ignore[attr-defined]
+            if game_session.game_loop.player_state:
+                game_session.game_loop.player_state.narrative_style_id = req.style_id
+            if setting_changed:
+                refresh_daily_recommended_prefetch_for_current_event(
+                    game_id=game_id,
+                    user_id=user_id,
+                    game_loop=game_session.game_loop,
+                )
+    elif setting_changed:
+        state_data = get_db().load_saved_game(game_id, user_id)
+        if isinstance(state_data, dict):
+            _invalidate_daily_prefetch_for_saved_state(
+                game_id=game_id,
+                state_data=state_data,
+            )
 
     return MessageResponse(success=True, message="Narrative style updated")
 

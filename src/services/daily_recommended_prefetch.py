@@ -43,7 +43,7 @@ class DemandedPrefetchProbe:
 
 
 def canonical_prefetch_fingerprint(state: Any, event: GameEvent) -> str:
-    """Hash canonical prompt state and current event identity deterministically."""
+    """Hash source state and event for provenance and drift diagnostics."""
 
     if hasattr(state, "model_dump"):
         state_data = state.model_dump(mode="json")
@@ -95,9 +95,20 @@ def resolve_choice_prefetch(
     event: GameEvent,
     option_index: int,
 ) -> ChoicePrefetchResolution:
-    """Resolve a ready hit or mark the matching in-flight task as demanded."""
+    """Resolve a ready hit or mark the matching in-flight task as demanded.
+
+    Task identity is the versioned daily branch. The full state fingerprint is
+    retained only to report source drift caused by harmless background updates.
+    """
 
     fingerprint = canonical_prefetch_fingerprint(state, event)
+    timeline = (
+        state.get("timeline")
+        if isinstance(state, dict)
+        else getattr(state, "timeline", None)
+    )
+    raw_day_index = timeline.get("day_index") if isinstance(timeline, dict) else 0
+    day_index = int(raw_day_index or 0)
     recommended = [
         index for index, option in enumerate(event.options) if option.likely_choice
     ]
@@ -111,7 +122,9 @@ def resolve_choice_prefetch(
         )
         logger.info(
             "daily_recommended_prefetch_metric action=choice selected=false "
-            "game_id=%s event_id=%s option_index=%s",
+            "identity_hit=false state_drift=false status=invalidated "
+            "fallback_reason=non_recommended_selection game_id=%s event_id=%s "
+            "option_index=%s",
             game_id,
             event.event_id,
             option_index,
@@ -127,19 +140,39 @@ def resolve_choice_prefetch(
         game_id=game_id,
         event_id=event.event_id,
         revision=event.revision,
+        day_index=day_index,
         option_index=option_index,
         state_fingerprint=fingerprint,
     )
     next_event = None
+    fallback_reason = "none"
     if task is not None and task.status in {"story_ready", "ready"}:
         payload = task.next_event_json
         if isinstance(payload, dict):
-            next_event = GameEvent.model_validate(payload)
+            try:
+                next_event = GameEvent.model_validate(payload)
+            except (TypeError, ValueError):
+                fallback_reason = "invalid_payload"
+        else:
+            fallback_reason = "missing_payload"
+    elif task is None:
+        fallback_reason = "identity_miss"
+    else:
+        fallback_reason = "prefetch_pending"
+    identity_hit = task is not None
+    state_drift = bool(
+        task is not None
+        and getattr(task, "state_fingerprint", None) != fingerprint
+    )
     logger.info(
         "daily_recommended_prefetch_metric action=choice selected=true "
-        "hit=%s status=%s game_id=%s event_id=%s option_index=%s",
-        next_event is not None,
+        "hit=%s identity_hit=%s state_drift=%s status=%s "
+        "fallback_reason=%s game_id=%s event_id=%s option_index=%s",
+        str(next_event is not None).lower(),
+        str(identity_hit).lower(),
+        str(state_drift).lower(),
         getattr(task, "status", "absent"),
+        fallback_reason,
         game_id,
         event.event_id,
         option_index,
@@ -199,25 +232,24 @@ def finalize_choice_prefetch(resolution: ChoicePrefetchResolution) -> None:
         db.close()
 
 
-def invalidate_daily_recommended_prefetch_for_current_event(
-    *, game_id: int, game_loop: Any
+def invalidate_daily_recommended_prefetch_for_event(
+    *, game_id: int, event_id: str, revision: int
 ) -> int:
-    """Fence speculative output before a rewrite, regeneration, or custom choice."""
+    """Fence speculative output for one persisted event version."""
 
     from config.feature_flags import get_feature
     from src.database.models import SessionLocal
 
     if not get_feature("daily_recommended_prefetch"):
         return 0
-    event = getattr(game_loop, "current_event", None)
-    if event is None:
+    if not event_id or revision < 1:
         return 0
     db = SessionLocal()
     try:
         count = DailyRecommendedPrefetchRepository(db).invalidate_event(
             game_id=game_id,
-            event_id=str(event.event_id),
-            revision=int(event.revision),
+            event_id=event_id,
+            revision=revision,
         )
         db.commit()
         return count
@@ -227,6 +259,42 @@ def invalidate_daily_recommended_prefetch_for_current_event(
         return 0
     finally:
         db.close()
+
+
+def invalidate_daily_recommended_prefetch_for_current_event(
+    *, game_id: int, game_loop: Any
+) -> int:
+    """Fence speculative output before a rewrite, regeneration, or custom choice."""
+
+    event = getattr(game_loop, "current_event", None)
+    if event is None:
+        return 0
+    return invalidate_daily_recommended_prefetch_for_event(
+        game_id=game_id,
+        event_id=str(event.event_id),
+        revision=int(event.revision),
+    )
+
+
+def refresh_daily_recommended_prefetch_for_current_event(
+    *,
+    game_id: int,
+    user_id: Optional[int],
+    game_loop: Any,
+    submitter: Optional[Callable[[Callable[[], None]], Any]] = None,
+) -> Optional[int]:
+    """Rebuild the speculative branch after a semantic generation-setting edit."""
+
+    invalidate_daily_recommended_prefetch_for_current_event(
+        game_id=game_id,
+        game_loop=game_loop,
+    )
+    return ensure_daily_recommended_prefetch(
+        game_id=game_id,
+        user_id=user_id,
+        game_loop=game_loop,
+        submitter=submitter,
+    )
 
 
 def _get_prefetch_executor() -> ThreadPoolExecutor:
@@ -501,6 +569,19 @@ def _generate_with_isolated_game_loop(
     return event
 
 
+def _validate_prefetch_event_date(state: Any, event: GameEvent) -> None:
+    """Reject generated events that are not for the projected next day."""
+
+    from src.game.daily_timeline import normalize_daily_timeline
+
+    expected_story_date = normalize_daily_timeline(state.timeline)["current_date"]
+    if event.story_date != expected_story_date:
+        raise RuntimeError(
+            "recommended_prefetch_story_date_mismatch: "
+            f"expected {expected_story_date}, got {event.story_date}"
+        )
+
+
 def _run_prefetch_worker(
     *,
     task_id: int,
@@ -538,6 +619,7 @@ def _run_prefetch_worker(
             language=language,
         )
         next_event = _generate_with_isolated_game_loop(source_loop, projection.state)
+        _validate_prefetch_event_date(projection.state, next_event)
         ready_db = SessionLocal()
         try:
             stored = DailyRecommendedPrefetchRepository(ready_db).mark_story_ready(
@@ -627,6 +709,7 @@ def _run_demanded_prefetch_worker(
     generation_started = time.monotonic()
     try:
         next_event = _generate_with_isolated_game_loop(source_loop, projected_state)
+        _validate_prefetch_event_date(projected_state, next_event)
         ready_db = SessionLocal()
         try:
             stored = DailyRecommendedPrefetchRepository(ready_db).mark_story_ready(
@@ -688,6 +771,7 @@ def probe_demanded_prefetch(
     """Join the speculative job selected by the latest committed daily choice."""
 
     from src.database.models import SessionLocal
+    from src.game.daily_timeline import normalize_daily_timeline
 
     state = getattr(game_loop, "player_state", None)
     history = getattr(state, "day_history", None) or []
@@ -737,12 +821,56 @@ def probe_demanded_prefetch(
         db.close()
 
     if payload is not None and status in {"story_ready", "ready", "consumed"}:
-        event = GameEvent.model_validate(payload)
-        _promote_demanded_prefetch(
+        try:
+            event = GameEvent.model_validate(payload)
+        except (TypeError, ValueError) as exc:
+            invalid_db = SessionLocal()
+            try:
+                DailyRecommendedPrefetchRepository(invalid_db).invalidate_task(
+                    task_id,
+                    error_code="invalid_payload",
+                    error_message=str(exc),
+                )
+                invalid_db.commit()
+            except Exception:
+                invalid_db.rollback()
+                logger.exception(
+                    "Failed to invalidate malformed demanded prefetch: task=%s",
+                    task_id,
+                )
+            finally:
+                invalid_db.close()
+            return DemandedPrefetchProbe(task_id, "invalidated", False, None)
+
+        expected_story_date = normalize_daily_timeline(state.timeline)["current_date"]
+        if event.story_date != expected_story_date:
+            invalid_db = SessionLocal()
+            try:
+                DailyRecommendedPrefetchRepository(invalid_db).invalidate_task(
+                    task_id,
+                    error_code="stale_story_date",
+                    error_message=(
+                        f"expected {expected_story_date}, got {event.story_date}"
+                    ),
+                )
+                invalid_db.commit()
+            except Exception:
+                invalid_db.rollback()
+                logger.exception(
+                    "Failed to invalidate wrong-date demanded prefetch: task=%s",
+                    task_id,
+                )
+            finally:
+                invalid_db.close()
+            return DemandedPrefetchProbe(task_id, "invalidated", False, None)
+
+        promoted = _promote_demanded_prefetch(
             task_id=task_id,
             game_id=game_id,
             game_loop=game_loop,
         )
+        if not promoted:
+            return DemandedPrefetchProbe(task_id, status, False, None)
         return DemandedPrefetchProbe(task_id, status, False, event)
     if status in {"story_ready", "ready", "consumed"}:
         logger.warning(
@@ -849,6 +977,7 @@ def _promote_demanded_prefetch(*, task_id: int, game_id: int, game_loop: Any) ->
 
     from src.database.models import DailyRecommendedPrefetch, SessionLocal
     from src.database.singletons import get_game_db
+    from src.game.daily_timeline import normalize_daily_timeline
 
     db = SessionLocal()
     try:
@@ -863,6 +992,18 @@ def _promote_demanded_prefetch(*, task_id: int, game_id: int, game_loop: Any) ->
         next_event = GameEvent.model_validate(task.next_event_json)
         lock = getattr(game_loop, "_daily_mutation_lock", threading.RLock())
         with lock:
+            # Invalidation and promotion share the live game lock. Re-read the
+            # row after acquiring it so a waiting promotion cannot resurrect a
+            # task that a semantic setting edit just fenced.
+            task = db.get(DailyRecommendedPrefetch, task_id)
+            if (
+                task is None
+                or not task.demanded
+                or task.status not in {"story_ready", "ready", "consumed"}
+                or not isinstance(task.next_event_json, dict)
+            ):
+                return False
+            next_event = GameEvent.model_validate(task.next_event_json)
             state = getattr(game_loop, "player_state", None)
             if state is None or game_loop.current_event is not None:
                 return False
@@ -873,6 +1014,8 @@ def _promote_demanded_prefetch(*, task_id: int, game_id: int, game_loop: Any) ->
                 latest.get("event_id") != task.event_id
                 or latest.get("choice_option_index") != task.option_index
                 or int(timeline.get("day_index") or -1) != task.day_index + 1
+                or next_event.story_date
+                != normalize_daily_timeline(timeline)["current_date"]
             ):
                 return False
             state.current_event_data = next_event.model_dump()

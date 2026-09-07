@@ -305,6 +305,12 @@ async def make_choice_sync(
     loop = asyncio.get_running_loop()
 
     def run():
+        from src.api.routers.gameplay.sse_helpers import _get_game_state_lock
+
+        with _get_game_state_lock(game_id):
+            return _run_unlocked()
+
+    def _run_unlocked():
         from src.api.routers.gameplay.sse_helpers import _persist_choice_state
 
         game_loop._daily_postprocess_persist_callback = lambda: _persist_choice_state(
