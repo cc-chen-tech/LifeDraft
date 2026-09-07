@@ -66,6 +66,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     regenerateItemImage,
     recognizeEntities,
     addRecognizedEntities,
+    autoCollectRecognizedEntities,
     clearRecognizedEntities,
     createItem,
     deleteItem,
@@ -135,6 +136,14 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     setIsInitialSyncing(true);
     void (async () => {
       await fetchCollection(gameId);
+
+      const state = useCollectionStore.getState();
+      const needsInitialRecognition =
+        state.characters.length <= 1 ||
+        (state.items.length === 0 && state.landmarks.length === 0);
+      if (needsInitialRecognition) {
+        await autoCollectRecognizedEntities(gameId);
+      }
 
       if (!cancelled) {
         setIsInitialSyncing(false);
