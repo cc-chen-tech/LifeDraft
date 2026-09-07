@@ -316,6 +316,36 @@ describe('API Error Handling', () => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
+    it('cancels a voice job fetch when the playback identity is abandoned', async () => {
+      const controller = new AbortController();
+      (global.fetch as jest.Mock).mockImplementation((_url, options: RequestInit) => new Promise((_resolve, reject) => {
+        options.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      }));
+      const request = api.voice_reading.getJob(19, controller.signal);
+      const rejected = expect(request).rejects.toMatchObject({ name: 'AbortError' });
+      controller.abort();
+      await rejected;
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('retains Retry-After for the playback poll retry policy', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 503, headers: new Headers({ 'Retry-After': '12' }), json: async () => ({ detail: { code: 'busy', message: 'try later' } }) });
+      await expect(api.voice_reading.getJob(19)).rejects.toMatchObject({ status: 503, retryAfterMs: 12000 });
+    });
+
+    it('bounds a stuck progress write so newer positions can be saved', async () => {
+      jest.useFakeTimers();
+      (global.fetch as jest.Mock).mockImplementation((_url, options: RequestInit) => new Promise((_resolve, reject) => {
+        options.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      }));
+      const request = api.voice_reading.updateProgress({ game_id: 42, day_index: 7, text_hash: 'hash', voice_id: 'female-shaonv', speed: 1, paragraph_index: 0, position_ms: 1000, completed: false });
+      let aborted = false;
+      const handled = request.catch(() => { aborted = true; });
+      await jest.advanceTimersByTimeAsync(5000);
+      expect(aborted).toBe(true);
+      await handled;
+    });
+
     it('aborts a stalled voice job poll instead of waiting indefinitely', async () => {
       jest.useFakeTimers();
       global.fetch = jest.fn((_url: string, options?: RequestInit) => new Promise((_resolve, reject) => {

@@ -32,6 +32,39 @@ class TestNoHardcodedSecretsContract:
         "AKIDxxxxxxxx",  # 占位符
     ]
 
+    @classmethod
+    def _find_secret_violations(cls, content: str, rel_path: str) -> list[str]:
+        violations = []
+        for i, line in enumerate(content.split("\n"), 1):
+            # 跳过注释和字符串中的示例
+            stripped = line.strip()
+            if stripped.startswith("#") or stripped.startswith('"""'):
+                continue
+            # Exclude this exact regex literal, not its containing line: a
+            # credential alongside the redaction expression must still fail.
+            scanned_line = line.replace(r'r"\bsk-[A-Za-z0-9_-]+\b"', '""')
+            for pattern in cls.SUSPICIOUS_PATTERNS:
+                if pattern in scanned_line:
+                    if any(allow in line for allow in cls.ALLOWLIST):
+                        continue
+                    if "getenv" in line or "environ" in line:
+                        continue
+                    violations.append(f"{rel_path}:{i}: {line.strip()}")
+        return violations
+
+    def test_redaction_regex_literal_is_not_a_credential(self):
+        source = r'message = re.sub(r"\bsk-[A-Za-z0-9_-]+\b", "[redacted]", message)'
+
+        assert self._find_secret_violations(source, "fixture.py") == []
+
+    @pytest.mark.parametrize("credential_first", [False, True])
+    def test_redaction_regex_does_not_hide_credential_on_same_line(self, credential_first):
+        redaction = r'message = re.sub(r"\bsk-[A-Za-z0-9_-]+\b", "[redacted]", message)'
+        credential = 'key = "sk-' + 'liveFixtureCredential1234567890"'
+        source = "; ".join((credential, redaction) if credential_first else (redaction, credential))
+
+        assert self._find_secret_violations(source, "fixture.py") == [f"fixture.py:1: {source}"]
+
     def test_no_api_keys_in_tracked_source_files(self):
         """被 git 跟踪的源码文件中不应包含真实 API 密钥"""
         import subprocess
@@ -52,22 +85,7 @@ class TestNoHardcodedSecretsContract:
             if not file_path.exists():
                 continue
             content = file_path.read_text(encoding="utf-8")
-            lines = content.split("\n")
-            for i, line in enumerate(lines, 1):
-                # 跳过注释和字符串中的示例
-                stripped = line.strip()
-                if stripped.startswith("#") or stripped.startswith('"""'):
-                    continue
-                # 检查可疑模式
-                for pattern in self.SUSPICIOUS_PATTERNS:
-                    if pattern in line:
-                        # 检查是否在允许列表中
-                        if any(allow in line for allow in self.ALLOWLIST):
-                            continue
-                        # 检查是否是 os.getenv 调用（从环境变量读取是允许的）
-                        if "getenv" in line or "environ" in line:
-                            continue
-                        violations.append(f"{rel_path}:{i}: {line.strip()}")
+            violations.extend(self._find_secret_violations(content, rel_path))
 
         assert not violations, f"发现 {len(violations)} 处可能的硬编码密钥:\n" + "\n".join(
             violations[:20]

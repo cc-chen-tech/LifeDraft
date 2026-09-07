@@ -944,9 +944,6 @@ def _prefetch_story_voice(
         )
         response: Any = service.request_recommended_prefetch(user_id, request)
         db.commit()
-        if response.status == "queued":
-            response = service.process_job(user_id, response.job_id)
-            db.commit()
         DailyRecommendedPrefetchRepository(db).attach_tts(
             task_id,
             job_id=response.job_id,
@@ -955,8 +952,12 @@ def _prefetch_story_voice(
             ready=response.status == "ready",
         )
         db.commit()
+        if response.status == "queued":
+            from src.services.story_voice_worker import submit_story_voice_job
+
+            submit_story_voice_job(user_id, response.job_id)
         logger.info(
-            "daily_recommended_prefetch_metric action=tts_terminal task_id=%s "
+            "daily_recommended_prefetch_metric action=tts_submitted task_id=%s "
             "game_id=%s status=%s duration_ms=%s voice_id=%s speed=%s",
             task_id,
             game_id,

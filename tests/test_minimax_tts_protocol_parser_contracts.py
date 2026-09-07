@@ -154,7 +154,7 @@ def test_minimax_websocket_client_writes_audio_and_stops_on_task_finished(
         def __exit__(self, *args: object) -> None:
             return None
 
-        def recv(self) -> str:
+        def recv(self, timeout=None) -> str:
             if not self.messages:
                 raise AssertionError("client waited past the MiniMax terminal frame")
             self.finish_sent_before_recv.append(

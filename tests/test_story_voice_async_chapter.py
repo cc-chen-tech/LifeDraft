@@ -142,7 +142,7 @@ def test_failed_segment_marks_chapter_failed_without_browser_audio() -> None:
         session.close()
 
 
-def test_get_job_expires_a_stale_processing_job_instead_of_polling_forever() -> None:
+def test_get_job_leaves_stale_processing_recovery_to_the_worker() -> None:
     session = SessionLocal()
     try:
         user = User(
@@ -163,9 +163,9 @@ def test_get_job_expires_a_stale_processing_job_instead_of_polling_forever() -> 
 
         expired = service.get_job(user.user_id, queued.job_id)
 
-        assert expired.status == "failed"
-        assert expired.error_code == "tts_processing_timeout"
-        assert expired.segments[0].status == "failed"
+        assert expired.status == "processing"
+        assert expired.error_code is None
+        assert expired.segments[0].status == "queued"
     finally:
         session.rollback()
         session.close()
@@ -368,12 +368,12 @@ def test_narration_plan_metrics_are_persisted_and_exposed_after_processing(monke
         stored = session.query(VoiceReadingJob).filter_by(job_id=queued.job_id).one()
 
         assert result.status == "ready"
-        assert result.narration_plan_source == "ai"
-        assert result.narration_plan_fallback_reason is None
-        assert result.narration_plan_ai_attempts == 1
+        assert result.narration_plan_source == "deterministic-fallback"
+        assert result.narration_plan_fallback_reason == "playback_no_stored_plan"
+        assert result.narration_plan_ai_attempts == 0
         assert result.narration_plan_duration_ms is not None
-        assert result.narration_plan_output_token_budgets
-        assert stored.context_json["narration_plan_metrics"]["source"] == "ai"
+        assert result.narration_plan_output_token_budgets == []
+        assert stored.context_json["narration_plan_metrics"]["source"] == "deterministic-fallback"
     finally:
         session.rollback()
         session.close()
@@ -416,9 +416,9 @@ def test_narration_plan_metrics_survive_tts_failure(monkeypatch) -> None:
         result = service.process_job(user_id, queued.job_id)
 
         assert result.status == "failed"
-        assert result.narration_plan_source == "ai"
-        assert result.narration_plan_ai_attempts == 1
-        assert result.narration_plan_output_token_budgets
+        assert result.narration_plan_source == "deterministic-fallback"
+        assert result.narration_plan_ai_attempts == 0
+        assert result.narration_plan_output_token_budgets == []
     finally:
         session.rollback()
         session.close()

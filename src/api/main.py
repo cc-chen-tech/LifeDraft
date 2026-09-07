@@ -80,6 +80,9 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
 
+    from src.services.story_voice_worker import get_story_voice_worker, stop_story_voice_worker
+
+    get_story_voice_worker().start()
     projection_service = None
     if get_feature("daily_world_projection_v1"):
         from src.services.daily_world_projection import (
@@ -111,6 +114,7 @@ async def lifespan(app: FastAPI):
 
         yield
     finally:
+        stop_story_voice_worker()
         if projection_service is not None:
             projection_service.stop(wait=False)
 

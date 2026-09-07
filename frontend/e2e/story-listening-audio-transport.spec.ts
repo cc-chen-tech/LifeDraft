@@ -28,6 +28,7 @@ type AudioFixture = {
 type FixtureOptions = {
   failFirstAudioRequest?: boolean;
   progress?: { paragraphIndex: number; positionMs: number };
+  stallFirstJobPoll?: boolean;
 };
 
 /**
@@ -217,27 +218,42 @@ async function installFixture(page: Page, options: FixtureOptions = {}): Promise
       }),
     });
   });
+  const readyJob = {
+    job_id: 777,
+    status: 'ready',
+    playback_mode: 'audio',
+    provider: 'minimax',
+    model: 'speech-2.8-turbo',
+    message: '',
+    segments: [0, 1, 2].map((paragraph_index) => ({
+      paragraph_index,
+      status: 'ready',
+      audio_url: FIXTURE_AUDIO_PATH,
+      duration_ms: 4_000,
+      media_type: 'audio/wav',
+      start_ms: paragraph_index * 4_000,
+      end_ms: (paragraph_index + 1) * 4_000,
+    })),
+  };
   await page.route('**/api/voice-reading/read', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({
-      job_id: 777,
-      status: 'ready',
-      playback_mode: 'audio',
-      provider: 'minimax',
-      model: 'speech-2.8-turbo',
-      message: '',
-      segments: [0, 1, 2].map((paragraph_index) => ({
-        paragraph_index,
-        status: 'ready',
-        audio_url: FIXTURE_AUDIO_PATH,
-        duration_ms: 4_000,
-        media_type: 'audio/wav',
-        start_ms: paragraph_index * 4_000,
-        end_ms: (paragraph_index + 1) * 4_000,
-      })),
-    }),
+    body: JSON.stringify(options.stallFirstJobPoll
+      ? { ...readyJob, status: 'processing', segments: [] }
+      : readyJob),
   }));
+  let polls = 0;
+  await page.route('**/api/voice-reading/jobs/777', async (route) => {
+    polls += 1;
+    if (options.stallFirstJobPoll && polls === 1) {
+      // Reproduce the incident with a real fetch deadline, not a fabricated
+      // error object. The backend can finish after the browser has aborted.
+      await new Promise((resolve) => setTimeout(resolve, 22_000));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(readyJob) }).catch(() => undefined);
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(readyJob) });
+  });
   await page.route('**/api/voice-reading/audio/*.wav', (route) => {
     const path = new URL(route.request().url()).pathname;
     const shouldFail = failNextAudioRequest && path === FIXTURE_AUDIO_PATH;
@@ -289,6 +305,51 @@ async function expectErrorWatchdogArmed(
 }
 
 test.describe('StoryListeningExperience audio transport', () => {
+  test('recovers the original voice after a real 20s job poll timeout', async ({ page }) => {
+    const fixture = await installFixture(page, { stallFirstJobPoll: true });
+    await page.goto(`/play?gameId=${GAME_ID}`);
+    await expect(page.getByRole('heading', { name: '听故事' })).toBeVisible();
+    await expect.poll(() => fixture.audioRequests.length, { timeout: 35_000 }).toBeGreaterThan(0);
+    await expectRealPlayback(page);
+    await expect(page.getByText('高质量语音暂时不可用，已切换浏览器朗读')).toHaveCount(0);
+    expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));
+  });
+
+  test('retries the final paused progress after HTTP 503 without new playback events', async ({ page }) => {
+    await installFixture(page);
+    let failNextWrite = false;
+    const writes: { body: unknown; at: number }[] = [];
+    await page.route('**/api/voice-reading/progress**', async (route) => {
+      if (route.request().method() === 'GET') return route.fallback();
+      if (!failNextWrite && writes.length === 0) return route.fallback();
+      writes.push({ body: route.request().postDataJSON(), at: Date.now() });
+      if (failNextWrite) {
+        failNextWrite = false;
+        return route.fulfill({
+          status: 503,
+          headers: { 'retry-after': '2' },
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: { error_code: 'progress_store_busy', message: 'store busy' } }),
+        });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+    await page.goto(`/play?gameId=${GAME_ID}`);
+    await expectRealPlayback(page);
+    const audio = page.locator('audio[data-active="true"]');
+    await expect.poll(() => audio.evaluate((element) => (element as HTMLAudioElement).currentTime)).toBeGreaterThan(0.8);
+    failNextWrite = true;
+    await page.getByRole('button', { name: '暂停朗读' }).click();
+    await expect(page.getByRole('button', { name: '播放朗读' })).toBeVisible();
+    await expect.poll(() => writes.length, { timeout: 8_000 }).toBe(2);
+    expect(writes[1].body).toEqual(writes[0].body);
+    expect(writes[1].at - writes[0].at).toBeGreaterThanOrEqual(1_800);
+    expect(writes[1].body).toMatchObject({ paragraph_index: 0, completed: false });
+    expect((writes[1].body as { position_ms: number }).position_ms).toBeGreaterThan(500);
+    expect(await audio.evaluate((element) => (element as HTMLAudioElement).paused)).toBe(true);
+    await expect(page.getByText('高质量语音暂时不可用，已切换浏览器朗读')).toHaveCount(0);
+  });
+
   test('autoplays generated WAV audio through the Range-aware fixture', async ({ page }) => {
     const fixture = await installFixture(page);
     await page.goto(`/play?gameId=${GAME_ID}`);

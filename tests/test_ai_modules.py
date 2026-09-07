@@ -583,8 +583,8 @@ class TestAIClient:
         """Test AIClient.call method."""
         from src.ai.client import AIClient
 
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
+        mock_response = Mock(usage=None)
+        mock_response.choices = [Mock(finish_reason="stop")]
         mock_response.choices[0].message.content = "  Hello World  "
 
         mock_client = Mock()
@@ -600,8 +600,8 @@ class TestAIClient:
         """Short interactive calls can override the general five-minute client timeout."""
         from src.ai.client import AIClient
 
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
+        mock_response = Mock(usage=None)
+        mock_response.choices = [Mock(finish_reason="stop")]
         mock_response.choices[0].message.content = "summary"
         mock_client = Mock()
         mock_client.chat.completions.create.return_value = mock_response
@@ -617,8 +617,8 @@ class TestAIClient:
         """Test AIClient.call_json method."""
         from src.ai.client import AIClient
 
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
+        mock_response = Mock(usage=None)
+        mock_response.choices = [Mock(finish_reason="stop")]
         mock_response.choices[0].message.content = '{"key": "value"}'
 
         mock_client = Mock()
@@ -634,12 +634,12 @@ class TestAIClient:
         """Test AIClient.call with stream callback."""
         from src.ai.client import AIClient
 
-        chunk1 = Mock()
-        chunk1.choices = [Mock()]
+        chunk1 = Mock(usage=None)
+        chunk1.choices = [Mock(finish_reason=None)]
         chunk1.choices[0].delta.content = "Hello"
 
-        chunk2 = Mock()
-        chunk2.choices = [Mock()]
+        chunk2 = Mock(usage=None)
+        chunk2.choices = [Mock(finish_reason="stop")]
         chunk2.choices[0].delta.content = " World"
 
         mock_client = Mock()
@@ -657,8 +657,8 @@ class TestAIClient:
         """Test call_with_retry succeeds on first attempt."""
         from src.ai.client import AIClient
 
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
+        mock_response = Mock(usage=None)
+        mock_response.choices = [Mock(finish_reason="stop")]
         mock_response.choices[0].message.content = "OK"
 
         mock_client = Mock()
@@ -695,8 +695,8 @@ class TestProfileSynthesizer:
         from src.ai.client import AIClient
         from src.ai.profile_synthesizer import ProfileSynthesizer
 
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
+        mock_response = Mock(usage=None)
+        mock_response.choices = [Mock(finish_reason="stop")]
         mock_response.choices[0].message.content = json.dumps(
             {
                 "behavioral_traits": ["冲突回避型", "善于倾听"],

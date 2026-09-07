@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, cast, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from src.database.models import (
+    DailyRecommendedPrefetch,
     GeneratedVoiceAsset,
     VOICE_ASSET_VERSION,
     VoiceReadingJob,
@@ -63,15 +64,12 @@ class StoryVoiceReadingRepository:
         model: Optional[str] = None,
         user_id: Optional[int] = None,
     ) -> Optional[GeneratedVoiceAsset]:
-        query = (
-            self.db.query(GeneratedVoiceAsset)
-            .filter(
-                GeneratedVoiceAsset.text_hash == text_hash,
-                GeneratedVoiceAsset.voice_id == voice_id,
-                GeneratedVoiceAsset.speed == speed,
-                GeneratedVoiceAsset.status == "ready",
-                GeneratedVoiceAsset.asset_version == VOICE_ASSET_VERSION,
-            )
+        query = self.db.query(GeneratedVoiceAsset).filter(
+            GeneratedVoiceAsset.text_hash == text_hash,
+            GeneratedVoiceAsset.voice_id == voice_id,
+            GeneratedVoiceAsset.speed == speed,
+            GeneratedVoiceAsset.status == "ready",
+            GeneratedVoiceAsset.asset_version == VOICE_ASSET_VERSION,
         )
         if provider is not None:
             query = query.filter(GeneratedVoiceAsset.provider == provider)
@@ -212,8 +210,7 @@ class StoryVoiceReadingRepository:
         if claimed != 1:
             return None
         self.db.expire_all()
-        job = self.get_job(job_id, user_id)
-        return cast(Optional[datetime], job.updated_at) if job is not None else None
+        return now
 
     def requeue_stale_processing_job(
         self,
@@ -249,6 +246,55 @@ class StoryVoiceReadingRepository:
         self.db.flush()
         return recovered == 1
 
+    def recover_abandoned_job(self, user_id: int, job_id: int) -> bool:
+        """Recover at most twice, with the counter in existing job metadata.
+
+        The old timestamp is compared along with status, so concurrent scanners
+        cannot both increment the counter or replace a live worker's lease.
+        """
+        job = self.get_job(job_id, user_id)
+        now = datetime.utcnow()
+        if (
+            job is None
+            or job.status != "processing"
+            or (job.updated_at is not None and job.updated_at >= now - PROCESSING_LEASE_DURATION)
+        ):
+            self.db.rollback()
+            return False
+        context = dict(job.context_json)
+        attempts = context.get("_voice_worker_recoveries", 0)
+        attempts = attempts if isinstance(attempts, int) and attempts >= 0 else 0
+        if attempts >= 2:
+            return self.fail_stale_processing_job(user_id, job_id, now=now)
+        context["_voice_worker_recoveries"] = attempts + 1
+        recovered = (
+            self.db.query(VoiceReadingJob)
+            .filter(
+                VoiceReadingJob.job_id == job_id,
+                VoiceReadingJob.user_id == user_id,
+                VoiceReadingJob.status == "processing",
+                VoiceReadingJob.updated_at == job.updated_at,
+            )
+            .update(
+                {
+                    VoiceReadingJob.status: "queued",
+                    VoiceReadingJob.context_json: context,
+                    VoiceReadingJob.updated_at: now,
+                    VoiceReadingJob.error_code: None,
+                    VoiceReadingJob.error_message: None,
+                },
+                synchronize_session=False,
+            )
+        )
+        if recovered == 1:
+            self.db.query(VoiceReadingSegment).filter(
+                VoiceReadingSegment.job_id == job_id,
+                VoiceReadingSegment.status != "ready",
+            ).update({VoiceReadingSegment.status: "queued"}, synchronize_session=False)
+        self.db.commit()
+        self.db.expire_all()
+        return recovered == 1
+
     def force_requeue_processing_job(
         self,
         user_id: int,
@@ -278,7 +324,8 @@ class StoryVoiceReadingRepository:
         if requeued != 1:
             return False
         self.db.query(VoiceReadingSegment).filter(
-            VoiceReadingSegment.job_id == job_id
+            VoiceReadingSegment.job_id == job_id,
+            VoiceReadingSegment.status != "ready",
         ).update(
             {
                 VoiceReadingSegment.status: "queued",
@@ -328,7 +375,8 @@ class StoryVoiceReadingRepository:
         if failed != 1:
             return False
         self.db.query(VoiceReadingSegment).filter(
-            VoiceReadingSegment.job_id == job_id
+            VoiceReadingSegment.job_id == job_id,
+            VoiceReadingSegment.status != "ready",
         ).update(
             {
                 VoiceReadingSegment.status: "failed",
@@ -354,11 +402,14 @@ class StoryVoiceReadingRepository:
         terminal_status: Optional[str] = None,
         error_code: Optional[str] = None,
         error_message: Optional[str] = None,
+        context_json: Optional[Dict[str, Any]] = None,
     ) -> Optional[datetime]:
         """Commit pending worker changes only while its exact lease token is current."""
         try:
-            self.db.flush()
-            updates: Dict[Any, Any] = {VoiceReadingJob.updated_at: datetime.utcnow()}
+            now = datetime.utcnow()
+            updates: Dict[Any, Any] = {VoiceReadingJob.updated_at: now}
+            if context_json is not None:
+                updates[VoiceReadingJob.context_json] = context_json
             if primary_asset_id is not None:
                 updates[VoiceReadingJob.asset_id] = primary_asset_id
             if terminal_status is not None:
@@ -378,13 +429,20 @@ class StoryVoiceReadingRepository:
             if committed != 1:
                 self.db.rollback()
                 return None
+            if terminal_status == "ready":
+                # The story stays consumable while narration is queued. Promote
+                # only its still-current attached job, in the fenced commit.
+                self.db.query(DailyRecommendedPrefetch).filter(
+                    DailyRecommendedPrefetch.tts_job_id == job_id,
+                    DailyRecommendedPrefetch.user_id == user_id,
+                    DailyRecommendedPrefetch.status == "story_ready",
+                ).update({DailyRecommendedPrefetch.status: "ready"}, synchronize_session=False)
             self.db.commit()
         except Exception:
             self.db.rollback()
             raise
         self.db.expire_all()
-        job = self.get_job(job_id, user_id)
-        return cast(Optional[datetime], job.updated_at) if job is not None else None
+        return now
 
     def invalidate_asset(self, asset: GeneratedVoiceAsset, reason: str) -> None:
         """Retain an unusable older asset record but prevent further reuse."""
@@ -439,9 +497,7 @@ class StoryVoiceReadingRepository:
         position_ms: int,
         completed: bool,
     ) -> VoiceReadingProgress:
-        progress = self.get_progress(
-            user_id, game_id, day_index, text_hash, voice_id, speed
-        )
+        progress = self.get_progress(user_id, game_id, day_index, text_hash, voice_id, speed)
         if progress is None:
             progress = VoiceReadingProgress(
                 user_id=user_id,

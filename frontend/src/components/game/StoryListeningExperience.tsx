@@ -23,6 +23,8 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { pollStoryVoiceJob } from "@/lib/storyVoicePolling";
+import { createStoryVoiceProgressSession } from "@/lib/storyVoiceProgress";
 import { storyVoiceTextToHash } from "@/lib/storyVoiceTextHash";
 import type {
   EventOption,
@@ -66,8 +68,6 @@ const FALLBACK_VOICE_IDS = new Set([
   "female-chengshu",
 ]);
 const STALL_WATCHDOG_MS = 8_000;
-export const STORY_VOICE_POLL_TIMEOUT_MS = 210_000;
-const STORY_VOICE_POLL_INTERVAL_MS = 700;
 
 function splitParagraphs(text: string): string[] {
   return text
@@ -76,10 +76,6 @@ function splitParagraphs(text: string): string[] {
     .split(/\n\s*\n+/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function browserSpeechAvailable(): boolean {
@@ -124,7 +120,6 @@ export function StoryListeningExperience({
 }: StoryListeningExperienceProps) {
   const paragraphs = useMemo(() => splitParagraphs(storyText), [storyText]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const cancelledRef = useRef(false);
   const generationRef = useRef(0);
   const autoPlayRequestedRef = useRef(true);
   const autoReadRef = useRef(true);
@@ -152,12 +147,21 @@ export function StoryListeningExperience({
   } | null>(null);
   const browserUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const browserFallbackRef = useRef(false);
+  const previousIdentityRef = useRef("");
+  const [providerChapterSource, setProviderChapterSource] = useState<string | null>(null);
+  const providerSegmentsRef = useRef<VoiceReadingSegment[]>([]);
+  const replacementPendingScenesRef = useRef(new Set<number>());
+  const restoreProviderRef = useRef(false);
+  const pollControllerRef = useRef<AbortController | null>(null);
+  const progressSessionRef = useRef<ReturnType<typeof createStoryVoiceProgressSession> | null>(null);
   const finalSegmentEndedRef = useRef(false);
   const activeAudioSourceRef = useRef<string | null>(null);
+  const mediaIsChapterRef = useRef(true);
   const recoveredParagraphsRef = useRef(new Set<number>());
 
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [textHash, setTextHash] = useState("");
+  const [hashedStory, setHashedStory] = useState<string | null>(null);
   const [segments, setSegments] = useState<VoiceReadingSegment[]>([]);
   const [jobId, setJobId] = useState<number | null>(null);
   const [status, setStatus] = useState<ListeningStatus>("preparing");
@@ -176,6 +180,9 @@ export function StoryListeningExperience({
   const [networkRetryRequired, setNetworkRetryRequired] = useState(false);
   const [networkRetryVisible, setNetworkRetryVisible] = useState(false);
   const [browserFallback, setBrowserFallback] = useState(false);
+  const [providerFailed, setProviderFailed] = useState(false);
+  const [connectionRetrying, setConnectionRetrying] = useState(false);
+  const [providerReady, setProviderReady] = useState(false);
   const [queueAdvancePending, setQueueAdvancePending] = useState(false);
 
   const currentSegment = segments.find(
@@ -196,14 +203,16 @@ export function StoryListeningExperience({
     }
   };
   const chapterSegment = segments.find((segment) => segment.audio_url);
-  const sceneQueueMode = new Set(segments.filter((segment) => segment.audio_url).map((segment) => segment.audio_url)).size > 1;
+  const sceneQueueMode = !browserFallback && segments.some((segment) => segment.audio_url) && (segments.some((segment) => !segment.audio_url) || new Set(segments.map((segment) => segment.audio_url)).size > 1);
   const activeSegment = segments.find((segment) => segment.paragraph_index === activeParagraph);
-  const activeAudioSource = sceneQueueMode
+  const activeAudioSource = hashedStory !== storyText ? null : sceneQueueMode
     ? activeSegment?.audio_url ?? null
     : chapterSegment?.audio_url ?? null;
+  const mediaIsChapter = !sceneQueueMode || activeAudioSource === providerChapterSource;
   useLayoutEffect(() => {
     activeAudioSourceRef.current = activeAudioSource;
-  }, [activeAudioSource]);
+    mediaIsChapterRef.current = mediaIsChapter;
+  }, [activeAudioSource, mediaIsChapter]);
   const readySegments = segments.filter((segment) => segment.audio_url);
   const segmentDuration = (segment: VoiceReadingSegment) =>
     segment.start_ms != null && segment.end_ms != null
@@ -234,6 +243,7 @@ export function StoryListeningExperience({
   const progressRatio = totalDurationMs > 0 ? chapterPositionMs / totalDurationMs : 0;
 
   const locateChapterPosition = (milliseconds: number) => {
+    if (!mediaIsChapter) return { paragraphIndex: activeParagraphRef.current, paragraphPositionMs: milliseconds };
     let locatedSegment: VoiceReadingSegment | undefined;
     for (const segment of segments) {
       if ((segment.start_ms ?? 0) <= milliseconds) locatedSegment = segment;
@@ -284,11 +294,11 @@ export function StoryListeningExperience({
   }, [activeParagraph]);
 
   useEffect(() => {
-    cancelledRef.current = false;
+    let active = true;
     const audio = audioRef.current;
     void Promise.all([api.voice_reading.getSettings(), storyVoiceTextToHash(storyText)])
       .then(([settings, hash]) => {
-        if (cancelledRef.current) return;
+        if (!active) return;
         const catalog = (settings.voice_catalog || []).filter((voice) =>
           voice.language === "普通话" || voice.language === "粤语",
         );
@@ -305,15 +315,16 @@ export function StoryListeningExperience({
         autoReadRef.current = settings.auto_read_enabled;
         autoPlayRequestedRef.current = settings.auto_read_enabled;
         setTextHash(hash);
+        setHashedStory(storyText);
         setSettingsLoaded(true);
       })
       .catch((error) => {
-        if (cancelledRef.current) return;
+        if (!active) return;
         setStatus("failed");
         setErrorMessage(error instanceof Error ? error.message : "无法读取朗读设置");
       });
     return () => {
-      cancelledRef.current = true;
+      active = false;
       generationRef.current += 1;
       clearRecoveryWatchdog();
       playbackGenerationRef.current += 1;
@@ -325,59 +336,90 @@ export function StoryListeningExperience({
     };
   }, [storyText]);
 
-  const enableBrowserFallback = useCallback(() => {
+  const enableBrowserFallback = () => {
     if (!browserSpeechAvailable()) {
       setStatus("failed");
       setErrorMessage("高质量语音生成失败，当前浏览器也不支持语音朗读");
       return;
     }
+    cancelActivePlayback();
     browserFallbackRef.current = true;
     setBrowserFallback(true);
     setSegments(buildBrowserSpeechSegments(paragraphs, speed));
     setChapterMediaDurationMs(null);
     setStatus("ready");
     setErrorMessage("高质量语音暂时不可用，已切换浏览器朗读");
-  }, [paragraphs, speed]);
+  };
 
   const applyJob = useCallback((job: VoiceReadingJobResponse) => {
-    const chapterAudioUrl = job.status === "ready" ? job.audio_url : null;
-    const normalizedSegments = chapterAudioUrl
-      ? job.segments.map((segment) =>
-          segment.audio_url ? segment : { ...segment, audio_url: chapterAudioUrl },
-        )
-      : job.segments;
+    const sharedAudioUrl = job.segments.length > 1 && job.segments.every((segment) => segment.audio_url === job.segments[0].audio_url)
+      ? job.segments[0].audio_url : null;
+    const chapterAudioUrl = job.status === "ready" ? job.audio_url ?? sharedAudioUrl : null;
+    if (chapterAudioUrl) setProviderChapterSource(chapterAudioUrl);
+    const previous = providerSegmentsRef.current;
+    let chapterPlaybackStarted = false;
+    const normalizedSegments = job.segments.map((segment) => {
+      const buffered = previous.find((value) => value.paragraph_index === segment.paragraph_index && value.audio_url);
+      if (buffered && !segment.audio_url && segment.status !== "ready") {
+        replacementPendingScenesRef.current.add(segment.paragraph_index);
+      }
+      // Retain the current buffer while its replacement is absent. Once ready,
+      // accept a regenerated scene or the completed chapter from a retry.
+      // Once playback enters the chapter, all later paragraphs must share its
+      // clock. A retained scene after a chapter cue would reintroduce local
+      // start_ms=0 and could switch the source while crossing a chapter cue.
+      const replacement = chapterAudioUrl && (chapterPlaybackStarted || replacementPendingScenesRef.current.has(segment.paragraph_index))
+        ? { ...segment, audio_url: chapterAudioUrl }
+        : segment.audio_url && segment.audio_url !== chapterAudioUrl
+          ? segment
+          : null;
+      if (replacement) {
+        if (replacement.audio_url === chapterAudioUrl) chapterPlaybackStarted = true;
+        if (replacement.audio_url !== buffered?.audio_url) {
+          replacementPendingScenesRef.current.delete(segment.paragraph_index);
+        }
+        if (
+          buffered && buffered.audio_url !== replacement.audio_url &&
+          segment.paragraph_index === activeParagraphRef.current &&
+          buffered.audio_url === activeAudioSourceRef.current &&
+          !browserFallbackRef.current && audioRef.current &&
+          pendingSavedProgressRef.current === null
+        ) {
+          // A pending seek/recovery still uses the old source's clock. Preserve
+          // that intent as paragraph-local progress before loading new cues.
+          const resumeMs = pendingResumePositionRef.current ?? audioRef.current.currentTime * 1000;
+          pendingSavedProgressRef.current = {
+            paragraphIndex: segment.paragraph_index,
+            positionMs: Math.max(0, resumeMs - (mediaIsChapterRef.current ? buffered.start_ms ?? 0 : 0)),
+          };
+          pendingResumePositionRef.current = null;
+          setChapterMediaDurationMs(null);
+        }
+        return replacement;
+      }
+      const retained = buffered ?? (segment.audio_url || !chapterAudioUrl ? segment : { ...segment, audio_url: chapterAudioUrl });
+      if (chapterAudioUrl && retained.audio_url === chapterAudioUrl) chapterPlaybackStarted = true;
+      return retained;
+    });
+    providerSegmentsRef.current = normalizedSegments;
+    setProviderFailed(job.status === "failed");
+    setProviderReady(job.status === "ready");
+    if (browserFallbackRef.current) return;
     setSegments(normalizedSegments);
-    if (job.status === "failed") {
-      enableBrowserFallback();
-      return;
-    }
-    if (chapterAudioUrl || normalizedSegments.some((segment) => segment.audio_url)) {
-      setStatus((current) => (current === "playing" ? current : "ready"));
-    } else {
-      setStatus("preparing");
-    }
-  }, [enableBrowserFallback]);
+    const playable = normalizedSegments.some((segment) => segment.audio_url);
+    if (job.status === "failed") setErrorMessage(job.message || "部分语音生成失败，可重试或使用系统朗读");
+    setStatus((current) => {
+      if (current === "playing" || current === "paused") return current;
+      return playable ? "ready" : job.status === "failed" ? "failed" : "preparing";
+    });
+  }, []);
 
   useEffect(() => {
-    if (!settingsLoaded || !textHash || context.source_type !== "current_story") return;
+    if (!settingsLoaded || !textHash || hashedStory !== storyText || context.source_type !== "current_story") return;
     const generation = ++generationRef.current;
     let active = true;
-    setStatus("preparing");
-    setErrorMessage("");
-    browserFallbackRef.current = false;
-    setBrowserFallback(false);
-    setSegments([]);
-    setActiveParagraph(0);
-    setPositionMs(0);
-    pendingResumePositionRef.current = 0;
-    pendingSavedProgressRef.current = null;
-    recoveredParagraphsRef.current.clear();
-    finalSegmentEndedRef.current = false;
-    setChapterMediaDurationMs(null);
-    setNetworkRetryRequired(false);
-    setNetworkRetryVisible(false);
-    setQueueAdvancePending(false);
-
+    const controller = new AbortController();
+    pollControllerRef.current = controller;
     const identity = {
       game_id: context.game_id,
       day_index: context.day_index ?? 0,
@@ -385,25 +427,63 @@ export function StoryListeningExperience({
       voice_id: selectedVoice,
       speed,
     };
+    const identityKey = JSON.stringify([identity, context.attempt_id, context.stage, context.week, context.round_number, context.story_date]);
+    const continuing = previousIdentityRef.current === identityKey;
+    previousIdentityRef.current = identityKey;
+    setProviderFailed(false);
+    setConnectionRetrying(false);
+    if (!continuing) {
+      providerSegmentsRef.current = [];
+      replacementPendingScenesRef.current.clear();
+      setProviderChapterSource(null);
+      restoreProviderRef.current = false;
+      setProviderReady(false);
+      setJobId(null);
+      setStatus("preparing");
+      setErrorMessage("");
+      browserFallbackRef.current = false;
+      setBrowserFallback(false);
+      setSegments([]);
+      setActiveParagraph(0);
+      setPositionMs(0);
+      pendingResumePositionRef.current = 0;
+      pendingSavedProgressRef.current = null;
+      recoveredParagraphsRef.current.clear();
+      finalSegmentEndedRef.current = false;
+      setChapterMediaDurationMs(null);
+      setNetworkRetryRequired(false);
+      setNetworkRetryVisible(false);
+      setQueueAdvancePending(false);
+    } else if (retryNonce > 0) {
+      // The worker may invalidate and rebuild a cached scene between polls.
+      // Keep it playable for now, but accept the retry's final chapter even
+      // when no intermediate response exposed that invalidation.
+      for (const segment of providerSegmentsRef.current) {
+        if (segment.audio_url) replacementPendingScenesRef.current.add(segment.paragraph_index);
+      }
+    }
 
     const run = async () => {
       try {
-        try {
-          const progress = await api.voice_reading.getProgress(identity);
-          if (!active || generation !== generationRef.current) return;
-          setActiveParagraph(Math.min(progress.paragraph_index, Math.max(0, paragraphs.length - 1)));
-          setPositionMs(progress.position_ms);
-          pendingSavedProgressRef.current = {
-            paragraphIndex: progress.paragraph_index,
-            positionMs: progress.position_ms,
-          };
-          pendingResumePositionRef.current = null;
-        } catch (error) {
-          if ((error as { status?: number }).status !== 404) {
-            console.warn("[StoryListeningExperience] Progress recovery unavailable", error);
+        if (!continuing) {
+          try {
+            const progress = await api.voice_reading.getProgress(identity);
+            if (!active || generation !== generationRef.current) return;
+            setActiveParagraph(Math.min(progress.paragraph_index, Math.max(0, paragraphs.length - 1)));
+            setPositionMs(progress.position_ms);
+            pendingSavedProgressRef.current = {
+              paragraphIndex: progress.paragraph_index,
+              positionMs: progress.position_ms,
+            };
+            pendingResumePositionRef.current = null;
+          } catch (error) {
+            if ((error as { status?: number }).status !== 404) {
+              console.warn("[StoryListeningExperience] Progress recovery unavailable", error);
+            }
           }
         }
 
+        if (!active || generation !== generationRef.current) return;
         const response = await api.voice_reading.requestReading({
           context: {
             source_type: context.source_type,
@@ -421,41 +501,30 @@ export function StoryListeningExperience({
           speed,
           auto_play: autoReadRef.current,
           force_retry: retryNonce > 0,
-        });
+        }, controller.signal);
         if (!active || generation !== generationRef.current) return;
         setJobId(response.job_id);
         applyJob(response);
 
-        let job: VoiceReadingJobResponse = response;
-        const pollStartedAt = Date.now();
-        while (active && generation === generationRef.current && !["ready", "failed"].includes(job.status)) {
-          job = await api.voice_reading.getJob(response.job_id);
-          if (!active || generation !== generationRef.current) return;
-          applyJob(job);
-          if (!["ready", "failed"].includes(job.status)) {
-            if (Date.now() - pollStartedAt >= STORY_VOICE_POLL_TIMEOUT_MS) {
-              throw new Error("高质量语音生成超时，请重试");
-            }
-            await delay(STORY_VOICE_POLL_INTERVAL_MS);
-          }
-        }
+        await pollStoryVoiceJob(response, controller.signal, (job) => {
+          if (active && generation === generationRef.current) applyJob(job);
+        }, (retrying) => {
+          if (active && generation === generationRef.current) setConnectionRetrying(retrying);
+        }, () => browserFallbackRef.current);
       } catch (error) {
         if (!active || generation !== generationRef.current) return;
-        if (browserSpeechAvailable()) {
-          enableBrowserFallback();
-        } else {
-          setStatus("failed");
-          setErrorMessage(error instanceof Error ? error.message : "高质量语音生成失败");
-        }
+        setProviderFailed(true);
+        setStatus((current) => providerSegmentsRef.current.some((segment) => segment.audio_url) ? current : "failed");
+        setErrorMessage(error instanceof Error ? error.message : "高质量语音生成失败");
       }
     };
     void run();
     return () => {
       active = false;
+      controller.abort();
     };
   }, [
     applyJob,
-    enableBrowserFallback,
     context.attempt_id,
     context.day_index,
     context.game_id,
@@ -468,14 +537,24 @@ export function StoryListeningExperience({
     retryNonce,
     selectedVoice,
     settingsLoaded,
+    hashedStory,
     speed,
     storyText,
     textHash,
   ]);
 
+  useLayoutEffect(() => {
+    const session = createStoryVoiceProgressSession();
+    progressSessionRef.current = session;
+    return () => {
+      session.release();
+      progressSessionRef.current = null;
+    };
+  }, [context.attempt_id, context.day_index, context.game_id, context.round_number, context.source_type, context.stage, context.story_date, context.week, selectedVoice, speed, storyText, textHash]);
+
   const persistProgress = useCallback(
-    (paragraphIndex: number, milliseconds: number, completed = false) => {
-      if (!textHash) return;
+    (paragraphIndex: number, milliseconds: number, completed = false, retainAfterRelease = false) => {
+      if (!textHash || hashedStory !== storyText) return;
       const progress: VoiceReadingProgress = {
         game_id: context.game_id,
         day_index: context.day_index ?? 0,
@@ -487,12 +566,30 @@ export function StoryListeningExperience({
         position_ms: Math.max(0, Math.round(milliseconds)),
         completed,
       };
-      void api.voice_reading.updateProgress(progress).catch((error) => {
-        console.warn("[StoryListeningExperience] Progress persistence unavailable", error);
-      });
+      progressSessionRef.current?.write(progress, retainAfterRelease);
     },
-    [context.day_index, context.game_id, context.story_date, selectedVoice, speed, textHash],
+    [context.day_index, context.game_id, context.story_date, hashedStory, selectedVoice, speed, storyText, textHash],
   );
+
+  const restoreProvider = (paragraphIndex: number) => {
+    const complete = paragraphIndex >= paragraphs.length;
+    const nextIndex = Math.min(paragraphIndex, paragraphs.length - 1);
+    const providerSegments = providerSegmentsRef.current;
+    browserFallbackRef.current = false;
+    setBrowserFallback(false);
+    browserUtteranceRef.current = null;
+    setSegments(providerSegments);
+    setChapterMediaDurationMs(null);
+    setActiveParagraph(nextIndex);
+    activeParagraphRef.current = nextIndex;
+    setPositionMs(0);
+    pendingSavedProgressRef.current = { paragraphIndex: nextIndex, positionMs: 0 };
+    pendingResumePositionRef.current = null;
+    finalSegmentEndedRef.current = complete;
+    if (complete) autoPlayRequestedRef.current = false;
+    setStatus(autoPlayRequestedRef.current ? "ready" : "paused");
+    setErrorMessage("");
+  };
 
   const speakBrowserParagraph = (paragraphIndex: number) => {
     if (!browserFallbackRef.current || !browserSpeechAvailable()) return;
@@ -519,6 +616,11 @@ export function StoryListeningExperience({
       if (generation !== playbackGenerationRef.current) return;
       const duration = segments.find((segment) => segment.paragraph_index === paragraphIndex)?.duration_ms ?? 0;
       persistProgress(paragraphIndex, duration, paragraphIndex === paragraphs.length - 1);
+      if (restoreProviderRef.current) {
+        restoreProviderRef.current = false;
+        restoreProvider(paragraphIndex + 1);
+        return;
+      }
       if (paragraphIndex < paragraphs.length - 1 && autoPlayRequestedRef.current) {
         const nextParagraph = paragraphIndex + 1;
         setActiveParagraph(nextParagraph);
@@ -609,7 +711,7 @@ export function StoryListeningExperience({
     if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
       const durationMs = Math.round(audio.duration * 1000);
       if (Number.isFinite(durationMs) && durationMs > 0) {
-        setChapterMediaDurationMs(durationMs);
+        if (mediaIsChapter) setChapterMediaDurationMs(durationMs);
       }
       if (pendingSavedProgressRef.current !== null) {
         const saved = pendingSavedProgressRef.current;
@@ -617,7 +719,7 @@ export function StoryListeningExperience({
           (segment) => segment.paragraph_index === saved.paragraphIndex,
         );
         if (savedSegment?.start_ms != null) {
-          pendingResumePositionRef.current = savedSegment.start_ms + saved.positionMs;
+          pendingResumePositionRef.current = (mediaIsChapter ? savedSegment.start_ms : 0) + saved.positionMs;
           pendingSavedProgressRef.current = null;
         }
       }
@@ -661,10 +763,12 @@ export function StoryListeningExperience({
   useEffect(() => {
     if (!queueAdvancePending || !sceneQueueMode) return;
     const nextSegment = segments
-      .filter((segment) => segment.paragraph_index > activeParagraph && segment.audio_url)
+      .filter((segment) => segment.paragraph_index === activeParagraph + 1 && segment.audio_url)
       .sort((left, right) => left.paragraph_index - right.paragraph_index)[0];
     if (!nextSegment) return;
     setQueueAdvancePending(false);
+    pendingSavedProgressRef.current = { paragraphIndex: nextSegment.paragraph_index, positionMs: 0 };
+    pendingResumePositionRef.current = null;
     setActiveParagraph(nextSegment.paragraph_index);
     activeParagraphRef.current = nextSegment.paragraph_index;
     setPositionMs(0);
@@ -675,7 +779,7 @@ export function StoryListeningExperience({
 
   const chooseParagraph = (index: number) => {
     const targetSegment = segments.find((segment) => segment.paragraph_index === index);
-    const targetPositionMs = targetSegment?.start_ms;
+    const targetPositionMs = sceneQueueMode && targetSegment?.audio_url !== providerChapterSource ? 0 : targetSegment?.start_ms;
     cancelActivePlayback();
     setActiveParagraph(index);
     activeParagraphRef.current = index;
@@ -697,6 +801,7 @@ export function StoryListeningExperience({
     if (
       audio &&
       activeAudioSource &&
+      targetSegment?.audio_url === activeAudioSource &&
       targetPositionMs != null &&
       audio.readyState >= HTMLMediaElement.HAVE_METADATA
     ) {
@@ -716,11 +821,13 @@ export function StoryListeningExperience({
     playRequestRef.current = null;
     playingAudioRef.current = null;
     playbackGenerationRef.current += 1;
-    if (sceneQueueMode) {
+    if (!mediaIsChapter && activeParagraph < paragraphs.length - 1) {
       const nextSegment = segments
         .filter((segment) => segment.paragraph_index > activeParagraph)
         .sort((left, right) => left.paragraph_index - right.paragraph_index)[0];
       if (nextSegment?.audio_url) {
+        pendingSavedProgressRef.current = { paragraphIndex: nextSegment.paragraph_index, positionMs: 0 };
+        pendingResumePositionRef.current = null;
         setActiveParagraph(nextSegment.paragraph_index);
         activeParagraphRef.current = nextSegment.paragraph_index;
         setPositionMs(0);
@@ -808,8 +915,8 @@ export function StoryListeningExperience({
         ? firstSegment
         : segments.at(-1)
     );
-    const paragraphIndex = timedSegment?.paragraph_index ?? activeParagraphRef.current;
-    const paragraphStartMs = timedSegment?.start_ms ?? 0;
+    const paragraphIndex = !mediaIsChapter ? activeParagraphRef.current : timedSegment?.paragraph_index ?? activeParagraphRef.current;
+    const paragraphStartMs = !mediaIsChapter ? 0 : timedSegment?.start_ms ?? 0;
     const milliseconds = Math.max(0, chapterMilliseconds - paragraphStartMs);
     if (paragraphIndex !== activeParagraphRef.current) {
       activeParagraphRef.current = paragraphIndex;
@@ -833,7 +940,7 @@ export function StoryListeningExperience({
       }
     }
     const now = Date.now();
-    if (now - lastProgressWriteRef.current >= 2_000) {
+    if (now - lastProgressWriteRef.current >= 5_000) {
       lastProgressWriteRef.current = now;
       persistProgress(paragraphIndex, milliseconds);
     }
@@ -867,7 +974,7 @@ export function StoryListeningExperience({
       cancelActivePlayback();
       autoPlayRequestedRef.current = false;
       setStatus("paused");
-      const startMs = currentSegment?.start_ms ?? elapsedBeforeCurrent;
+      const startMs = !mediaIsChapter ? 0 : currentSegment?.start_ms ?? elapsedBeforeCurrent;
       persistProgress(
         activeParagraph,
         Math.max(0, audio.currentTime * 1000 - startMs),
@@ -876,6 +983,10 @@ export function StoryListeningExperience({
     }
     autoPlayRequestedRef.current = true;
     if (finalSegmentEndedRef.current) {
+      if (sceneQueueMode) {
+        chooseParagraph(0);
+        return;
+      }
       audio.currentTime = 0;
       pendingResumePositionRef.current = 0;
       setPositionMs(0);
@@ -902,15 +1013,15 @@ export function StoryListeningExperience({
   const handleSeek = (event: ChangeEvent<HTMLInputElement>) => {
     const target = Number(event.target.value);
     const segment = segments.find((candidate, index) => {
-      const startMs = candidate.start_ms
+      const startMs = (sceneQueueMode ? undefined : candidate.start_ms)
         ?? segments
           .slice(0, index)
           .reduce((total, value) => total + segmentDuration(value), 0);
-      const endMs = candidate.end_ms ?? startMs + segmentDuration(candidate);
+      const endMs = (sceneQueueMode ? undefined : candidate.end_ms) ?? startMs + segmentDuration(candidate);
       return target >= startMs && (target < endMs || candidate === segments.at(-1));
     }) ?? segments.at(-1);
     if (!segment) return;
-    const startMs = segment.start_ms
+    const startMs = (sceneQueueMode ? undefined : segment.start_ms)
       ?? segments
         .filter((candidate) => candidate.paragraph_index < segment.paragraph_index)
         .reduce((total, value) => total + segmentDuration(value), 0);
@@ -934,7 +1045,8 @@ export function StoryListeningExperience({
     activeParagraphRef.current = segment.paragraph_index;
     setPositionMs(paragraphPositionMs);
     pendingSavedProgressRef.current = null;
-    pendingResumePositionRef.current = target;
+    const targetIsChapter = !sceneQueueMode || segment.audio_url === providerChapterSource;
+    pendingResumePositionRef.current = targetIsChapter ? target : paragraphPositionMs;
     autoPlayRequestedRef.current = wasPlaying;
     finalSegmentEndedRef.current = false;
     setNetworkRetryRequired(false);
@@ -943,10 +1055,11 @@ export function StoryListeningExperience({
     if (
       audio &&
       activeAudioSource &&
+      segment.audio_url === activeAudioSource &&
       isCurrentAudio(audio, activeAudioSource) &&
       audio.readyState >= HTMLMediaElement.HAVE_METADATA
     ) {
-      audio.currentTime = target / 1000;
+      audio.currentTime = (targetIsChapter ? target : paragraphPositionMs) / 1000;
       pendingResumePositionRef.current = null;
       if (wasPlaying) playAudio(audio, activeAudioSource, true);
     }
@@ -977,13 +1090,16 @@ export function StoryListeningExperience({
     const audio = audioRef.current;
     cancelActivePlayback();
     if (audio) {
-      const startMs = currentSegment?.start_ms ?? elapsedBeforeCurrent;
+      const startMs = !mediaIsChapter ? 0 : currentSegment?.start_ms ?? elapsedBeforeCurrent;
       persistProgress(
         activeParagraph,
         Math.max(0, audio.currentTime * 1000 - startMs),
+        false,
+        true,
       );
     }
     generationRef.current += 1;
+    pollControllerRef.current?.abort();
     autoPlayRequestedRef.current = false;
     setStatus("paused");
     return onSelectChoice(index);
@@ -1009,7 +1125,7 @@ export function StoryListeningExperience({
     }
     const durationMs = Math.round(audio.duration * 1000);
     if (Number.isFinite(durationMs) && durationMs > 0) {
-      setChapterMediaDurationMs(durationMs);
+      if (mediaIsChapter) setChapterMediaDurationMs(durationMs);
     }
     if (pendingSavedProgressRef.current !== null) {
       const saved = pendingSavedProgressRef.current;
@@ -1017,7 +1133,7 @@ export function StoryListeningExperience({
         (segment) => segment.paragraph_index === saved.paragraphIndex,
       );
       if (savedSegment?.start_ms != null) {
-        pendingResumePositionRef.current = savedSegment.start_ms + saved.positionMs;
+        pendingResumePositionRef.current = (mediaIsChapter ? savedSegment.start_ms : 0) + saved.positionMs;
         pendingSavedProgressRef.current = null;
       }
     }
@@ -1220,6 +1336,18 @@ export function StoryListeningExperience({
           {errorMessage ? (
             <p role="status" className={cn("mt-4 text-center text-sm", status === "failed" ? "text-[var(--danger-foreground)]" : "text-[var(--text-secondary)]")}>{errorMessage}</p>
           ) : null}
+          {connectionRetrying ? <p role="status" className="mt-4 text-center text-sm">连接较慢，正在重试；已缓存的语音仍可播放</p> : null}
+          {!browserFallback && (providerFailed || connectionRetrying || (status === "preparing" && jobId !== null)) && browserSpeechAvailable() ? (
+            <Button type="button" variant="quiet" onClick={enableBrowserFallback}>使用系统朗读</Button>
+          ) : null}
+          {browserFallback && providerReady ? (
+            <Button type="button" variant="quiet" onClick={() => {
+              if (status === "playing" && browserUtteranceRef.current) {
+                restoreProviderRef.current = true;
+                setErrorMessage("将在当前段落结束后恢复原音色");
+              } else restoreProvider(activeParagraphRef.current);
+            }}>恢复原音色</Button>
+          ) : null}
           {networkRetryVisible ? (
             <Button
               type="button"
@@ -1230,7 +1358,7 @@ export function StoryListeningExperience({
             >
               网络不稳定，继续朗读
             </Button>
-          ) : status === "failed" && jobId ? (
+          ) : providerFailed ? (
             <Button
               type="button"
               variant="narrative"

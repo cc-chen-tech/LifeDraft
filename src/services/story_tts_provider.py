@@ -23,6 +23,10 @@ class TTSProviderUnavailableError(RuntimeError):
     """Raised when high-quality narration cannot be produced."""
 
 
+class TTSSynthesisCancelled(RuntimeError):
+    """Cooperative worker shutdown; retain completed audio for a later attempt."""
+
+
 @dataclass(frozen=True)
 class StoryTTSProviderMetadata:
     provider: str

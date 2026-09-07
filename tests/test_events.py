@@ -49,8 +49,8 @@ class TestEventGenerator:
     def test_generate_event_mock(self, mock_openai_class):
         """Test event generation with mocked API."""
         # Mock API response
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
+        mock_response = Mock(usage=None)
+        mock_response.choices = [Mock(finish_reason="stop")]
         mock_response.choices[0].message.content = """{
             "event_description": "A test event",
             "options": [

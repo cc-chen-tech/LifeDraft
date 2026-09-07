@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from uuid import uuid4
+from time import monotonic, sleep
 
 from fastapi.testclient import TestClient
 
@@ -61,7 +62,12 @@ def test_read_route_queues_background_paragraph_generation(monkeypatch) -> None:
             assert queued["status"] == "queued"
             assert len(queued["segments"]) == 2
 
-            recovered = client.get(f"/api/voice-reading/jobs/{queued['job_id']}")
+            deadline = monotonic() + 5
+            while True:
+                recovered = client.get(f"/api/voice-reading/jobs/{queued['job_id']}")
+                if recovered.json()["status"] in {"ready", "failed"} or monotonic() >= deadline:
+                    break
+                sleep(0.01)
             assert recovered.status_code == 200
             assert recovered.json()["status"] == "ready"
             assert all(segment["audio_url"] for segment in recovered.json()["segments"])

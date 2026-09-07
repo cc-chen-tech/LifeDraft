@@ -34,6 +34,7 @@ from src.services.story_tts_provider import (
     ProgressCallback,
     StoryTTSProviderMetadata,
     TTSProviderUnavailableError,
+    TTSSynthesisCancelled,
     build_deterministic_wav,
 )
 
@@ -81,33 +82,58 @@ class MiniMaxWebSocketTTSClient:
         from websockets.sync.client import connect
 
         audio_chunks: list[bytes] = []
+        deadline = time.monotonic() + self.config.request_timeout_seconds
+        next_heartbeat = time.monotonic() + 5.0
         with connect(
             self.config.tts_websocket_url,
             additional_headers={"Authorization": f"Bearer {self.config.api_key or ''}"},
-            open_timeout=self.config.request_timeout_seconds,
-            close_timeout=self.config.request_timeout_seconds,
+            open_timeout=min(10.0, self.config.request_timeout_seconds),
+            close_timeout=min(1.0, self.config.request_timeout_seconds),
         ) as websocket:
+            def receive(phase: str, audio_deadline: Optional[float] = None) -> Any:
+                nonlocal next_heartbeat
+                idle_deadline = min(deadline, audio_deadline if audio_deadline is not None else time.monotonic() + 15.0)
+                while True:
+                    now = time.monotonic()
+                    remaining = min(deadline, idle_deadline) - now
+                    if remaining <= 0:
+                        raise TimeoutError(f"MiniMax WebSocket timed out during {phase}")
+                    if now >= next_heartbeat:
+                        _report_progress(on_progress)
+                        next_heartbeat = time.monotonic() + 5.0
+                        continue
+                    try:
+                        message = websocket.recv(timeout=min(remaining, next_heartbeat - now))
+                    except TimeoutError:
+                        # Keep the lease alive during a bounded wait, without
+                        # allowing heartbeat messages to extend the total deadline.
+                        continue
+                    result = json.loads(str(message))
+                    _raise_for_base_resp(result)
+                    return result
+
             # MiniMax WebSocket protocol: connected_success, task_start,
             # task_started, task_continue, audio chunks, task_finished. The
             # task_finish close signal is sent only after the final audio frame;
             # sending it after the first chunk can truncate the MP3 stream.
-            connected = json.loads(str(websocket.recv()))
+            connected = receive("connection")
             if str(connected.get("event") or connected.get("status") or "") not in {
                 "connected_success",
                 "connected",
             }:
                 raise RuntimeError("MiniMax WebSocket did not confirm connection")
             websocket.send(_json_dumps({"event": "task_start", **dict(payload)}))
-            started = json.loads(str(websocket.recv()))
+            started = receive("task_start")
             if str(started.get("event") or "") != "task_started":
                 raise RuntimeError("MiniMax WebSocket did not start the task")
             websocket.send(_json_dumps({"event": "task_continue", "text": payload.get("text", "")}))
+            audio_deadline = time.monotonic() + 15.0
             for _ in range(10000):
-                message = websocket.recv()
-                payload_obj = json.loads(str(message))
+                payload_obj = receive("audio", audio_deadline)
                 audio_hex = _extract_audio_hex(payload_obj)
                 if audio_hex:
                     audio_chunks.append(bytes.fromhex(audio_hex))
+                    audio_deadline = time.monotonic() + 15.0
                 if _is_done_message(payload_obj):
                     if _is_final_audio_message(payload_obj):
                         websocket.send(_json_dumps({"event": "task_finish"}))
@@ -378,6 +404,7 @@ class MiniMaxTTSProvider:
         speed: float,
         on_progress: Optional[ProgressCallback] = None,
     ) -> GeneratedSpeech:
+        _report_progress(on_progress)
         if not self.config.api_key and not self.config.local_audio_enabled:
             raise TTSProviderUnavailableError("MiniMax TTS is not configured")
 
@@ -467,6 +494,8 @@ class MiniMaxTTSProvider:
                     temporary_path.unlink(missing_ok=True)
                 if temporary_subtitle is not None:
                     temporary_subtitle.unlink(missing_ok=True)
+                if isinstance(error, TTSSynthesisCancelled):
+                    raise
                 raise TTSProviderUnavailableError("MiniMax TTS generation failed") from error
         else:
             paragraph_cues = self._paragraph_cues(context, subtitle_text, duration_ms)
@@ -489,6 +518,7 @@ class MiniMaxTTSProvider:
         on_progress: Optional[ProgressCallback] = None,
     ) -> GeneratedSpeech:
         """Generate one independently cacheable scene for queue playback."""
+        _report_progress(on_progress)
         scene_context = dict(context)
         scene_text = str(scene_context.get("text") or "").strip()
         scene_context["text"] = scene_text
@@ -532,6 +562,7 @@ class MiniMaxTTSProvider:
                 self.websocket_client.synthesize_to_file(
                     payload, temporary_path, on_progress=on_progress
                 )
+                _report_progress(on_progress)
                 pause_after_ms = int(scene_context.get("pause_after_ms") or 0)
                 if pause_after_ms > 0:
                     padded_descriptor, padded_name = tempfile.mkstemp(
@@ -547,6 +578,7 @@ class MiniMaxTTSProvider:
                             padded_path,
                             pause_after_ms,
                             timeout_seconds=self.config.request_timeout_seconds,
+                            on_progress=on_progress,
                         )
                         os.replace(padded_path, temporary_path)
                     finally:
@@ -568,6 +600,8 @@ class MiniMaxTTSProvider:
                         error=error,
                     )
                 temporary_path.unlink(missing_ok=True)
+                if isinstance(error, TTSSynthesisCancelled):
+                    raise
                 raise TTSProviderUnavailableError(
                     "MiniMax WebSocket scene TTS generation failed"
                 ) from error
@@ -590,10 +624,12 @@ class MiniMaxTTSProvider:
         on_progress: Optional[ProgressCallback] = None,
     ) -> GeneratedSpeech:
         """Concatenate validated scene MP3s into the reusable chapter asset."""
+        _report_progress(on_progress)
         if self.config.local_audio_enabled:
             return self.synthesize(context, voice_id, speed, on_progress=on_progress)
         scene_paths: list[Path] = []
         for storage_path in scene_storage_paths:
+            _report_progress(on_progress)
             file_name = Path(urlparse(storage_path).path).name
             path = (self.config.voice_asset_dir / file_name).resolve()
             path.relative_to(self.config.voice_asset_dir.resolve())
@@ -635,7 +671,7 @@ class MiniMaxTTSProvider:
                 ffmpeg_binary = shutil.which("ffmpeg")
                 if ffmpeg_binary is None:
                     raise FileNotFoundError("ffmpeg is required to assemble scene audio")
-                subprocess.run(  # nosec B603 - fixed argv and validated local paths
+                _run_ffmpeg(
                     [
                         ffmpeg_binary,
                         "-nostdin",
@@ -650,14 +686,14 @@ class MiniMaxTTSProvider:
                         "copy",
                         str(temporary_path),
                     ],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    timeout=self.config.request_timeout_seconds,
+                    timeout_seconds=self.config.request_timeout_seconds,
+                    on_progress=on_progress,
                 )
                 os.replace(temporary_path, output_path)
             except Exception as error:
                 temporary_path.unlink(missing_ok=True)
+                if isinstance(error, TTSSynthesisCancelled):
+                    raise
                 raise TTSProviderUnavailableError(
                     "MiniMax scene assembly failed"
                 ) from error
@@ -667,6 +703,7 @@ class MiniMaxTTSProvider:
         cues: list[ParagraphCue] = []
         cursor = 0
         for index, path in enumerate(scene_paths):
+            _report_progress(on_progress)
             scene_duration = _validated_audio_duration_ms(path, "mp3")
             cues.append(ParagraphCue(index, cursor, cursor + scene_duration))
             cursor += scene_duration
@@ -771,19 +808,53 @@ def _validated_audio_duration_ms(audio_path: Path, extension: str) -> int:
     return max(1, int(round(float(duration_seconds) * 1000)))
 
 
+def _run_ffmpeg(
+    argv: list[str], *, timeout_seconds: float, on_progress: Optional[ProgressCallback]
+) -> None:
+    """Poll progress while owning, and always reap, the audio conversion child."""
+    _report_progress(on_progress)
+    deadline = time.monotonic() + timeout_seconds
+    with subprocess.Popen(  # nosec B603 - fixed ffmpeg argv, no shell
+        argv, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+    ) as process:
+        try:
+            while True:
+                _report_progress(on_progress)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(argv, timeout_seconds)
+                try:
+                    _, stderr = process.communicate(timeout=min(5.0, remaining))
+                except subprocess.TimeoutExpired:
+                    continue
+                if process.returncode:
+                    raise subprocess.CalledProcessError(process.returncode, argv, stderr=stderr)
+                _report_progress(on_progress)
+                return
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.communicate(timeout=1)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate()
+
+
 def _append_silence_to_mp3(
     input_path: Path,
     output_path: Path,
     pause_after_ms: int,
     *,
     timeout_seconds: float,
+    on_progress: Optional[ProgressCallback] = None,
 ) -> None:
     """Append a planned scene pause while keeping the cached asset self-contained."""
     pause_seconds = max(0.0, float(pause_after_ms) / 1000.0)
     ffmpeg_binary = shutil.which("ffmpeg")
     if ffmpeg_binary is None:
         raise FileNotFoundError("ffmpeg is required to append scene silence")
-    subprocess.run(  # nosec B603 - fixed argv and validated temporary paths
+    _run_ffmpeg(
         [
             ffmpeg_binary,
             "-nostdin",
@@ -806,10 +877,8 @@ def _append_silence_to_mp3(
             "128k",
             str(output_path),
         ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        timeout=timeout_seconds,
+        timeout_seconds=timeout_seconds,
+        on_progress=on_progress,
     )
 
 
