@@ -32,6 +32,94 @@ def test_entity_recognition_history_includes_current_unresolved_event() -> None:
     ]
 
 
+def test_entity_recognition_history_prefers_daily_history_and_deduplicates_current_event() -> None:
+    """每日时间线的完整历史必须进入识别，当前事件不能重复计算。"""
+    from src.api.routers.collection import _build_entity_recognition_history
+
+    player_state = SimpleNamespace(
+        round_history=[
+            {
+                "week": 99,
+                "round": 0,
+                "event_description": "不应混入每日时间线的旧结构记录。",
+            }
+        ],
+        day_history=[
+            {
+                "event_id": "day-0",
+                "day_index": 0,
+                "story_date": "2026-08-01",
+                "event_description": "孙悟空在花果山取回金箍棒。",
+                "choice": "继续赶路",
+            },
+            {
+                "event_id": "day-1",
+                "day_index": 1,
+                "story_date": "2026-08-02",
+                "event_description": "杨戬在东海龙宫留下线索。",
+            },
+        ],
+        week=0,
+        current_round=0,
+        current_event_data={
+            "event_id": "day-1",
+            "event_description": "杨戬在东海龙宫留下线索。",
+        },
+    )
+
+    history = _build_entity_recognition_history(player_state)
+
+    assert [entry["event_id"] for entry in history] == ["day-0", "day-1"]
+    assert "不应混入每日时间线" not in str(history)
+
+
+def test_entity_recognition_history_falls_back_when_daily_history_has_no_story() -> None:
+    """空的每日占位记录不能遮蔽仍有内容的旧回合历史。"""
+    from src.services.entity_recognition_history import build_entity_recognition_history
+
+    player_state = SimpleNamespace(
+        day_history=[{"day_index": 0, "story_date": "2026-08-01"}],
+        round_history=[
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": "孙悟空在花果山取回金箍棒。",
+            }
+        ],
+        current_event_data=None,
+    )
+
+    history = build_entity_recognition_history(player_state)
+
+    assert history == player_state.round_history
+
+
+def test_entity_recognition_history_deduplicates_same_story_with_new_event_id() -> None:
+    """同一正文即使事件 ID 变化，也不能被重复统计。"""
+    from src.services.entity_recognition_history import build_entity_recognition_history
+
+    player_state = SimpleNamespace(
+        day_history=[
+            {
+                "event_id": "day-1-old",
+                "day_index": 1,
+                "event_description": "杨戬在东海龙宫留下线索。",
+            }
+        ],
+        round_history=[],
+        week=0,
+        current_round=1,
+        current_event_data={
+            "event_id": "day-1-new",
+            "event_description": "杨戬在东海龙宫留下线索。",
+        },
+    )
+
+    history = build_entity_recognition_history(player_state)
+
+    assert len(history) == 1
+
+
 def test_recognition_eligibility_includes_current_event_relationships_and_story_roles() -> None:
     """当前事件和剧情元数据中的人物应进入智能识别候选白名单。"""
     from src.api.routers.collection import _build_eligible_recognition_characters

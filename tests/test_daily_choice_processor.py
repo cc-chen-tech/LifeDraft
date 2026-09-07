@@ -477,6 +477,58 @@ def test_daily_background_worker_applies_updates_entities_and_persists() -> None
     assert record["postprocessing_status"] == "complete"
     assert record["summary"] == "雨夜书铺的摘要"
     assert record["postprocessing"]["entities"]["items"][0]["name"] == "旧钥匙"
+    assert record["postprocessing"]["entities_materialized"]["added_items"] == ["旧钥匙"]
+    assert record["postprocessing"]["entities_materialized"]["added_landmarks"] == ["河边仓库"]
+    assert "旧钥匙" in loop.player_state.items
+    assert "河边仓库" in loop.player_state.landmarks
     assert loop.player_state.established_facts[-1]["subject"] == "旧钥匙"
     assert loop.player_state.pending_storylines[-1]["description"] == "追查旧钥匙"
     assert persisted == [True]
+
+
+def test_daily_background_worker_does_not_leave_complete_status_after_save_failure() -> None:
+    """实体已计算但保存失败时，记录必须保持可重试状态。"""
+    class StoryService:
+        def compress_narrative(self, *args, **kwargs):
+            return {"summary": "摘要", "storyline_updates": []}
+
+        def extract_world_updates(self, *args, **kwargs):
+            return {
+                "fact_updates": [],
+                "foreshadowing_seeds": [],
+                "habit_updates": [],
+                "location_updates": [],
+                "career_updates": [],
+                "commitment_updates": [],
+                "causal_updates": [],
+            }
+
+    loop = object.__new__(GameLoop)
+    loop.player_state = _state(day_index=1)
+    loop.player_state.day_history = [
+        {
+            "event_id": "day-0-event",
+            "revision": 1,
+            "day_index": 0,
+            "story_date": "2026-08-13",
+            "event_description": "林舟在雨夜书铺发现旧钥匙。",
+            "choice": "追查钥匙",
+            "postprocessing_status": "pending",
+            "summary_milestones": [],
+        }
+    ]
+    loop.story_service = StoryService()
+    loop._recognize_daily_entities = lambda _record: {
+        "items": [{"name": "旧钥匙"}],
+        "characters": [],
+        "landmarks": [],
+    }
+    persist_attempts = []
+    loop._daily_postprocess_persist_callback = lambda: persist_attempts.append(True) or False
+
+    loop._process_daily_record("day-0-event")
+
+    record = loop.player_state.day_history[0]
+    assert record["postprocessing_status"] == "failed"
+    assert "persistence" in record["postprocessing_error"]
+    assert len(persist_attempts) == 2

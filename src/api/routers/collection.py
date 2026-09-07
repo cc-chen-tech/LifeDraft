@@ -56,39 +56,11 @@ def _save_player_state(game_id: int, player_state: PlayerState) -> None:
 
 def _build_entity_recognition_history(player_state: Any) -> List[Dict[str, Any]]:
     """构建实体识别输入，包含当前未选择但已展示的故事。"""
-    history = list(getattr(player_state, "round_history", None) or [])
-    current_event_data = getattr(player_state, "current_event_data", None) or {}
-    if not isinstance(current_event_data, dict):
-        return history
-
-    event_description = (
-        current_event_data.get("event_description")
-        or current_event_data.get("story_text")
-        or ""
+    from src.services.entity_recognition_history import (
+        build_entity_recognition_history,
     )
-    if not event_description:
-        return history
 
-    current_week = getattr(player_state, "week", 0)
-    current_round = getattr(player_state, "current_round", 0)
-    has_current_round_story = any(
-        entry.get("week") == current_week
-        and entry.get("round") == current_round
-        and (entry.get("event_description") or entry.get("story_continuation"))
-        for entry in history
-        if isinstance(entry, dict)
-    )
-    if has_current_round_story:
-        return history
-
-    history.append(
-        {
-            "week": current_week,
-            "round": current_round,
-            "event_description": event_description,
-        }
-    )
-    return history
+    return build_entity_recognition_history(player_state)
 
 
 def _extract_named_entities_from_settings(values: Any) -> List[str]:
@@ -166,7 +138,9 @@ def _build_eligible_recognition_characters(player_state: Any) -> List[str]:
             if clean_name and clean_name not in eligible:
                 eligible.append(clean_name)
 
-    for entry in getattr(player_state, "round_history", None) or []:
+    from src.services.entity_recognition_history import build_entity_recognition_history
+
+    for entry in build_entity_recognition_history(player_state):
         if isinstance(entry, dict):
             _extend_relationship_effect_names(eligible, entry.get("effects"))
 

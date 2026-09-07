@@ -17,9 +17,8 @@ from src.api.schemas import (CharacterCollectionItem, CollectionResponse,
 from src.ai.image_exceptions import ImageProviderError
 from src.database.models import Game
 from src.database.models import Image as ImageModel
-from src.game.state import CharacterState, PlayerState
+from src.game.state import PlayerState
 from src.game.state.item_state import ItemState
-from src.game.state.landmark_state import LandmarkState
 from src.services.image_service import (ImageProviderServiceError,
                                         ImageService)
 from src.services.image_storage import ImageStorageService
@@ -825,83 +824,22 @@ class CollectionService:
         Returns:
             {"added_items": [...], "added_characters": [...], "added_landmarks": [...]}
         """
-        added_items = []
-        added_characters = []
-        added_landmarks = []
+        from src.services.entity_recognition_materializer import (
+            materialize_recognized_entities,
+        )
 
-        character_settings = player_state.character_settings or {}
-        player_name = player_state.player_name or character_settings.get("player_name", "")
-
-        # 添加人物
-        for character_data in characters or []:
-            character_name = character_data.get("name")
-            if (
-                character_name
-                and character_name != player_name
-                and character_name not in player_state.characters
-            ):
-                character = CharacterState(
-                    name=character_name,
-                    role=character_data.get("role", "故事人物"),
-                    relationship_desc=character_data.get("description", ""),
-                    affinity=character_data.get("affinity", 50),
-                )
-                player_state.add_character(character)
-                added_characters.append(character_name)
-                logger.info(f"Added character from recognition: {character_name}")
-
-        # 添加物品
-        for item_data in items:
-            item_name = item_data.get("name")
-            if item_name and item_name not in player_state.items:
-                item = ItemState(
-                    name=item_name,
-                    description=item_data.get("description", ""),
-                    importance=item_data.get("importance", "normal"),
-                    category=item_data.get("category", "other"),
-                    acquired_week=player_state.week,
-                    acquired_context=(
-                        item_data.get("appear_contexts", [""])[0]
-                        if item_data.get("appear_contexts")
-                        else ""
-                    ),
-                    is_key_item=(item_data.get("importance") == "critical"),
-                    image_generated=False,
-                    description_generated=True,
-                )
-                player_state.add_item(item)
-                added_items.append(item_name)
-                logger.info(f"Added item from recognition: {item_name}")
-
-        # 添加地点
-        for landmark_data in landmarks:
-            landmark_name = landmark_data.get("name")
-            if landmark_name and landmark_name not in player_state.landmarks:
-                landmark = LandmarkState(
-                    name=landmark_name,
-                    description=landmark_data.get("description", ""),
-                    category=landmark_data.get("category", "other"),
-                    importance=landmark_data.get("importance", "normal"),
-                    first_appear_week=player_state.week,
-                    appear_count=landmark_data.get("appear_count", 1),
-                    last_appear_week=player_state.week,
-                    context=(
-                        landmark_data.get("appear_contexts", [""])[0]
-                        if landmark_data.get("appear_contexts")
-                        else ""
-                    ),
-                    is_key_location=(landmark_data.get("importance") == "critical"),
-                    image_generated=False,
-                )
-                player_state.add_landmark(landmark)
-                added_landmarks.append(landmark_name)
-                logger.info(f"Added landmark from recognition: {landmark_name}")
-
-        return {
-            "added_items": added_items,
-            "added_characters": added_characters,
-            "added_landmarks": added_landmarks,
-        }
+        result = materialize_recognized_entities(
+            player_state,
+            {"items": items, "characters": characters or [], "landmarks": landmarks},
+        )
+        for entity_type, names in (
+            ("item", result["added_items"]),
+            ("character", result["added_characters"]),
+            ("landmark", result["added_landmarks"]),
+        ):
+            for name in names:
+                logger.info("Added %s from recognition: %s", entity_type, name)
+        return result
 
     def create_item(
         self,
