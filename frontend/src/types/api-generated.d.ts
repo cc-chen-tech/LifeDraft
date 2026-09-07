@@ -3271,7 +3271,7 @@ export interface components {
             tts_provider: string;
             /**
              * Tts Model
-             * @default speech-2.8-turbo
+             * @default speech-2.8-hd
              */
             tts_model: string;
             /**

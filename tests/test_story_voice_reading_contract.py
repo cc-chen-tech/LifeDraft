@@ -127,7 +127,7 @@ def test_voice_settings_contract_supports_reading_defaults() -> None:
     assert "getSettings" in FRONTEND_API
     assert "updateSettings" in FRONTEND_API
     assert "requestReading" in FRONTEND_API
-    assert defaults.tts_model == "speech-2.8-turbo"
+    assert defaults.tts_model == "speech-2.8-hd"
 
 
 def test_daily_listener_uses_chapter_audio_with_browser_speech_fallback() -> None:
