@@ -786,7 +786,7 @@ def test_env_example_documents_minimax_production_audio_settings() -> None:
 
     required_lines = [
         "MINIMAX_API_KEY=",
-        "MINIMAX_TTS_MODEL=speech-2.8-turbo",
+        "MINIMAX_TTS_MODEL=speech-2.8-hd",
         "MINIMAX_TIMEOUT_SECONDS=180",
         "MINIMAX_TTS_MAX_CHARS=50000",
         "STORY_TTS_PROVIDER=minimax",

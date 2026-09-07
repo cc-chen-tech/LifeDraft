@@ -21,10 +21,10 @@ def _config(tmp_path: Path, env: dict[str, str]) -> MiniMaxConfig:
     )
 
 
-def test_minimax_tts_defaults_to_current_turbo_model(tmp_path: Path) -> None:
+def test_minimax_tts_defaults_to_current_hd_model(tmp_path: Path) -> None:
     config = _config(tmp_path, {})
 
-    assert config.tts_model == "speech-2.8-turbo"
+    assert config.tts_model == "speech-2.8-hd"
 
 
 def test_missing_minimax_credential_reports_unavailable_without_fallback(tmp_path: Path) -> None:

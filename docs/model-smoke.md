@@ -9,17 +9,20 @@
 - required reviewers（至少一名发布审核人）；
 - `OPENAI_API_KEY`；
 - `MINIMAX_API_KEY`。
+- 可选独立图片凭证 `IMAGE_API_KEY`，未配置时使用 `MINIMAX_API_KEY`。
 
 两个 key 只能放在这个 Environment 的 Secrets 中。不要写入仓库、`.env`、普通 CI 变量或 Playwright fixture。
 
-手动执行 `Model Smoke` workflow 时，可以通过 `ref` 指定 branch、tag 或 commit；发布事件会自动使用 release tag。workflow 会显式关闭确定性故事、local image 和 local audio，并使用独立数据库、独立端口和固定合成 fixture。
+Environment Variables 可配置 `OPENAI_BASE_URL`、`OPENAI_MODEL`、`IMAGE_API_BASE_URL`、`IMAGE_MODEL` 和 `MINIMAX_TTS_MODEL`。默认分别使用 DeepSeek API 的 `deepseek-v4-flash`、MiniMax API 的 `image-01` 和 `speech-2.8-hd`。
+
+手动执行 `Model Smoke` 时，workflow 的运行分支/tag 必须是候选版本。可选 `ref` 输入用于校验候选 branch、tag 或 commit 与本次运行的 `head_sha` 一致，不能用于替换实际 checkout。发布事件使用 release 对应的 SHA。workflow 会显式关闭确定性故事、local image 和 local audio，并使用独立数据库、独立端口和固定合成 fixture。
 
 ## 发布流程
 
-1. 在候选 commit 上手动运行 `Model Smoke`，或发布候选 release 触发它。
+1. main 的 E2E 成功后，发布 workflow 先确认全部普通 CI 通过，再手动触发受保护的 `Model Smoke`。候选版本已被新 main 替代时不再触发；触发期间发生更新会被 SHA 校验拒绝。也可在候选版本上手动运行 smoke，或发布候选 release 触发它。
 2. 检查 workflow 产物 `smoke-summary.json`、`model-events.jsonl`、后端 JSONL 日志、Playwright trace 和 screenshot。
 3. 确认四个检查均通过：文本生成与约束、图片落库与资源访问、TTS 落库与可播放、Daily World Projection 落库与 attempt 终态。
-4. 让生产部署 workflow 使用同一个 commit。部署门禁会按 `head_sha` 查找成功的 `Model Smoke`；没有同 SHA 的成功 smoke，部署会等待并最终失败。
+4. `Model Smoke` 成功后自动触发生产部署 workflow，重新核验同一 commit 的所有门禁。部署门禁会按 `head_sha` 查找成功的 smoke；即使手动强制部署，也必须通过同 SHA 的 smoke。部署会从 `.env.example` 同步 `MINIMAX_TTS_MODEL=speech-2.8-hd` 到生产环境。
 
 普通 provider 重试会在报告中标记 `provider_retry_observed`。任何 fallback 都会产生 `fallback_requires_manual_confirmation`，即使最终输出成功也不能直接发布。未分类异常、空结果、非法结构、无法读取的资源、不可播放音频、超时或最终失败都会阻止发布。
 

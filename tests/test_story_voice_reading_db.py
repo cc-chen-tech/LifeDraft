@@ -330,7 +330,10 @@ def test_process_job_regenerates_missing_or_corrupt_v3_cached_assets(tmp_path) -
         repository = StoryVoiceReadingRepository(session)
         provider = MiniMaxTTSProvider(
             config=MiniMaxConfig.from_env(
-                env={"MINIMAX_E2E_LOCAL_AUDIO": "true"},
+                env={
+                    "MINIMAX_E2E_LOCAL_AUDIO": "true",
+                    "MINIMAX_TTS_MODEL": "speech-2.8-turbo",
+                },
                 voice_asset_dir=tmp_path / "voice",
             )
         )
