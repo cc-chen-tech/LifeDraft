@@ -378,6 +378,68 @@ describe("StoryListeningExperience", () => {
     expect(voiceApi.updateProgress).toHaveBeenLastCalledWith(expect.objectContaining({ paragraph_index: 1, position_ms: paragraphIndex === 0 ? 500 : 2500 }));
   });
 
+  it.each([
+    { intent: "selection", localMs: 0, bufferedMetadata: false },
+    { intent: "seek", localMs: 2000, bufferedMetadata: false },
+    { intent: "recovery", localMs: 2500, bufferedMetadata: false },
+    { intent: "selection", localMs: 0, bufferedMetadata: true },
+    { intent: "seek", localMs: 2000, bufferedMetadata: true },
+    { intent: "recovery", localMs: 2500, bufferedMetadata: true },
+  ])("rebases pending scene $intent onto replacement chapter cues (bufferedMetadata=$bufferedMetadata)", async ({ intent, localMs, bufferedMetadata }) => {
+    jest.useFakeTimers();
+    const completion = deferred<Awaited<ReturnType<typeof api.voice_reading.getJob>>>();
+    const scenes = [
+      { ...segments[0], audio_url: "/first.mp3" },
+      { ...segments[1], start_ms: 0, end_ms: 5000, audio_url: "/second.mp3" },
+    ];
+    voiceApi.getProgress.mockResolvedValueOnce({ paragraph_index: intent === "recovery" ? 1 : 0, position_ms: 0 } as never);
+    voiceApi.requestReading.mockResolvedValueOnce({ job_id: 19, status: "failed", segments: scenes } as never);
+    voiceApi.requestReading.mockResolvedValueOnce({ job_id: 19, status: "processing", segments: scenes } as never);
+    voiceApi.getJob.mockReturnValueOnce(completion.promise);
+    renderExperience();
+    const original = await waitFor(() => {
+      expect(document.querySelector("audio")).toHaveAttribute("src", intent === "recovery" ? "/second.mp3" : "/first.mp3");
+      return document.querySelector("audio")!;
+    });
+    Object.defineProperty(original, "duration", { configurable: true, value: intent === "recovery" ? 5 : 4 });
+    fireEvent.loadedMetadata(original);
+    original.currentTime = intent === "recovery" ? 2.5 : 1;
+    fireEvent.playing(original);
+    fireEvent.click(screen.getByRole("button", { name: "重试高质量语音" }));
+    await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalled());
+
+    if (intent === "selection") {
+      fireEvent.click(screen.getByRole("button", { name: "查看正文" }));
+      fireEvent.click(screen.getByRole("button", { name: "从第 2 段开始朗读" }));
+    } else if (intent === "seek") {
+      fireEvent.change(screen.getByRole("slider"), { target: { value: "6000" } });
+    } else {
+      fireEvent.stalled(original);
+      await act(async () => { await jest.advanceTimersByTimeAsync(8000); });
+      expect(load).toHaveBeenCalledTimes(1);
+      original.currentTime = 0;
+    }
+    expect(document.querySelector("audio")).toHaveAttribute("src", "/second.mp3");
+    if (bufferedMetadata) {
+      jest.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(HTMLMediaElement.HAVE_METADATA);
+      jest.spyOn(HTMLMediaElement.prototype, "duration", "get").mockReturnValue(9);
+    }
+    await act(async () => completion.resolve({ job_id: 19, status: "ready", audio_url: "/chapter.mp3", segments: segments.map(segment => ({ ...segment, audio_url: "/chapter.mp3", asset_id: 3 })) } as never));
+    const chapter = document.querySelector("audio")!;
+    expect(chapter).toHaveAttribute("src", "/chapter.mp3");
+    if (!bufferedMetadata) {
+      Object.defineProperty(chapter, "duration", { configurable: true, value: 9 });
+      fireEvent.loadedMetadata(chapter);
+    }
+    expect(chapter.currentTime).toBe((4000 + localMs) / 1000);
+    expect(screen.getByText("第 2 段")).toBeInTheDocument();
+    expect(screen.getByRole("slider")).toHaveValue(String(4000 + localMs));
+    fireEvent.playing(chapter);
+    fireEvent.click(screen.getByRole("button", { name: "暂停朗读" }));
+    await act(async () => {});
+    expect(voiceApi.updateProgress).toHaveBeenLastCalledWith(expect.objectContaining({ game_id: 42, day_index: 7, text_hash: "chapter-text-hash", paragraph_index: 1, position_ms: localMs }));
+  });
+
   it("coalesces progress while a write is in flight and does not interrupt playback on failure", async () => {
     jest.spyOn(console, "warn").mockImplementation();
     const write = deferred<Awaited<ReturnType<typeof api.voice_reading.updateProgress>>>();

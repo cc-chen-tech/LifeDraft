@@ -286,11 +286,27 @@ def test_worker_has_no_waiting_future_queue_and_recovers_unscheduled_jobs(voice_
         with voice_db() as db:
             assert db.get(VoiceReadingJob, ids[2]).status == "queued"
         release.set()
+        # stop() now requests cancellation; observe completion explicitly when
+        # this admission test needs a fully finished job, rather than draining.
+        from time import monotonic
+
+        deadline = monotonic() + 3
+        while monotonic() < deadline:
+            with voice_db() as db:
+                if all(db.get(VoiceReadingJob, i).status == "ready" for i in ids[:2]):
+                    break
+            Event().wait(0.01)
         worker.stop(wait=True)
         # A new process scans the durable queue without requiring a GET/read.
         recovered = StoryVoiceWorker(session_factory=voice_db, provider_factory=BlockingProvider)
         try:
             recovered.scan_once()
+            deadline = monotonic() + 3
+            while monotonic() < deadline:
+                with voice_db() as db:
+                    if db.get(VoiceReadingJob, ids[2]).status == "ready":
+                        break
+                Event().wait(0.01)
             recovered.stop(wait=True)
         finally:
             recovered.stop(wait=True)

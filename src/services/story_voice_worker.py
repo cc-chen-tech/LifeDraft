@@ -87,7 +87,9 @@ class StoryVoiceWorker:
                 repository = StoryVoiceReadingRepository(db)
                 repository.recover_abandoned_job(user_id, job_id)
                 provider = self._providers() if self._providers is not None else None
-                StoryVoiceReadingService(repository, provider=provider).process_job(user_id, job_id)
+                StoryVoiceReadingService(repository, provider=provider).process_job(
+                    user_id, job_id, should_stop=self._stopped.is_set
+                )
         except Exception:
             # No failed Session is reused here. A committed processing lease
             # eventually expires, and a queued job remains discoverable.

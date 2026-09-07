@@ -1491,14 +1491,29 @@ def test_promoted_prefetch_stays_promoted_when_task_bookkeeping_commit_fails(
         assert observer.query(DailyWorldProjection).count() == 1
 
 
+@pytest.fixture
+def prefetch_worker_db(tmp_path):
+    from sqlalchemy import create_engine
+    from src.database.models import Base
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'prefetch-worker.db'}")
+    Base.metadata.create_all(engine)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+
+
 def test_tts_prefetch_submits_durable_job_and_worker_marks_audio_ready(
-    db_engine, monkeypatch
+    prefetch_worker_db, monkeypatch
 ) -> None:
+    from threading import Event
+    from time import monotonic
     from sqlalchemy.orm import sessionmaker
 
     from config.feature_flags import reset_features, set_feature
 
-    Session = sessionmaker(bind=db_engine)
+    Session = sessionmaker(bind=prefetch_worker_db)
     setup = Session()
     repository = DailyRecommendedPrefetchRepository(setup)
     task = repository.enqueue(
@@ -1564,7 +1579,16 @@ def test_tts_prefetch_submits_durable_job_and_worker_marks_audio_ready(
     worker = StoryVoiceWorker(session_factory=Session, provider_factory=DeterministicTTSProvider)
     try:
         worker.scan_once()
-        worker.stop(wait=True)
+        # stop() cancels active synthesis; await the actual committed result
+        # first, using independent file SQLite connections for observation.
+        deadline = monotonic() + 3
+        while monotonic() < deadline:
+            with Session() as completed:
+                if completed.get(DailyRecommendedPrefetch, task_id).status == "ready":
+                    break
+            Event().wait(0.01)
+        else:
+            pytest.fail("voice worker did not publish ready prefetch audio")
     finally:
         worker.stop(wait=True)
 

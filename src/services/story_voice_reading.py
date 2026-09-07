@@ -6,7 +6,7 @@ import hashlib
 import logging
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -42,6 +42,7 @@ from src.services.story_tts_provider import (
     DeterministicTTSProvider,
     ParagraphCue,
     StoryTTSProvider,
+    TTSSynthesisCancelled,
     build_deterministic_wav,
     build_story_tts_provider,
 )
@@ -375,11 +376,15 @@ class StoryVoiceReadingService:
             self.repository.db.flush()
         return self._reading_response(job, provider_metadata.provider, provider_metadata.model)
 
-    def process_job(self, user_id: int, job_id: int) -> VoiceReadingJobResponse:
+    def process_job(
+        self, user_id: int, job_id: int, *, should_stop: Optional[Callable[[], bool]] = None
+    ) -> VoiceReadingJobResponse:
         """Synthesize from committed snapshots, fencing every database write."""
         job = self.repository.get_job(job_id, user_id)
         if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        if should_stop is not None and should_stop():
+            return self.get_job(user_id, job_id)
         claimed_token = self.repository.claim_queued_job_for_processing_with_token(user_id, job_id)
         if claimed_token is None:
             return self.get_job(user_id, job_id)
@@ -390,6 +395,7 @@ class StoryVoiceReadingService:
 
         def commit(**changes: Any) -> None:
             nonlocal lease_token
+            checkpoint()
             token = self.repository.commit_processing_changes(
                 user_id, job_id, lease_token, **changes
             )
@@ -397,7 +403,12 @@ class StoryVoiceReadingService:
                 raise RuntimeError("voice reading processing lease was replaced")
             lease_token = token
 
+        def checkpoint() -> None:
+            if should_stop is not None and should_stop():
+                raise TTSSynthesisCancelled("voice worker is stopping")
+
         try:
+            checkpoint()
             job = self.repository.get_job(job_id, user_id)
             if job is None:
                 raise RuntimeError("voice reading job disappeared during processing")
@@ -447,6 +458,7 @@ class StoryVoiceReadingService:
             synthesize_scene = getattr(self.provider, "synthesize_scene", None)
             if callable(synthesize_scene):
                 for index, paragraph in enumerate(paragraphs):
+                    checkpoint()
                     job = self.repository.get_job(job_id, user_id)
                     if job is None:
                         raise RuntimeError("voice reading job disappeared during processing")
@@ -539,6 +551,7 @@ class StoryVoiceReadingService:
                 if segment.status == "ready" and segment.asset is not None
             ]
             self.repository.db.rollback()
+            checkpoint()
             assemble_scenes = getattr(self.provider, "assemble_scenes", None)
             if callable(assemble_scenes) and len(paths) == len(paragraphs):
                 speech = assemble_scenes(
@@ -581,6 +594,20 @@ class StoryVoiceReadingService:
                 raise RuntimeError("voice reading job disappeared during processing")
             self._attach_ready_asset(job, asset, speech.paragraph_cues)
             commit(primary_asset_id=int(asset.asset_id), terminal_status="ready")
+        except TTSSynthesisCancelled:
+            # Cancellation is recoverable, not a generation failure. Roll back
+            # uncommitted assets and use the same lease fence as normal writes.
+            self.repository.db.rollback()
+            job = self.repository.get_job(job_id, user_id)
+            if job is not None:
+                for segment in job.segments:
+                    if segment.status != "ready":
+                        segment.status = "queued"
+                        segment.error_code = segment.error_message = None
+            self.repository.commit_processing_changes(
+                user_id, job_id, lease_token, terminal_status="queued"
+            )
+            return self.get_job(user_id, job_id)
         except Exception as error:
             logger.exception(
                 "Voice generation failed job_id=%s segment=%s phase=%s", job_id, active_index, phase

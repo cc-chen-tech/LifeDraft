@@ -87,3 +87,33 @@ Both GitHub findings were reproduced before repair. The review also caught mixed
 - Chromium and WebKit both verify actual 20-second poll timeout recovery and final paused progress persistence after HTTP 503 / Retry-After, without new playback events.
 
 Progress retries are bounded to three retries beyond the first attempt; final choice snapshots survive component unmount within the loaded application, not closing/reloading the browser. Retries coalesce across remounts and finish without React state; ordinary released sessions cancel queued work. A new database schema or durable browser background queue is outside this repair.
+
+## Task 6: Second external review at b7bde23e
+
+The first follow-up passed all nine GitHub checks and its original review threads were resolved. The next external review supplied fresh evidence for two further P2 defects; merge remains blocked on resolving them.
+
+- [x] Rebase pending scene-local selection/seek/recovery positions when a replacement chapter arrives, including metadata already buffered and metadata still pending.
+- [x] Cooperatively cancel active TTS worker execution during application shutdown. Preserve ready assets, requeue under the current lease, and bound actual WebSocket/ffmpeg work so interpreter exit does not wait through remaining scenes.
+- [x] Independently review and rerun complete validation on the final integrated tree. Publish this revision for fresh CI/CR; the exact-head checks, review threads and merge state are recorded in PR #371.
+
+The shutdown repair targets the actual MiniMax worker path (scene WebSocket plus ffmpeg padding/assembly). Third-party providers must honor progress cancellation; unrelated direct asynchronous-HTTP clients are not being redesigned.
+
+
+Six pending-position regressions failed before the frontend repair: explicit paragraph selection, seek and stalled-audio recovery, each with metadata ready or delayed. Replacement now captures pending intent in the old source clock, converts to paragraph-local saved progress, and restores using the new chapter cue. The independently reviewed final frontend passed 82 listening tests, all 55 component suites / 658 tests, strict types/lint, and the complete frontend suite (2141 unit plus 2 integration tests).
+
+Shutdown tests first reproduced a real child interpreter printing `STOP_RETURNED` but hanging in executor exit, an active scene completing instead of requeueing, wrapped WebSocket cancellation, and ffmpeg waiting through its full conversion timeout. The worker now propagates a stop predicate through service checkpoints and provider progress callbacks. Cancellation retains committed ready assets and requeues only through the current exact lease; replacement leases are untouched. Owned ffmpeg children are terminated and reaped, with forced kill after a one-second TERM grace. Conversion and WebSocket receive checkpoints run every five seconds; existing WebSocket open/close limits remain ten/one seconds. This is cooperative cancellation, not a hard interrupt of arbitrary third-party or operating-system operations. Cancellation requeue failures remain recoverable by the existing durable lease scanner.
+
+The first full backend run exposed one old prefetch regression using `stop(wait=True)` as a drain. Its test now observes committed completion through independent file-backed SQLite sessions before requesting shutdown; all original ready-state and metadata assertions remain. The isolated failure was reproduced first, then all 36 prefetch tests passed. Independent frontend and shutdown source reviews found no remaining actionable correctness findings.
+
+
+### Second follow-up final local validation
+
+- Full Python: **5056 passed, 1 skipped, 4 expected failures**.
+- Full frontend: strict TypeScript; **2141 unit tests + 2 integration tests passed**.
+- `./test.sh all`: **PASS, Preflight + 5/5 layers**, including 278 contract tests, 132 DB tests and production build.
+- Core browser suite: **324 passed, 1 protected model-smoke skipped, 0 flaky** (report statistics verified).
+- Mobile Safari / WebKit: **7 passed** against the same final production build.
+- Listening component: **82 passed**; affected shutdown group **92 passed** plus **3 subprocess outcome tests**; prefetch module **36 passed**.
+- Independent source review: frontend and backend shutdown both clear. Diff whitespace checks passed. No paid-provider smoke or production deployment was performed during local validation.
+
+The verified base remains origin/main `830c4961`. Local completion is not merge completion: require fresh GitHub checks and external review on this revision, resolve only verified findings, then merge without bypassing checks and confirm origin/main contains the result.

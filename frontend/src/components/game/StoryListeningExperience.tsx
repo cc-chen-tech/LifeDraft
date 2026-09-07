@@ -383,12 +383,16 @@ export function StoryListeningExperience({
           segment.paragraph_index === activeParagraphRef.current &&
           buffered.audio_url === activeAudioSourceRef.current &&
           !browserFallbackRef.current && audioRef.current &&
-          pendingSavedProgressRef.current === null && pendingResumePositionRef.current === null
+          pendingSavedProgressRef.current === null
         ) {
+          // A pending seek/recovery still uses the old source's clock. Preserve
+          // that intent as paragraph-local progress before loading new cues.
+          const resumeMs = pendingResumePositionRef.current ?? audioRef.current.currentTime * 1000;
           pendingSavedProgressRef.current = {
             paragraphIndex: segment.paragraph_index,
-            positionMs: Math.max(0, audioRef.current.currentTime * 1000 - (mediaIsChapterRef.current ? buffered.start_ms ?? 0 : 0)),
+            positionMs: Math.max(0, resumeMs - (mediaIsChapterRef.current ? buffered.start_ms ?? 0 : 0)),
           };
+          pendingResumePositionRef.current = null;
           setChapterMediaDurationMs(null);
         }
         return replacement;
