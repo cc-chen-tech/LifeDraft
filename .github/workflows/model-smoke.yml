@@ -28,7 +28,13 @@ jobs:
       CI: "1"
       MODEL_SMOKE_ENABLED: "1"
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || 'https://api.deepseek.com/v1' }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'deepseek-v4-flash' }}
+      IMAGE_API_KEY: ${{ secrets.IMAGE_API_KEY || secrets.MINIMAX_API_KEY }}
+      IMAGE_API_BASE_URL: ${{ vars.IMAGE_API_BASE_URL || 'https://api.minimaxi.com/v1' }}
+      IMAGE_MODEL: ${{ vars.IMAGE_MODEL || 'image-01' }}
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+      MINIMAX_TTS_MODEL: ${{ vars.MINIMAX_TTS_MODEL || 'speech-2.8-hd' }}
       E2E_DETERMINISTIC_STORY: "0"
       MINIMAX_E2E_LOCAL_AUDIO: "0"
       MINIMAX_E2E_LOCAL_IMAGE: "0"
@@ -38,7 +44,21 @@ jobs:
       - name: Checkout release candidate
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || github.event.release.tag_name || github.ref }}
+          ref: ${{ github.sha }}
+
+      - name: Verify requested candidate matches run SHA
+        env:
+          REQUESTED_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$REQUESTED_REF" ]; then
+            git fetch --no-tags origin -- "$REQUESTED_REF"
+            test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA" || {
+              echo 'Requested ref differs from run head_sha; dispatch on the candidate ref.' >&2
+              exit 1
+            }
+          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5

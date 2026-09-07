@@ -38,7 +38,7 @@ class MiniMaxConfig:
         return cls(
             api_key=_blank_to_none(source.get("MINIMAX_API_KEY")),
             group_id=_blank_to_none(source.get("MINIMAX_GROUP_ID")),
-            tts_model=source.get("MINIMAX_TTS_MODEL", "speech-2.8-turbo"),
+            tts_model=source.get("MINIMAX_TTS_MODEL", "speech-2.8-hd"),
             tts_websocket_url=source.get(
                 "MINIMAX_TTS_WEBSOCKET_URL",
                 "wss://api.minimaxi.com/ws/v1/t2a_v2",
