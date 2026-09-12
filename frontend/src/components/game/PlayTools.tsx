@@ -429,7 +429,7 @@ export function PlayTools({
                         key={option.value}
                         data-state={selected ? "selected" : "idle"}
                         className={cn(
-                          "flex min-h-16 cursor-pointer items-center justify-between gap-4 border-l-[3px] px-3 py-2 text-sm transition-colors",
+                          "relative flex min-h-16 cursor-pointer items-center justify-between gap-4 border-l-[3px] px-3 py-2 text-sm transition-colors",
                           "hover:bg-[var(--surface-subtle)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--ring)]",
                           selected
                             ? "border-l-[var(--text-primary)] bg-[var(--surface-subtle)]"
@@ -442,7 +442,7 @@ export function PlayTools({
                           value={option.value}
                           aria-label={option.label}
                           checked={selected}
-                          className="sr-only"
+                          className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
                           onChange={() =>
                             onConstraintLevelChange(option.value)
                           }
