@@ -171,13 +171,17 @@ describe("StoryListeningExperience", () => {
     jest.restoreAllMocks();
   });
 
-  function renderExperience(onSelectChoice = jest.fn()) {
+  function renderExperience(
+    onSelectChoice = jest.fn(),
+    extraProps: Partial<React.ComponentProps<typeof StoryListeningExperience>> = {},
+  ) {
     const view = render(
       <StoryListeningExperience
         context={context}
         storyText={context.text}
         options={[{ text: "推开那扇门" }, { text: "留在原地" }]}
         onSelectChoice={onSelectChoice}
+        {...extraProps}
       />,
     );
     return { ...view, onSelectChoice };
@@ -192,6 +196,97 @@ describe("StoryListeningExperience", () => {
     fireEvent.canPlay(document.querySelector("audio") as HTMLAudioElement);
     await waitFor(() => expect(play).toHaveBeenCalled());
     expect(screen.queryByText("浏览器语音")).not.toBeInTheDocument();
+  });
+
+  it("notifies the history reader once when an automatically-read chapter finishes", async () => {
+    const onChapterComplete = jest.fn();
+    renderExperience(jest.fn(), {
+      options: [],
+      onChapterComplete,
+      historyNavigation: {
+        currentIndex: 0,
+        total: 2,
+        storyDate: "2026-08-15",
+        onPrevious: jest.fn(),
+        onNext: jest.fn(),
+        onBackToCurrent: jest.fn(),
+      },
+    });
+
+    const audio = await waitFor(() => {
+      expect(document.querySelector("audio")).not.toBeNull();
+      return document.querySelector("audio") as HTMLAudioElement;
+    });
+    fireEvent.ended(audio);
+    fireEvent.ended(audio);
+
+    expect(onChapterComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries completed history progress after automatic chapter navigation unmounts the listener", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(console, "warn").mockImplementation();
+    const finalWrite = deferred<Awaited<ReturnType<typeof api.voice_reading.updateProgress>>>();
+    voiceApi.updateProgress.mockReturnValueOnce(finalWrite.promise);
+    let view: ReturnType<typeof renderExperience>;
+    const onChapterComplete = jest.fn(() => view.unmount());
+    view = renderExperience(jest.fn(), {
+      context: { ...context, source_type: "history_round", stage: "history" },
+      options: [],
+      onChapterComplete,
+      historyNavigation: {
+        currentIndex: 0,
+        total: 2,
+        storyDate: "2026-08-15",
+        onPrevious: jest.fn(),
+        onNext: jest.fn(),
+        onBackToCurrent: jest.fn(),
+      },
+    });
+
+    const audio = await waitFor(() => {
+      expect(document.querySelector("audio")).not.toBeNull();
+      return document.querySelector("audio") as HTMLAudioElement;
+    });
+    fireEvent.ended(audio);
+    expect(onChapterComplete).toHaveBeenCalledTimes(1);
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finalWrite.reject(Object.assign(new Error("busy"), {
+        status: 503,
+        code: "progress_store_busy",
+        retryAfterMs: 2_000,
+      }));
+    });
+    await act(async () => { await jest.advanceTimersByTimeAsync(1_999); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+    await act(async () => { await jest.advanceTimersByTimeAsync(1); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+    expect(voiceApi.updateProgress.mock.calls[1][0]).toMatchObject({
+      day_index: 7,
+      text_hash: "chapter-text-hash",
+      paragraph_index: 1,
+      position_ms: 5_000,
+      completed: true,
+    });
+  });
+
+  it("does not advance chapters when next-chapter auto-play is disabled", async () => {
+    voiceApi.getSettings.mockResolvedValueOnce({
+      ...(await voiceApi.getSettings()),
+      auto_read_enabled: false,
+    });
+    const onChapterComplete = jest.fn();
+    renderExperience(jest.fn(), { options: [], onChapterComplete });
+
+    const audio = await waitFor(() => {
+      expect(document.querySelector("audio")).not.toBeNull();
+      return document.querySelector("audio") as HTMLAudioElement;
+    });
+    fireEvent.ended(audio);
+
+    expect(onChapterComplete).not.toHaveBeenCalled();
   });
 
   it("plays a ready chapter when only the job-level audio URL is present", async () => {
@@ -409,7 +504,7 @@ describe("StoryListeningExperience", () => {
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalled());
 
     if (intent === "selection") {
-      fireEvent.click(screen.getByRole("button", { name: "查看正文" }));
+      fireEvent.click(screen.getByRole("button", { name: "查看故事正文" }));
       fireEvent.click(screen.getByRole("button", { name: "从第 2 段开始朗读" }));
     } else if (intent === "seek") {
       fireEvent.change(screen.getByRole("slider"), { target: { value: "6000" } });
@@ -637,7 +732,7 @@ describe("StoryListeningExperience", () => {
 
   it("lets the listener start from a selected paragraph", async () => {
     renderExperience();
-    const transcriptLabel = await screen.findByText("查看正文");
+    const transcriptLabel = await screen.findByText("查看故事正文");
     fireEvent.click(transcriptLabel.closest("button") as HTMLButtonElement);
     const secondParagraph = await screen.findByRole("button", {
       name: "从第 2 段开始朗读",
@@ -650,20 +745,55 @@ describe("StoryListeningExperience", () => {
     await waitFor(() => expect(play).toHaveBeenCalled());
   });
 
-  it("offers exactly one transcript action in each collapsed or expanded state", async () => {
+  it("keeps the same transcript action anchored while toggling its state", async () => {
     renderExperience();
 
-    const openButtons = await screen.findAllByRole("button", { name: "查看正文" });
-    expect(openButtons).toHaveLength(1);
-    fireEvent.click(openButtons[0]);
+    const transcriptAction = await screen.findByRole("button", { name: "查看故事正文" });
+    expect(transcriptAction).toHaveAttribute("aria-expanded", "false");
+    const transcriptRegion = document.getElementById(
+      transcriptAction.getAttribute("aria-controls") ?? "",
+    );
+    expect(transcriptRegion).not.toBeNull();
+    expect(transcriptRegion).toHaveAttribute("hidden");
+    transcriptAction.focus();
+    fireEvent.click(transcriptAction);
 
-    expect(screen.queryByRole("button", { name: "查看正文" })).not.toBeInTheDocument();
-    const closeButtons = screen.getAllByRole("button", { name: "收起正文" });
-    expect(closeButtons).toHaveLength(1);
-    fireEvent.click(closeButtons[0]);
-
-    expect(screen.getAllByRole("button", { name: "查看正文" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "查看故事正文" })).not.toBeInTheDocument();
+    const collapseAction = screen.getByRole("button", { name: "收起故事正文" });
+    expect(collapseAction).toBe(transcriptAction);
+    expect(collapseAction).toHaveFocus();
+    expect(collapseAction).toHaveAttribute("aria-expanded", "true");
+    expect(transcriptRegion).not.toHaveAttribute("hidden");
+    expect(within(collapseAction).getByText("返回专注聆听")).toBeVisible();
     expect(screen.queryByRole("button", { name: "收起正文" })).not.toBeInTheDocument();
+    fireEvent.click(collapseAction);
+
+    expect(screen.getByRole("button", { name: "查看故事正文" })).toBe(transcriptAction);
+    expect(transcriptAction).toHaveAttribute("aria-expanded", "false");
+    expect(transcriptRegion).toHaveAttribute("hidden");
+  });
+
+  it("presents the transcript as a dedicated full-width reading action", async () => {
+    renderExperience();
+
+    const transcriptAction = await screen.findByRole("button", { name: "查看故事正文" });
+    expect(transcriptAction).toHaveAttribute("data-variant", "narrative");
+    expect(transcriptAction).toHaveAttribute("data-size", "touch");
+    expect(transcriptAction).toHaveClass("min-h-16", "w-full", "justify-between");
+    expect(
+      within(transcriptAction).getByText("展开阅读，也可从任意段落开始朗读"),
+    ).toBeVisible();
+    expect(
+      within(screen.getByRole("group", { name: "朗读控制" })).queryByRole("button", {
+        name: "查看故事正文",
+      }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(transcriptAction);
+    const closeAction = screen.getByRole("button", { name: "收起故事正文" });
+    expect(closeAction).toBe(transcriptAction);
+    expect(closeAction).toHaveAttribute("data-size", "touch");
+    expect(closeAction).toHaveClass("min-h-16", "w-full", "justify-between");
   });
 
   it("keeps paragraph position separate from the playback status", async () => {
@@ -696,7 +826,7 @@ describe("StoryListeningExperience", () => {
     voiceApi.getJob.mockReturnValueOnce(readyJob.promise);
     renderExperience();
 
-    fireEvent.click((await screen.findByText("查看正文")).closest("button") as HTMLButtonElement);
+    fireEvent.click((await screen.findByText("查看故事正文")).closest("button") as HTMLButtonElement);
     const secondParagraph = await screen.findByRole("button", {
       name: "从第 2 段开始朗读",
     });
@@ -772,6 +902,7 @@ describe("StoryListeningExperience", () => {
   });
 
   it("uses browser Chinese narration only after explicit selection", async () => {
+    const onChapterComplete = jest.fn();
     const spoken: Array<{
       text: string;
       lang: string;
@@ -819,7 +950,7 @@ describe("StoryListeningExperience", () => {
     });
 
     try {
-      renderExperience();
+      renderExperience(jest.fn(), { onChapterComplete });
 
       expect(await screen.findByRole("button", { name: "使用系统朗读" })).toBeInTheDocument();
       expect(speechSynthesis.speak).not.toHaveBeenCalled();
@@ -836,6 +967,8 @@ describe("StoryListeningExperience", () => {
       act(() => spoken[0].onend?.());
       expect(await screen.findByText("第 2 段")).toBeInTheDocument();
       expect(speechSynthesis.speak).toHaveBeenCalledTimes(2);
+      act(() => spoken[1].onend?.());
+      expect(onChapterComplete).toHaveBeenCalledTimes(1);
     } finally {
       if (previousSynthesis === undefined) delete (window as Window & { speechSynthesis?: unknown }).speechSynthesis;
       else Object.defineProperty(window, "speechSynthesis", { configurable: true, value: previousSynthesis });
@@ -1029,7 +1162,7 @@ describe("StoryListeningExperience", () => {
     Object.defineProperty(first, "readyState", { configurable: true, value: HTMLMediaElement.HAVE_ENOUGH_DATA });
     first.currentTime = 1;
     await act(async () => completion.resolve({ job_id: 19, status: "ready", audio_url: "/chapter.mp3", segments: segments.map(s => ({ ...s, audio_url: "/chapter.mp3" })) } as never));
-    fireEvent.click(screen.getByRole("button", { name: "查看正文" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看故事正文" }));
     fireEvent.click(screen.getByRole("button", { name: "从第 2 段开始朗读" }));
     const chapter = document.querySelector("audio")!;
     expect(chapter).toHaveAttribute("src", "/chapter.mp3");
@@ -1055,7 +1188,7 @@ describe("StoryListeningExperience", () => {
 
     renderExperience();
 
-    const transcriptLabel = await screen.findByText("查看正文");
+    const transcriptLabel = await screen.findByText("查看故事正文");
     fireEvent.click(transcriptLabel.closest("button") as HTMLButtonElement);
     const secondParagraph = await screen.findByRole("button", {
       name: "从第 2 段开始朗读",
@@ -1081,7 +1214,13 @@ describe("StoryListeningExperience", () => {
 
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19, expect.any(AbortSignal)));
     expect(play).not.toHaveBeenCalled();
-    expect(screen.getByRole("checkbox", { name: "下一章自动播放" })).not.toBeChecked();
+    const autoRead = screen.getByRole("checkbox", { name: "下一章自动播放" });
+    const autoReadRow = autoRead.closest("label");
+    expect(autoRead).not.toBeChecked();
+    expect(autoReadRow).not.toBeNull();
+    expect(autoReadRow).toHaveTextContent("已关闭");
+    expect(within(autoReadRow!).getByText("关")).toBeInTheDocument();
+    expect(within(autoReadRow!).getByText("开")).toBeInTheDocument();
   });
 
   it("shows a one-tap action when the browser blocks automatic playback", async () => {
@@ -1331,7 +1470,7 @@ describe("StoryListeningExperience", () => {
 
     const firstAudio = document.querySelector("audio") as HTMLAudioElement;
     fireEvent.playing(firstAudio);
-    fireEvent.click(screen.getByText("查看正文").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByText("查看故事正文").closest("button") as HTMLButtonElement);
     fireEvent.click(await screen.findByRole("button", { name: "从第 2 段开始朗读" }));
     await waitFor(() => expect(screen.getByText("第 2 段", { exact: true })).toBeInTheDocument());
     const chapterAudio = document.querySelector('audio[data-active="true"]');
@@ -1474,7 +1613,7 @@ describe("StoryListeningExperience", () => {
 
     fireEvent.canPlay(audio);
     expect(play).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByText("查看正文").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByText("查看故事正文").closest("button") as HTMLButtonElement);
     fireEvent.click(await screen.findByRole("button", { name: "从第 2 段开始朗读" }));
     expect(audio.currentTime).toBe(4);
     expect(play).toHaveBeenCalledTimes(2);
@@ -1678,7 +1817,7 @@ describe("StoryListeningExperience", () => {
     });
     renderExperience();
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19, expect.any(AbortSignal)));
-    fireEvent.click((await screen.findByText("查看正文")).closest("button") as HTMLButtonElement);
+    fireEvent.click((await screen.findByText("查看故事正文")).closest("button") as HTMLButtonElement);
     const firstParagraph = await screen.findByRole("button", {
       name: "从第 1 段开始朗读",
     });

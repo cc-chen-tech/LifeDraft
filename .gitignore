@@ -101,5 +101,6 @@ netease-music-api/*
 aliyun
 aliyun-cli-macosx-latest-universal.tgz
 .remember/tmp/
+.superdesign/tmp/
 .superpowers/
 exploration-report/

@@ -7,6 +7,8 @@ import { create } from "zustand";
 import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem, CollectionResponse, RecognizedEntity, EntityRecognitionResponse } from "@/lib/types";
 import api from "@/lib/api";
 
+type DeletingEntity = { type: "character" | "item" | "landmark"; name: string };
+
 type CollectionEntity = CharacterCollectionItem | ItemCollectionItem | LandmarkCollectionItem;
 
 function mergeVisibleEntityData<T extends CollectionEntity>(nextItems: T[], currentItems: T[]): T[] {
@@ -29,6 +31,18 @@ function mergeVisibleEntityData<T extends CollectionEntity>(nextItems: T[], curr
 function appendUniqueEntities<T extends CollectionEntity>(current: T[], additions: T[]): T[] {
   const knownNames = new Set(current.map((entity) => entity.name));
   return [...current, ...additions.filter((entity) => !knownNames.has(entity.name))];
+}
+
+function upsertEntity<T extends CollectionEntity>(current: T[], entity: T): T[] {
+  const index = current.findIndex((item) => item.name === entity.name);
+  if (index < 0) return [...current, entity];
+  return current.map((item, itemIndex) => itemIndex === index ? entity : item);
+}
+
+function mutationSyncWarning(action: "保存" | "删除", refreshError: string | null): string {
+  const detail = refreshError ? `：${refreshError}` : "";
+  const retryAction = action === "保存" ? "添加" : "删除";
+  return `实体已${action}，但列表同步失败${detail}。无需重复${retryAction}，请稍后重新打开收集列表刷新。`;
 }
 
 function recognizedItemToCollection(entity: RecognizedEntity): ItemCollectionItem {
@@ -66,6 +80,7 @@ function recognizedCharacterToCollection(entity: RecognizedEntity): CharacterCol
     image_url: null,
     image_generated: false,
     description_generated: true,
+    can_delete: true,
   };
 }
 
@@ -93,7 +108,7 @@ function recognizedLandmarkToCollection(entity: RecognizedEntity): LandmarkColle
 }
 
 // Request de-dupe and short-lived cache keep the collection panel responsive.
-let _fetchInFlight: { gameId: number; promise: Promise<void> } | null = null;
+let _fetchInFlight: { gameId: number; promise: Promise<boolean> } | null = null;
 let _collectionCache: { gameId: number; timestamp: number } | null = null;
 let _autoCollectInFlight: { gameId: number; promise: Promise<void> } | null = null;
 const CACHE_TTL_MS = 30000;
@@ -123,13 +138,13 @@ interface CollectionState {
 
   // 删除状态
   isDeleting: boolean;  // 是否正在删除
-  deletingEntity: string | null;  // 正在删除的实体名称
+  deletingEntity: DeletingEntity | null;  // 正在删除的实体
 
   // 错误
   error: string | null;
 
   // Actions
-  fetchCollection: (gameId: number, isRefresh?: boolean) => Promise<void>;
+  fetchCollection: (gameId: number, isRefresh?: boolean) => Promise<boolean>;
   setActiveTab: (tab: "characters" | "items" | "landmarks") => void;
   selectCharacter: (character: CharacterCollectionItem | null) => void;
   selectItem: (item: ItemCollectionItem | null) => void;
@@ -151,12 +166,14 @@ interface CollectionState {
   clearRecognizedEntities: () => void;
 
   // 手动添加 Actions
-  createItem: (gameId: number, name: string, generateDescription?: boolean) => Promise<void>;
+  createCharacter: (gameId: number, name: string) => Promise<boolean>;
+  createItem: (gameId: number, name: string, generateDescription?: boolean) => Promise<boolean>;
+  createLandmark: (gameId: number, name: string) => Promise<boolean>;
 
   // 删除 Actions
-  deleteItem: (gameId: number, itemName: string) => Promise<void>;
-  deleteCharacter: (gameId: number, characterName: string) => Promise<void>;
-  deleteLandmark: (gameId: number, landmarkName: string) => Promise<void>;
+  deleteItem: (gameId: number, itemName: string) => Promise<boolean>;
+  deleteCharacter: (gameId: number, characterName: string) => Promise<boolean>;
+  deleteLandmark: (gameId: number, landmarkName: string) => Promise<boolean>;
 
   clearSelection: () => void;
   clearError: () => void;
@@ -196,7 +213,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
   fetchCollection: async (gameId: number, isRefresh: boolean = false) => {
     if (!gameId) {
       set({ error: "游戏ID不存在" });
-      return;
+      return false;
     }
 
     if (!isRefresh && _fetchInFlight?.gameId === gameId) {
@@ -214,7 +231,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
         hasData
       ) {
         console.log("[fetchCollection] 命中缓存，跳过请求 gameId=", gameId);
-        return;
+        return true;
       }
     }
 
@@ -240,8 +257,8 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       const fetchPromise = api.collection.get(gameId);
       if (!isRefresh) {
         const wrappedPromise = fetchPromise
-          .then(() => undefined)
-          .catch(() => undefined)
+          .then(() => true)
+          .catch(() => false)
           .finally(() => {
             if (_fetchInFlight?.gameId === gameId) {
               _fetchInFlight = null;
@@ -299,10 +316,12 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
         isLoading: false,
         isRefreshing: false,
       });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "获取收集数据失败";
       console.error("[fetchCollection] 错误:", errorMsg);
       set({ error: errorMsg, isLoading: false, isRefreshing: false });
+      return false;
     }
   },
 
@@ -598,24 +617,104 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
 
   // ==================== 手动添加 Actions ====================
 
+  // 手动创建人物
+  createCharacter: async (gameId: number, name: string) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const result = await api.collection.createCharacter(gameId, { name });
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        const refreshError = get().error;
+        const character: CharacterCollectionItem = {
+          name: result.character.name,
+          role: result.character.role,
+          can_delete: true,
+          description: result.character.relationship_desc,
+          affinity: result.character.affinity,
+          age: null,
+          gender: null,
+          occupation: null,
+          personality_traits: [],
+          image_url: null,
+          image_generated: result.character.image_generated,
+          description_generated: true,
+        };
+        set((state) => ({
+          characters: upsertEntity(state.characters, character),
+          error: mutationSyncWarning("保存", refreshError),
+        }));
+      }
+      set({ isLoading: false });
+      return true;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "创建人物失败";
+      console.error("[createCharacter] 错误:", errorMsg);
+      set({ error: errorMsg, isLoading: false });
+      return false;
+    }
+  },
+
   // 手动创建物品
   createItem: async (gameId: number, name: string, generateDescription: boolean = true) => {
     set({ isLoading: true, error: null });
 
     try {
-      await api.collection.createItem(gameId, {
+      const result = await api.collection.createItem(gameId, {
         name,
         generate_description: generateDescription,
       });
 
-      // 刷新收集数据
-      await get().fetchCollection(gameId, true);
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        const refreshError = get().error;
+        const item: ItemCollectionItem = {
+          ...result.item,
+          image_url: result.item.image_url ?? null,
+          metadata: result.item.metadata ?? {},
+        };
+        set((state) => ({
+          items: upsertEntity(state.items, item),
+          error: mutationSyncWarning("保存", refreshError),
+        }));
+      }
 
       set({ isLoading: false });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "创建物品失败";
       console.error("[createItem] 错误:", errorMsg);
       set({ error: errorMsg, isLoading: false });
+      return false;
+    }
+  },
+
+  // 手动创建标志物
+  createLandmark: async (gameId: number, name: string) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const result = await api.collection.createLandmark(gameId, { name });
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        const refreshError = get().error;
+        const landmark: LandmarkCollectionItem = {
+          ...result.landmark,
+          image_url: null,
+          metadata: {},
+        };
+        set((state) => ({
+          landmarks: upsertEntity(state.landmarks, landmark),
+          error: mutationSyncWarning("保存", refreshError),
+        }));
+      }
+      set({ isLoading: false });
+      return true;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "创建标志物失败";
+      console.error("[createLandmark] 错误:", errorMsg);
+      set({ error: errorMsg, isLoading: false });
+      return false;
     }
   },
 
@@ -623,73 +722,79 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
 
   // 删除物品
   deleteItem: async (gameId: number, itemName: string) => {
-    set({ isDeleting: true, deletingEntity: itemName, error: null });
+    set({ isDeleting: true, deletingEntity: { type: "item", name: itemName }, error: null });
 
     try {
       await api.collection.deleteItem(gameId, itemName);
 
-      // 如果删除的是当前选中的物品，清除选择
-      const currentSelected = get().selectedItem;
-      if (currentSelected?.name === itemName) {
-        set({ selectedItem: null });
+      set((state) => ({
+        items: state.items.filter((item) => item.name !== itemName),
+        selectedItem: state.selectedItem?.name === itemName ? null : state.selectedItem,
+      }));
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        set({ error: mutationSyncWarning("删除", get().error) });
       }
 
-      // 刷新收集数据
-      await get().fetchCollection(gameId, true);
-
       set({ isDeleting: false, deletingEntity: null });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "删除物品失败";
       console.error("[deleteItem] 错误:", errorMsg);
       set({ error: errorMsg, isDeleting: false, deletingEntity: null });
+      return false;
     }
   },
 
   // 删除人物
   deleteCharacter: async (gameId: number, characterName: string) => {
-    set({ isDeleting: true, deletingEntity: characterName, error: null });
+    set({ isDeleting: true, deletingEntity: { type: "character", name: characterName }, error: null });
 
     try {
       await api.collection.deleteCharacter(gameId, characterName);
 
-      // 如果删除的是当前选中的人物，清除选择
-      const currentSelected = get().selectedCharacter;
-      if (currentSelected?.name === characterName) {
-        set({ selectedCharacter: null });
+      set((state) => ({
+        characters: state.characters.filter((character) => character.name !== characterName),
+        selectedCharacter: state.selectedCharacter?.name === characterName ? null : state.selectedCharacter,
+      }));
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        set({ error: mutationSyncWarning("删除", get().error) });
       }
 
-      // 刷新收集数据
-      await get().fetchCollection(gameId, true);
-
       set({ isDeleting: false, deletingEntity: null });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "删除人物失败";
       console.error("[deleteCharacter] 错误:", errorMsg);
       set({ error: errorMsg, isDeleting: false, deletingEntity: null });
+      return false;
     }
   },
 
   // 删除标志物
   deleteLandmark: async (gameId: number, landmarkName: string) => {
-    set({ isDeleting: true, deletingEntity: landmarkName, error: null });
+    set({ isDeleting: true, deletingEntity: { type: "landmark", name: landmarkName }, error: null });
 
     try {
       await api.collection.deleteLandmark(gameId, landmarkName);
 
-      // 如果删除的是当前选中的标志物，清除选择
-      const currentSelected = get().selectedLandmark;
-      if (currentSelected?.name === landmarkName) {
-        set({ selectedLandmark: null });
+      set((state) => ({
+        landmarks: state.landmarks.filter((landmark) => landmark.name !== landmarkName),
+        selectedLandmark: state.selectedLandmark?.name === landmarkName ? null : state.selectedLandmark,
+      }));
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        set({ error: mutationSyncWarning("删除", get().error) });
       }
 
-      // 刷新收集数据
-      await get().fetchCollection(gameId, true);
-
       set({ isDeleting: false, deletingEntity: null });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "删除标志物失败";
       console.error("[deleteLandmark] 错误:", errorMsg);
       set({ error: errorMsg, isDeleting: false, deletingEntity: null });
+      return false;
     }
   },
 }));

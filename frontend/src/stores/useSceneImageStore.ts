@@ -125,6 +125,7 @@ export const useSceneImageStore = create<SceneImageState>()(
     // ★ 请求去重：跟踪进行中的 fetchRoundSceneImage 请求
     const pendingRequests = new Map<string, Promise<void>>();
     const failedSceneRequests = new Set<string>();
+    let latestHistoryImageRequestId = 0;
 
     const makeRequestKey = (
       gameId: number,
@@ -521,12 +522,15 @@ export const useSceneImageStore = create<SceneImageState>()(
     fetchHistorySceneImage: async (gameId, week, round, stage) => {
       if (!gameId) return;
 
+      const requestId = ++latestHistoryImageRequestId;
       set({ isLoadingHistoryImage: true });
 
       try {
         const scene = stage
           ? await api.images.getRoundSceneImageByStage(gameId, round, stage, week)
           : await api.images.getRoundSceneImage(gameId, round, week);
+
+        if (requestId !== latestHistoryImageRequestId) return;
 
         if (scene && scene.scene_id) {
           const sceneWithStage: RoundSceneImage = {
@@ -559,6 +563,8 @@ export const useSceneImageStore = create<SceneImageState>()(
           set({ historySceneImage: null, isLoadingHistoryImage: false });
         }
       } catch (err) {
+        if (requestId !== latestHistoryImageRequestId) return;
+
         const error = err as { status?: number };
         if (error.status !== 404) {
           console.error(`[fetchHistorySceneImage] Failed:`, err);
@@ -674,14 +680,18 @@ export const useSceneImageStore = create<SceneImageState>()(
       }
     },
 
-    setHistorySceneImage: (image) => set((state) => ({
-      historySceneImage: image,
-      roundSceneImages: image
-        ? state.roundSceneImages.some(s => s.week === image.week && s.round_number === image.round_number && s.stage === image.stage)
-          ? state.roundSceneImages.map(s => s.week === image.week && s.round_number === image.round_number && s.stage === image.stage ? image : s)
-          : [...state.roundSceneImages, image]
-        : state.roundSceneImages,
-    })),
+    setHistorySceneImage: (image) => {
+      latestHistoryImageRequestId += 1;
+      set((state) => ({
+        historySceneImage: image,
+        roundSceneImages: image
+          ? state.roundSceneImages.some(s => s.week === image.week && s.round_number === image.round_number && s.stage === image.stage)
+            ? state.roundSceneImages.map(s => s.week === image.week && s.round_number === image.round_number && s.stage === image.stage ? image : s)
+            : [...state.roundSceneImages, image]
+          : state.roundSceneImages,
+        isLoadingHistoryImage: false,
+      }));
+    },
 
     // ==================== Cache Actions ====================
     clearImageCache: () => {

@@ -570,3 +570,149 @@ class TestSummaryWeekRange:
         data = response.json()
         assert "summary_text" in data
         assert "刚刚开始" in data["summary_text"]
+
+    def test_summary_uses_completed_daily_timeline_history(
+        self, client, auth_headers, mock_auth, mock_session_service, mock_session
+    ):
+        """日制游戏应从 day_history 汇总已完成故事，而不是误判为空历史。"""
+        mock_player = MagicMock()
+        mock_player.player_name = "孙悟空"
+        mock_player.age = 28
+        mock_player.week = 0
+        mock_player.timeline = {
+            "version": 2,
+            "day_index": 17,
+            "day_number": 18,
+            "week_number": 3,
+        }
+        mock_player.day_history = [
+            {
+                "day_index": day_index,
+                "story_date": f"0640-08-{day_index + 1:02d}",
+                "event_description": f"孙悟空完成了第 {day_index + 1} 天的历练。",
+                "choice": f"继续第 {day_index + 1} 天的行程",
+            }
+            for day_index in range(17)
+        ]
+        # 迁移后的游戏可能同时保留旧周制快照；day_history 是权威来源，不能重复计数。
+        mock_player.round_history = [
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": "孙悟空完成了第 1 天的历练。",
+                "story_continuation": "",
+                "choice": "继续第 1 天的行程",
+            }
+        ]
+        mock_player.decision_history = []
+        mock_session.game_loop.player_state = mock_player
+        mock_session.game_loop.ai_generator.generate_completion.return_value = (
+            "第1-3周，孙悟空持续完成历练，并选择继续前行。"
+        )
+        mock_session_service.return_value = mock_session
+
+        response = client.post("/api/games/1/summary", json={}, headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "start_week": 1,
+            "end_week": 3,
+            "summary_text": "第1-3周，孙悟空持续完成历练，并选择继续前行。",
+            "story_count": 17,
+        }
+        prompt = mock_session.game_loop.ai_generator.generate_completion.call_args.kwargs[
+            "prompt"
+        ]
+        assert prompt.count("孙悟空完成了第 1 天的历练。") == 1
+
+    def test_summary_falls_back_to_legacy_when_daily_records_are_unusable(
+        self, client, auth_headers, mock_auth, mock_session_service, mock_session
+    ):
+        """无可信 day_index 的日记录不能屏蔽可用的旧周制历史。"""
+        mock_player = MagicMock()
+        mock_player.player_name = "孙悟空"
+        mock_player.age = 28
+        mock_player.week = 2
+        mock_player.day_history = [
+            None,
+            {
+                "day_index": "16",
+                "event_description": "这条记录的日序号损坏，不应猜测其周范围。",
+                "choice": "继续",
+            },
+        ]
+        mock_player.round_history = [
+            {
+                "week": 2,
+                "round": 0,
+                "event_description": "孙悟空重返花果山。",
+                "story_continuation": "他与群猴重聚。",
+                "choice": "留下叙旧",
+            }
+        ]
+        mock_player.decision_history = []
+        mock_session.game_loop.player_state = mock_player
+        mock_session.game_loop.ai_generator.generate_completion.return_value = (
+            "第3周，孙悟空重返花果山并与群猴重聚。"
+        )
+        mock_session_service.return_value = mock_session
+
+        response = client.post("/api/games/1/summary", json={}, headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()["start_week"] == 3
+        assert response.json()["end_week"] == 3
+        assert response.json()["story_count"] == 1
+        prompt = mock_session.game_loop.ai_generator.generate_completion.call_args.kwargs[
+            "prompt"
+        ]
+        assert "孙悟空重返花果山" in prompt
+        assert "日序号损坏" not in prompt
+
+    def test_summary_maps_sparse_unordered_daily_indexes_before_recent_week_filter(
+        self, client, auth_headers, mock_auth, mock_session_service, mock_session
+    ):
+        """稀疏且乱序的日历史仍以 day_index 映射和截取周范围。"""
+        mock_player = MagicMock()
+        mock_player.player_name = "孙悟空"
+        mock_player.age = 28
+        mock_player.week = 2
+        mock_player.day_history = [
+            {
+                "day_index": 16,
+                "event_description": "孙悟空完成第三周历练。",
+                "choice": "继续西行",
+            },
+            {
+                "day_index": 0,
+                "event_description": "孙悟空开始第一周历练。",
+                "choice": "离开花果山",
+            },
+            {
+                "day_index": 7,
+                "event_description": "孙悟空进入第二周历练。",
+                "choice": "翻越山岭",
+            },
+        ]
+        mock_player.round_history = []
+        mock_player.decision_history = []
+        mock_session.game_loop.player_state = mock_player
+        mock_session.game_loop.ai_generator.generate_completion.return_value = (
+            "第3周，孙悟空完成历练并继续西行。"
+        )
+        mock_session_service.return_value = mock_session
+
+        response = client.post(
+            "/api/games/1/summary", json={"weeks": 1}, headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        assert response.json()["start_week"] == 3
+        assert response.json()["end_week"] == 3
+        assert response.json()["story_count"] == 1
+        prompt = mock_session.game_loop.ai_generator.generate_completion.call_args.kwargs[
+            "prompt"
+        ]
+        assert "第三周历练" in prompt
+        assert "第一周历练" not in prompt
+        assert "第二周历练" not in prompt

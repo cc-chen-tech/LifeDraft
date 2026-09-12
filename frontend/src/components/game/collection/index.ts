@@ -17,7 +17,7 @@ export { LandmarkDetail } from "./LandmarkDetail";
 
 // 对话框组件
 export { RecognizeDialog } from "./RecognizeDialog";
-export { AddItemDialog } from "./AddItemDialog";
+export { AddEntityDialog } from "./AddEntityDialog";
 export { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 
 // Tab 组件

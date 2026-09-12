@@ -13,6 +13,9 @@ import {
 } from "react";
 import {
   BookOpenText,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Loader2,
   Pause,
@@ -36,6 +39,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+import { BinarySettingRow } from "./BinarySettingRow";
 import { OptionCards } from "./OptionCards";
 import { VoicePicker } from "./VoicePicker";
 
@@ -46,12 +50,23 @@ type ListeningStatus =
   | "paused"
   | "failed";
 
+interface HistoryChapterNavigation {
+  currentIndex: number;
+  total: number;
+  storyDate?: string | null;
+  onPrevious: () => void | Promise<void>;
+  onNext: () => void | Promise<void>;
+  onBackToCurrent: () => void;
+}
+
 interface StoryListeningExperienceProps {
   context: ReadingContext;
   storyText: string;
   options: EventOption[];
   onSelectChoice: (index: number) => void | Promise<void>;
   media?: ReactNode;
+  historyNavigation?: HistoryChapterNavigation;
+  onChapterComplete?: () => void | Promise<void>;
 }
 
 const SPEEDS = [0.75, 1, 1.25, 1.5];
@@ -86,6 +101,12 @@ function browserSpeechAvailable(): boolean {
   );
 }
 
+function formatStoryDate(value?: string | null): string | null {
+  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value || null;
+  return `${match[1]}年${Number(match[2])}月${Number(match[3])}日`;
+}
+
 function buildBrowserSpeechSegments(
   paragraphs: string[],
   speed: number,
@@ -117,6 +138,8 @@ export function StoryListeningExperience({
   options,
   onSelectChoice,
   media,
+  historyNavigation,
+  onChapterComplete,
 }: StoryListeningExperienceProps) {
   const paragraphs = useMemo(() => splitParagraphs(storyText), [storyText]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -155,6 +178,7 @@ export function StoryListeningExperience({
   const pollControllerRef = useRef<AbortController | null>(null);
   const progressSessionRef = useRef<ReturnType<typeof createStoryVoiceProgressSession> | null>(null);
   const finalSegmentEndedRef = useRef(false);
+  const chapterCompletionNotifiedRef = useRef(false);
   const activeAudioSourceRef = useRef<string | null>(null);
   const mediaIsChapterRef = useRef(true);
   const recoveredParagraphsRef = useRef(new Set<number>());
@@ -174,7 +198,7 @@ export function StoryListeningExperience({
   const [autoRead, setAutoRead] = useState(true);
   const [activeParagraph, setActiveParagraph] = useState(0);
   const [positionMs, setPositionMs] = useState(0);
-  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(Boolean(historyNavigation));
   const [retryNonce, setRetryNonce] = useState(0);
   const [chapterMediaDurationMs, setChapterMediaDurationMs] = useState<number | null>(null);
   const [networkRetryRequired, setNetworkRetryRequired] = useState(false);
@@ -295,6 +319,7 @@ export function StoryListeningExperience({
 
   useEffect(() => {
     let active = true;
+    chapterCompletionNotifiedRef.current = false;
     const audio = audioRef.current;
     void Promise.all([api.voice_reading.getSettings(), storyVoiceTextToHash(storyText)])
       .then(([settings, hash]) => {
@@ -335,6 +360,12 @@ export function StoryListeningExperience({
       browserUtteranceRef.current = null;
     };
   }, [storyText]);
+
+  const notifyChapterComplete = useEffectEvent(() => {
+    if (!autoReadRef.current || chapterCompletionNotifiedRef.current) return;
+    chapterCompletionNotifiedRef.current = true;
+    void onChapterComplete?.();
+  });
 
   const enableBrowserFallback = () => {
     if (!browserSpeechAvailable()) {
@@ -415,7 +446,9 @@ export function StoryListeningExperience({
   }, []);
 
   useEffect(() => {
-    if (!settingsLoaded || !textHash || hashedStory !== storyText || context.source_type !== "current_story") return;
+    const narratableSource =
+      context.source_type === "current_story" || context.source_type === "history_round";
+    if (!settingsLoaded || !textHash || hashedStory !== storyText || !narratableSource) return;
     const generation = ++generationRef.current;
     let active = true;
     const controller = new AbortController();
@@ -615,10 +648,12 @@ export function StoryListeningExperience({
     utterance.onend = () => {
       if (generation !== playbackGenerationRef.current) return;
       const duration = segments.find((segment) => segment.paragraph_index === paragraphIndex)?.duration_ms ?? 0;
-      persistProgress(paragraphIndex, duration, paragraphIndex === paragraphs.length - 1);
+      const chapterComplete = paragraphIndex === paragraphs.length - 1;
+      persistProgress(paragraphIndex, duration, chapterComplete, chapterComplete);
       if (restoreProviderRef.current) {
         restoreProviderRef.current = false;
         restoreProvider(paragraphIndex + 1);
+        if (paragraphIndex === paragraphs.length - 1) notifyChapterComplete();
         return;
       }
       if (paragraphIndex < paragraphs.length - 1 && autoPlayRequestedRef.current) {
@@ -632,6 +667,7 @@ export function StoryListeningExperience({
       autoPlayRequestedRef.current = false;
       setPositionMs(duration);
       setStatus("ready");
+      if (paragraphIndex === paragraphs.length - 1) notifyChapterComplete();
     };
     utterance.onerror = (event) => {
       if (generation !== playbackGenerationRef.current) return;
@@ -849,7 +885,8 @@ export function StoryListeningExperience({
     const duration = finalSegment ? segmentDuration(finalSegment) : 0;
     setActiveParagraph(finalIndex);
     setPositionMs(duration);
-    persistProgress(finalIndex, duration, true);
+    persistProgress(finalIndex, duration, true, true);
+    notifyChapterComplete();
   };
 
   const armRecoveryWatchdog = (
@@ -1218,17 +1255,53 @@ export function StoryListeningExperience({
   return (
     <section
       data-testid="story-listening-experience"
-      className="relative -mx-4 min-h-[calc(100svh-9rem)] overflow-hidden border-y border-[var(--border-default)] bg-[var(--surface-reading)] px-4 py-8 sm:-mx-8 sm:px-8"
+      className={cn(
+        "relative -mx-4 overflow-hidden border-y border-[var(--border-default)] bg-[var(--surface-reading)] px-4 sm:-mx-8 sm:px-8",
+        historyNavigation
+          ? "min-h-0 py-6 sm:py-8"
+          : "min-h-[calc(100svh-9rem)] py-8",
+      )}
     >
       <div className="mx-auto flex w-full max-w-3xl flex-col items-center">
-        <header className="w-full text-center">
-          <h1 className="font-serif text-3xl font-semibold tracking-[0.12em] text-[var(--text-primary)] sm:text-4xl">
-            听故事
-          </h1>
-        </header>
+        {historyNavigation ? (
+          <header className="w-full max-w-2xl border-b border-[var(--border-default)] pb-6 text-center">
+            <div className="flex items-center justify-between gap-4">
+              <div className="h-px flex-1 bg-[var(--border-default)]" aria-hidden="true" />
+              <p className="text-xs tracking-[0.24em] text-[var(--text-secondary)]">
+                历史回顾 · 只读
+              </p>
+              <div className="h-px flex-1 bg-[var(--border-default)]" aria-hidden="true" />
+            </div>
+            <h1 className="mt-5 font-serif text-2xl font-semibold tracking-[0.08em] text-[var(--text-primary)] sm:text-3xl">
+              {formatStoryDate(historyNavigation.storyDate) ?? `第 ${historyNavigation.currentIndex + 1} 章`}
+            </h1>
+            <div className="mt-3 flex items-center justify-center gap-3 text-xs text-[var(--text-secondary)]">
+              <span>第 {historyNavigation.currentIndex + 1} 章 / 共 {historyNavigation.total} 章</span>
+              <span aria-hidden="true">·</span>
+              <button
+                type="button"
+                className="underline decoration-[var(--border-strong)] underline-offset-4 transition-colors hover:text-[var(--text-primary)]"
+                onClick={historyNavigation.onBackToCurrent}
+              >
+                返回当前
+              </button>
+            </div>
+          </header>
+        ) : (
+          <header className="w-full text-center">
+            <h1 className="font-serif text-3xl font-semibold tracking-[0.12em] text-[var(--text-primary)] sm:text-4xl">
+              听故事
+            </h1>
+          </header>
+        )}
 
         <div
-          className="relative my-9 grid h-56 w-56 place-items-center rounded-full border border-[var(--border-strong)] bg-[var(--surface-canvas)] sm:h-64 sm:w-64"
+          className={cn(
+            "relative grid place-items-center rounded-full border border-[var(--border-strong)] bg-[var(--surface-canvas)]",
+            historyNavigation
+              ? "my-6 h-40 w-40 sm:h-44 sm:w-44"
+              : "my-9 h-56 w-56 sm:h-64 sm:w-64",
+          )}
           style={{
             background: `conic-gradient(var(--text-primary) ${Math.round(progressRatio * 360)}deg, var(--surface-canvas) 0deg)`,
             padding: "1px",
@@ -1278,8 +1351,19 @@ export function StoryListeningExperience({
             onChange={handleSeek}
             className="h-1 w-full accent-[var(--text-primary)]"
           />
-          <div className="mt-5 flex items-center justify-center gap-4">
-            <Button type="button" variant="quiet" size="icon-touch" onClick={handleRestart} aria-label="从头朗读">
+          <div
+            role="group"
+            aria-label="朗读控制"
+            className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-4"
+          >
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-touch"
+              className="justify-self-end"
+              onClick={handleRestart}
+              aria-label="从头朗读"
+            >
               <RotateCcw className="h-4 w-4" />
             </Button>
             <Button
@@ -1299,18 +1383,72 @@ export function StoryListeningExperience({
                 <Play className="ml-0.5 h-6 w-6" />
               )}
             </Button>
-            {!transcriptOpen ? (
-              <Button
-                type="button"
-                variant="quiet"
-                size="touch"
-                onClick={() => setTranscriptOpen(true)}
-              >
-                <BookOpenText className="mr-2 h-4 w-4" />
-                查看正文
-              </Button>
-            ) : null}
+            <span aria-hidden="true" />
           </div>
+
+          <Button
+            type="button"
+            variant="narrative"
+            size="touch"
+            className="mt-7 min-h-16 w-full justify-between rounded-md bg-[var(--surface-raised)] px-4 py-3 text-left shadow-sm hover:bg-[var(--surface-overlay)]"
+            aria-label={transcriptOpen ? "收起故事正文" : "查看故事正文"}
+            aria-expanded={transcriptOpen}
+            aria-controls="story-transcript-content"
+            aria-describedby="story-transcript-hint"
+            onClick={() => setTranscriptOpen((open) => !open)}
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <BookOpenText className="h-5 w-5 text-[var(--text-primary)]" />
+              <span className="min-w-0 whitespace-normal">
+                <span className="block text-base font-medium text-[var(--text-primary)]">
+                  {transcriptOpen ? "收起故事正文" : "查看故事正文"}
+                </span>
+                <span
+                  id="story-transcript-hint"
+                  className="mt-1 block text-xs font-normal leading-5 text-[var(--text-secondary)]"
+                >
+                  {transcriptOpen
+                    ? "返回专注聆听"
+                    : "展开阅读，也可从任意段落开始朗读"}
+                </span>
+              </span>
+            </span>
+            {transcriptOpen ? (
+              <ChevronUp className="h-5 w-5 text-[var(--text-secondary)]" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-[var(--text-secondary)]" />
+            )}
+          </Button>
+
+          <section
+            id="story-transcript-content"
+            className="mt-6 w-full border-t border-[var(--border-default)] pt-7"
+            aria-label="故事正文"
+            hidden={!transcriptOpen}
+          >
+            <h2 className="mb-5 font-serif text-lg text-[var(--text-primary)]">
+              故事正文
+            </h2>
+            <div className="space-y-1">
+              {paragraphs.map((paragraph, index) => (
+                <button
+                  key={`${index}-${paragraph.slice(0, 18)}`}
+                  type="button"
+                  aria-label={`从第 ${index + 1} 段开始朗读`}
+                  aria-current={index === activeParagraph ? "true" : undefined}
+                  onClick={() => chooseParagraph(index)}
+                  className={cn(
+                    "w-full border-l-2 px-4 py-4 text-left font-serif text-base leading-8 transition-colors",
+                    index === activeParagraph
+                      ? "border-[var(--text-primary)] bg-[var(--surface-raised)] text-[var(--text-primary)]"
+                      : "border-transparent text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]",
+                  )}
+                >
+                  {paragraph}
+                </button>
+              ))}
+            </div>
+          </section>
 
           <VoicePicker
             voices={voiceCatalog}
@@ -1327,10 +1465,13 @@ export function StoryListeningExperience({
                 {SPEEDS.map((value) => <option key={value} value={value}>{value}×</option>)}
               </select>
             </label>
-            <label className="col-span-2 flex min-h-11 items-center justify-between gap-3 text-sm text-[var(--text-primary)] sm:col-span-1">
-              下一章自动播放
-              <input type="checkbox" checked={autoRead} onChange={handleAutoReadChange} className="h-5 w-5 accent-[var(--text-primary)]" />
-            </label>
+            <BinarySettingRow
+              className="col-span-2"
+              label="下一章自动播放"
+              description="章节结束后继续朗读"
+              checked={autoRead}
+              onChange={handleAutoReadChange}
+            />
           </div>
 
           {errorMessage ? (
@@ -1371,46 +1512,53 @@ export function StoryListeningExperience({
           ) : null}
         </div>
 
-        {transcriptOpen ? (
-          <section className="mt-10 w-full max-w-2xl border-t border-[var(--border-default)] pt-7" aria-label="故事正文">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="font-serif text-lg text-[var(--text-primary)]">故事正文</h2>
-              <Button type="button" variant="quiet" size="sm" onClick={() => setTranscriptOpen(false)}>
-                收起正文 <ChevronUp className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-            <div className="space-y-1">
-              {paragraphs.map((paragraph, index) => (
-                <button
-                  key={`${index}-${paragraph.slice(0, 18)}`}
-                  type="button"
-                  aria-label={`从第 ${index + 1} 段开始朗读`}
-                  aria-current={index === activeParagraph ? "true" : undefined}
-                  onClick={() => chooseParagraph(index)}
-                  className={cn(
-                    "w-full border-l-2 px-4 py-4 text-left font-serif text-base leading-8 transition-colors",
-                    index === activeParagraph
-                      ? "border-[var(--text-primary)] bg-[var(--surface-raised)] text-[var(--text-primary)]"
-                      : "border-transparent text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]",
-                  )}
-                >
-                  {paragraph}
-                </button>
-              ))}
-            </div>
+        {media ? <div className="mt-8 w-full">{media}</div> : null}
+
+        {options.length > 0 ? (
+          <section className="sticky bottom-0 z-20 mt-10 w-full max-w-2xl border-t border-[var(--border-strong)] bg-[var(--surface-reading)]/95 pb-[calc(1rem+var(--safe-area-inset-bottom))] pt-5 backdrop-blur">
+            <OptionCards
+              options={options}
+              onSelect={handleChoice}
+              allowCustomChoice={false}
+              disabled={false}
+            />
           </section>
         ) : null}
 
-        {media ? <div className="mt-8 w-full">{media}</div> : null}
-
-        <section className="sticky bottom-0 z-20 mt-10 w-full max-w-2xl border-t border-[var(--border-strong)] bg-[var(--surface-reading)]/95 pb-[calc(1rem+var(--safe-area-inset-bottom))] pt-5 backdrop-blur">
-          <OptionCards
-            options={options}
-            onSelect={handleChoice}
-            allowCustomChoice={false}
-            disabled={false}
-          />
-        </section>
+        {historyNavigation ? (
+          <nav
+            aria-label="历史章节导航"
+            className="sticky bottom-0 z-20 mt-10 grid w-full max-w-2xl grid-cols-[1fr_auto_1fr] items-center border-t border-[var(--border-strong)] bg-[var(--surface-reading)]/95 pb-[calc(1rem+var(--safe-area-inset-bottom))] pt-5 backdrop-blur"
+          >
+            <Button
+              type="button"
+              variant="quiet"
+              size="touch"
+              className="justify-self-start"
+              disabled={historyNavigation.currentIndex <= 0}
+              onClick={() => void historyNavigation.onPrevious()}
+              aria-label="上一章"
+            >
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              上一章
+            </Button>
+            <span className="px-3 font-serif text-sm text-[var(--text-secondary)]">
+              {historyNavigation.currentIndex + 1} / {historyNavigation.total}
+            </span>
+            <Button
+              type="button"
+              variant="quiet"
+              size="touch"
+              className="justify-self-end"
+              disabled={historyNavigation.currentIndex >= historyNavigation.total - 1}
+              onClick={() => void historyNavigation.onNext()}
+              aria-label="下一章"
+            >
+              下一章
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </nav>
+        ) : null}
       </div>
     </section>
   );

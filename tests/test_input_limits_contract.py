@@ -26,6 +26,7 @@ from src.api.main import app
 from src.api.schemas import (
     AddEntitiesRequest,
     BatchGenerateCharactersRequest,
+    CreateCollectionEntityRequest,
     CreateGameRequest,
     CreateItemRequest,
     CreatePresetRequest,
@@ -267,6 +268,7 @@ def test_legacy_response_models_do_not_reject_or_truncate_saved_text() -> None:
         (GenerateImageRequest, "entity_name", NAME_MAX_CHARS),
         (CreateSavePointRequest, "save_name", NAME_MAX_CHARS),
         (CreateItemRequest, "name", NAME_MAX_CHARS),
+        (CreateCollectionEntityRequest, "name", NAME_MAX_CHARS),
         (CustomChoiceRequest, "custom_text", CUSTOM_ACTION_MAX_CHARS),
         (ReadingContext, "text", VOICE_TEXT_MAX_CHARS),
         (RewriteStoryRequest, "full_story", FULL_STORY_MAX_CHARS),
@@ -350,3 +352,43 @@ def test_add_entities_route_uses_the_constrained_request_model() -> None:
 
     write_schema = app.openapi()["components"]["schemas"]["RecognizedEntityWrite"]
     assert write_schema["properties"]["name"]["maxLength"] == NAME_MAX_CHARS
+
+
+def test_manual_collection_entity_routes_use_the_constrained_request_model() -> None:
+    schema = app.openapi()
+    for path in (
+        "/api/collection/{game_id}/characters/create",
+        "/api/collection/{game_id}/landmarks/create",
+    ):
+        body_schema = schema["paths"][path]["post"]["requestBody"]["content"]["application/json"]["schema"]
+        assert body_schema["$ref"] == "#/components/schemas/CreateCollectionEntityRequest"
+
+    item_body_schema = schema["paths"]["/api/collection/{game_id}/items/create"]["post"][
+        "requestBody"
+    ]["content"]["application/json"]["schema"]
+    assert item_body_schema["$ref"] == "#/components/schemas/CreateItemRequest"
+
+    request_schema = schema["components"]["schemas"]["CreateCollectionEntityRequest"]
+    assert request_schema["properties"]["name"]["minLength"] == 1
+    assert request_schema["properties"]["name"]["maxLength"] == NAME_MAX_CHARS
+
+
+@pytest.mark.parametrize("model", [CreateItemRequest, CreateCollectionEntityRequest])
+@pytest.mark.parametrize("unsafe_name", ["档案/A", "A%20B", "A%2FB", ".", "..", " . "])
+def test_manual_collection_names_reject_values_that_cannot_round_trip_through_delete_routes(
+    model: type,
+    unsafe_name: str,
+) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        model.model_validate({"name": unsafe_name})
+
+    assert exc_info.value.errors()[0]["loc"] == ("name",)
+
+
+@pytest.mark.parametrize("model", [CreateItemRequest, CreateCollectionEntityRequest])
+def test_manual_collection_names_allow_non_segment_dots(model: type) -> None:
+    assert model.model_validate({"name": "A.B"}).name == "A.B"
+
+
+def test_manual_item_creation_keeps_description_generation_opt_in() -> None:
+    assert CreateItemRequest.model_validate({"name": "旧怀表"}).generate_description is False

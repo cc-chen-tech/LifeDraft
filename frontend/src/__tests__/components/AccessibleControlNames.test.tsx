@@ -16,6 +16,7 @@ const character: CharacterCollectionItem = {
   image_url: null,
   image_generated: false,
   description_generated: true,
+  can_delete: true,
 };
 
 describe('accessible control names', () => {

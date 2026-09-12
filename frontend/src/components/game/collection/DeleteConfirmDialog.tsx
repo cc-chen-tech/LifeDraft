@@ -9,6 +9,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Trash2, Loader2 } from "lucide-react";
+import { FeedbackNotice } from "@/components/story101";
 import type { DeleteConfirmDialogProps } from "./types";
 
 /**
@@ -21,6 +22,7 @@ export function DeleteConfirmDialog({
   onConfirm,
   entityToDelete,
   isDeleting,
+  error,
 }: DeleteConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -44,6 +46,8 @@ export function DeleteConfirmDialog({
             )}
           </DialogDescription>
         </DialogHeader>
+
+        {error && <FeedbackNotice tone="danger">{error}</FeedbackNotice>}
 
         <div className="flex gap-2 pt-4">
           <Button variant="outline" onClick={onClose} className="flex-1">

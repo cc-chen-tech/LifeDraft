@@ -1,7 +1,8 @@
 "use client";
 
 import { memo, useState, useCallback } from "react";
-import { MapPin, Loader2 } from "lucide-react";
+import { MapPin, Loader2, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { LANDMARK_CATEGORY_LABELS } from "./types";
 import type { LandmarkListProps } from "./types";
 
@@ -12,6 +13,8 @@ export const LandmarkList = memo(function LandmarkList({
   landmarks,
   isLoading,
   onLandmarkClick,
+  onOpenDeleteConfirm,
+  deletingEntity,
 }: LandmarkListProps) {
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
@@ -44,12 +47,12 @@ export const LandmarkList = memo(function LandmarkList({
       className="w-full min-w-0 divide-y divide-[var(--border-default)] border-y border-[var(--border-default)]"
     >
       {landmarks.map((landmark) => (
-        <li key={landmark.name} className="min-w-0">
+        <li key={landmark.name} className="flex min-w-0 items-center">
           <button
             type="button"
             aria-label={`查看标志物：${landmark.name}`}
             onClick={() => onLandmarkClick(landmark)}
-            className="grid min-h-11 w-full min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-3 rounded-none py-3 text-left transition-colors hover:bg-[var(--surface-subtle)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--text-primary)]"
+            className="grid min-h-11 w-full min-w-0 flex-1 grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-3 rounded-none py-3 text-left transition-colors hover:bg-[var(--surface-subtle)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--text-primary)]"
           >
             <div className="flex h-14 w-14 items-center justify-center overflow-hidden bg-[var(--surface-subtle)]">
               {landmark.image_url && !imageErrors.has(landmark.name) ? (
@@ -89,6 +92,22 @@ export const LandmarkList = memo(function LandmarkList({
               </div>
             </div>
           </button>
+          {onOpenDeleteConfirm && (
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-touch"
+              aria-label={`删除标志物${landmark.name}`}
+              disabled={
+                deletingEntity?.type === "landmark" &&
+                deletingEntity.name === landmark.name
+              }
+              onClick={() => onOpenDeleteConfirm("landmark", landmark.name)}
+              className="shrink-0 text-[var(--text-secondary)] hover:text-[var(--danger-foreground)] focus-visible:text-[var(--danger-foreground)]"
+            >
+              <Trash2 aria-hidden="true" />
+            </Button>
+          )}
         </li>
       ))}
     </ul>

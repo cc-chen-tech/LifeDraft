@@ -3941,6 +3941,118 @@
         }
       }
     },
+    "/api/collection/{game_id}/characters/create": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Create Character",
+        "description": "手动创建人物。",
+        "operationId": "create_character_api_collection__game_id__characters_create_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCollectionEntityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/landmarks/create": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Create Landmark",
+        "description": "手动创建地点。",
+        "operationId": "create_landmark_api_collection__game_id__landmarks_create_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCollectionEntityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/collection/{game_id}/items/create": {
       "post": {
         "tags": [
@@ -3970,9 +4082,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": true,
-                "title": "Request"
+                "$ref": "#/components/schemas/CreateItemRequest"
               }
             }
           }
@@ -4798,6 +4908,11 @@
             "type": "boolean",
             "title": "Description Generated",
             "default": false
+          },
+          "can_delete": {
+            "type": "boolean",
+            "title": "Can Delete",
+            "default": false
           }
         },
         "type": "object",
@@ -4910,6 +5025,23 @@
         "title": "CollectionResponse",
         "description": "收集数据响应"
       },
+      "CreateCollectionEntityRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "pattern": "^[^/%]+$",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CreateCollectionEntityRequest",
+        "description": "手动创建人物或地点请求。"
+      },
       "CreateGameRequest": {
         "properties": {
           "character_settings": {
@@ -4946,6 +5078,30 @@
           "life_vision"
         ],
         "title": "CreateGameRequest"
+      },
+      "CreateItemRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "pattern": "^[^/%]+$",
+            "title": "Name",
+            "description": "物品名称"
+          },
+          "generate_description": {
+            "type": "boolean",
+            "title": "Generate Description",
+            "description": "是否从历史中生成描述",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CreateItemRequest",
+        "description": "手动创建物品请求"
       },
       "CreatePresetRequest": {
         "properties": {
@@ -6128,7 +6284,7 @@
           "source_type": {
             "type": "string",
             "title": "Source Type",
-            "description": "current_story"
+            "description": "current_story or history_round"
           },
           "game_id": {
             "type": "integer",

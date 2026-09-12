@@ -1,7 +1,8 @@
 "use client";
 
 import { memo, useState, useCallback } from "react";
-import { User, Loader2 } from "lucide-react";
+import { User, Loader2, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { CharacterListProps } from "./types";
 
 /**
@@ -11,6 +12,8 @@ export const CharacterList = memo(function CharacterList({
   characters,
   isLoading,
   onCharacterClick,
+  onOpenDeleteConfirm,
+  deletingEntity,
 }: CharacterListProps) {
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
@@ -43,12 +46,12 @@ export const CharacterList = memo(function CharacterList({
       className="w-full min-w-0 divide-y divide-[var(--border-default)] border-y border-[var(--border-default)]"
     >
       {characters.map((character) => (
-        <li key={character.name} className="min-w-0">
+        <li key={character.name} className="flex min-w-0 items-center">
           <button
             type="button"
             aria-label={`查看人物：${character.name}`}
             onClick={() => onCharacterClick(character)}
-            className="grid min-h-11 w-full min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-3 rounded-none py-3 text-left transition-colors hover:bg-[var(--surface-subtle)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--text-primary)]"
+            className="grid min-h-11 w-full min-w-0 flex-1 grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-3 rounded-none py-3 text-left transition-colors hover:bg-[var(--surface-subtle)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--text-primary)]"
           >
             <div className="flex h-14 w-14 items-center justify-center overflow-hidden bg-[var(--surface-subtle)]">
               {character.image_url && !imageErrors.has(character.name) ? (
@@ -80,6 +83,22 @@ export const CharacterList = memo(function CharacterList({
               )}
             </div>
           </button>
+          {onOpenDeleteConfirm && character.can_delete === true && (
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-touch"
+              aria-label={`删除人物${character.name}`}
+              disabled={
+                deletingEntity?.type === "character" &&
+                deletingEntity.name === character.name
+              }
+              onClick={() => onOpenDeleteConfirm("character", character.name)}
+              className="shrink-0 text-[var(--text-secondary)] hover:text-[var(--danger-foreground)] focus-visible:text-[var(--danger-foreground)]"
+            >
+              <Trash2 aria-hidden="true" />
+            </Button>
+          )}
         </li>
       ))}
     </ul>

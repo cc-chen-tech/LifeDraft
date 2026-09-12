@@ -265,7 +265,44 @@ test('daily choice settles once and automatically opens the next calendar day', 
   await expect.poll(() => narrationCalls).toBe(1);
   await expect.poll(() => page.evaluate(() => (window as unknown as { __storyAudioEvents: { play: number } }).__storyAudioEvents.play)).toBeGreaterThan(0);
 
-  await page.getByRole('button', { name: '查看正文' }).first().click();
+  const transcriptAction = page.getByRole('button', { name: '查看故事正文' }).first();
+  await expect(transcriptAction).toBeVisible();
+  await expect(transcriptAction).toHaveAttribute('aria-expanded', 'false');
+  await expect(transcriptAction.getByText('展开阅读，也可从任意段落开始朗读')).toBeVisible();
+  const transcriptActionMetrics = await transcriptAction.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return {
+      documentY: bounds.top + window.scrollY,
+      height: bounds.height,
+      width: bounds.width,
+      containerWidth: element.parentElement?.getBoundingClientRect().width ?? 0,
+    };
+  });
+  expect(transcriptActionMetrics.height).toBeGreaterThanOrEqual(64);
+  expect(transcriptActionMetrics.width).toBeGreaterThanOrEqual(transcriptActionMetrics.containerWidth - 1);
+  await transcriptAction.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+  const scrollYBeforeExpand = await page.evaluate(() => window.scrollY);
+  await transcriptAction.click();
+  const collapseAction = page.getByRole('button', { name: '收起故事正文' }).first();
+  await expect(collapseAction).toBeVisible();
+  await expect(collapseAction).toHaveAttribute('aria-expanded', 'true');
+  await expect(collapseAction.getByText('返回专注聆听')).toBeVisible();
+  await expect(page.getByRole('button', { name: '收起正文', exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(scrollYBeforeExpand, 0);
+  expect(
+    await collapseAction.evaluate((element) => element.nextElementSibling?.id),
+  ).toBe('story-transcript-content');
+  const collapseActionMetrics = await collapseAction.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return {
+      documentY: bounds.top + window.scrollY,
+      height: bounds.height,
+      width: bounds.width,
+    };
+  });
+  expect(collapseActionMetrics.documentY).toBeCloseTo(transcriptActionMetrics.documentY, 0);
+  expect(collapseActionMetrics.width).toBeCloseTo(transcriptActionMetrics.width, 0);
+  expect(collapseActionMetrics.height).toBeCloseTo(transcriptActionMetrics.height, 0);
   await expect(page.getByText('林舟把追索失落往事的愿望，压进无名信带来的迟疑里。')).toBeVisible();
   await page.getByRole('button', { name: '从第 2 段开始朗读' }).click();
   const pausesBeforeChoice = await page.evaluate(() => (window as unknown as { __storyAudioEvents: { pause: number } }).__storyAudioEvents.pause);
@@ -343,7 +380,7 @@ test('migrated save resumes on its mapped calendar date without legacy controls'
 
   await page.goto(`/play?gameId=${gameId}`);
   await expect(page.getByText('公元 2026 年 1 月 14 日')).toBeVisible();
-  await page.getByRole('button', { name: '查看正文' }).first().click();
+  await page.getByRole('button', { name: '查看故事正文' }).first().click();
   await expect(page.getByText('迁移后的未选择事件仍停留在原周中映射日期。')).toBeVisible();
   await expect(page.getByRole('button', { name: '查看旧信' })).toBeVisible();
   await expect(page.getByRole('button', { name: /进入周中|进入周末|确认并继续/ })).toHaveCount(0);
@@ -423,7 +460,7 @@ test('refresh after a saved choice safely retries generation on the advanced day
       .getByTestId('daily-transition-layer')
       .getByText('公元 2026 年 8 月 14 日', { exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: '查看正文' }).first().click();
+  await page.getByRole('button', { name: '查看故事正文' }).first().click();
   await expect(page.getByText('刷新后，第二天故事在正确日期重新生成。')).toBeVisible();
   await expect(page.getByRole('button', { name: '继续调查' })).toBeVisible();
   expect(generationCalls).toBe(1);
