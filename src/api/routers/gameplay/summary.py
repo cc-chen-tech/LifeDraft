@@ -127,11 +127,41 @@ async def generate_summary(
     player = game_loop.player_state
 
     try:
-        # ★ 优先从 player_state.round_history 获取故事（内存中的完整数据）
-        # round_history 包含完整的事件描述和故事续写
+        # 日制游戏以 day_history 为权威历史；旧周制游戏继续读取 round_history。
         story_history = []
 
-        if player and hasattr(player, "round_history") and player.round_history:
+        day_history = getattr(player, "day_history", None) if player else None
+        if isinstance(day_history, list) and day_history:
+            for day_record in day_history:
+                if not isinstance(day_record, dict):
+                    continue
+                raw_day_index = day_record.get("day_index")
+                if (
+                    not isinstance(raw_day_index, int)
+                    or isinstance(raw_day_index, bool)
+                    or raw_day_index < 0
+                ):
+                    continue
+                day_index = raw_day_index
+                story_text = str(day_record.get("event_description") or "")
+                choice_text = str(day_record.get("choice") or "")
+                if story_text or choice_text:
+                    story_history.append(
+                        {
+                            "week": day_index // 7,
+                            "round": day_index % 7,
+                            "story_text": story_text,
+                            "choice_text": choice_text,
+                        }
+                    )
+
+        # 非空但不可用的日历史不能屏蔽旧游戏的有效周制历史。
+        if (
+            not story_history
+            and player
+            and hasattr(player, "round_history")
+            and player.round_history
+        ):
             for round_record in player.round_history:
                 week = round_record.get("week", 0)
                 round_num = round_record.get("round", 0)
