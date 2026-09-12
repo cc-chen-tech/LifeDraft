@@ -18,7 +18,9 @@ from src.ai.image_exceptions import ImageProviderError
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.game.state import PlayerState
+from src.game.state.character_state import CharacterState
 from src.game.state.item_state import ItemState
+from src.game.state.landmark_state import LandmarkState
 from src.services.image_service import (ImageProviderServiceError,
                                         ImageService)
 from src.services.image_storage import ImageStorageService
@@ -907,6 +909,55 @@ class CollectionService:
             "is_key_item": (importance == "critical"),
             "image_generated": False,
             "description_generated": bool(description),
+        }
+
+    def create_character(
+        self, player_state: PlayerState, name: str
+    ) -> Dict[str, Any]:
+        """手动创建人物，使用安全默认值。"""
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("人物名称不能为空")
+        if clean_name == player_state.player_name:
+            raise ValueError("不能创建与主角同名的人物")
+        if clean_name in player_state.characters:
+            raise ValueError(f"人物 '{clean_name}' 已存在")
+
+        character = CharacterState(name=clean_name)
+        player_state.add_character(character)
+        return {
+            "name": character.name,
+            "role": character.role,
+            "relationship_desc": character.relationship_desc,
+            "affinity": character.affinity,
+            "image_generated": False,
+        }
+
+    def create_landmark(self, player_state: PlayerState, name: str) -> Dict[str, Any]:
+        """手动创建地点，使用当前周作为首次和最近出现周。"""
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("地点名称不能为空")
+        if clean_name in player_state.landmarks:
+            raise ValueError(f"地点 '{clean_name}' 已存在")
+
+        landmark = LandmarkState(
+            name=clean_name,
+            first_appear_week=player_state.week,
+            last_appear_week=player_state.week,
+        )
+        player_state.add_landmark(landmark)
+        return {
+            "name": landmark.name,
+            "description": landmark.description,
+            "category": landmark.category,
+            "importance": landmark.importance,
+            "first_appear_week": landmark.first_appear_week,
+            "appear_count": landmark.appear_count,
+            "last_appear_week": landmark.last_appear_week,
+            "context": landmark.context,
+            "is_key_location": landmark.is_key_location,
+            "image_generated": landmark.image_generated,
         }
 
     def _delete_entity_image_records(

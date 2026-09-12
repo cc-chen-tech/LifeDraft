@@ -438,6 +438,108 @@ class TestAddEntities:
         assert response.status_code == 401
 
 
+class TestManualCollectionEntityCreation:
+    """Tests for manually creating collection people and landmarks."""
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/collection/1/characters/create",
+            "/collection/1/landmarks/create",
+        ],
+    )
+    def test_manual_entity_creation_requires_authentication(self, client, path):
+        response = client.post(path, json={"name": "陈舟"})
+        assert response.status_code == 401
+
+    @pytest.mark.parametrize(
+        ("path", "method_name", "response_key", "entity"),
+        [
+            (
+                "/collection/1/characters/create",
+                "create_character",
+                "character",
+                {"name": "陈舟", "affinity": 50},
+            ),
+            (
+                "/collection/1/landmarks/create",
+                "create_landmark",
+                "landmark",
+                {"name": "旧书院", "appear_count": 1},
+            ),
+        ],
+    )
+    @patch("src.api.routers.collection._save_player_state")
+    @patch("src.api.routers.collection.session_service")
+    @patch("src.api.routers.collection.SessionLocal")
+    @patch("src.api.routers.collection.CollectionService")
+    def test_manual_entity_creation_returns_entity_and_persists_state(
+        self,
+        mock_service_class,
+        mock_session_local,
+        mock_session_service,
+        mock_save_player_state,
+        app,
+        client,
+        path,
+        method_name,
+        response_key,
+        entity,
+    ):
+        player_state = MagicMock()
+        session = MagicMock()
+        session.game_loop.get_state.return_value = player_state
+        mock_session_service.get_or_restore.return_value = session
+        mock_session_local.return_value = MagicMock()
+        service = MagicMock()
+        getattr(service, method_name).return_value = entity
+        mock_service_class.return_value = service
+        app.dependency_overrides[get_current_user_optional] = lambda: MagicMock(user_id=7)
+        try:
+            response = client.post(path, json={"name": entity["name"]})
+            assert response.status_code == 200
+            assert response.json() == {"success": True, response_key: entity}
+            mock_save_player_state.assert_called_once_with(1, player_state)
+        finally:
+            app.dependency_overrides.clear()
+
+    @patch("src.api.routers.collection.session_service")
+    @patch("src.api.routers.collection.SessionLocal")
+    @patch("src.api.routers.collection.CollectionService")
+    def test_manual_character_creation_returns_bad_request_for_duplicate(
+        self, mock_service_class, mock_session_local, mock_session_service, app, client
+    ):
+        session = MagicMock()
+        session.game_loop.get_state.return_value = MagicMock()
+        mock_session_service.get_or_restore.return_value = session
+        mock_session_local.return_value = MagicMock()
+        service = MagicMock()
+        service.create_character.side_effect = ValueError("人物 '陈舟' 已存在")
+        mock_service_class.return_value = service
+        app.dependency_overrides[get_current_user_optional] = lambda: MagicMock(user_id=7)
+        try:
+            response = client.post("/collection/1/characters/create", json={"name": "陈舟"})
+            assert response.status_code == 400
+            assert "已存在" in response.json()["detail"]
+        finally:
+            app.dependency_overrides.clear()
+
+    @patch("src.api.routers.collection.session_service")
+    def test_manual_landmark_creation_returns_bad_request_without_player_state(
+        self, mock_session_service, app, client
+    ):
+        session = MagicMock()
+        session.game_loop.get_state.return_value = None
+        mock_session_service.get_or_restore.return_value = session
+        app.dependency_overrides[get_current_user_optional] = lambda: MagicMock(user_id=7)
+        try:
+            response = client.post("/collection/1/landmarks/create", json={"name": "旧书院"})
+            assert response.status_code == 400
+            assert response.json()["detail"] == "游戏状态不存在"
+        finally:
+            app.dependency_overrides.clear()
+
+
 # ==================== Delete Endpoints Tests ====================
 
 

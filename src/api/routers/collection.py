@@ -8,7 +8,8 @@ from urllib.parse import unquote
 from fastapi import APIRouter, Depends, HTTPException
 from src.api.deps import get_current_user_optional
 from src.api.routers.image_failures import image_failure_http_exception
-from src.api.schemas import (AddEntitiesRequest, CollectionResponse, MessageResponse,
+from src.api.schemas import (AddEntitiesRequest, CollectionResponse,
+                             CreateCollectionEntityRequest, MessageResponse,
                              RegenerateCharacterImageRequest,
                              RegenerateItemImageRequest)
 from src.api.services.session_service import session_service
@@ -642,6 +643,48 @@ async def add_entities(  # type: ignore
 
 
 # ==================== 物品管理 ====================
+
+
+@router.post("/{game_id}/characters/create")
+async def create_character(  # type: ignore
+    game_id: int,
+    request: CreateCollectionEntityRequest,
+    user_id: Optional[int] = Depends(get_current_user_optional),
+):
+    """手动创建人物。"""
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
+
+    db = SessionLocal()
+    try:
+        character = CollectionService(db).create_character(player_state, request.name)
+        _save_player_state(game_id, player_state)
+        return {"success": True, "character": character}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
+
+
+@router.post("/{game_id}/landmarks/create")
+async def create_landmark(  # type: ignore
+    game_id: int,
+    request: CreateCollectionEntityRequest,
+    user_id: Optional[int] = Depends(get_current_user_optional),
+):
+    """手动创建地点。"""
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
+
+    db = SessionLocal()
+    try:
+        landmark = CollectionService(db).create_landmark(player_state, request.name)
+        _save_player_state(game_id, player_state)
+        return {"success": True, "landmark": landmark}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
 
 
 @router.post("/{game_id}/items/create")

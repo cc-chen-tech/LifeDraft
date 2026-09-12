@@ -26,6 +26,7 @@ from src.api.main import app
 from src.api.schemas import (
     AddEntitiesRequest,
     BatchGenerateCharactersRequest,
+    CreateCollectionEntityRequest,
     CreateGameRequest,
     CreateItemRequest,
     CreatePresetRequest,
@@ -267,6 +268,7 @@ def test_legacy_response_models_do_not_reject_or_truncate_saved_text() -> None:
         (GenerateImageRequest, "entity_name", NAME_MAX_CHARS),
         (CreateSavePointRequest, "save_name", NAME_MAX_CHARS),
         (CreateItemRequest, "name", NAME_MAX_CHARS),
+        (CreateCollectionEntityRequest, "name", NAME_MAX_CHARS),
         (CustomChoiceRequest, "custom_text", CUSTOM_ACTION_MAX_CHARS),
         (ReadingContext, "text", VOICE_TEXT_MAX_CHARS),
         (RewriteStoryRequest, "full_story", FULL_STORY_MAX_CHARS),
@@ -350,3 +352,17 @@ def test_add_entities_route_uses_the_constrained_request_model() -> None:
 
     write_schema = app.openapi()["components"]["schemas"]["RecognizedEntityWrite"]
     assert write_schema["properties"]["name"]["maxLength"] == NAME_MAX_CHARS
+
+
+def test_manual_collection_entity_routes_use_the_constrained_request_model() -> None:
+    schema = app.openapi()
+    for path in (
+        "/api/collection/{game_id}/characters/create",
+        "/api/collection/{game_id}/landmarks/create",
+    ):
+        body_schema = schema["paths"][path]["post"]["requestBody"]["content"]["application/json"]["schema"]
+        assert body_schema["$ref"] == "#/components/schemas/CreateCollectionEntityRequest"
+
+    request_schema = schema["components"]["schemas"]["CreateCollectionEntityRequest"]
+    assert request_schema["properties"]["name"]["minLength"] == 1
+    assert request_schema["properties"]["name"]["maxLength"] == NAME_MAX_CHARS

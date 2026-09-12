@@ -95,6 +95,48 @@ def test_recognized_entities_add_once_with_collection_metadata() -> None:
         session.close()
 
 
+def test_manual_character_and_landmark_creation_uses_safe_defaults_and_rejects_duplicates() -> None:
+    session = _session()
+    try:
+        state = PlayerState(player_name="林岚", week=4)
+        service = CollectionService(session)
+
+        character = service.create_character(state, "  陈舟  ")
+        landmark = service.create_landmark(state, "  旧书院  ")
+
+        assert character == {
+            "name": "陈舟",
+            "role": "",
+            "relationship_desc": "",
+            "affinity": 50,
+            "image_generated": False,
+        }
+        assert landmark == {
+            "name": "旧书院",
+            "description": "",
+            "category": "other",
+            "importance": "normal",
+            "first_appear_week": 4,
+            "appear_count": 1,
+            "last_appear_week": 4,
+            "context": "",
+            "is_key_location": False,
+            "image_generated": False,
+        }
+        assert state.characters["陈舟"]["affinity"] == 50
+        assert state.landmarks["旧书院"]["first_appear_week"] == 4
+        with pytest.raises(ValueError, match="已存在"):
+            service.create_character(state, "陈舟")
+        with pytest.raises(ValueError, match="主角"):
+            service.create_character(state, "林岚")
+        with pytest.raises(ValueError, match="不能为空"):
+            service.create_landmark(state, "   ")
+        with pytest.raises(ValueError, match="已存在"):
+            service.create_landmark(state, "旧书院")
+    finally:
+        session.close()
+
+
 def test_character_removal_cleans_linked_image_and_protects_player() -> None:
     session = _session()
     try:

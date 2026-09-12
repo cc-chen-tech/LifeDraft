@@ -836,6 +836,12 @@ class CreateItemRequest(BaseModel):
     generate_description: bool = Field(default=True, description="是否从历史中生成描述")
 
 
+class CreateCollectionEntityRequest(BaseModel):
+    """手动创建人物或地点请求。"""
+
+    name: str = Field(..., min_length=1, max_length=NAME_MAX_CHARS)
+
+
 class CreateItemResponse(BaseModel):
     """手动创建物品响应"""
 
