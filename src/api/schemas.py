@@ -15,6 +15,7 @@ from src.api.input_limits import (
     STORY_REWRITE_INSTRUCTION_MAX_CHARS,
     VOICE_TEXT_MAX_CHARS,
     CharacterSettingsPayload,
+    CollectionEntityName,
 )
 
 # ==================== Auth ====================
@@ -704,6 +705,7 @@ class CharacterCollectionItem(BaseModel):
     image_url: Optional[str] = None
     image_generated: bool = False
     description_generated: bool = False
+    can_delete: bool = False
 
 
 class ItemCollectionItem(BaseModel):
@@ -830,10 +832,14 @@ class AddEntitiesResponse(BaseModel):
 class CreateItemRequest(BaseModel):
     """手动创建物品请求"""
 
-    name: str = Field(
-        ..., min_length=1, max_length=NAME_MAX_CHARS, description="物品名称"
-    )
-    generate_description: bool = Field(default=True, description="是否从历史中生成描述")
+    name: CollectionEntityName = Field(..., description="物品名称")
+    generate_description: bool = Field(default=False, description="是否从历史中生成描述")
+
+
+class CreateCollectionEntityRequest(BaseModel):
+    """手动创建人物或地点请求。"""
+
+    name: CollectionEntityName
 
 
 class CreateItemResponse(BaseModel):

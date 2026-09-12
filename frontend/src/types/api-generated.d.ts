@@ -1554,6 +1554,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/collection/{game_id}/characters/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Character
+         * @description 手动创建人物。
+         */
+        post: operations["create_character_api_collection__game_id__characters_create_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/collection/{game_id}/landmarks/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Landmark
+         * @description 手动创建地点。
+         */
+        post: operations["create_landmark_api_collection__game_id__landmarks_create_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/collection/{game_id}/items/create": {
         parameters: {
             query?: never;
@@ -1880,6 +1920,11 @@ export interface components {
              * @default false
              */
             description_generated: boolean;
+            /**
+             * Can Delete
+             * @default false
+             */
+            can_delete: boolean;
         };
         /** ClientLogEntry */
         ClientLogEntry: {
@@ -1920,6 +1965,14 @@ export interface components {
              */
             total_landmarks: number;
         };
+        /**
+         * CreateCollectionEntityRequest
+         * @description 手动创建人物或地点请求。
+         */
+        CreateCollectionEntityRequest: {
+            /** Name */
+            name: string;
+        };
         /** CreateGameRequest */
         CreateGameRequest: {
             /** Character Settings */
@@ -1940,6 +1993,23 @@ export interface components {
              * @default expert
              */
             constraint_level: string;
+        };
+        /**
+         * CreateItemRequest
+         * @description 手动创建物品请求
+         */
+        CreateItemRequest: {
+            /**
+             * Name
+             * @description 物品名称
+             */
+            name: string;
+            /**
+             * Generate Description
+             * @description 是否从历史中生成描述
+             * @default false
+             */
+            generate_description: boolean;
         };
         /** CreatePresetRequest */
         CreatePresetRequest: {
@@ -5841,6 +5911,76 @@ export interface operations {
             };
         };
     };
+    create_character_api_collection__game_id__characters_create_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCollectionEntityRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_landmark_api_collection__game_id__landmarks_create_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCollectionEntityRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_item_api_collection__game_id__items_create_post: {
         parameters: {
             query?: never;
@@ -5852,9 +5992,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["CreateItemRequest"];
             };
         };
         responses: {

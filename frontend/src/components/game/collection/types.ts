@@ -47,6 +47,8 @@ export interface CharacterListProps {
   characters: CharacterCollectionItem[];
   isLoading: boolean;
   onCharacterClick: (character: CharacterCollectionItem) => void;
+  onOpenDeleteConfirm?: (type: "character", name: string) => void;
+  deletingEntity?: EntityToDelete | null;
 }
 
 // 物品列表 Props
@@ -54,6 +56,8 @@ export interface ItemListProps {
   items: ItemCollectionItem[];
   isLoading: boolean;
   onItemClick: (item: ItemCollectionItem) => void;
+  onOpenDeleteConfirm?: (type: "item", name: string) => void;
+  deletingEntity?: EntityToDelete | null;
 }
 
 // 地标列表 Props
@@ -61,6 +65,8 @@ export interface LandmarkListProps {
   landmarks: LandmarkCollectionItem[];
   isLoading: boolean;
   onLandmarkClick: (landmark: LandmarkCollectionItem) => void;
+  onOpenDeleteConfirm?: (type: "landmark", name: string) => void;
+  deletingEntity?: EntityToDelete | null;
 }
 
 // 人物详情 Props
@@ -137,16 +143,18 @@ export interface RecognizeDialogProps {
   onToggleLandmarkSelection: (landmark: RecognizedEntity) => void;
 }
 
-// 添加物品对话框 Props
-export interface AddItemDialogProps {
+// 添加实体对话框 Props
+export interface AddEntityDialogProps {
+  activeTab: CollectionTab;
   open: boolean;
   onClose: () => void;
   onCloseAutoFocus?: (event: Event) => void;
   onSubmit: () => Promise<void>;
-  itemName: string;
-  onItemNameChange: (value: string) => void;
-  generateDesc: boolean;
-  onGenerateDescChange: (value: boolean) => void;
+  entityName: string;
+  onEntityNameChange: (value: string) => void;
+  generateDescription: boolean;
+  onGenerateDescriptionChange: (value: boolean) => void;
+  error: string | null;
   isLoading: boolean;
 }
 
@@ -158,6 +166,7 @@ export interface DeleteConfirmDialogProps {
   onConfirm: () => Promise<void>;
   entityToDelete: EntityToDelete | null;
   isDeleting: boolean;
+  error?: string | null;
 }
 
 // Tab 切换组件 Props
@@ -174,5 +183,5 @@ export interface ActionButtonsProps {
   activeTab: CollectionTab;
   isRecognizing: boolean;
   onOpenRecognize: () => void;
-  onOpenAddItem: () => void;
+  onOpenAddEntity: () => void;
 }

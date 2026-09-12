@@ -18,7 +18,9 @@ from src.ai.image_exceptions import ImageProviderError
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.game.state import PlayerState
+from src.game.state.character_state import CharacterState
 from src.game.state.item_state import ItemState
+from src.game.state.landmark_state import LandmarkState
 from src.services.image_service import (ImageProviderServiceError,
                                         ImageService)
 from src.services.image_storage import ImageStorageService
@@ -126,6 +128,13 @@ class CollectionService:
         characters = []
         added_names: set[str] = set()
         character_settings = player_state.character_settings or {}
+        key_people = self._extract_key_people(character_settings.get("relationships", {}))
+        family_members = self._extract_family_members(character_settings)
+        protected_names = {
+            str(person.get("name", "")).strip()
+            for person in [*key_people, *family_members]
+            if isinstance(person, dict) and str(person.get("name", "")).strip()
+        }
 
         # 批量获取所有 character 图片，避免 N+1 查询
         image_cache = self._get_entity_images_batch(game_id, "character")
@@ -157,11 +166,11 @@ class CollectionService:
                     image_url=image_url,
                     image_generated=image_generated,
                     description_generated=True,
+                    can_delete=name.strip() not in protected_names,
                 )
             )
 
         # 2. 从 key_people 获取关键人物
-        key_people = self._extract_key_people(character_settings.get("relationships", {}))
         for person in key_people:
             if isinstance(person, dict):
                 char = self._build_key_person(game_id, person, added_names, image_cache)
@@ -169,7 +178,6 @@ class CollectionService:
                     characters.append(char)
 
         # 3. 从 family_members 获取家庭成员
-        family_members = character_settings.get("family", {}).get("family_members", [])
         for member in family_members:
             if isinstance(member, dict):
                 char = self._build_family_member(game_id, member, added_names, image_cache)
@@ -186,6 +194,32 @@ class CollectionService:
             key_people = relationships.get("key_people", [])
             return [person for person in key_people if isinstance(person, dict)]
         return []
+
+    def _extract_family_members(
+        self, character_settings: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Return structured family members from possibly malformed settings."""
+        family = character_settings.get("family", {})
+        if not isinstance(family, dict):
+            return []
+        members = family.get("family_members", [])
+        if not isinstance(members, list):
+            return []
+        return [member for member in members if isinstance(member, dict)]
+
+    def _protected_character_names(
+        self, character_settings: Dict[str, Any]
+    ) -> set[str]:
+        """Return preset people whose lifecycle is owned by character settings."""
+        people = [
+            *self._extract_key_people(character_settings.get("relationships", {})),
+            *self._extract_family_members(character_settings),
+        ]
+        return {
+            str(person.get("name", "")).strip()
+            for person in people
+            if str(person.get("name", "")).strip()
+        }
 
     def _build_player_character(
         self,
@@ -235,6 +269,7 @@ class CollectionService:
             image_url=image_url,
             image_generated=image_generated,
             description_generated=True,
+            can_delete=False,
         )
 
     def _build_key_person(
@@ -269,6 +304,7 @@ class CollectionService:
             image_url=image_url,
             image_generated=image_generated,
             description_generated=True,
+            can_delete=False,
         )
 
     def _build_family_member(
@@ -301,6 +337,7 @@ class CollectionService:
             image_url=image_url,
             image_generated=image_generated,
             description_generated=True,
+            can_delete=False,
         )
 
     def _build_item_list(
@@ -909,6 +946,72 @@ class CollectionService:
             "description_generated": bool(description),
         }
 
+    def create_character(
+        self, player_state: PlayerState, name: str
+    ) -> Dict[str, Any]:
+        """手动创建人物，使用安全默认值。"""
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("人物名称不能为空")
+        character_settings = player_state.character_settings or {}
+        player_name = player_state.player_name or character_settings.get("player_name", "")
+        if clean_name == player_name:
+            raise ValueError("不能创建与主角同名的人物")
+        visible_names = set(player_state.characters)
+        visible_names.update(player_state.relationships)
+        visible_names.update(
+            str(person.get("name", "")).strip()
+            for person in self._extract_key_people(
+                character_settings.get("relationships", {})
+            )
+        )
+        family = character_settings.get("family", {})
+        if isinstance(family, dict):
+            visible_names.update(
+                str(member.get("name", "")).strip()
+                for member in family.get("family_members", [])
+                if isinstance(member, dict)
+            )
+        if clean_name in visible_names:
+            raise ValueError(f"人物 '{clean_name}' 已存在")
+
+        character = CharacterState(name=clean_name)
+        player_state.add_character(character)
+        return {
+            "name": character.name,
+            "role": character.role,
+            "relationship_desc": character.relationship_desc,
+            "affinity": character.affinity,
+            "image_generated": False,
+        }
+
+    def create_landmark(self, player_state: PlayerState, name: str) -> Dict[str, Any]:
+        """手动创建地点，使用当前周作为首次和最近出现周。"""
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("地点名称不能为空")
+        if clean_name in player_state.landmarks:
+            raise ValueError(f"地点 '{clean_name}' 已存在")
+
+        landmark = LandmarkState(
+            name=clean_name,
+            first_appear_week=player_state.week,
+            last_appear_week=player_state.week,
+        )
+        player_state.add_landmark(landmark)
+        return {
+            "name": landmark.name,
+            "description": landmark.description,
+            "category": landmark.category,
+            "importance": landmark.importance,
+            "first_appear_week": landmark.first_appear_week,
+            "appear_count": landmark.appear_count,
+            "last_appear_week": landmark.last_appear_week,
+            "context": landmark.context,
+            "is_key_location": landmark.is_key_location,
+            "image_generated": landmark.image_generated,
+        }
+
     def _delete_entity_image_records(
         self, game_id: int, image_type: str, entity_name: str
     ) -> None:
@@ -948,6 +1051,8 @@ class CollectionService:
         game_id: int,
         item_name: str,
         player_state: PlayerState,
+        *,
+        delete_images: bool = True,
     ) -> bool:
         """删除物品。"""
         item_name = unquote(item_name)
@@ -958,8 +1063,8 @@ class CollectionService:
         if not success:
             return False
 
-        # 删除关联的图片记录与文件
-        self._delete_entity_image_records(game_id, "item", item_name)
+        if delete_images:
+            self._delete_entity_image_records(game_id, "item", item_name)
         return True
 
     def delete_character(
@@ -967,6 +1072,8 @@ class CollectionService:
         game_id: int,
         character_name: str,
         player_state: PlayerState,
+        *,
+        delete_images: bool = True,
     ) -> bool:
         """删除人物。"""
         character_name = unquote(character_name)
@@ -976,6 +1083,8 @@ class CollectionService:
         player_name = player_state.player_name or character_settings.get("player_name", "")
         if character_name == player_name:
             raise PermissionDeniedError("不能删除主角")
+        if character_name.strip() in self._protected_character_names(character_settings):
+            raise PermissionDeniedError("不能删除预设人物")
 
         if character_name not in player_state.characters:
             raise EntityNotFoundError(f"人物 '{character_name}' 不存在或无法删除")
@@ -984,8 +1093,8 @@ class CollectionService:
         if not success:
             return False
 
-        # 删除关联的图片记录与文件
-        self._delete_entity_image_records(game_id, "character", character_name)
+        if delete_images:
+            self._delete_entity_image_records(game_id, "character", character_name)
         return True
 
     def delete_landmark(
@@ -993,6 +1102,8 @@ class CollectionService:
         game_id: int,
         landmark_name: str,
         player_state: PlayerState,
+        *,
+        delete_images: bool = True,
     ) -> bool:
         """删除标志物。"""
         landmark_name = unquote(landmark_name)
@@ -1003,6 +1114,6 @@ class CollectionService:
         if not success:
             return False
 
-        # 删除关联的图片记录与文件
-        self._delete_entity_image_records(game_id, "landmark", landmark_name)
+        if delete_images:
+            self._delete_entity_image_records(game_id, "landmark", landmark_name)
         return True

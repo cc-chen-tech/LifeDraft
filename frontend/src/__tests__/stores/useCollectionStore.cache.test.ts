@@ -13,6 +13,9 @@
 import { useCollectionStore } from '@/stores/useCollectionStore';
 import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
+type ManualCreateAction = (gameId: number, name: string) => Promise<boolean>;
+type ManualCreateActionName = 'createCharacter' | 'createItem' | 'createLandmark';
+
 // Mock timers for cache TTL tests
 jest.useFakeTimers();
 
@@ -661,6 +664,28 @@ describe('useCollectionStore cache', () => {
       expect(useCollectionStore.getState().items).toHaveLength(1);
     });
 
+    it('keeps a recognized character deletable while its background refresh fails', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse({
+          success: true,
+          message: '成功添加 1 个人物',
+          added_items: [],
+          added_characters: ['误识人物'],
+          added_landmarks: [],
+        }))
+        .mockResolvedValueOnce(errorResponse(400, '列表服务暂时不可用'));
+
+      await useCollectionStore.getState().addRecognizedEntities(1, {
+        items: [],
+        characters: [{ name: '误识人物', description: '', category: 'other', importance: 'normal', appear_count: 1, appear_contexts: [] }],
+        landmarks: [],
+      });
+
+      expect(useCollectionStore.getState().characters).toEqual([
+        expect.objectContaining({ name: '误识人物', can_delete: true }),
+      ]);
+    });
+
     it('createItem should fetch fresh data after creation', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ success: true }));
       const mockResponse = {
@@ -678,6 +703,96 @@ describe('useCollectionStore cache', () => {
       expect(useCollectionStore.getState().items).toHaveLength(1);
     });
 
+    it.each([
+      ['createCharacter', '/api/collection/1/characters/create'],
+      ['createItem', '/api/collection/1/items/create'],
+      ['createLandmark', '/api/collection/1/landmarks/create'],
+    ] as const)('%s returns true and refreshes only after creation succeeds', async (actionName, endpoint) => {
+      const createdEntity = { success: true };
+      const refreshedCollection = {
+        game_id: 1,
+        characters: [],
+        items: [],
+        landmarks: [],
+      };
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse(createdEntity))
+        .mockResolvedValueOnce(jsonResponse(refreshedCollection));
+
+      const action = (useCollectionStore.getState() as unknown as Record<ManualCreateActionName, ManualCreateAction>)[actionName];
+      const succeeded = await action(1, '新实体');
+
+      expect(succeeded).toBe(true);
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        1,
+        endpoint,
+        expect.objectContaining({ method: 'POST' }),
+      );
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        2,
+        '/api/collection/1/details',
+        expect.objectContaining({ credentials: 'include' }),
+      );
+      expect(useCollectionStore.getState().error).toBeNull();
+    });
+
+    it.each([
+      [
+        'createCharacter',
+        { success: true, character: { name: '陈舟', role: '', relationship_desc: '', affinity: 50, image_generated: false } },
+        'characters',
+        { can_delete: true },
+      ],
+      [
+        'createItem',
+        { success: true, item: { name: '陈舟', description: '', importance: 'normal', category: 'other', acquired_week: 4, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: false, metadata: {} } },
+        'items',
+        {},
+      ],
+      [
+        'createLandmark',
+        { success: true, landmark: { name: '陈舟', description: '', category: 'other', importance: 'normal', first_appear_week: 4, appear_count: 1, last_appear_week: 4, context: '', is_key_location: false, image_generated: false } },
+        'landmarks',
+        {},
+      ],
+    ] as const)('%s keeps the persisted entity locally and warns when refresh fails', async (actionName, createdResponse, collectionName, expectedFields) => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse(createdResponse))
+        .mockResolvedValueOnce(errorResponse(400, '列表服务暂时不可用'));
+
+      const action = (useCollectionStore.getState() as unknown as Record<ManualCreateActionName, ManualCreateAction>)[actionName];
+      const succeeded = await action(1, '陈舟');
+
+      expect(succeeded).toBe(true);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(
+        (global.fetch as jest.Mock).mock.calls.filter(([, init]) => init?.method === 'POST'),
+      ).toHaveLength(1);
+      expect(useCollectionStore.getState()[collectionName]).toEqual([
+        expect.objectContaining({ name: '陈舟', ...expectedFields }),
+      ]);
+      expect(useCollectionStore.getState().error).toMatch(/已保存.*列表同步失败.*无需重复添加/);
+    });
+
+    it.each([
+      ['createCharacter', '/api/collection/1/characters/create'],
+      ['createItem', '/api/collection/1/items/create'],
+      ['createLandmark', '/api/collection/1/landmarks/create'],
+    ] as const)('%s returns false, preserves the error, and skips refresh when creation fails', async (actionName, endpoint) => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(400, '名称已存在'));
+
+      const action = (useCollectionStore.getState() as unknown as Record<ManualCreateActionName, ManualCreateAction>)[actionName];
+      const succeeded = await action(1, '重复实体');
+
+      expect(succeeded).toBe(false);
+      expect(useCollectionStore.getState().error).toBe('名称已存在');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledWith(
+        endpoint,
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+
     it('deleteItem should fetch fresh data after deletion', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ success: true }));
       const mockResponse = {
@@ -692,6 +807,44 @@ describe('useCollectionStore cache', () => {
 
       expect(global.fetch).toHaveBeenCalled();
       expect(global.fetch).toHaveBeenCalledWith('/api/collection/1/details', expect.objectContaining({ credentials: 'include' }));
+    });
+
+    it.each([
+      ['deleteCharacter', '/api/collection/1/characters/%E6%9E%97%E8%88%9F'],
+      ['deleteItem', '/api/collection/1/items/%E6%97%A7%E7%89%A9%E5%93%81'],
+      ['deleteLandmark', '/api/collection/1/landmarks/%E6%97%A7%E7%A0%81%E5%A4%B4'],
+    ] as const)('%s returns false and preserves the dialog-facing error on failure', async (actionName, endpoint) => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(400, '删除失败'));
+      const action = (useCollectionStore.getState() as unknown as Record<string, (gameId: number, name: string) => Promise<boolean>>)[actionName];
+
+      const succeeded = await action(1, actionName === 'deleteCharacter' ? '林舟' : actionName === 'deleteItem' ? '旧物品' : '旧码头');
+
+      expect(succeeded).toBe(false);
+      expect(useCollectionStore.getState().error).toBe('删除失败');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledWith(endpoint, expect.objectContaining({ method: 'DELETE' }));
+    });
+
+    it.each([
+      ['deleteCharacter', 'characters', { name: '林舟', role: '同事', description: '', affinity: 73, age: null, gender: null, occupation: null, personality_traits: [], image_url: null, image_generated: false, description_generated: true }],
+      ['deleteItem', 'items', { name: '旧物品', description: '', importance: 'normal', category: 'other', acquired_week: 1, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: false, metadata: {} }],
+      ['deleteLandmark', 'landmarks', { name: '旧码头', description: '', category: 'other', importance: 'normal', first_appear_week: 1, appear_count: 1, last_appear_week: 1, context: '', is_key_location: false, image_url: null, image_generated: false, metadata: {} }],
+    ] as const)('%s keeps the successful deletion locally and warns when refresh fails', async (actionName, collectionName, entity) => {
+      useCollectionStore.setState({ [collectionName]: [entity] });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse({ success: true }))
+        .mockResolvedValueOnce(errorResponse(400, '列表服务暂时不可用'));
+      const action = (useCollectionStore.getState() as unknown as Record<string, (gameId: number, name: string) => Promise<boolean>>)[actionName];
+
+      const succeeded = await action(1, entity.name);
+
+      expect(succeeded).toBe(true);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(
+        (global.fetch as jest.Mock).mock.calls.filter(([, init]) => init?.method === 'DELETE'),
+      ).toHaveLength(1);
+      expect(useCollectionStore.getState()[collectionName]).toEqual([]);
+      expect(useCollectionStore.getState().error).toMatch(/已删除.*列表同步失败.*无需重复删除/);
     });
   });
 });

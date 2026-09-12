@@ -19,6 +19,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 const character: CharacterCollectionItem = {
   name: "林舟",
   role: "旧友",
+  can_delete: true,
   description: "",
   affinity: 100,
   age: null,
@@ -60,6 +61,86 @@ const landmark: LandmarkCollectionItem = {
 };
 
 describe("CollectionPanel visual contract", () => {
+  it("exposes separate detail and delete actions for removable directory rows", () => {
+    const onDelete = jest.fn();
+    render(
+      <CharacterList
+        characters={[
+          { ...character, role: "主角", can_delete: false },
+          { ...character, name: "陈晓雨", role: "同事" },
+        ]}
+        isLoading={false}
+        onCharacterClick={() => undefined}
+        onOpenDeleteConfirm={onDelete}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "查看人物：陈晓雨" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "删除人物陈晓雨" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "删除人物林舟" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除人物陈晓雨" })).toHaveClass("size-11");
+  });
+
+  it("keeps same-name entities in another category enabled and reports row categories", () => {
+    const onItemDelete = jest.fn();
+    const onLandmarkDelete = jest.fn();
+    render(
+      <>
+        <ItemList
+          items={[item]}
+          isLoading={false}
+          onItemClick={() => undefined}
+          onOpenDeleteConfirm={onItemDelete}
+          deletingEntity={{ type: "landmark", name: item.name }}
+        />
+        <LandmarkList
+          landmarks={[{ ...landmark, name: item.name }]}
+          isLoading={false}
+          onLandmarkClick={() => undefined}
+          onOpenDeleteConfirm={onLandmarkDelete}
+        />
+      </>,
+    );
+    const itemDelete = screen.getByRole("button", { name: `删除物品${item.name}` });
+    expect(itemDelete).toBeEnabled();
+    screen.getByRole("button", { name: `删除标志物${item.name}` }).click();
+    expect(onLandmarkDelete).toHaveBeenCalledWith("landmark", item.name);
+    itemDelete.click();
+    expect(onItemDelete).toHaveBeenCalledWith("item", item.name);
+  });
+
+  it("keeps failed row deletion confirmation open with visible feedback", async () => {
+    const user = userEvent.setup();
+    useCollectionStore.setState({
+      characters: [],
+      items: [item],
+      landmarks: [],
+      activeTab: "items",
+      selectedCharacter: null,
+      selectedItem: null,
+      selectedLandmark: null,
+      isLoading: false,
+      isRefreshing: false,
+      generatingImageFor: null,
+      generatingDescriptionFor: null,
+      regeneratingImageFor: null,
+      error: null,
+      isRecognizing: false,
+      recognizedEntities: null,
+      isDeleting: false,
+      deletingEntity: null,
+      deleteItem: jest.fn(async () => {
+        useCollectionStore.setState({ error: "删除失败" });
+        return false;
+      }),
+    });
+    render(<CollectionPanel gameId={0} />);
+    await user.click(screen.getByRole("button", { name: `删除物品${item.name}` }));
+    const dialog = screen.getByRole("dialog", { name: "确认删除" });
+    await user.click(within(dialog).getByRole("button", { name: "删除" }));
+    expect(screen.getByRole("dialog", { name: "确认删除" })).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("删除失败");
+  });
   it("layers a real collection detail dialog above its parent play sheet", async () => {
     const user = userEvent.setup();
     useCollectionStore.setState({
@@ -133,6 +214,7 @@ describe("CollectionPanel visual contract", () => {
         characters: [],
         selectedCharacter: null,
       });
+      return true;
     });
     useCollectionStore.setState({
       characters: [character],
@@ -217,14 +299,90 @@ describe("CollectionPanel visual contract", () => {
       expect(tab).toHaveAttribute("aria-selected");
     }
 
-    for (const name of ["智能识别", "手动添加", "关闭收集错误"]) {
+    for (const name of ["添加物品", "智能识别", "关闭收集错误"]) {
       const button = screen.getByRole("button", { name });
       expect(button).toHaveClass("min-h-11", "min-w-11");
       expect(button).not.toHaveClass("shadow-xs");
     }
 
+    const commandStrip = screen.getByRole("group", { name: "收集操作" });
+    expect(commandStrip).toHaveClass("flex", "items-stretch", "border-b");
+    expect(commandStrip).not.toHaveClass("grid-cols-1");
+    expect(commandStrip.firstElementChild).toHaveTextContent("添加物品");
+
     const alert = screen.getByRole("alert");
     expect(alert.closest('[data-slot="feedback-notice"]')).not.toBeNull();
+  });
+
+  it("returns focus to the contextual add action when its dialog closes", async () => {
+    const user = userEvent.setup();
+    useCollectionStore.setState({
+      characters: [character],
+      items: [],
+      landmarks: [],
+      isLoading: false,
+      isRefreshing: false,
+      activeTab: "characters",
+      selectedCharacter: null,
+      selectedItem: null,
+      selectedLandmark: null,
+      generatingImageFor: null,
+      generatingDescriptionFor: null,
+      regeneratingImageFor: null,
+      error: null,
+      isRecognizing: false,
+      recognizedEntities: null,
+      isDeleting: false,
+      deletingEntity: null,
+    });
+
+    render(<CollectionPanel gameId={0} />);
+    const addAction = screen.getByRole("button", { name: "添加人物" });
+    await user.click(addAction);
+    await user.click(within(screen.getByRole("dialog", { name: "添加人物" })).getByRole("button", { name: "取消" }));
+
+    await waitFor(() => expect(addAction).toHaveFocus());
+  });
+
+  it("keeps all three landmark commands accessible in a compact narrow strip", () => {
+    useCollectionStore.setState({
+      characters: [],
+      items: [],
+      landmarks: [landmark],
+      isLoading: false,
+      isRefreshing: false,
+      activeTab: "landmarks",
+      selectedCharacter: null,
+      selectedItem: null,
+      selectedLandmark: null,
+      generatingImageFor: null,
+      generatingDescriptionFor: null,
+      regeneratingImageFor: null,
+      error: null,
+      isRecognizing: false,
+      recognizedEntities: null,
+      isDeleting: false,
+      deletingEntity: null,
+    });
+
+    render(<CollectionPanel gameId={0} />);
+    const commandStrip = screen.getByRole("group", { name: "收集操作" });
+    const batchAction = within(commandStrip).getByRole("button", {
+      name: "批量生成图片",
+    });
+
+    for (const name of ["添加标志物", "智能识别", "批量生成图片"]) {
+      expect(within(commandStrip).getByRole("button", { name })).toHaveClass(
+        "min-h-11",
+        "min-w-11",
+      );
+    }
+    expect(batchAction).toHaveAttribute("aria-label", "批量生成图片");
+    expect(batchAction).toHaveClass("shrink-0", "px-3", "sm:px-4");
+    expect(within(batchAction).getByText("批量生成图片")).toHaveClass(
+      "sr-only",
+      "sm:not-sr-only",
+    );
   });
 
   it.each([
