@@ -543,5 +543,91 @@ describe('useSceneImageStore', () => {
       const state = useSceneImageStore.getState();
       expect(state.historySceneImage?.scene_id).toBe(1);
     });
+
+    it('keeps the latest selected history image when an older request finishes last', async () => {
+      let resolveFirstRequest!: (response: Response) => void;
+      let resolveSecondRequest!: (response: Response) => void;
+      const firstResponse = new Promise<Response>((resolve) => {
+        resolveFirstRequest = resolve;
+      });
+      const secondResponse = new Promise<Response>((resolve) => {
+        resolveSecondRequest = resolve;
+      });
+
+      (global.fetch as jest.Mock)
+        .mockReturnValueOnce(firstResponse)
+        .mockReturnValueOnce(secondResponse);
+
+      const firstFetch = useSceneImageStore.getState().fetchHistorySceneImage(1, 0, 1);
+      const secondFetch = useSceneImageStore.getState().fetchHistorySceneImage(1, 0, 2);
+
+      resolveSecondRequest(jsonResponse({
+        scene_id: 2,
+        week: 0,
+        round_number: 2,
+        stage: 'result',
+        image_url: 'http://example.com/latest.png',
+        scene_description: '最新选择的章节',
+        referenced_images: [],
+        created_at: '2024-01-02T00:00:00Z',
+      }));
+      await secondFetch;
+
+      resolveFirstRequest(jsonResponse({
+        scene_id: 1,
+        week: 0,
+        round_number: 1,
+        stage: 'result',
+        image_url: 'http://example.com/stale.png',
+        scene_description: '较早选择的章节',
+        referenced_images: [],
+        created_at: '2024-01-01T00:00:00Z',
+      }));
+      await firstFetch;
+
+      expect(useSceneImageStore.getState().historySceneImage).toMatchObject({
+        scene_id: 2,
+        round_number: 2,
+        image_url: 'http://example.com/latest.png',
+      });
+    });
+
+    it('does not replace an explicitly selected history image with an older fetch', async () => {
+      let resolvePendingRequest!: (response: Response) => void;
+      const pendingResponse = new Promise<Response>((resolve) => {
+        resolvePendingRequest = resolve;
+      });
+      (global.fetch as jest.Mock).mockReturnValueOnce(pendingResponse);
+
+      const pendingFetch = useSceneImageStore.getState().fetchHistorySceneImage(1, 0, 1);
+      useSceneImageStore.getState().setHistorySceneImage({
+        scene_id: 2,
+        week: 0,
+        round_number: 2,
+        stage: 'result',
+        image_url: 'http://example.com/embedded-latest.png',
+        scene_description: '新章节自带的插画',
+        referenced_images: [],
+        created_at: '2024-01-02T00:00:00Z',
+      });
+
+      resolvePendingRequest(jsonResponse({
+        scene_id: 1,
+        week: 0,
+        round_number: 1,
+        stage: 'result',
+        image_url: 'http://example.com/stale.png',
+        scene_description: '较早选择的章节',
+        referenced_images: [],
+        created_at: '2024-01-01T00:00:00Z',
+      }));
+      await pendingFetch;
+
+      expect(useSceneImageStore.getState().historySceneImage).toMatchObject({
+        scene_id: 2,
+        round_number: 2,
+        image_url: 'http://example.com/embedded-latest.png',
+      });
+    });
   });
 });
