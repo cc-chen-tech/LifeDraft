@@ -142,8 +142,13 @@ export default function PlayPage() {
     displayText,  // ★ 实际显示的文本（历史模式下显示历史，否则显示当前）
     historyDisplayText,  // ★ 历史显示文本
     currentHistoryRound,  // ★ 当前查看的历史轮次
+    historyChapterNumber,
+    historyChapterCount,
+    hasNextHistoryRound,
     handleOpenHistory,
     handleSelectHistoryRound,
+    handlePreviousHistoryRound,
+    handleNextHistoryRound,
     handleBackToCurrent,
     handleGenerateHistoryImage,  // ★ 生成历史图片
     handleRegenerateHistoryImage,  // ★ 重新生成历史图片
@@ -860,7 +865,46 @@ export default function PlayPage() {
           />
         ) : (
         <>
-        {isDailyTimeline && !isViewingHistory && phase === "options" && displayText.trim() && Number.isFinite(Number(gameId)) ? (
+        {isViewingHistory && currentHistoryRound && displayText.trim() && Number.isFinite(Number(gameId)) ? (
+          <StoryListeningExperience
+            key={`history-${currentHistoryRound.day_index ?? `${currentHistoryRound.week}-${currentHistoryRound.round}`}`}
+            context={{
+              source_type: "history_round",
+              game_id: Number(gameId),
+              week: currentHistoryRound.week,
+              round_number: currentHistoryRound.round,
+              stage: "history",
+              attempt_id: `history-${currentHistoryRound.day_index ?? `${currentHistoryRound.week}-${currentHistoryRound.round}`}`,
+              day_index:
+                currentHistoryRound.day_index
+                ?? currentHistoryRound.week * 3 + currentHistoryRound.round,
+              story_date:
+                currentHistoryRound.story_date
+                ?? currentHistoryRound.date_info?.date_string
+                ?? null,
+              text_hash: "pending-client-hash",
+              text: displayText,
+            }}
+            storyText={displayText}
+            options={[]}
+            onSelectChoice={() => undefined}
+            media={sceneMedia}
+            historyNavigation={{
+              currentIndex: Math.max(0, (historyChapterNumber ?? 1) - 1),
+              total: Math.max(1, historyChapterCount),
+              storyDate:
+                currentHistoryRound.story_date
+                ?? currentHistoryRound.date_info?.date_string
+                ?? null,
+              onPrevious: handlePreviousHistoryRound,
+              onNext: handleNextHistoryRound,
+              onBackToCurrent: handleBackToCurrent,
+            }}
+            onChapterComplete={
+              hasNextHistoryRound ? handleNextHistoryRound : undefined
+            }
+          />
+        ) : isDailyTimeline && !isViewingHistory && phase === "options" && displayText.trim() && Number.isFinite(Number(gameId)) ? (
           <StoryListeningExperience
             key={`${playerState?.timeline?.current_date}-${playerState?.timeline?.day_index}`}
             context={{

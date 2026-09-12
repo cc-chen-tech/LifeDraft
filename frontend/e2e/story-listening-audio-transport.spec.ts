@@ -309,7 +309,9 @@ test.describe('StoryListeningExperience audio transport', () => {
     const fixture = await installFixture(page, { stallFirstJobPoll: true });
     await page.goto(`/play?gameId=${GAME_ID}`);
     await expect(page.getByRole('heading', { name: '听故事' })).toBeVisible();
-    await expect.poll(() => fixture.audioRequests.length, { timeout: 35_000 }).toBeGreaterThan(0);
+    // Allow the 20s request deadline, the 15s hidden-page retry backoff, and
+    // enough scheduler margin for a loaded full-suite run.
+    await expect.poll(() => fixture.audioRequests.length, { timeout: 45_000 }).toBeGreaterThan(0);
     await expectRealPlayback(page);
     await expect(page.getByText('高质量语音暂时不可用，已切换浏览器朗读')).toHaveCount(0);
     expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));

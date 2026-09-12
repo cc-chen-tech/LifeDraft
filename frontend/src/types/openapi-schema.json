@@ -6128,7 +6128,7 @@
           "source_type": {
             "type": "string",
             "title": "Source Type",
-            "description": "current_story"
+            "description": "current_story or history_round"
           },
           "game_id": {
             "type": "integer",

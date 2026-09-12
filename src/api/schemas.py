@@ -328,7 +328,7 @@ class VoiceUploadConsentRequest(BaseModel):
 
 
 class ReadingContext(BaseModel):
-    source_type: str = Field(..., description="current_story")
+    source_type: str = Field(..., description="current_story or history_round")
     game_id: int
     week: Optional[int] = None
     round_number: Optional[int] = None

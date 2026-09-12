@@ -72,12 +72,12 @@ class ReadingContextValidator:
         allow_recommended_prefetch: bool = False,
     ) -> Dict[str, Any]:
         source_type = context.source_type
-        if source_type not in {"current_story", "recommended_prefetch"}:
+        if source_type not in {"current_story", "history_round", "recommended_prefetch"}:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={
-                    "error_code": "current_story_only",
-                    "message": "Only the current day's story can be narrated",
+                    "error_code": "unsupported_source_type",
+                    "message": "This story source cannot be narrated",
                     "field": "source_type",
                 },
             )
@@ -90,7 +90,7 @@ class ReadingContextValidator:
                     "field": "source_type",
                 },
             )
-        if source_type in {"current_story", "recommended_prefetch"}:
+        if source_type in {"current_story", "history_round", "recommended_prefetch"}:
             missing = [
                 field
                 for field, value in (

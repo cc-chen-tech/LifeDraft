@@ -2522,7 +2522,7 @@ export interface components {
         ReadingContext: {
             /**
              * Source Type
-             * @description current_story
+             * @description current_story or history_round
              */
             source_type: string;
             /** Game Id */
