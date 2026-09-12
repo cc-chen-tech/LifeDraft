@@ -115,6 +115,30 @@ describe("PlayTools", () => {
     expect(props.onSceneImageChange).toHaveBeenCalledWith(false);
   });
 
+  it("explains quality levels and makes the selected settings explicit", async () => {
+    const user = userEvent.setup();
+    render(<PlayTools {...createProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "打开工具" }));
+    const sheet = screen.getByRole("dialog", { name: "游戏工具" });
+    const expert = within(sheet).getByRole("radio", { name: "专家" });
+    const qualityGroup = expert.closest("fieldset");
+
+    expect(qualityGroup).not.toBeNull();
+    expect(within(qualityGroup!).getByText("响应更快，适合快速推进")).toBeVisible();
+    expect(within(qualityGroup!).getByText("兼顾细节、节奏与稳定性")).toBeVisible();
+    expect(within(qualityGroup!).getByText("更深入的描写与人物塑造")).toBeVisible();
+    expect(within(qualityGroup!).getAllByText("当前")).toHaveLength(1);
+    expect(expert.closest("label")).toHaveTextContent("当前");
+
+    const sceneImage = within(sheet).getByRole("checkbox", { name: "场景插画" });
+    const sceneImageRow = sceneImage.closest("label");
+    expect(sceneImageRow).not.toBeNull();
+    expect(sceneImageRow).toHaveTextContent("已开启");
+    expect(within(sceneImageRow!).getByText("关")).toBeInTheDocument();
+    expect(within(sceneImageRow!).getByText("开")).toBeInTheDocument();
+  });
+
   it("loads narrative styles only when their disclosure is explicitly opened", async () => {
     const user = userEvent.setup();
     const props = createProps();

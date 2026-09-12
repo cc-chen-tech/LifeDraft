@@ -1081,7 +1081,13 @@ describe("StoryListeningExperience", () => {
 
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19, expect.any(AbortSignal)));
     expect(play).not.toHaveBeenCalled();
-    expect(screen.getByRole("checkbox", { name: "下一章自动播放" })).not.toBeChecked();
+    const autoRead = screen.getByRole("checkbox", { name: "下一章自动播放" });
+    const autoReadRow = autoRead.closest("label");
+    expect(autoRead).not.toBeChecked();
+    expect(autoReadRow).not.toBeNull();
+    expect(autoReadRow).toHaveTextContent("已关闭");
+    expect(within(autoReadRow!).getByText("关")).toBeInTheDocument();
+    expect(within(autoReadRow!).getByText("开")).toBeInTheDocument();
   });
 
   it("shows a one-tap action when the browser blocks automatic playback", async () => {

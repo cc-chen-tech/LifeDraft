@@ -36,6 +36,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+import { BinarySettingRow } from "./BinarySettingRow";
 import { OptionCards } from "./OptionCards";
 import { VoicePicker } from "./VoicePicker";
 
@@ -1327,10 +1328,13 @@ export function StoryListeningExperience({
                 {SPEEDS.map((value) => <option key={value} value={value}>{value}×</option>)}
               </select>
             </label>
-            <label className="col-span-2 flex min-h-11 items-center justify-between gap-3 text-sm text-[var(--text-primary)] sm:col-span-1">
-              下一章自动播放
-              <input type="checkbox" checked={autoRead} onChange={handleAutoReadChange} className="h-5 w-5 accent-[var(--text-primary)]" />
-            </label>
+            <BinarySettingRow
+              className="col-span-2"
+              label="下一章自动播放"
+              description="章节结束后继续朗读"
+              checked={autoRead}
+              onChange={handleAutoReadChange}
+            />
           </div>
 
           {errorMessage ? (
