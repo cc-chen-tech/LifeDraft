@@ -143,3 +143,19 @@ def test_deployment_requires_model_smoke_and_workflow_is_protected():
     assert "MODEL_SMOKE_ENABLED: \"1\"" in workflow
     assert "E2E_DETERMINISTIC_STORY: \"0\"" in workflow
     assert "model-smoke)" in test_script
+
+
+def test_successful_dispatched_model_smoke_explicitly_starts_candidate_deploy():
+    root = Path(__file__).resolve().parents[1]
+    deploy = (root / ".github/workflows/deploy-production.yml").read_text(encoding="utf-8")
+    workflow = (root / ".github/workflows/model-smoke.yml").read_text(encoding="utf-8")
+
+    assert "request-deploy:" in workflow
+    assert "needs: model-smoke" in workflow
+    assert "github.event_name == 'workflow_dispatch' && inputs.deploy_after_success" in workflow
+    assert "deploy_after_success: 'true'" in deploy
+    assert "actions: write" in workflow
+    assert "workflow_id: 'deploy-production.yml'" in workflow
+    assert "candidate_sha: process.env.CANDIDATE_SHA" in workflow
+    assert "candidate_sha:" in deploy
+    assert "${{ inputs.candidate_sha }}" in deploy

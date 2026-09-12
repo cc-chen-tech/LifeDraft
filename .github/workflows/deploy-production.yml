@@ -3,6 +3,10 @@ name: Deploy Production
 on:
   workflow_dispatch:
     inputs:
+      candidate_sha:
+        description: "Exact main commit approved by Model Smoke; leave blank for a manual deployment of current main."
+        required: false
+        type: string
       force_after_local_preflight:
         description: "Local preflight passed and GitHub checks are unavailable; bypass the CI gate for this manual deployment."
         required: false
@@ -41,15 +45,24 @@ jobs:
         with:
           script: |
             const deployRef = 'main';
-            let deploySha = context.payload.workflow_run?.head_sha;
+            const requestedSha = '${{ inputs.candidate_sha }}'.trim();
+            let deploySha = requestedSha || context.payload.workflow_run?.head_sha;
 
+            if (requestedSha && !/^[0-9a-f]{40}$/.test(requestedSha)) {
+              throw new Error('candidate_sha must be an exact 40-character commit SHA.');
+            }
+
+            const { data } = await github.rest.git.getRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: 'heads/main',
+            });
+            const mainSha = data.object.sha;
             if (!deploySha) {
-              const { data } = await github.rest.git.getRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: 'heads/main',
-              });
-              deploySha = data.object.sha;
+              deploySha = mainSha;
+            }
+            if (deploySha !== mainSha) {
+              throw new Error(`Candidate ${deploySha} is no longer current main (${mainSha}).`);
             }
 
             core.setOutput('deploy_ref', deployRef);
@@ -173,7 +186,10 @@ jobs:
             }
             await github.rest.actions.createWorkflowDispatch({
               ...context.repo, workflow_id: 'model-smoke.yml', ref: 'main',
-              inputs: { ref: process.env.CANDIDATE_SHA },
+              inputs: {
+                ref: process.env.CANDIDATE_SHA,
+                deploy_after_success: 'true',
+              },
             });
 
   deploy:

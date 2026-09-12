@@ -7,6 +7,11 @@ on:
         description: "要验收的 branch、tag 或 commit；留空使用当前 ref。"
         required: false
         type: string
+      deploy_after_success:
+        description: "Smoke 成功后发布该候选提交；仅供受保护的发布链路使用。"
+        required: false
+        default: false
+        type: boolean
   release:
     types: [published]
 
@@ -109,3 +114,39 @@ jobs:
             ${{ github.workspace }}/frontend/test-results/**/test-failed-*.png
           if-no-files-found: error
           retention-days: 14
+
+  request-deploy:
+    name: Start candidate deployment after successful smoke
+    needs: model-smoke
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_after_success
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch protected production deployment
+        uses: actions/github-script@v7
+        env:
+          CANDIDATE_SHA: ${{ inputs.ref }}
+        with:
+          script: |
+            const candidateSha = process.env.CANDIDATE_SHA;
+            if (!/^[0-9a-f]{40}$/.test(candidateSha)) {
+              throw new Error('Automatic deployment requires an exact 40-character candidate SHA.');
+            }
+            if (candidateSha !== process.env.GITHUB_SHA) {
+              throw new Error('Smoke run SHA differs from the requested deployment candidate.');
+            }
+
+            const { data } = await github.rest.git.getRef({
+              ...context.repo, ref: 'heads/main',
+            });
+            if (data.object.sha !== candidateSha) {
+              core.notice('Candidate superseded on main; its successor will run smoke.');
+              return;
+            }
+
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo, workflow_id: 'deploy-production.yml', ref: 'main',
+              inputs: { candidate_sha: process.env.CANDIDATE_SHA },
+            });
