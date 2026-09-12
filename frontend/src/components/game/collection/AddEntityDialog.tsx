@@ -66,6 +66,7 @@ export function AddEntityDialog({
       <DialogContent
         className="z-[81] max-w-md"
         overlayClassName="z-[80]"
+        showCloseButton={false}
         onCloseAutoFocus={onCloseAutoFocus}
       >
         <DialogHeader>
