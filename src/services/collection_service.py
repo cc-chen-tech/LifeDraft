@@ -159,6 +159,7 @@ class CollectionService:
                     image_url=image_url,
                     image_generated=image_generated,
                     description_generated=True,
+                    can_delete=True,
                 )
             )
 
@@ -237,6 +238,7 @@ class CollectionService:
             image_url=image_url,
             image_generated=image_generated,
             description_generated=True,
+            can_delete=False,
         )
 
     def _build_key_person(
@@ -271,6 +273,7 @@ class CollectionService:
             image_url=image_url,
             image_generated=image_generated,
             description_generated=True,
+            can_delete=False,
         )
 
     def _build_family_member(
@@ -303,6 +306,7 @@ class CollectionService:
             image_url=image_url,
             image_generated=image_generated,
             description_generated=True,
+            can_delete=False,
         )
 
     def _build_item_list(
@@ -923,6 +927,7 @@ class CollectionService:
         if clean_name == player_name:
             raise ValueError("不能创建与主角同名的人物")
         visible_names = set(player_state.characters)
+        visible_names.update(player_state.relationships)
         visible_names.update(
             str(person.get("name", "")).strip()
             for person in self._extract_key_people(

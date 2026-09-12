@@ -50,8 +50,10 @@ export function AddEntityDialog({
   isLoading,
 }: AddEntityDialogProps) {
   const copy = entityCopy[activeTab];
+  const invalidNameMessage = entityName.includes("/") ? "名称不能包含 /" : null;
   const canSubmit =
     entityName.trim().length > 0 &&
+    !invalidNameMessage &&
     !isLoading &&
     isWithinInputLimit(entityName, INPUT_LIMITS.name);
 
@@ -89,9 +91,19 @@ export function AddEntityDialog({
               value={entityName}
               onChange={(event) => onEntityNameChange(event.target.value)}
               placeholder={copy.placeholder}
+              aria-invalid={invalidNameMessage ? true : undefined}
+              aria-describedby={invalidNameMessage ? "collection-entity-name-error" : undefined}
               className="min-h-11 w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               onKeyDown={handleKeyDown}
             />
+            {invalidNameMessage && (
+              <p
+                id="collection-entity-name-error"
+                className="mt-1 text-xs text-[var(--danger-foreground)]"
+              >
+                {invalidNameMessage}
+              </p>
+            )}
             <LengthIndicator value={entityName} limit={INPUT_LIMITS.name} />
           </div>
 

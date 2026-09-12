@@ -520,6 +520,7 @@ export interface CollectionStatus {
 export interface CharacterCollectionItem {
   name: string;
   role: string;
+  can_delete?: boolean;
   description: string;
   affinity: number;
   age: number | null;

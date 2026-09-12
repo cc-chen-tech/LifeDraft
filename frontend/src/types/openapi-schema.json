@@ -4082,9 +4082,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": true,
-                "title": "Request"
+                "$ref": "#/components/schemas/CreateItemRequest"
               }
             }
           }
@@ -4910,6 +4908,11 @@
             "type": "boolean",
             "title": "Description Generated",
             "default": false
+          },
+          "can_delete": {
+            "type": "boolean",
+            "title": "Can Delete",
+            "default": false
           }
         },
         "type": "object",
@@ -5028,6 +5031,7 @@
             "type": "string",
             "maxLength": 50,
             "minLength": 1,
+            "pattern": "^[^/]+$",
             "title": "Name"
           }
         },
@@ -5074,6 +5078,30 @@
           "life_vision"
         ],
         "title": "CreateGameRequest"
+      },
+      "CreateItemRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "pattern": "^[^/]+$",
+            "title": "Name",
+            "description": "物品名称"
+          },
+          "generate_description": {
+            "type": "boolean",
+            "title": "Generate Description",
+            "description": "是否从历史中生成描述",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CreateItemRequest",
+        "description": "手动创建物品请求"
       },
       "CreatePresetRequest": {
         "properties": {

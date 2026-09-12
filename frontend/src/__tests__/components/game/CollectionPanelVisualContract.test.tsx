@@ -19,6 +19,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 const character: CharacterCollectionItem = {
   name: "林舟",
   role: "旧友",
+  can_delete: true,
   description: "",
   affinity: 100,
   age: null,
@@ -64,7 +65,10 @@ describe("CollectionPanel visual contract", () => {
     const onDelete = jest.fn();
     render(
       <CharacterList
-        characters={[{ ...character, role: "主角" }, { ...character, name: "陈晓雨", role: "同事" }]}
+        characters={[
+          { ...character, role: "主角", can_delete: false },
+          { ...character, name: "陈晓雨", role: "同事" },
+        ]}
         isLoading={false}
         onCharacterClick={() => undefined}
         onOpenDeleteConfirm={onDelete}

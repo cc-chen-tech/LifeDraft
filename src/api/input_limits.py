@@ -23,6 +23,7 @@ REPLACEMENT_SEGMENT_MAX_CHARS = 12_000
 FULL_STORY_MAX_CHARS = 32_000
 VOICE_TEXT_MAX_CHARS = 32_000
 CHARACTER_SETTINGS_MAX_BYTES = 256 * 1024
+COLLECTION_ENTITY_NAME_PATTERN = r"^[^/]+$"
 
 PUBLIC_INPUT_LIMITS = {
     "name": NAME_MAX_CHARS,
@@ -67,4 +68,13 @@ CharacterSettingsPayload = Annotated[
     Dict[str, Any],
     AfterValidator(validate_character_settings_size),
     Field(json_schema_extra={"x-maxBytes": CHARACTER_SETTINGS_MAX_BYTES}),
+]
+
+CollectionEntityName = Annotated[
+    str,
+    Field(
+        min_length=1,
+        max_length=NAME_MAX_CHARS,
+        pattern=COLLECTION_ENTITY_NAME_PATTERN,
+    ),
 ]

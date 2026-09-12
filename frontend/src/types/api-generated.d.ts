@@ -1920,6 +1920,11 @@ export interface components {
              * @default false
              */
             description_generated: boolean;
+            /**
+             * Can Delete
+             * @default false
+             */
+            can_delete: boolean;
         };
         /** ClientLogEntry */
         ClientLogEntry: {
@@ -1988,6 +1993,23 @@ export interface components {
              * @default expert
              */
             constraint_level: string;
+        };
+        /**
+         * CreateItemRequest
+         * @description 手动创建物品请求
+         */
+        CreateItemRequest: {
+            /**
+             * Name
+             * @description 物品名称
+             */
+            name: string;
+            /**
+             * Generate Description
+             * @description 是否从历史中生成描述
+             * @default false
+             */
+            generate_description: boolean;
         };
         /** CreatePresetRequest */
         CreatePresetRequest: {
@@ -5970,9 +5992,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["CreateItemRequest"];
             };
         };
         responses: {

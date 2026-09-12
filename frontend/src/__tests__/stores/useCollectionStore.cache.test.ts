@@ -719,18 +719,21 @@ describe('useCollectionStore cache', () => {
         'createCharacter',
         { success: true, character: { name: '陈舟', role: '', relationship_desc: '', affinity: 50, image_generated: false } },
         'characters',
+        { can_delete: true },
       ],
       [
         'createItem',
         { success: true, item: { name: '陈舟', description: '', importance: 'normal', category: 'other', acquired_week: 4, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: false, metadata: {} } },
         'items',
+        {},
       ],
       [
         'createLandmark',
         { success: true, landmark: { name: '陈舟', description: '', category: 'other', importance: 'normal', first_appear_week: 4, appear_count: 1, last_appear_week: 4, context: '', is_key_location: false, image_generated: false } },
         'landmarks',
+        {},
       ],
-    ] as const)('%s keeps the persisted entity locally and warns when refresh fails', async (actionName, createdResponse, collectionName) => {
+    ] as const)('%s keeps the persisted entity locally and warns when refresh fails', async (actionName, createdResponse, collectionName, expectedFields) => {
       (global.fetch as jest.Mock)
         .mockResolvedValueOnce(jsonResponse(createdResponse))
         .mockResolvedValueOnce(errorResponse(400, '列表服务暂时不可用'));
@@ -744,7 +747,7 @@ describe('useCollectionStore cache', () => {
         (global.fetch as jest.Mock).mock.calls.filter(([, init]) => init?.method === 'POST'),
       ).toHaveLength(1);
       expect(useCollectionStore.getState()[collectionName]).toEqual([
-        expect.objectContaining({ name: '陈舟' }),
+        expect.objectContaining({ name: '陈舟', ...expectedFields }),
       ]);
       expect(useCollectionStore.getState().error).toMatch(/已保存.*列表同步失败.*无需重复添加/);
     });

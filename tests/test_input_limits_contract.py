@@ -363,6 +363,23 @@ def test_manual_collection_entity_routes_use_the_constrained_request_model() -> 
         body_schema = schema["paths"][path]["post"]["requestBody"]["content"]["application/json"]["schema"]
         assert body_schema["$ref"] == "#/components/schemas/CreateCollectionEntityRequest"
 
+    item_body_schema = schema["paths"]["/api/collection/{game_id}/items/create"]["post"][
+        "requestBody"
+    ]["content"]["application/json"]["schema"]
+    assert item_body_schema["$ref"] == "#/components/schemas/CreateItemRequest"
+
     request_schema = schema["components"]["schemas"]["CreateCollectionEntityRequest"]
     assert request_schema["properties"]["name"]["minLength"] == 1
     assert request_schema["properties"]["name"]["maxLength"] == NAME_MAX_CHARS
+
+
+@pytest.mark.parametrize("model", [CreateItemRequest, CreateCollectionEntityRequest])
+def test_manual_collection_names_reject_path_separators(model: type) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        model.model_validate({"name": "档案/A"})
+
+    assert exc_info.value.errors()[0]["loc"] == ("name",)
+
+
+def test_manual_item_creation_keeps_description_generation_opt_in() -> None:
+    assert CreateItemRequest.model_validate({"name": "旧怀表"}).generate_description is False

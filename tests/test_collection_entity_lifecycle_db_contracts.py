@@ -152,6 +152,24 @@ def test_manual_character_creation_rejects_legacy_settings_protagonist_name() ->
         session.close()
 
 
+def test_manual_character_creation_preserves_relationship_only_character() -> None:
+    session = _session()
+    try:
+        state = PlayerState(
+            player_name="林岚",
+            relationships={"陈舟": 83},
+            week=4,
+        )
+
+        with pytest.raises(ValueError, match="已存在"):
+            CollectionService(session).create_character(state, "陈舟")
+
+        assert "陈舟" not in state.characters
+        assert state.relationships["陈舟"] == 83
+    finally:
+        session.close()
+
+
 @pytest.mark.parametrize(
     ("character_settings", "name", "expected_role", "expected_description", "expected_affinity"),
     [

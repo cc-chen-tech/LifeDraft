@@ -57,6 +57,7 @@ function fixtureStore(overrides: Record<string, unknown> = {}): void {
       {
         name: '林舟',
         role: '主角',
+        can_delete: false,
         description: '',
         affinity: 100,
         age: null,
@@ -70,6 +71,7 @@ function fixtureStore(overrides: Record<string, unknown> = {}): void {
       {
         name: '陈晓雨',
         role: '同事',
+        can_delete: true,
         description: '',
         affinity: 70,
         age: null,
@@ -225,6 +227,53 @@ describe('CollectionPanel action contracts', () => {
     fireEvent.click(screen.getByRole('tab', { name: /人物/ }));
     await user.click(screen.getByRole('button', { name: '添加人物' }));
     expect(screen.queryByRole('checkbox', { name: '从故事历史中提取描述' })).not.toBeInTheDocument();
+  });
+
+  it('blocks names that cannot round-trip through deletion routes', async () => {
+    const user = userEvent.setup();
+    fixtureStore({ activeTab: 'characters', selectedItem: null });
+    await renderPanel(76);
+
+    await user.click(screen.getByRole('button', { name: '添加人物' }));
+    const dialog = screen.getByRole('dialog', { name: '添加人物' });
+    await user.type(within(dialog).getByRole('textbox', { name: '人物名称' }), '档案/A');
+
+    expect(within(dialog).getByText('名称不能包含 /')).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: '添加' })).toBeDisabled();
+    expect(actionMock('createCharacter')).not.toHaveBeenCalled();
+  });
+
+  it('only offers deletion for materialized characters', async () => {
+    const user = userEvent.setup();
+    fixtureStore({
+      activeTab: 'characters',
+      selectedItem: null,
+      characters: [
+        {
+          name: '林舟', role: '主角', can_delete: false, description: '', affinity: 100,
+          age: null, gender: null, occupation: null, personality_traits: [], image_url: null,
+          image_generated: false, description_generated: true,
+        },
+        {
+          name: '陈晓雨', role: '同事', can_delete: true, description: '', affinity: 70,
+          age: null, gender: null, occupation: null, personality_traits: [], image_url: null,
+          image_generated: false, description_generated: true,
+        },
+        {
+          name: '母亲', role: '母亲', can_delete: false, description: '家人', affinity: 80,
+          age: null, gender: null, occupation: null, personality_traits: [], image_url: null,
+          image_generated: false, description_generated: true,
+        },
+      ],
+    });
+    await renderPanel(76);
+
+    expect(screen.getByRole('button', { name: '删除人物陈晓雨' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: '删除人物母亲' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '查看人物：母亲' }));
+    const detail = screen.getByRole('dialog', { name: '母亲' });
+    expect(within(detail).queryByRole('button', { name: '删除人物母亲' })).not.toBeInTheDocument();
   });
 
   it('keeps a failed manual addition open with its name and error visible', async () => {

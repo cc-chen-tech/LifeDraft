@@ -266,3 +266,9 @@ class TestCollectionServiceContractCoverage:
         assert len(result.items) == result.total_items == 1
         assert len(result.landmarks) == result.total_landmarks == 1
         assert [c.name for c in result.characters] == ["主角", "友人", "书生", "母亲"]
+        assert {c.name: c.can_delete for c in result.characters} == {
+            "主角": False,
+            "友人": True,
+            "书生": False,
+            "母亲": False,
+        }

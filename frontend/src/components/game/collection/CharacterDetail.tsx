@@ -66,7 +66,7 @@ export function CharacterDetail({
               </DialogDescription>
             </div>
             {/* 删除按钮 */}
-            {character.role !== "主角" && (
+            {character.can_delete === true && (
               <Button
                 variant="ghost"
                 size="icon"

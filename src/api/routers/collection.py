@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from src.api.deps import get_current_user_optional
 from src.api.routers.image_failures import image_failure_http_exception
 from src.api.schemas import (AddEntitiesRequest, CollectionResponse,
-                             CreateCollectionEntityRequest, MessageResponse,
+                             CreateCollectionEntityRequest, CreateItemRequest,
+                             MessageResponse,
                              RegenerateCharacterImageRequest,
                              RegenerateItemImageRequest)
 from src.api.services.session_service import session_service
@@ -747,7 +748,7 @@ async def create_landmark(  # type: ignore
 @router.post("/{game_id}/items/create")
 async def create_item(  # type: ignore
     game_id: int,
-    request: dict,
+    request: CreateItemRequest,
     user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """手动创建物品，可选从历史中提取描述"""
@@ -760,10 +761,10 @@ async def create_item(  # type: ignore
         service = CollectionService(db)
         item_info = service.create_item(
             player_state,
-            request.get("name", ""),
+            request.name,
             ai_client=session.game_loop.ai_generator.ai_client,
             language=session.language,
-            generate_description=request.get("generate_description", False),
+            generate_description=request.generate_description,
         )
 
         # 持久化状态变更

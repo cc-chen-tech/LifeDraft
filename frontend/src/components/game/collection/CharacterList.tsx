@@ -83,7 +83,7 @@ export const CharacterList = memo(function CharacterList({
               )}
             </div>
           </button>
-          {onOpenDeleteConfirm && character.role !== "主角" && (
+          {onOpenDeleteConfirm && character.can_delete === true && (
             <Button
               type="button"
               variant="quiet"

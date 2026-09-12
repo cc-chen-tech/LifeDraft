@@ -628,6 +628,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
         const character: CharacterCollectionItem = {
           name: result.character.name,
           role: result.character.role,
+          can_delete: true,
           description: result.character.relationship_desc,
           affinity: result.character.affinity,
           age: null,
