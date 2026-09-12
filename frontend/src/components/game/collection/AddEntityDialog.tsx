@@ -50,9 +50,16 @@ export function AddEntityDialog({
   isLoading,
 }: AddEntityDialogProps) {
   const copy = entityCopy[activeTab];
-  const invalidNameMessage = entityName.includes("/") ? "名称不能包含 /" : null;
+  const normalizedName = entityName.trim();
+  const invalidNameMessage = entityName.includes("/")
+    ? "名称不能包含 /"
+    : entityName.includes("%")
+      ? "名称不能包含 %"
+      : normalizedName === "." || normalizedName === ".."
+        ? "名称不能是 . 或 .."
+        : null;
   const canSubmit =
-    entityName.trim().length > 0 &&
+    normalizedName.length > 0 &&
     !invalidNameMessage &&
     !isLoading &&
     isWithinInputLimit(entityName, INPUT_LIMITS.name);

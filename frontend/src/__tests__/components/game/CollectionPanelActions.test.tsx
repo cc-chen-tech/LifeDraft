@@ -229,18 +229,41 @@ describe('CollectionPanel action contracts', () => {
     expect(screen.queryByRole('checkbox', { name: '从故事历史中提取描述' })).not.toBeInTheDocument();
   });
 
-  it('blocks names that cannot round-trip through deletion routes', async () => {
+  it.each([
+    ['档案/A', '名称不能包含 /'],
+    ['A%20B', '名称不能包含 %'],
+    ['.', '名称不能是 . 或 ..'],
+    ['..', '名称不能是 . 或 ..'],
+    [' . ', '名称不能是 . 或 ..'],
+    [' .. ', '名称不能是 . 或 ..'],
+  ])('blocks the name %s because it cannot round-trip through deletion routes', async (name, message) => {
     const user = userEvent.setup();
     fixtureStore({ activeTab: 'characters', selectedItem: null });
     await renderPanel(76);
 
     await user.click(screen.getByRole('button', { name: '添加人物' }));
     const dialog = screen.getByRole('dialog', { name: '添加人物' });
-    await user.type(within(dialog).getByRole('textbox', { name: '人物名称' }), '档案/A');
+    await user.type(within(dialog).getByRole('textbox', { name: '人物名称' }), name);
 
-    expect(within(dialog).getByText('名称不能包含 /')).toBeVisible();
+    expect(within(dialog).getByText(message)).toBeVisible();
     expect(within(dialog).getByRole('button', { name: '添加' })).toBeDisabled();
     expect(actionMock('createCharacter')).not.toHaveBeenCalled();
+  });
+
+  it('allows dots inside an ordinary entity name', async () => {
+    const user = userEvent.setup();
+    fixtureStore({ activeTab: 'characters', selectedItem: null });
+    actionMock('createCharacter').mockResolvedValue(true);
+    await renderPanel(76);
+
+    await user.click(screen.getByRole('button', { name: '添加人物' }));
+    const dialog = screen.getByRole('dialog', { name: '添加人物' });
+    await user.type(within(dialog).getByRole('textbox', { name: '人物名称' }), 'A.B');
+
+    expect(within(dialog).queryByText(/名称不能/)).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '添加' })).toBeEnabled();
+    await user.click(within(dialog).getByRole('button', { name: '添加' }));
+    expect(actionMock('createCharacter')).toHaveBeenCalledWith(76, 'A.B');
   });
 
   it('only offers deletion for materialized characters', async () => {

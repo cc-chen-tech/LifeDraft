@@ -327,6 +327,52 @@ def test_character_removal_can_defer_linked_image_cleanup_until_state_is_persist
         session.close()
 
 
+@pytest.mark.parametrize(
+    ("preset_section", "preset_name", "materialized_name"),
+    [
+        ("key_people", " 陈舟 ", " 陈舟 "),
+        ("key_people", " 陈舟 ", "陈舟"),
+        ("family_members", " 陈舟 ", " 陈舟 "),
+        ("family_members", " 陈舟 ", "陈舟"),
+    ],
+)
+def test_character_removal_rejects_materialized_preset_people(
+    preset_section: str,
+    preset_name: str,
+    materialized_name: str,
+) -> None:
+    session = _session()
+    try:
+        settings = (
+            {"relationships": {"key_people": [{"name": preset_name}]}}
+            if preset_section == "key_people"
+            else {"family": {"family_members": [{"name": preset_name}]}}
+        )
+        state = PlayerState.from_dict(
+            {
+                "player_name": "林岚",
+                "character_settings": settings,
+                "characters": {
+                    materialized_name: {"name": materialized_name, "role": "旧识"}
+                },
+            }
+        )
+        service = CollectionService(session)
+
+        visible = {
+            character.name: character
+            for character in service.get_collection(1, state).characters
+        }[materialized_name]
+        assert visible.can_delete is False
+
+        with pytest.raises(PermissionDeniedError, match="预设人物"):
+            service.delete_character(1, materialized_name, state)
+
+        assert materialized_name in state.characters
+    finally:
+        session.close()
+
+
 def test_game_ownership_lookup_rejects_missing_and_foreign_games() -> None:
     session = _session()
     try:

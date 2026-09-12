@@ -80,6 +80,7 @@ function recognizedCharacterToCollection(entity: RecognizedEntity): CharacterCol
     image_url: null,
     image_generated: false,
     description_generated: true,
+    can_delete: true,
   };
 }
 

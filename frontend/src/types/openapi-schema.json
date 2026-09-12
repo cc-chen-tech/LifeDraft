@@ -5031,7 +5031,7 @@
             "type": "string",
             "maxLength": 50,
             "minLength": 1,
-            "pattern": "^[^/]+$",
+            "pattern": "^[^/%]+$",
             "title": "Name"
           }
         },
@@ -5085,7 +5085,7 @@
             "type": "string",
             "maxLength": 50,
             "minLength": 1,
-            "pattern": "^[^/]+$",
+            "pattern": "^[^/%]+$",
             "title": "Name",
             "description": "物品名称"
           },

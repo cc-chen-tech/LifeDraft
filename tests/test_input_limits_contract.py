@@ -374,11 +374,20 @@ def test_manual_collection_entity_routes_use_the_constrained_request_model() -> 
 
 
 @pytest.mark.parametrize("model", [CreateItemRequest, CreateCollectionEntityRequest])
-def test_manual_collection_names_reject_path_separators(model: type) -> None:
+@pytest.mark.parametrize("unsafe_name", ["档案/A", "A%20B", "A%2FB", ".", "..", " . "])
+def test_manual_collection_names_reject_values_that_cannot_round_trip_through_delete_routes(
+    model: type,
+    unsafe_name: str,
+) -> None:
     with pytest.raises(ValidationError) as exc_info:
-        model.model_validate({"name": "档案/A"})
+        model.model_validate({"name": unsafe_name})
 
     assert exc_info.value.errors()[0]["loc"] == ("name",)
+
+
+@pytest.mark.parametrize("model", [CreateItemRequest, CreateCollectionEntityRequest])
+def test_manual_collection_names_allow_non_segment_dots(model: type) -> None:
+    assert model.model_validate({"name": "A.B"}).name == "A.B"
 
 
 def test_manual_item_creation_keeps_description_generation_opt_in() -> None:

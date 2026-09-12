@@ -272,3 +272,28 @@ class TestCollectionServiceContractCoverage:
             "书生": False,
             "母亲": False,
         }
+
+    def test_materialized_preset_people_remain_non_deletable(self, monkeypatch):
+        service = self._make_service()
+        monkeypatch.setattr(service, "_get_entity_images_batch", lambda *_: {})
+        player_state = PlayerState(
+            player_name="主角",
+            character_settings={
+                "relationships": {"key_people": [{"name": "书生"}]},
+                "family": {"family_members": [{"name": "母亲"}]},
+            },
+            characters={
+                "书生": {"role": "旧友", "affinity": 70},
+                "母亲": {"role": "母亲", "affinity": 80},
+                "访客": {"role": "访客", "affinity": 50},
+            },
+        )
+
+        result = service.get_collection(game_id=77, player_state=player_state)
+
+        assert {c.name: c.can_delete for c in result.characters} == {
+            "主角": False,
+            "书生": False,
+            "母亲": False,
+            "访客": True,
+        }

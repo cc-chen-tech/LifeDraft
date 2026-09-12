@@ -664,6 +664,28 @@ describe('useCollectionStore cache', () => {
       expect(useCollectionStore.getState().items).toHaveLength(1);
     });
 
+    it('keeps a recognized character deletable while its background refresh fails', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse({
+          success: true,
+          message: '成功添加 1 个人物',
+          added_items: [],
+          added_characters: ['误识人物'],
+          added_landmarks: [],
+        }))
+        .mockResolvedValueOnce(errorResponse(400, '列表服务暂时不可用'));
+
+      await useCollectionStore.getState().addRecognizedEntities(1, {
+        items: [],
+        characters: [{ name: '误识人物', description: '', category: 'other', importance: 'normal', appear_count: 1, appear_contexts: [] }],
+        landmarks: [],
+      });
+
+      expect(useCollectionStore.getState().characters).toEqual([
+        expect.objectContaining({ name: '误识人物', can_delete: true }),
+      ]);
+    });
+
     it('createItem should fetch fresh data after creation', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ success: true }));
       const mockResponse = {

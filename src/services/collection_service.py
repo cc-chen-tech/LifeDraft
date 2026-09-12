@@ -128,6 +128,13 @@ class CollectionService:
         characters = []
         added_names: set[str] = set()
         character_settings = player_state.character_settings or {}
+        key_people = self._extract_key_people(character_settings.get("relationships", {}))
+        family_members = self._extract_family_members(character_settings)
+        protected_names = {
+            str(person.get("name", "")).strip()
+            for person in [*key_people, *family_members]
+            if isinstance(person, dict) and str(person.get("name", "")).strip()
+        }
 
         # 批量获取所有 character 图片，避免 N+1 查询
         image_cache = self._get_entity_images_batch(game_id, "character")
@@ -159,12 +166,11 @@ class CollectionService:
                     image_url=image_url,
                     image_generated=image_generated,
                     description_generated=True,
-                    can_delete=True,
+                    can_delete=name.strip() not in protected_names,
                 )
             )
 
         # 2. 从 key_people 获取关键人物
-        key_people = self._extract_key_people(character_settings.get("relationships", {}))
         for person in key_people:
             if isinstance(person, dict):
                 char = self._build_key_person(game_id, person, added_names, image_cache)
@@ -172,7 +178,6 @@ class CollectionService:
                     characters.append(char)
 
         # 3. 从 family_members 获取家庭成员
-        family_members = character_settings.get("family", {}).get("family_members", [])
         for member in family_members:
             if isinstance(member, dict):
                 char = self._build_family_member(game_id, member, added_names, image_cache)
@@ -189,6 +194,32 @@ class CollectionService:
             key_people = relationships.get("key_people", [])
             return [person for person in key_people if isinstance(person, dict)]
         return []
+
+    def _extract_family_members(
+        self, character_settings: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Return structured family members from possibly malformed settings."""
+        family = character_settings.get("family", {})
+        if not isinstance(family, dict):
+            return []
+        members = family.get("family_members", [])
+        if not isinstance(members, list):
+            return []
+        return [member for member in members if isinstance(member, dict)]
+
+    def _protected_character_names(
+        self, character_settings: Dict[str, Any]
+    ) -> set[str]:
+        """Return preset people whose lifecycle is owned by character settings."""
+        people = [
+            *self._extract_key_people(character_settings.get("relationships", {})),
+            *self._extract_family_members(character_settings),
+        ]
+        return {
+            str(person.get("name", "")).strip()
+            for person in people
+            if str(person.get("name", "")).strip()
+        }
 
     def _build_player_character(
         self,
@@ -1052,6 +1083,8 @@ class CollectionService:
         player_name = player_state.player_name or character_settings.get("player_name", "")
         if character_name == player_name:
             raise PermissionDeniedError("不能删除主角")
+        if character_name.strip() in self._protected_character_names(character_settings):
+            raise PermissionDeniedError("不能删除预设人物")
 
         if character_name not in player_state.characters:
             raise EntityNotFoundError(f"人物 '{character_name}' 不存在或无法删除")
