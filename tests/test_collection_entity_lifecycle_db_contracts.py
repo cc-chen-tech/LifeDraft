@@ -152,6 +152,90 @@ def test_manual_character_creation_rejects_legacy_settings_protagonist_name() ->
         session.close()
 
 
+@pytest.mark.parametrize(
+    ("character_settings", "name", "expected_role", "expected_description", "expected_affinity"),
+    [
+        (
+            {
+                "relationships": {
+                    "key_people": [
+                        {
+                            "name": "陈舟",
+                            "role": "导师",
+                            "relationship_desc": "引路人",
+                            "affinity": 73,
+                        }
+                    ]
+                }
+            },
+            "陈舟",
+            "导师",
+            "引路人",
+            73,
+        ),
+        (
+            {
+                "relationships": [
+                    {
+                        "name": "陆昊然",
+                        "role": "直属导师",
+                        "relationship": "产品团队导师",
+                        "affinity": 70,
+                    }
+                ]
+            },
+            "陆昊然",
+            "直属导师",
+            "产品团队导师",
+            70,
+        ),
+        (
+            {
+                "family": {
+                    "family_members": [
+                        {"name": "母亲", "role": "母亲", "relationship": "至亲"}
+                    ]
+                }
+            },
+            "母亲",
+            "母亲",
+            "至亲",
+            80,
+        ),
+    ],
+)
+def test_manual_character_creation_rejects_partially_materialized_visible_people_without_shadowing_metadata(
+    character_settings,
+    name,
+    expected_role,
+    expected_description,
+    expected_affinity,
+) -> None:
+    session = _session()
+    try:
+        state = PlayerState(
+            player_name="林岚",
+            character_settings=character_settings,
+            relationships={name: expected_affinity},
+            week=4,
+        )
+        service = CollectionService(session)
+
+        with pytest.raises(ValueError, match="已存在"):
+            service.create_character(state, name)
+
+        assert name not in state.characters
+        assert state.relationships[name] == expected_affinity
+        visible = {
+            character.name: character for character in service.get_collection(1, state).characters
+        }[name]
+        assert visible.role == expected_role
+        assert visible.description == expected_description
+        assert visible.affinity == expected_affinity
+    finally:
+        session.close()
+
+
 def test_character_removal_cleans_linked_image_and_protects_player() -> None:
     session = _session()
     try:
@@ -184,6 +268,43 @@ def test_character_removal_cleans_linked_image_and_protects_player() -> None:
             service.delete_character(int(game.game_id), "林岚", state)
         with pytest.raises(EntityNotFoundError, match="不存在"):
             service.delete_character(int(game.game_id), "陌生人", state)
+    finally:
+        session.close()
+
+
+def test_character_removal_can_defer_linked_image_cleanup_until_state_is_persisted() -> None:
+    session = _session()
+    try:
+        game = _game(session)
+        image = Image(
+            game_id=game.game_id,
+            image_type="character",
+            entity_name="陈舟",
+            entity_key="npc-chen-zhou-deferred",
+            prompt_text="deferred cleanup contract",
+            storage_path="contracts/chen-zhou-deferred.png",
+            storage_type="local",
+            is_active=True,
+        )
+        session.add(image)
+        session.commit()
+        image_id = int(image.image_id)
+        state = PlayerState.from_dict(
+            {
+                "player_name": "林岚",
+                "week": 4,
+                "characters": {"陈舟": {"name": "陈舟", "role": "同事"}},
+            }
+        )
+        service = CollectionService(session)
+
+        assert service.delete_character(
+            int(game.game_id), "陈舟", state, delete_images=False
+        ) is True
+        assert session.get(Image, image_id) is not None
+
+        service._delete_entity_image_records(int(game.game_id), "character", "陈舟")
+        assert session.get(Image, image_id) is None
     finally:
         session.close()
 

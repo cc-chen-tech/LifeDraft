@@ -26,4 +26,26 @@ describe("AddEntityDialog input limit", () => {
     expect(screen.getByRole("button", { name: "添加" })).toBeDisabled();
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it("gives the input, checkbox label, and actions 44px touch targets", () => {
+    render(
+      <AddEntityDialog
+        activeTab="items"
+        open
+        onClose={jest.fn()}
+        onSubmit={jest.fn(async () => undefined)}
+        entityName="旧怀表"
+        onEntityNameChange={jest.fn()}
+        generateDescription={false}
+        onGenerateDescriptionChange={jest.fn()}
+        error={null}
+        isLoading={false}
+      />
+    );
+
+    expect(screen.getByRole("textbox", { name: "物品名称" })).toHaveClass("min-h-11");
+    expect(screen.getByRole("checkbox", { name: "从故事历史中提取描述" }).closest("label")).toHaveClass("min-h-11");
+    expect(screen.getByRole("button", { name: "取消" })).toHaveAttribute("data-size", "touch");
+    expect(screen.getByRole("button", { name: "添加" })).toHaveAttribute("data-size", "touch");
+  });
 });

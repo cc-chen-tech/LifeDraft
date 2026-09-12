@@ -347,7 +347,8 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     }
 
     if (created) {
-      handleCloseAddEntity();
+      setShowAddEntityDialog(false);
+      setNewEntityName("");
     }
   };
 

@@ -15,6 +15,7 @@ pytestmark = pytest.mark.api
 
 from src.api.deps import get_current_user_optional  # noqa: E402
 from src.api.routers.collection import router  # noqa: E402
+from src.game.state import PlayerState  # noqa: E402
 from src.services.collection_service import (EntityNotFoundError,  # noqa: E402
                                              PermissionDeniedError)
 
@@ -539,6 +540,58 @@ class TestManualCollectionEntityCreation:
         finally:
             app.dependency_overrides.clear()
 
+    @pytest.mark.parametrize(
+        ("path", "payload", "collection_name", "entity_name"),
+        [
+            ("/collection/1/characters/create", {"name": "陈舟"}, "characters", "陈舟"),
+            (
+                "/collection/1/items/create",
+                {"name": "旧怀表", "generate_description": False},
+                "items",
+                "旧怀表",
+            ),
+            ("/collection/1/landmarks/create", {"name": "旧码头"}, "landmarks", "旧码头"),
+        ],
+    )
+    @pytest.mark.parametrize("save_failure", [False, RuntimeError("database unavailable")])
+    @patch("src.api.routers.collection.get_game_db")
+    @patch("src.api.routers.collection.session_service")
+    @patch("src.api.routers.collection.SessionLocal")
+    def test_manual_entity_creation_rolls_back_live_state_when_persistence_fails(
+        self,
+        mock_session_local,
+        mock_session_service,
+        mock_get_game_db,
+        save_failure,
+        path,
+        payload,
+        collection_name,
+        entity_name,
+        app,
+        client,
+    ):
+        state = PlayerState(player_name="林舟", week=4)
+        session = MagicMock()
+        session.game_loop.get_state.return_value = state
+        mock_session_service.get_or_restore.return_value = session
+        mock_session_local.return_value = MagicMock()
+        if isinstance(save_failure, Exception):
+            mock_get_game_db.return_value.save_game_progress.side_effect = save_failure
+        else:
+            mock_get_game_db.return_value.save_game_progress.return_value = save_failure
+        app.dependency_overrides[get_current_user_optional] = lambda: MagicMock(user_id=7)
+
+        try:
+            response = client.post(path, json=payload)
+
+            assert response.status_code == 500
+            assert "保存" in response.json()["detail"]
+            assert entity_name not in getattr(state, collection_name)
+            if collection_name == "characters":
+                assert entity_name not in state.relationships
+        finally:
+            app.dependency_overrides.clear()
+
 
 # ==================== Delete Endpoints Tests ====================
 
@@ -601,3 +654,70 @@ class TestDeleteLandmark:
         """Test that unauthenticated requests return 401."""
         response = client.delete("/collection/1/landmarks/TestLandmark")
         assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("path", "state_data", "collection_name", "entity_name"),
+    [
+        (
+            "/collection/1/characters/%E9%99%88%E8%88%9F",
+            {
+                "player_name": "林舟",
+                "week": 4,
+                "characters": {"陈舟": {"name": "陈舟", "affinity": 73}},
+                "relationships": {"陈舟": 73},
+            },
+            "characters",
+            "陈舟",
+        ),
+        (
+            "/collection/1/items/%E6%97%A7%E6%80%80%E8%A1%A8",
+            {"player_name": "林舟", "week": 4, "items": {"旧怀表": {"name": "旧怀表"}}},
+            "items",
+            "旧怀表",
+        ),
+        (
+            "/collection/1/landmarks/%E6%97%A7%E7%A0%81%E5%A4%B4",
+            {"player_name": "林舟", "week": 4, "landmarks": {"旧码头": {"name": "旧码头"}}},
+            "landmarks",
+            "旧码头",
+        ),
+    ],
+)
+@pytest.mark.parametrize("save_failure", [False, RuntimeError("database unavailable")])
+@patch("src.api.routers.collection.get_game_db")
+@patch("src.api.routers.collection.session_service")
+@patch("src.api.routers.collection.SessionLocal")
+def test_manual_entity_deletion_rolls_back_live_state_when_persistence_fails(
+    mock_session_local,
+    mock_session_service,
+    mock_get_game_db,
+    save_failure,
+    path,
+    state_data,
+    collection_name,
+    entity_name,
+    app,
+    client,
+):
+    state = PlayerState.from_dict(state_data)
+    session = MagicMock()
+    session.game_loop.get_state.return_value = state
+    mock_session_service.get_or_restore.return_value = session
+    mock_session_local.return_value = MagicMock()
+    if isinstance(save_failure, Exception):
+        mock_get_game_db.return_value.save_game_progress.side_effect = save_failure
+    else:
+        mock_get_game_db.return_value.save_game_progress.return_value = save_failure
+    app.dependency_overrides[get_current_user_optional] = lambda: MagicMock(user_id=7)
+
+    try:
+        response = client.delete(path)
+
+        assert response.status_code == 500
+        assert "保存" in response.json()["detail"]
+        assert entity_name in getattr(state, collection_name)
+        if collection_name == "characters":
+            assert state.relationships[entity_name] == 73
+    finally:
+        app.dependency_overrides.clear()

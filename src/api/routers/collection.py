@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from copy import deepcopy
 from typing import Any, Dict, List, Optional
 from urllib.parse import unquote
 
@@ -46,13 +47,65 @@ def _get_player_state(game_id: int, user_id: int) -> tuple:  # type: ignore
     return session, player_state
 
 
-def _save_player_state(game_id: int, player_state: PlayerState) -> None:
+def _save_player_state(game_id: int, player_state: PlayerState) -> bool:
     """将玩家状态持久化到数据库。"""
     try:
         db = get_game_db()
-        db.save_game_progress(game_id, player_state)
+        saved = bool(db.save_game_progress(game_id, player_state))
+        if not saved:
+            logger.warning("保存游戏状态失败: game_id=%s", game_id)
+        return saved
     except Exception as e:
         logger.warning(f"保存游戏状态失败 (非阻塞): {e}")
+        return False
+
+
+def _collection_state_snapshot(
+    player_state: PlayerState, *field_names: str
+) -> Dict[str, Dict[str, Any]]:
+    return {
+        field_name: deepcopy(getattr(player_state, field_name))
+        for field_name in field_names
+    }
+
+
+def _persist_collection_mutation(
+    game_id: int,
+    player_state: PlayerState,
+    snapshot: Dict[str, Dict[str, Any]],
+) -> None:
+    """Persist a manual collection mutation or restore the live state for retry."""
+    if _save_player_state(game_id, player_state):
+        return
+
+    for field_name, previous_value in snapshot.items():
+        live_value = getattr(player_state, field_name)
+        live_value.clear()
+        live_value.update(previous_value)
+    raise HTTPException(
+        status_code=500,
+        detail="收集变更未能保存，已恢复原状态，请重试",
+    )
+
+
+def _cleanup_deleted_entity_images(
+    service: CollectionService,
+    game_id: int,
+    entity_type: str,
+    entity_name: str,
+) -> None:
+    """Clean images only after the state save succeeds; cleanup remains best effort."""
+    try:
+        service._delete_entity_image_records(
+            game_id, entity_type, unquote(entity_name)
+        )
+    except Exception:
+        logger.exception(
+            "删除收集实体图片失败: game_id=%s type=%s name=%s",
+            game_id,
+            entity_type,
+            entity_name,
+        )
 
 
 def _build_entity_recognition_history(player_state: Any) -> List[Dict[str, Any]]:
@@ -657,8 +710,11 @@ async def create_character(  # type: ignore
 
     db = SessionLocal()
     try:
+        snapshot = _collection_state_snapshot(
+            player_state, "characters", "relationships"
+        )
         character = CollectionService(db).create_character(player_state, request.name)
-        _save_player_state(game_id, player_state)
+        _persist_collection_mutation(game_id, player_state, snapshot)
         return {"success": True, "character": character}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -678,8 +734,9 @@ async def create_landmark(  # type: ignore
 
     db = SessionLocal()
     try:
+        snapshot = _collection_state_snapshot(player_state, "landmarks")
         landmark = CollectionService(db).create_landmark(player_state, request.name)
-        _save_player_state(game_id, player_state)
+        _persist_collection_mutation(game_id, player_state, snapshot)
         return {"success": True, "landmark": landmark}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -699,6 +756,7 @@ async def create_item(  # type: ignore
 
     db = SessionLocal()
     try:
+        snapshot = _collection_state_snapshot(player_state, "items")
         service = CollectionService(db)
         item_info = service.create_item(
             player_state,
@@ -709,7 +767,7 @@ async def create_item(  # type: ignore
         )
 
         # 持久化状态变更
-        _save_player_state(game_id, player_state)
+        _persist_collection_mutation(game_id, player_state, snapshot)
 
         return {
             "message": f"物品 '{item_info['name']}' 创建成功",
@@ -718,6 +776,8 @@ async def create_item(  # type: ignore
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except (TypeError, KeyError) as e:
         raise HTTPException(status_code=400, detail=f"创建物品失败: {e}")
     except Exception as e:
@@ -739,17 +799,22 @@ async def delete_item(  # type: ignore
 
     db = SessionLocal()
     try:
+        snapshot = _collection_state_snapshot(player_state, "items")
         service = CollectionService(db)
-        success = service.delete_item(game_id, item_name, player_state)
+        success = service.delete_item(
+            game_id, item_name, player_state, delete_images=False
+        )
         if not success:
             raise HTTPException(status_code=500, detail="删除失败")
 
-        # 持久化状态变更
-        _save_player_state(game_id, player_state)
+        _persist_collection_mutation(game_id, player_state, snapshot)
+        _cleanup_deleted_entity_images(service, game_id, "item", item_name)
 
         return {"message": f"物品 '{item_name}' 已删除", "success": True}
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
     except (OSError, IOError) as e:
         raise HTTPException(status_code=500, detail=f"删除失败: {e}")
     except Exception as e:
@@ -771,19 +836,28 @@ async def delete_character(  # type: ignore
 
     db = SessionLocal()
     try:
+        snapshot = _collection_state_snapshot(
+            player_state, "characters", "relationships"
+        )
         service = CollectionService(db)
-        success = service.delete_character(game_id, character_name, player_state)
+        success = service.delete_character(
+            game_id, character_name, player_state, delete_images=False
+        )
         if not success:
             raise HTTPException(status_code=500, detail="删除失败")
 
-        # 持久化状态变更
-        _save_player_state(game_id, player_state)
+        _persist_collection_mutation(game_id, player_state, snapshot)
+        _cleanup_deleted_entity_images(
+            service, game_id, "character", character_name
+        )
 
         return {"message": f"人物 '{character_name}' 已删除", "success": True}
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except PermissionDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except HTTPException:
+        raise
     except (OSError, IOError) as e:
         raise HTTPException(status_code=500, detail=f"删除失败: {e}")
     except Exception as e:
@@ -805,17 +879,24 @@ async def delete_landmark(  # type: ignore
 
     db = SessionLocal()
     try:
+        snapshot = _collection_state_snapshot(player_state, "landmarks")
         service = CollectionService(db)
-        success = service.delete_landmark(game_id, landmark_name, player_state)
+        success = service.delete_landmark(
+            game_id, landmark_name, player_state, delete_images=False
+        )
         if not success:
             raise HTTPException(status_code=500, detail="删除失败")
 
-        # 持久化状态变更
-        _save_player_state(game_id, player_state)
+        _persist_collection_mutation(game_id, player_state, snapshot)
+        _cleanup_deleted_entity_images(
+            service, game_id, "landmark", landmark_name
+        )
 
         return {"message": f"地点 '{landmark_name}' 已删除", "success": True}
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
     except (OSError, IOError) as e:
         raise HTTPException(status_code=500, detail=f"删除失败: {e}")
     except Exception as e:

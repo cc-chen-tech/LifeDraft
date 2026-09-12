@@ -33,6 +33,18 @@ function appendUniqueEntities<T extends CollectionEntity>(current: T[], addition
   return [...current, ...additions.filter((entity) => !knownNames.has(entity.name))];
 }
 
+function upsertEntity<T extends CollectionEntity>(current: T[], entity: T): T[] {
+  const index = current.findIndex((item) => item.name === entity.name);
+  if (index < 0) return [...current, entity];
+  return current.map((item, itemIndex) => itemIndex === index ? entity : item);
+}
+
+function mutationSyncWarning(action: "保存" | "删除", refreshError: string | null): string {
+  const detail = refreshError ? `：${refreshError}` : "";
+  const retryAction = action === "保存" ? "添加" : "删除";
+  return `实体已${action}，但列表同步失败${detail}。无需重复${retryAction}，请稍后重新打开收集列表刷新。`;
+}
+
 function recognizedItemToCollection(entity: RecognizedEntity): ItemCollectionItem {
   const allowedCategories: ItemCollectionItem["category"][] = [
     "weapon", "tool", "keepsake", "treasure", "document", "other",
@@ -95,7 +107,7 @@ function recognizedLandmarkToCollection(entity: RecognizedEntity): LandmarkColle
 }
 
 // Request de-dupe and short-lived cache keep the collection panel responsive.
-let _fetchInFlight: { gameId: number; promise: Promise<void> } | null = null;
+let _fetchInFlight: { gameId: number; promise: Promise<boolean> } | null = null;
 let _collectionCache: { gameId: number; timestamp: number } | null = null;
 let _autoCollectInFlight: { gameId: number; promise: Promise<void> } | null = null;
 const CACHE_TTL_MS = 30000;
@@ -131,7 +143,7 @@ interface CollectionState {
   error: string | null;
 
   // Actions
-  fetchCollection: (gameId: number, isRefresh?: boolean) => Promise<void>;
+  fetchCollection: (gameId: number, isRefresh?: boolean) => Promise<boolean>;
   setActiveTab: (tab: "characters" | "items" | "landmarks") => void;
   selectCharacter: (character: CharacterCollectionItem | null) => void;
   selectItem: (item: ItemCollectionItem | null) => void;
@@ -200,7 +212,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
   fetchCollection: async (gameId: number, isRefresh: boolean = false) => {
     if (!gameId) {
       set({ error: "游戏ID不存在" });
-      return;
+      return false;
     }
 
     if (!isRefresh && _fetchInFlight?.gameId === gameId) {
@@ -218,7 +230,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
         hasData
       ) {
         console.log("[fetchCollection] 命中缓存，跳过请求 gameId=", gameId);
-        return;
+        return true;
       }
     }
 
@@ -244,8 +256,8 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       const fetchPromise = api.collection.get(gameId);
       if (!isRefresh) {
         const wrappedPromise = fetchPromise
-          .then(() => undefined)
-          .catch(() => undefined)
+          .then(() => true)
+          .catch(() => false)
           .finally(() => {
             if (_fetchInFlight?.gameId === gameId) {
               _fetchInFlight = null;
@@ -303,10 +315,12 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
         isLoading: false,
         isRefreshing: false,
       });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "获取收集数据失败";
       console.error("[fetchCollection] 错误:", errorMsg);
       set({ error: errorMsg, isLoading: false, isRefreshing: false });
+      return false;
     }
   },
 
@@ -607,8 +621,28 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      await api.collection.createCharacter(gameId, { name });
-      await get().fetchCollection(gameId, true);
+      const result = await api.collection.createCharacter(gameId, { name });
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        const refreshError = get().error;
+        const character: CharacterCollectionItem = {
+          name: result.character.name,
+          role: result.character.role,
+          description: result.character.relationship_desc,
+          affinity: result.character.affinity,
+          age: null,
+          gender: null,
+          occupation: null,
+          personality_traits: [],
+          image_url: null,
+          image_generated: result.character.image_generated,
+          description_generated: true,
+        };
+        set((state) => ({
+          characters: upsertEntity(state.characters, character),
+          error: mutationSyncWarning("保存", refreshError),
+        }));
+      }
       set({ isLoading: false });
       return true;
     } catch (err) {
@@ -624,13 +658,24 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      await api.collection.createItem(gameId, {
+      const result = await api.collection.createItem(gameId, {
         name,
         generate_description: generateDescription,
       });
 
-      // 刷新收集数据
-      await get().fetchCollection(gameId, true);
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        const refreshError = get().error;
+        const item: ItemCollectionItem = {
+          ...result.item,
+          image_url: result.item.image_url ?? null,
+          metadata: result.item.metadata ?? {},
+        };
+        set((state) => ({
+          items: upsertEntity(state.items, item),
+          error: mutationSyncWarning("保存", refreshError),
+        }));
+      }
 
       set({ isLoading: false });
       return true;
@@ -647,8 +692,20 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      await api.collection.createLandmark(gameId, { name });
-      await get().fetchCollection(gameId, true);
+      const result = await api.collection.createLandmark(gameId, { name });
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        const refreshError = get().error;
+        const landmark: LandmarkCollectionItem = {
+          ...result.landmark,
+          image_url: null,
+          metadata: {},
+        };
+        set((state) => ({
+          landmarks: upsertEntity(state.landmarks, landmark),
+          error: mutationSyncWarning("保存", refreshError),
+        }));
+      }
       set({ isLoading: false });
       return true;
     } catch (err) {
@@ -668,14 +725,14 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     try {
       await api.collection.deleteItem(gameId, itemName);
 
-      // 如果删除的是当前选中的物品，清除选择
-      const currentSelected = get().selectedItem;
-      if (currentSelected?.name === itemName) {
-        set({ selectedItem: null });
+      set((state) => ({
+        items: state.items.filter((item) => item.name !== itemName),
+        selectedItem: state.selectedItem?.name === itemName ? null : state.selectedItem,
+      }));
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        set({ error: mutationSyncWarning("删除", get().error) });
       }
-
-      // 刷新收集数据
-      await get().fetchCollection(gameId, true);
 
       set({ isDeleting: false, deletingEntity: null });
       return true;
@@ -694,14 +751,14 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     try {
       await api.collection.deleteCharacter(gameId, characterName);
 
-      // 如果删除的是当前选中的人物，清除选择
-      const currentSelected = get().selectedCharacter;
-      if (currentSelected?.name === characterName) {
-        set({ selectedCharacter: null });
+      set((state) => ({
+        characters: state.characters.filter((character) => character.name !== characterName),
+        selectedCharacter: state.selectedCharacter?.name === characterName ? null : state.selectedCharacter,
+      }));
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        set({ error: mutationSyncWarning("删除", get().error) });
       }
-
-      // 刷新收集数据
-      await get().fetchCollection(gameId, true);
 
       set({ isDeleting: false, deletingEntity: null });
       return true;
@@ -720,14 +777,14 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     try {
       await api.collection.deleteLandmark(gameId, landmarkName);
 
-      // 如果删除的是当前选中的标志物，清除选择
-      const currentSelected = get().selectedLandmark;
-      if (currentSelected?.name === landmarkName) {
-        set({ selectedLandmark: null });
+      set((state) => ({
+        landmarks: state.landmarks.filter((landmark) => landmark.name !== landmarkName),
+        selectedLandmark: state.selectedLandmark?.name === landmarkName ? null : state.selectedLandmark,
+      }));
+      const refreshed = await get().fetchCollection(gameId, true);
+      if (!refreshed) {
+        set({ error: mutationSyncWarning("删除", get().error) });
       }
-
-      // 刷新收集数据
-      await get().fetchCollection(gameId, true);
 
       set({ isDeleting: false, deletingEntity: null });
       return true;

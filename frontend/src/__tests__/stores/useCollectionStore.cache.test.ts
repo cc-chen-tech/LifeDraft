@@ -715,6 +715,41 @@ describe('useCollectionStore cache', () => {
     });
 
     it.each([
+      [
+        'createCharacter',
+        { success: true, character: { name: '陈舟', role: '', relationship_desc: '', affinity: 50, image_generated: false } },
+        'characters',
+      ],
+      [
+        'createItem',
+        { success: true, item: { name: '陈舟', description: '', importance: 'normal', category: 'other', acquired_week: 4, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: false, metadata: {} } },
+        'items',
+      ],
+      [
+        'createLandmark',
+        { success: true, landmark: { name: '陈舟', description: '', category: 'other', importance: 'normal', first_appear_week: 4, appear_count: 1, last_appear_week: 4, context: '', is_key_location: false, image_generated: false } },
+        'landmarks',
+      ],
+    ] as const)('%s keeps the persisted entity locally and warns when refresh fails', async (actionName, createdResponse, collectionName) => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse(createdResponse))
+        .mockResolvedValueOnce(errorResponse(400, '列表服务暂时不可用'));
+
+      const action = (useCollectionStore.getState() as unknown as Record<ManualCreateActionName, ManualCreateAction>)[actionName];
+      const succeeded = await action(1, '陈舟');
+
+      expect(succeeded).toBe(true);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(
+        (global.fetch as jest.Mock).mock.calls.filter(([, init]) => init?.method === 'POST'),
+      ).toHaveLength(1);
+      expect(useCollectionStore.getState()[collectionName]).toEqual([
+        expect.objectContaining({ name: '陈舟' }),
+      ]);
+      expect(useCollectionStore.getState().error).toMatch(/已保存.*列表同步失败.*无需重复添加/);
+    });
+
+    it.each([
       ['createCharacter', '/api/collection/1/characters/create'],
       ['createItem', '/api/collection/1/items/create'],
       ['createLandmark', '/api/collection/1/landmarks/create'],
@@ -763,6 +798,28 @@ describe('useCollectionStore cache', () => {
       expect(useCollectionStore.getState().error).toBe('删除失败');
       expect(global.fetch).toHaveBeenCalledTimes(1);
       expect(global.fetch).toHaveBeenCalledWith(endpoint, expect.objectContaining({ method: 'DELETE' }));
+    });
+
+    it.each([
+      ['deleteCharacter', 'characters', { name: '林舟', role: '同事', description: '', affinity: 73, age: null, gender: null, occupation: null, personality_traits: [], image_url: null, image_generated: false, description_generated: true }],
+      ['deleteItem', 'items', { name: '旧物品', description: '', importance: 'normal', category: 'other', acquired_week: 1, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: false, metadata: {} }],
+      ['deleteLandmark', 'landmarks', { name: '旧码头', description: '', category: 'other', importance: 'normal', first_appear_week: 1, appear_count: 1, last_appear_week: 1, context: '', is_key_location: false, image_url: null, image_generated: false, metadata: {} }],
+    ] as const)('%s keeps the successful deletion locally and warns when refresh fails', async (actionName, collectionName, entity) => {
+      useCollectionStore.setState({ [collectionName]: [entity] });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse({ success: true }))
+        .mockResolvedValueOnce(errorResponse(400, '列表服务暂时不可用'));
+      const action = (useCollectionStore.getState() as unknown as Record<string, (gameId: number, name: string) => Promise<boolean>>)[actionName];
+
+      const succeeded = await action(1, entity.name);
+
+      expect(succeeded).toBe(true);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(
+        (global.fetch as jest.Mock).mock.calls.filter(([, init]) => init?.method === 'DELETE'),
+      ).toHaveLength(1);
+      expect(useCollectionStore.getState()[collectionName]).toEqual([]);
+      expect(useCollectionStore.getState().error).toMatch(/已删除.*列表同步失败.*无需重复删除/);
     });
   });
 });

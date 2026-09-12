@@ -922,7 +922,21 @@ class CollectionService:
         player_name = player_state.player_name or character_settings.get("player_name", "")
         if clean_name == player_name:
             raise ValueError("不能创建与主角同名的人物")
-        if clean_name in player_state.characters:
+        visible_names = set(player_state.characters)
+        visible_names.update(
+            str(person.get("name", "")).strip()
+            for person in self._extract_key_people(
+                character_settings.get("relationships", {})
+            )
+        )
+        family = character_settings.get("family", {})
+        if isinstance(family, dict):
+            visible_names.update(
+                str(member.get("name", "")).strip()
+                for member in family.get("family_members", [])
+                if isinstance(member, dict)
+            )
+        if clean_name in visible_names:
             raise ValueError(f"人物 '{clean_name}' 已存在")
 
         character = CharacterState(name=clean_name)
@@ -1001,6 +1015,8 @@ class CollectionService:
         game_id: int,
         item_name: str,
         player_state: PlayerState,
+        *,
+        delete_images: bool = True,
     ) -> bool:
         """删除物品。"""
         item_name = unquote(item_name)
@@ -1011,8 +1027,8 @@ class CollectionService:
         if not success:
             return False
 
-        # 删除关联的图片记录与文件
-        self._delete_entity_image_records(game_id, "item", item_name)
+        if delete_images:
+            self._delete_entity_image_records(game_id, "item", item_name)
         return True
 
     def delete_character(
@@ -1020,6 +1036,8 @@ class CollectionService:
         game_id: int,
         character_name: str,
         player_state: PlayerState,
+        *,
+        delete_images: bool = True,
     ) -> bool:
         """删除人物。"""
         character_name = unquote(character_name)
@@ -1037,8 +1055,8 @@ class CollectionService:
         if not success:
             return False
 
-        # 删除关联的图片记录与文件
-        self._delete_entity_image_records(game_id, "character", character_name)
+        if delete_images:
+            self._delete_entity_image_records(game_id, "character", character_name)
         return True
 
     def delete_landmark(
@@ -1046,6 +1064,8 @@ class CollectionService:
         game_id: int,
         landmark_name: str,
         player_state: PlayerState,
+        *,
+        delete_images: bool = True,
     ) -> bool:
         """删除标志物。"""
         landmark_name = unquote(landmark_name)
@@ -1056,6 +1076,6 @@ class CollectionService:
         if not success:
             return False
 
-        # 删除关联的图片记录与文件
-        self._delete_entity_image_records(game_id, "landmark", landmark_name)
+        if delete_images:
+            self._delete_entity_image_records(game_id, "landmark", landmark_name)
         return True

@@ -247,4 +247,43 @@ describe('CollectionPanel action contracts', () => {
     expect(within(screen.getByRole('dialog', { name: '添加人物' })).getByRole('textbox', { name: '人物名称' })).toHaveValue('林舟');
     expect(within(screen.getByRole('dialog', { name: '添加人物' })).getByRole('alert')).toHaveTextContent('人物名称已存在，请换一个名称');
   });
+
+  it('closes after persisted creation while retaining refresh feedback without resubmitting', async () => {
+    const user = userEvent.setup();
+    fixtureStore({ activeTab: 'characters', selectedItem: null });
+    actionMock('createCharacter').mockImplementation(async () => {
+      useCollectionStore.setState({ error: '人物已保存，但列表同步失败；无需重复添加' });
+      return true;
+    });
+    await renderPanel(78);
+
+    await user.click(screen.getByRole('button', { name: '添加人物' }));
+    const dialog = screen.getByRole('dialog', { name: '添加人物' });
+    await user.type(within(dialog).getByRole('textbox', { name: '人物名称' }), '陈舟');
+    await user.click(within(dialog).getByRole('button', { name: '添加' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '添加人物' })).not.toBeInTheDocument());
+    expect(actionMock('createCharacter')).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('alert')).toHaveTextContent('人物已保存，但列表同步失败；无需重复添加');
+    expect(actionMock('clearError')).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes after persisted deletion while retaining refresh feedback without repeating deletion', async () => {
+    const user = userEvent.setup();
+    fixtureStore({ activeTab: 'items', selectedItem: null });
+    actionMock('deleteItem').mockImplementation(async () => {
+      useCollectionStore.setState({ error: '实体已删除，但列表同步失败；无需重复删除' });
+      return true;
+    });
+    await renderPanel(79);
+
+    await user.click(screen.getByRole('button', { name: '删除物品旧怀表' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: '确认删除' })).getByRole('button', { name: '删除' }),
+    );
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '确认删除' })).not.toBeInTheDocument());
+    expect(actionMock('deleteItem')).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('alert')).toHaveTextContent('实体已删除，但列表同步失败；无需重复删除');
+  });
 });

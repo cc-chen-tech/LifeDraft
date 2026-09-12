@@ -88,14 +88,14 @@ export function AddEntityDialog({
               value={entityName}
               onChange={(event) => onEntityNameChange(event.target.value)}
               placeholder={copy.placeholder}
-              className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="min-h-11 w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               onKeyDown={handleKeyDown}
             />
             <LengthIndicator value={entityName} limit={INPUT_LIMITS.name} />
           </div>
 
           {activeTab === "items" && (
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={generateDescription}
@@ -107,10 +107,10 @@ export function AddEntityDialog({
         </div>
 
         <div className="flex gap-2 border-t pt-4">
-          <Button variant="outline" onClick={onClose} className="flex-1">
+          <Button variant="outline" size="touch" onClick={onClose} className="flex-1">
             取消
           </Button>
-          <Button onClick={onSubmit} disabled={!canSubmit} className="flex-1">
+          <Button size="touch" onClick={onSubmit} disabled={!canSubmit} className="flex-1">
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />

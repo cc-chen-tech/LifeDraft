@@ -992,7 +992,16 @@ export const api = {
       }),
     // Create character manually
     createCharacter: (gameId: number, data: { name: string }) =>
-      fetchJson<{ success: boolean }>(`/collection/${gameId}/characters/create`, {
+      fetchJson<{
+        success: boolean;
+        character: {
+          name: string;
+          role: string;
+          relationship_desc: string;
+          affinity: number;
+          image_generated: boolean;
+        };
+      }>(`/collection/${gameId}/characters/create`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -1008,10 +1017,10 @@ export const api = {
           acquired_week: number;
           acquired_context: string;
           is_key_item: boolean;
-          image_url: string | null;
+          image_url?: string | null;
           image_generated: boolean;
           description_generated: boolean;
-          metadata: Record<string, unknown>; // Intentionally flexible for item metadata
+          metadata?: Record<string, unknown>; // Intentionally flexible for item metadata
         };
       }>(`/collection/${gameId}/items/create`, {
         method: 'POST',
@@ -1019,7 +1028,21 @@ export const api = {
       }),
     // Create landmark manually
     createLandmark: (gameId: number, data: { name: string }) =>
-      fetchJson<{ success: boolean }>(`/collection/${gameId}/landmarks/create`, {
+      fetchJson<{
+        success: boolean;
+        landmark: {
+          name: string;
+          description: string;
+          category: "building" | "nature" | "room" | "area" | "other";
+          importance: "critical" | "important" | "normal";
+          first_appear_week: number;
+          appear_count: number;
+          last_appear_week: number;
+          context: string;
+          is_key_location: boolean;
+          image_generated: boolean;
+        };
+      }>(`/collection/${gameId}/landmarks/create`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),
