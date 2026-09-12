@@ -218,6 +218,21 @@ export function useHistoryViewer({
 
   // 获取当前历史轮次的信息
   const currentHistoryRound = historyRoundIndex !== null ? roundHistory[historyRoundIndex] : null;
+  const historyChapterNumber = historyRoundIndex === null ? null : historyRoundIndex + 1;
+  const historyChapterCount = roundHistory.length;
+  const hasPreviousHistoryRound = historyRoundIndex !== null && historyRoundIndex > 0;
+  const hasNextHistoryRound =
+    historyRoundIndex !== null && historyRoundIndex < roundHistory.length - 1;
+
+  const handlePreviousHistoryRound = useCallback(async () => {
+    if (historyRoundIndex === null || historyRoundIndex <= 0) return;
+    await handleSelectHistoryRound(historyRoundIndex - 1);
+  }, [handleSelectHistoryRound, historyRoundIndex]);
+
+  const handleNextHistoryRound = useCallback(async () => {
+    if (historyRoundIndex === null || historyRoundIndex >= roundHistory.length - 1) return;
+    await handleSelectHistoryRound(historyRoundIndex + 1);
+  }, [handleSelectHistoryRound, historyRoundIndex, roundHistory.length]);
 
   return {
     // State
@@ -234,10 +249,16 @@ export function useHistoryViewer({
     isGeneratingHistoryImage,
     isRegeneratingHistoryImage,
     currentHistoryRound,
+    historyChapterNumber,
+    historyChapterCount,
+    hasPreviousHistoryRound,
+    hasNextHistoryRound,
     // Handlers
     handleOpenHistory,
     handleSelectHistoryRound,
     handleBackToCurrent,
+    handlePreviousHistoryRound,
+    handleNextHistoryRound,
     handleGenerateHistoryImage,
     handleRegenerateHistoryImage,
   };

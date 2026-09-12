@@ -171,13 +171,17 @@ describe("StoryListeningExperience", () => {
     jest.restoreAllMocks();
   });
 
-  function renderExperience(onSelectChoice = jest.fn()) {
+  function renderExperience(
+    onSelectChoice = jest.fn(),
+    extraProps: Partial<React.ComponentProps<typeof StoryListeningExperience>> = {},
+  ) {
     const view = render(
       <StoryListeningExperience
         context={context}
         storyText={context.text}
         options={[{ text: "推开那扇门" }, { text: "留在原地" }]}
         onSelectChoice={onSelectChoice}
+        {...extraProps}
       />,
     );
     return { ...view, onSelectChoice };
@@ -192,6 +196,48 @@ describe("StoryListeningExperience", () => {
     fireEvent.canPlay(document.querySelector("audio") as HTMLAudioElement);
     await waitFor(() => expect(play).toHaveBeenCalled());
     expect(screen.queryByText("浏览器语音")).not.toBeInTheDocument();
+  });
+
+  it("notifies the history reader once when an automatically-read chapter finishes", async () => {
+    const onChapterComplete = jest.fn();
+    renderExperience(jest.fn(), {
+      options: [],
+      onChapterComplete,
+      historyNavigation: {
+        currentIndex: 0,
+        total: 2,
+        storyDate: "2026-08-15",
+        onPrevious: jest.fn(),
+        onNext: jest.fn(),
+        onBackToCurrent: jest.fn(),
+      },
+    });
+
+    const audio = await waitFor(() => {
+      expect(document.querySelector("audio")).not.toBeNull();
+      return document.querySelector("audio") as HTMLAudioElement;
+    });
+    fireEvent.ended(audio);
+    fireEvent.ended(audio);
+
+    expect(onChapterComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not advance chapters when next-chapter auto-play is disabled", async () => {
+    voiceApi.getSettings.mockResolvedValueOnce({
+      ...(await voiceApi.getSettings()),
+      auto_read_enabled: false,
+    });
+    const onChapterComplete = jest.fn();
+    renderExperience(jest.fn(), { options: [], onChapterComplete });
+
+    const audio = await waitFor(() => {
+      expect(document.querySelector("audio")).not.toBeNull();
+      return document.querySelector("audio") as HTMLAudioElement;
+    });
+    fireEvent.ended(audio);
+
+    expect(onChapterComplete).not.toHaveBeenCalled();
   });
 
   it("plays a ready chapter when only the job-level audio URL is present", async () => {
@@ -772,6 +818,7 @@ describe("StoryListeningExperience", () => {
   });
 
   it("uses browser Chinese narration only after explicit selection", async () => {
+    const onChapterComplete = jest.fn();
     const spoken: Array<{
       text: string;
       lang: string;
@@ -819,7 +866,7 @@ describe("StoryListeningExperience", () => {
     });
 
     try {
-      renderExperience();
+      renderExperience(jest.fn(), { onChapterComplete });
 
       expect(await screen.findByRole("button", { name: "使用系统朗读" })).toBeInTheDocument();
       expect(speechSynthesis.speak).not.toHaveBeenCalled();
@@ -836,6 +883,8 @@ describe("StoryListeningExperience", () => {
       act(() => spoken[0].onend?.());
       expect(await screen.findByText("第 2 段")).toBeInTheDocument();
       expect(speechSynthesis.speak).toHaveBeenCalledTimes(2);
+      act(() => spoken[1].onend?.());
+      expect(onChapterComplete).toHaveBeenCalledTimes(1);
     } finally {
       if (previousSynthesis === undefined) delete (window as Window & { speechSynthesis?: unknown }).speechSynthesis;
       else Object.defineProperty(window, "speechSynthesis", { configurable: true, value: previousSynthesis });

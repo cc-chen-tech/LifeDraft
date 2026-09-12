@@ -58,9 +58,15 @@ const mockUsePlayGame = {
   setShowHistory: jest.fn(),
   historyRoundIndex: null,
   isViewingHistory: false,
+  historyChapterNumber: null,
+  historyChapterCount: 0,
+  hasPreviousHistoryRound: false,
+  hasNextHistoryRound: false,
   displayText: 'This is the current story text.',  // ★ 默认显示 storyText
   handleOpenHistory: jest.fn(),
   handleSelectHistoryRound: jest.fn(),
+  handlePreviousHistoryRound: jest.fn(),
+  handleNextHistoryRound: jest.fn(),
   handleBackToCurrent: jest.fn(),
 };
 
@@ -1424,7 +1430,9 @@ describe('PlayPage', () => {
       expect(screen.getByText('Historical story text')).toBeInTheDocument();
     });
 
-    it('renders history text in a dedicated reading surface without current choices', () => {
+    it('renders history inside the compact listening experience without current choices', async () => {
+      const handlePreviousHistoryRound = jest.fn();
+      const handleNextHistoryRound = jest.fn();
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
@@ -1432,16 +1440,93 @@ describe('PlayPage', () => {
         isViewingHistory: true,
         displayText: 'Historical story text',
         historyDisplayText: 'Historical story text',
-        currentHistoryRound: { week: 1, round: 2 },
+        currentHistoryRound: {
+          week: 1,
+          round: 2,
+          day_index: 9,
+          story_date: '2026-08-15',
+        },
+        historyChapterNumber: 2,
+        historyChapterCount: 3,
+        hasPreviousHistoryRound: true,
+        hasNextHistoryRound: true,
+        handlePreviousHistoryRound,
+        handleNextHistoryRound,
         options: [
           { text: 'Current option should not cover history', brief_result: 'Result' },
         ],
       });
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/voice-reading/settings')) {
+          return Promise.resolve(jsonResponse({
+            member_required: false,
+            enabled: true,
+            available_voice_colors: ['warm_female'],
+            auto_read_enabled: false,
+            selected_voice_color: 'warm_female',
+            selected_speed: 1,
+            uploaded_voice_available: false,
+            tts_provider: 'minimax',
+            tts_model: 'speech-2.8-turbo',
+            tts_provider_available: true,
+            backend_audio_enabled: true,
+            playback_mode: 'audio',
+            voice_catalog: [],
+          }));
+        }
+        if (url.includes('/voice-reading/progress')) {
+          return Promise.resolve(jsonResponse({
+            paragraph_index: 0,
+            position_ms: 0,
+            completed: false,
+          }));
+        }
+        if (url.includes('/voice-reading/read')) {
+          return Promise.resolve(jsonResponse({
+            job_id: 81,
+            status: 'ready',
+            playback_mode: 'audio',
+            segments: [{
+              paragraph_index: 0,
+              status: 'ready',
+              audio_url: null,
+              duration_ms: 4000,
+              start_ms: 0,
+              end_ms: 4000,
+            }],
+          }));
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
 
       render(<PlayPage />);
 
-      expect(screen.getByTestId('history-reading-surface')).toHaveTextContent('Historical story text');
+      expect(screen.getByTestId('story-listening-experience')).toHaveTextContent('Historical story text');
+      expect(screen.getByRole('heading', { name: '2026年8月15日' })).toBeInTheDocument();
+      expect(screen.getByText('第 2 章 / 共 3 章')).toBeInTheDocument();
       expect(screen.queryByText('Current option should not cover history')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: '上一章' }));
+      fireEvent.click(screen.getByRole('button', { name: '下一章' }));
+      expect(handlePreviousHistoryRound).toHaveBeenCalledTimes(1);
+      expect(handleNextHistoryRound).toHaveBeenCalledTimes(1);
+
+      await waitFor(() => {
+        const readingCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
+          String(url).includes('/voice-reading/read')
+        );
+        expect(readingCall).toBeDefined();
+        const body = JSON.parse(String(readingCall?.[1]?.body));
+        expect(body.context).toMatchObject({
+          source_type: 'history_round',
+          game_id: 123,
+          week: 1,
+          round_number: 2,
+          day_index: 9,
+          story_date: '2026-08-15',
+          text: 'Historical story text',
+        });
+      });
     });
   });
 

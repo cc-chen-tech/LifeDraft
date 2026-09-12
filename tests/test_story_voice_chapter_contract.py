@@ -57,7 +57,34 @@ def test_story_is_split_into_stable_nonempty_paragraphs() -> None:
     ]
 
 
-def test_reading_rejects_non_current_story_sources() -> None:
+def test_reading_accepts_history_round_source_with_stable_identity() -> None:
+    session = SessionLocal()
+    try:
+        user_id = _user(session)
+        repository = StoryVoiceReadingRepository(session)
+        service = StoryVoiceReadingService(
+            repository,
+            provider=DeterministicTTSProvider(),
+        )
+
+        response = service.request_reading(
+            user_id,
+            _request("历史故事。", source_type="history_round"),
+        )
+        job = repository.get_job(response.job_id, user_id)
+
+        assert response.status == "queued"
+        assert job is not None
+        assert job.context_json["source_type"] == "history_round"
+        assert job.context_json["week"] == 2
+        assert job.context_json["round_number"] == 3
+        assert job.context_json["day_index"] == 9
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_reading_still_rejects_unsupported_story_sources() -> None:
     session = SessionLocal()
     try:
         user_id = _user(session)
@@ -67,10 +94,10 @@ def test_reading_rejects_non_current_story_sources() -> None:
         )
 
         with pytest.raises(HTTPException) as error:
-            service.request_reading(user_id, _request("历史故事。", source_type="history_round"))
+            service.request_reading(user_id, _request("总结。", source_type="summary"))
 
         assert error.value.status_code == 422
-        assert error.value.detail["error_code"] == "current_story_only"
+        assert error.value.detail["error_code"] == "unsupported_source_type"
     finally:
         session.rollback()
         session.close()

@@ -223,6 +223,69 @@ describe('useHistoryViewer', () => {
       expect(result.current.displayText).toContain('Historical continuation body');
       expect(result.current.displayText).not.toContain('Current story after stream update');
     });
+
+    it('moves backward and forward between adjacent history chapters', async () => {
+      const playerState = {
+        day_history: [
+          { day_index: 4, story_date: '2026-08-12', event_description: '第一章正文' },
+          { day_index: 5, story_date: '2026-08-13', event_description: '第二章正文' },
+          { day_index: 6, story_date: '2026-08-14', event_description: '第三章正文' },
+        ],
+      };
+      const { result } = renderHook(() =>
+        useHistoryViewer({ ...defaultParams, playerState })
+      );
+
+      await act(async () => {
+        await result.current.handleSelectHistoryRound(1);
+      });
+      expect(result.current.historyChapterNumber).toBe(2);
+      expect(result.current.historyChapterCount).toBe(3);
+      expect(result.current.hasPreviousHistoryRound).toBe(true);
+      expect(result.current.hasNextHistoryRound).toBe(true);
+
+      await act(async () => {
+        await result.current.handlePreviousHistoryRound();
+      });
+      expect(result.current.historyRoundIndex).toBe(0);
+      expect(result.current.displayText).toContain('第一章正文');
+      expect(result.current.hasPreviousHistoryRound).toBe(false);
+
+      await act(async () => {
+        await result.current.handleNextHistoryRound();
+      });
+      expect(result.current.historyRoundIndex).toBe(1);
+      expect(result.current.displayText).toContain('第二章正文');
+    });
+
+    it('does not move beyond the first or last history chapter', async () => {
+      const playerState = {
+        round_history: [
+          { week: 0, round: 0, event_description: '第一章' },
+          { week: 0, round: 1, event_description: '最后一章' },
+        ],
+      };
+      const { result } = renderHook(() =>
+        useHistoryViewer({ ...defaultParams, playerState })
+      );
+
+      await act(async () => {
+        await result.current.handleSelectHistoryRound(0);
+      });
+      await act(async () => {
+        await result.current.handlePreviousHistoryRound();
+      });
+      expect(result.current.historyRoundIndex).toBe(0);
+
+      await act(async () => {
+        await result.current.handleSelectHistoryRound(1);
+      });
+      await act(async () => {
+        await result.current.handleNextHistoryRound();
+      });
+      expect(result.current.historyRoundIndex).toBe(1);
+      expect(result.current.hasNextHistoryRound).toBe(false);
+    });
   });
 
   describe('handleBackToCurrent', () => {
