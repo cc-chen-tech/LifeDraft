@@ -918,7 +918,9 @@ class CollectionService:
         clean_name = name.strip()
         if not clean_name:
             raise ValueError("人物名称不能为空")
-        if clean_name == player_state.player_name:
+        character_settings = player_state.character_settings or {}
+        player_name = player_state.player_name or character_settings.get("player_name", "")
+        if clean_name == player_name:
             raise ValueError("不能创建与主角同名的人物")
         if clean_name in player_state.characters:
             raise ValueError(f"人物 '{clean_name}' 已存在")

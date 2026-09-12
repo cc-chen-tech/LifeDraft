@@ -137,6 +137,21 @@ def test_manual_character_and_landmark_creation_uses_safe_defaults_and_rejects_d
         session.close()
 
 
+def test_manual_character_creation_rejects_legacy_settings_protagonist_name() -> None:
+    session = _session()
+    try:
+        state = PlayerState(
+            player_name="",
+            character_settings={"player_name": "林岚"},
+            week=4,
+        )
+
+        with pytest.raises(ValueError, match="主角"):
+            CollectionService(session).create_character(state, "林岚")
+    finally:
+        session.close()
+
+
 def test_character_removal_cleans_linked_image_and_protects_player() -> None:
     session = _session()
     try:
