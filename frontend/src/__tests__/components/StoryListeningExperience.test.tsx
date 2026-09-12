@@ -409,7 +409,7 @@ describe("StoryListeningExperience", () => {
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalled());
 
     if (intent === "selection") {
-      fireEvent.click(screen.getByRole("button", { name: "查看正文" }));
+      fireEvent.click(screen.getByRole("button", { name: "查看故事正文" }));
       fireEvent.click(screen.getByRole("button", { name: "从第 2 段开始朗读" }));
     } else if (intent === "seek") {
       fireEvent.change(screen.getByRole("slider"), { target: { value: "6000" } });
@@ -637,7 +637,7 @@ describe("StoryListeningExperience", () => {
 
   it("lets the listener start from a selected paragraph", async () => {
     renderExperience();
-    const transcriptLabel = await screen.findByText("查看正文");
+    const transcriptLabel = await screen.findByText("查看故事正文");
     fireEvent.click(transcriptLabel.closest("button") as HTMLButtonElement);
     const secondParagraph = await screen.findByRole("button", {
       name: "从第 2 段开始朗读",
@@ -650,20 +650,55 @@ describe("StoryListeningExperience", () => {
     await waitFor(() => expect(play).toHaveBeenCalled());
   });
 
-  it("offers exactly one transcript action in each collapsed or expanded state", async () => {
+  it("keeps the same transcript action anchored while toggling its state", async () => {
     renderExperience();
 
-    const openButtons = await screen.findAllByRole("button", { name: "查看正文" });
-    expect(openButtons).toHaveLength(1);
-    fireEvent.click(openButtons[0]);
+    const transcriptAction = await screen.findByRole("button", { name: "查看故事正文" });
+    expect(transcriptAction).toHaveAttribute("aria-expanded", "false");
+    const transcriptRegion = document.getElementById(
+      transcriptAction.getAttribute("aria-controls") ?? "",
+    );
+    expect(transcriptRegion).not.toBeNull();
+    expect(transcriptRegion).toHaveAttribute("hidden");
+    transcriptAction.focus();
+    fireEvent.click(transcriptAction);
 
-    expect(screen.queryByRole("button", { name: "查看正文" })).not.toBeInTheDocument();
-    const closeButtons = screen.getAllByRole("button", { name: "收起正文" });
-    expect(closeButtons).toHaveLength(1);
-    fireEvent.click(closeButtons[0]);
-
-    expect(screen.getAllByRole("button", { name: "查看正文" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "查看故事正文" })).not.toBeInTheDocument();
+    const collapseAction = screen.getByRole("button", { name: "收起故事正文" });
+    expect(collapseAction).toBe(transcriptAction);
+    expect(collapseAction).toHaveFocus();
+    expect(collapseAction).toHaveAttribute("aria-expanded", "true");
+    expect(transcriptRegion).not.toHaveAttribute("hidden");
+    expect(within(collapseAction).getByText("返回专注聆听")).toBeVisible();
     expect(screen.queryByRole("button", { name: "收起正文" })).not.toBeInTheDocument();
+    fireEvent.click(collapseAction);
+
+    expect(screen.getByRole("button", { name: "查看故事正文" })).toBe(transcriptAction);
+    expect(transcriptAction).toHaveAttribute("aria-expanded", "false");
+    expect(transcriptRegion).toHaveAttribute("hidden");
+  });
+
+  it("presents the transcript as a dedicated full-width reading action", async () => {
+    renderExperience();
+
+    const transcriptAction = await screen.findByRole("button", { name: "查看故事正文" });
+    expect(transcriptAction).toHaveAttribute("data-variant", "narrative");
+    expect(transcriptAction).toHaveAttribute("data-size", "touch");
+    expect(transcriptAction).toHaveClass("min-h-16", "w-full", "justify-between");
+    expect(
+      within(transcriptAction).getByText("展开阅读，也可从任意段落开始朗读"),
+    ).toBeVisible();
+    expect(
+      within(screen.getByRole("group", { name: "朗读控制" })).queryByRole("button", {
+        name: "查看故事正文",
+      }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(transcriptAction);
+    const closeAction = screen.getByRole("button", { name: "收起故事正文" });
+    expect(closeAction).toBe(transcriptAction);
+    expect(closeAction).toHaveAttribute("data-size", "touch");
+    expect(closeAction).toHaveClass("min-h-16", "w-full", "justify-between");
   });
 
   it("keeps paragraph position separate from the playback status", async () => {
@@ -696,7 +731,7 @@ describe("StoryListeningExperience", () => {
     voiceApi.getJob.mockReturnValueOnce(readyJob.promise);
     renderExperience();
 
-    fireEvent.click((await screen.findByText("查看正文")).closest("button") as HTMLButtonElement);
+    fireEvent.click((await screen.findByText("查看故事正文")).closest("button") as HTMLButtonElement);
     const secondParagraph = await screen.findByRole("button", {
       name: "从第 2 段开始朗读",
     });
@@ -1029,7 +1064,7 @@ describe("StoryListeningExperience", () => {
     Object.defineProperty(first, "readyState", { configurable: true, value: HTMLMediaElement.HAVE_ENOUGH_DATA });
     first.currentTime = 1;
     await act(async () => completion.resolve({ job_id: 19, status: "ready", audio_url: "/chapter.mp3", segments: segments.map(s => ({ ...s, audio_url: "/chapter.mp3" })) } as never));
-    fireEvent.click(screen.getByRole("button", { name: "查看正文" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看故事正文" }));
     fireEvent.click(screen.getByRole("button", { name: "从第 2 段开始朗读" }));
     const chapter = document.querySelector("audio")!;
     expect(chapter).toHaveAttribute("src", "/chapter.mp3");
@@ -1055,7 +1090,7 @@ describe("StoryListeningExperience", () => {
 
     renderExperience();
 
-    const transcriptLabel = await screen.findByText("查看正文");
+    const transcriptLabel = await screen.findByText("查看故事正文");
     fireEvent.click(transcriptLabel.closest("button") as HTMLButtonElement);
     const secondParagraph = await screen.findByRole("button", {
       name: "从第 2 段开始朗读",
@@ -1337,7 +1372,7 @@ describe("StoryListeningExperience", () => {
 
     const firstAudio = document.querySelector("audio") as HTMLAudioElement;
     fireEvent.playing(firstAudio);
-    fireEvent.click(screen.getByText("查看正文").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByText("查看故事正文").closest("button") as HTMLButtonElement);
     fireEvent.click(await screen.findByRole("button", { name: "从第 2 段开始朗读" }));
     await waitFor(() => expect(screen.getByText("第 2 段", { exact: true })).toBeInTheDocument());
     const chapterAudio = document.querySelector('audio[data-active="true"]');
@@ -1480,7 +1515,7 @@ describe("StoryListeningExperience", () => {
 
     fireEvent.canPlay(audio);
     expect(play).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByText("查看正文").closest("button") as HTMLButtonElement);
+    fireEvent.click(screen.getByText("查看故事正文").closest("button") as HTMLButtonElement);
     fireEvent.click(await screen.findByRole("button", { name: "从第 2 段开始朗读" }));
     expect(audio.currentTime).toBe(4);
     expect(play).toHaveBeenCalledTimes(2);
@@ -1684,7 +1719,7 @@ describe("StoryListeningExperience", () => {
     });
     renderExperience();
     await waitFor(() => expect(voiceApi.getJob).toHaveBeenCalledWith(19, expect.any(AbortSignal)));
-    fireEvent.click((await screen.findByText("查看正文")).closest("button") as HTMLButtonElement);
+    fireEvent.click((await screen.findByText("查看故事正文")).closest("button") as HTMLButtonElement);
     const firstParagraph = await screen.findByRole("button", {
       name: "从第 1 段开始朗读",
     });

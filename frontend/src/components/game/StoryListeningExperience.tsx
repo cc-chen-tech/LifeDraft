@@ -13,6 +13,7 @@ import {
 } from "react";
 import {
   BookOpenText,
+  ChevronDown,
   ChevronUp,
   Loader2,
   Pause,
@@ -1279,8 +1280,19 @@ export function StoryListeningExperience({
             onChange={handleSeek}
             className="h-1 w-full accent-[var(--text-primary)]"
           />
-          <div className="mt-5 flex items-center justify-center gap-4">
-            <Button type="button" variant="quiet" size="icon-touch" onClick={handleRestart} aria-label="从头朗读">
+          <div
+            role="group"
+            aria-label="朗读控制"
+            className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-4"
+          >
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-touch"
+              className="justify-self-end"
+              onClick={handleRestart}
+              aria-label="从头朗读"
+            >
               <RotateCcw className="h-4 w-4" />
             </Button>
             <Button
@@ -1300,18 +1312,72 @@ export function StoryListeningExperience({
                 <Play className="ml-0.5 h-6 w-6" />
               )}
             </Button>
-            {!transcriptOpen ? (
-              <Button
-                type="button"
-                variant="quiet"
-                size="touch"
-                onClick={() => setTranscriptOpen(true)}
-              >
-                <BookOpenText className="mr-2 h-4 w-4" />
-                查看正文
-              </Button>
-            ) : null}
+            <span aria-hidden="true" />
           </div>
+
+          <Button
+            type="button"
+            variant="narrative"
+            size="touch"
+            className="mt-7 min-h-16 w-full justify-between rounded-md bg-[var(--surface-raised)] px-4 py-3 text-left shadow-sm hover:bg-[var(--surface-overlay)]"
+            aria-label={transcriptOpen ? "收起故事正文" : "查看故事正文"}
+            aria-expanded={transcriptOpen}
+            aria-controls="story-transcript-content"
+            aria-describedby="story-transcript-hint"
+            onClick={() => setTranscriptOpen((open) => !open)}
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <BookOpenText className="h-5 w-5 text-[var(--text-primary)]" />
+              <span className="min-w-0 whitespace-normal">
+                <span className="block text-base font-medium text-[var(--text-primary)]">
+                  {transcriptOpen ? "收起故事正文" : "查看故事正文"}
+                </span>
+                <span
+                  id="story-transcript-hint"
+                  className="mt-1 block text-xs font-normal leading-5 text-[var(--text-secondary)]"
+                >
+                  {transcriptOpen
+                    ? "返回专注聆听"
+                    : "展开阅读，也可从任意段落开始朗读"}
+                </span>
+              </span>
+            </span>
+            {transcriptOpen ? (
+              <ChevronUp className="h-5 w-5 text-[var(--text-secondary)]" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-[var(--text-secondary)]" />
+            )}
+          </Button>
+
+          <section
+            id="story-transcript-content"
+            className="mt-6 w-full border-t border-[var(--border-default)] pt-7"
+            aria-label="故事正文"
+            hidden={!transcriptOpen}
+          >
+            <h2 className="mb-5 font-serif text-lg text-[var(--text-primary)]">
+              故事正文
+            </h2>
+            <div className="space-y-1">
+              {paragraphs.map((paragraph, index) => (
+                <button
+                  key={`${index}-${paragraph.slice(0, 18)}`}
+                  type="button"
+                  aria-label={`从第 ${index + 1} 段开始朗读`}
+                  aria-current={index === activeParagraph ? "true" : undefined}
+                  onClick={() => chooseParagraph(index)}
+                  className={cn(
+                    "w-full border-l-2 px-4 py-4 text-left font-serif text-base leading-8 transition-colors",
+                    index === activeParagraph
+                      ? "border-[var(--text-primary)] bg-[var(--surface-raised)] text-[var(--text-primary)]"
+                      : "border-transparent text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]",
+                  )}
+                >
+                  {paragraph}
+                </button>
+              ))}
+            </div>
+          </section>
 
           <VoicePicker
             voices={voiceCatalog}
@@ -1374,36 +1440,6 @@ export function StoryListeningExperience({
             </Button>
           ) : null}
         </div>
-
-        {transcriptOpen ? (
-          <section className="mt-10 w-full max-w-2xl border-t border-[var(--border-default)] pt-7" aria-label="故事正文">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="font-serif text-lg text-[var(--text-primary)]">故事正文</h2>
-              <Button type="button" variant="quiet" size="sm" onClick={() => setTranscriptOpen(false)}>
-                收起正文 <ChevronUp className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-            <div className="space-y-1">
-              {paragraphs.map((paragraph, index) => (
-                <button
-                  key={`${index}-${paragraph.slice(0, 18)}`}
-                  type="button"
-                  aria-label={`从第 ${index + 1} 段开始朗读`}
-                  aria-current={index === activeParagraph ? "true" : undefined}
-                  onClick={() => chooseParagraph(index)}
-                  className={cn(
-                    "w-full border-l-2 px-4 py-4 text-left font-serif text-base leading-8 transition-colors",
-                    index === activeParagraph
-                      ? "border-[var(--text-primary)] bg-[var(--surface-raised)] text-[var(--text-primary)]"
-                      : "border-transparent text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]",
-                  )}
-                >
-                  {paragraph}
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : null}
 
         {media ? <div className="mt-8 w-full">{media}</div> : null}
 
