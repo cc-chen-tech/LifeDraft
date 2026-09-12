@@ -137,16 +137,18 @@ export interface RecognizeDialogProps {
   onToggleLandmarkSelection: (landmark: RecognizedEntity) => void;
 }
 
-// 添加物品对话框 Props
-export interface AddItemDialogProps {
+// 添加实体对话框 Props
+export interface AddEntityDialogProps {
+  activeTab: CollectionTab;
   open: boolean;
   onClose: () => void;
   onCloseAutoFocus?: (event: Event) => void;
   onSubmit: () => Promise<void>;
-  itemName: string;
-  onItemNameChange: (value: string) => void;
-  generateDesc: boolean;
-  onGenerateDescChange: (value: boolean) => void;
+  entityName: string;
+  onEntityNameChange: (value: string) => void;
+  generateDescription: boolean;
+  onGenerateDescriptionChange: (value: boolean) => void;
+  error: string | null;
   isLoading: boolean;
 }
 
@@ -174,5 +176,5 @@ export interface ActionButtonsProps {
   activeTab: CollectionTab;
   isRecognizing: boolean;
   onOpenRecognize: () => void;
-  onOpenAddItem: () => void;
+  onOpenAddEntity: () => void;
 }

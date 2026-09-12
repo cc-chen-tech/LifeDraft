@@ -217,14 +217,49 @@ describe("CollectionPanel visual contract", () => {
       expect(tab).toHaveAttribute("aria-selected");
     }
 
-    for (const name of ["智能识别", "手动添加", "关闭收集错误"]) {
+    for (const name of ["添加物品", "智能识别", "关闭收集错误"]) {
       const button = screen.getByRole("button", { name });
       expect(button).toHaveClass("min-h-11", "min-w-11");
       expect(button).not.toHaveClass("shadow-xs");
     }
 
+    const commandStrip = screen.getByRole("group", { name: "收集操作" });
+    expect(commandStrip).toHaveClass("flex", "items-stretch", "border-b");
+    expect(commandStrip).not.toHaveClass("grid-cols-1");
+    expect(commandStrip.firstElementChild).toHaveTextContent("添加物品");
+
     const alert = screen.getByRole("alert");
     expect(alert.closest('[data-slot="feedback-notice"]')).not.toBeNull();
+  });
+
+  it("returns focus to the contextual add action when its dialog closes", async () => {
+    const user = userEvent.setup();
+    useCollectionStore.setState({
+      characters: [character],
+      items: [],
+      landmarks: [],
+      isLoading: false,
+      isRefreshing: false,
+      activeTab: "characters",
+      selectedCharacter: null,
+      selectedItem: null,
+      selectedLandmark: null,
+      generatingImageFor: null,
+      generatingDescriptionFor: null,
+      regeneratingImageFor: null,
+      error: null,
+      isRecognizing: false,
+      recognizedEntities: null,
+      isDeleting: false,
+      deletingEntity: null,
+    });
+
+    render(<CollectionPanel gameId={0} />);
+    const addAction = screen.getByRole("button", { name: "添加人物" });
+    await user.click(addAction);
+    await user.click(within(screen.getByRole("dialog", { name: "添加人物" })).getByRole("button", { name: "取消" }));
+
+    await waitFor(() => expect(addAction).toHaveFocus());
   });
 
   it.each([

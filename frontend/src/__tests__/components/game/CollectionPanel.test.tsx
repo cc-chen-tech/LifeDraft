@@ -17,7 +17,7 @@ jest.mock('@/components/game/collection', () => ({
   ItemDetail: () => null,
   LandmarkDetail: () => null,
   RecognizeDialog: () => null,
-  AddItemDialog: () => null,
+  AddEntityDialog: () => null,
   DeleteConfirmDialog: () => null,
 }));
 

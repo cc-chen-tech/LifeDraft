@@ -18,7 +18,7 @@ import {
   ItemDetail,
   LandmarkDetail,
   RecognizeDialog,
-  AddItemDialog,
+  AddEntityDialog,
   DeleteConfirmDialog,
   type CollectionTab,
   type RegenerateType,
@@ -68,7 +68,9 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     addRecognizedEntities,
     autoCollectRecognizedEntities,
     clearRecognizedEntities,
+    createCharacter,
     createItem,
+    createLandmark,
     deleteItem,
     deleteCharacter,
     deleteLandmark,
@@ -87,9 +89,9 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   const [selectedRecognizedLandmarks, setSelectedRecognizedLandmarks] = useState<RecognizedEntity[]>([]);
 
   // 手动添加相关状态
-  const [showAddItemDialog, setShowAddItemDialog] = useState(false);
-  const [newItemName, setNewItemName] = useState("");
-  const [generateDescForNewItem, setGenerateDescForNewItem] = useState(true);
+  const [showAddEntityDialog, setShowAddEntityDialog] = useState(false);
+  const [newEntityName, setNewEntityName] = useState("");
+  const [generateDescriptionForNewEntity, setGenerateDescriptionForNewEntity] = useState(true);
 
   // 删除确认相关状态
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -97,7 +99,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   const [isInitialSyncing, setIsInitialSyncing] = useState(false);
   const detailReturnFocusRef = useRef<HTMLElement | null>(null);
   const recognizeReturnFocusRef = useRef<HTMLElement | null>(null);
-  const addItemReturnFocusRef = useRef<HTMLElement | null>(null);
+  const addEntityReturnFocusRef = useRef<HTMLElement | null>(null);
   const deleteReturnFocusRef = useRef<HTMLElement | null>(null);
 
   const rememberDialogOpener = (targetRef: { current: HTMLElement | null }) => {
@@ -312,23 +314,40 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
 
   // ==================== 手动添加处理函数 ====================
 
-  const handleOpenAddItem = () => {
-    rememberDialogOpener(addItemReturnFocusRef);
-    setShowAddItemDialog(true);
-    setNewItemName("");
-    setGenerateDescForNewItem(true);
+  const handleOpenAddEntity = () => {
+    rememberDialogOpener(addEntityReturnFocusRef);
+    clearError();
+    setShowAddEntityDialog(true);
+    setNewEntityName("");
+    setGenerateDescriptionForNewEntity(true);
   };
 
-  const handleCloseAddItem = () => {
-    setShowAddItemDialog(false);
-    setNewItemName("");
+  const handleCloseAddEntity = () => {
+    setShowAddEntityDialog(false);
+    setNewEntityName("");
+    clearError();
   };
 
-  const handleSubmitAddItem = async () => {
-    if (!newItemName.trim()) return;
-    await createItem(gameId, newItemName.trim(), generateDescForNewItem);
-    setShowAddItemDialog(false);
-    setNewItemName("");
+  const handleSubmitAddEntity = async () => {
+    const name = newEntityName.trim();
+    if (!name) return;
+
+    let created = false;
+    switch (activeTab as CollectionTab) {
+      case "characters":
+        created = await createCharacter(gameId, name);
+        break;
+      case "items":
+        created = await createItem(gameId, name, generateDescriptionForNewEntity);
+        break;
+      case "landmarks":
+        created = await createLandmark(gameId, name);
+        break;
+    }
+
+    if (created) {
+      handleCloseAddEntity();
+    }
   };
 
   // ==================== 删除处理函数 ====================
@@ -389,14 +408,27 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
       />
 
       {/* 操作按钮 */}
-      <div className="grid flex-shrink-0 grid-cols-1 px-4 pt-2">
+      <div
+        role="group"
+        aria-label="收集操作"
+        className="flex flex-shrink-0 items-stretch border-b border-[var(--border-default)]"
+      >
+        <Button
+          type="button"
+          size="touch"
+          onClick={handleOpenAddEntity}
+          className="min-w-11 flex-1 justify-start rounded-none px-4"
+        >
+          <Plus className="mr-1 size-4" />
+          {activeTab === "characters" ? "添加人物" : activeTab === "items" ? "添加物品" : "添加标志物"}
+        </Button>
         <Button
           type="button"
           variant="quiet"
           size="touch"
           onClick={handleOpenRecognize}
           disabled={isRecognizing}
-          className="w-full justify-start rounded-none border-b border-[var(--border-default)] px-0"
+          className="justify-center rounded-none border-l border-[var(--border-default)] px-4"
         >
           {isRecognizing ? (
             <Loader2 className="w-4 h-4 mr-1 animate-spin" />
@@ -405,18 +437,6 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
           )}
           智能识别
         </Button>
-        {activeTab === "items" && (
-          <Button
-            type="button"
-            variant="quiet"
-            size="touch"
-            onClick={handleOpenAddItem}
-            className="w-full justify-start rounded-none border-b border-[var(--border-default)] px-0"
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            手动添加
-          </Button>
-        )}
         {activeTab === "landmarks" && landmarks.some((l) => !l.image_generated) && (
           <Button
             type="button"
@@ -424,7 +444,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
             size="touch"
             onClick={handleBatchGenerateLandmarkImages}
             disabled={!!generatingImageFor}
-            className="w-full justify-start rounded-none border-b border-[var(--border-default)] px-0"
+            className="justify-center rounded-none border-l border-[var(--border-default)] px-4"
           >
             {generatingImageFor ? (
               <Loader2 className="w-4 h-4 mr-1 animate-spin" />
@@ -524,7 +544,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
       />
 
       {/* 错误提示 */}
-      {error && (
+      {error && !showAddEntityDialog && (
         <div className="flex-shrink-0 border-t border-[var(--border-default)] p-4">
           <FeedbackNotice
             tone="danger"
@@ -563,16 +583,18 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
         onToggleLandmarkSelection={toggleLandmarkSelection}
       />
 
-      {/* 手动添加物品对话框 */}
-      <AddItemDialog
-        open={showAddItemDialog}
-        onClose={handleCloseAddItem}
-        onCloseAutoFocus={restoreDialogOpener(addItemReturnFocusRef)}
-        onSubmit={handleSubmitAddItem}
-        itemName={newItemName}
-        onItemNameChange={setNewItemName}
-        generateDesc={generateDescForNewItem}
-        onGenerateDescChange={setGenerateDescForNewItem}
+      {/* 手动添加实体对话框 */}
+      <AddEntityDialog
+        activeTab={activeTab as CollectionTab}
+        open={showAddEntityDialog}
+        onClose={handleCloseAddEntity}
+        onCloseAutoFocus={restoreDialogOpener(addEntityReturnFocusRef)}
+        onSubmit={handleSubmitAddEntity}
+        entityName={newEntityName}
+        onEntityNameChange={setNewEntityName}
+        generateDescription={generateDescriptionForNewEntity}
+        onGenerateDescriptionChange={setGenerateDescriptionForNewEntity}
+        error={error}
         isLoading={isLoading}
       />
 
