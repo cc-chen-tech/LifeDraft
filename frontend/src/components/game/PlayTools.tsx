@@ -4,6 +4,7 @@ import * as React from "react";
 import { flushSync } from "react-dom";
 import {
   BookOpen,
+  Check,
   ChevronDown,
   FileText,
   History,
@@ -19,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 
+import { BinarySettingRow } from "@/components/game/BinarySettingRow";
 import { MobileActionDock } from "@/components/story101/MobileActionDock";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -72,10 +74,11 @@ const PLAY_TOOLS_SHEET_ID = "play-tools-sheet";
 const QUALITY_OPTIONS: readonly {
   value: PlayConstraintLevel;
   label: string;
+  description: string;
 }[] = [
-  { value: "fast", label: "快速" },
-  { value: "expert", label: "专家" },
-  { value: "master", label: "大师" },
+  { value: "fast", label: "快速", description: "响应更快，适合快速推进" },
+  { value: "expert", label: "专家", description: "兼顾细节、节奏与稳定性" },
+  { value: "master", label: "大师", description: "更深入的描写与人物塑造" },
 ];
 
 const toolRowClassName =
@@ -417,22 +420,53 @@ export function PlayTools({
                 <legend className="text-sm text-[var(--text-primary)]">
                   叙事质量
                 </legend>
-                <div className="mt-2 border-t border-[var(--border-default)]">
-                  {QUALITY_OPTIONS.map((option) => (
-                    <label
-                      key={option.value}
-                      className="flex min-h-11 cursor-pointer items-center gap-3 border-b border-[var(--border-default)] text-sm"
-                    >
-                      <input
-                        type="radio"
-                        name="play-constraint-level"
-                        value={option.value}
-                        checked={constraintLevel === option.value}
-                        onChange={() => onConstraintLevelChange(option.value)}
-                      />
-                      <span>{option.label}</span>
-                    </label>
-                  ))}
+                <div className="mt-3 divide-y divide-[var(--border-default)] border-y border-[var(--border-default)]">
+                  {QUALITY_OPTIONS.map((option) => {
+                    const selected = constraintLevel === option.value;
+
+                    return (
+                      <label
+                        key={option.value}
+                        data-state={selected ? "selected" : "idle"}
+                        className={cn(
+                          "flex min-h-16 cursor-pointer items-center justify-between gap-4 border-l-[3px] px-3 py-2 text-sm transition-colors",
+                          "hover:bg-[var(--surface-subtle)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--ring)]",
+                          selected
+                            ? "border-l-[var(--text-primary)] bg-[var(--surface-subtle)]"
+                            : "border-l-transparent",
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="play-constraint-level"
+                          value={option.value}
+                          aria-label={option.label}
+                          checked={selected}
+                          className="sr-only"
+                          onChange={() =>
+                            onConstraintLevelChange(option.value)
+                          }
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-medium text-[var(--text-primary)]">
+                            {option.label}
+                          </span>
+                          <span className="mt-0.5 block text-xs leading-5 text-[var(--text-secondary)]">
+                            {option.description}
+                          </span>
+                        </span>
+                        {selected && (
+                          <span
+                            aria-hidden="true"
+                            className="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--text-primary)]"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            当前
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
                 </div>
               </fieldset>
 
@@ -500,16 +534,21 @@ export function PlayTools({
                 )}
               </fieldset>
 
-              <label className="mt-5 flex min-h-11 cursor-pointer items-center gap-3 border-y border-[var(--border-default)] text-sm">
-                <input
-                  type="checkbox"
-                  aria-label="场景插画"
-                  checked={enableSceneImage}
-                  onChange={(event) => onSceneImageChange(event.currentTarget.checked)}
-                />
-                <ImageIcon className="h-4 w-4" aria-hidden="true" />
-                <span>场景插画</span>
-              </label>
+              <BinarySettingRow
+                className="mt-5"
+                label="场景插画"
+                description="为故事生成关键场景"
+                checked={enableSceneImage}
+                icon={
+                  <ImageIcon
+                    className="h-4 w-4 shrink-0 text-[var(--text-primary)]"
+                    aria-hidden="true"
+                  />
+                }
+                onChange={(event) =>
+                  onSceneImageChange(event.currentTarget.checked)
+                }
+              />
             </section>
 
             <section
