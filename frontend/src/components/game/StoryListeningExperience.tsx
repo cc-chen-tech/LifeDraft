@@ -646,7 +646,8 @@ export function StoryListeningExperience({
     utterance.onend = () => {
       if (generation !== playbackGenerationRef.current) return;
       const duration = segments.find((segment) => segment.paragraph_index === paragraphIndex)?.duration_ms ?? 0;
-      persistProgress(paragraphIndex, duration, paragraphIndex === paragraphs.length - 1);
+      const chapterComplete = paragraphIndex === paragraphs.length - 1;
+      persistProgress(paragraphIndex, duration, chapterComplete, chapterComplete);
       if (restoreProviderRef.current) {
         restoreProviderRef.current = false;
         restoreProvider(paragraphIndex + 1);
@@ -882,7 +883,7 @@ export function StoryListeningExperience({
     const duration = finalSegment ? segmentDuration(finalSegment) : 0;
     setActiveParagraph(finalIndex);
     setPositionMs(duration);
-    persistProgress(finalIndex, duration, true);
+    persistProgress(finalIndex, duration, true, true);
     notifyChapterComplete();
   };
 

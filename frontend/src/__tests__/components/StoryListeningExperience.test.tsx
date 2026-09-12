@@ -223,6 +223,55 @@ describe("StoryListeningExperience", () => {
     expect(onChapterComplete).toHaveBeenCalledTimes(1);
   });
 
+  it("retries completed history progress after automatic chapter navigation unmounts the listener", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(console, "warn").mockImplementation();
+    const finalWrite = deferred<Awaited<ReturnType<typeof api.voice_reading.updateProgress>>>();
+    voiceApi.updateProgress.mockReturnValueOnce(finalWrite.promise);
+    let view: ReturnType<typeof renderExperience>;
+    const onChapterComplete = jest.fn(() => view.unmount());
+    view = renderExperience(jest.fn(), {
+      context: { ...context, source_type: "history_round", stage: "history" },
+      options: [],
+      onChapterComplete,
+      historyNavigation: {
+        currentIndex: 0,
+        total: 2,
+        storyDate: "2026-08-15",
+        onPrevious: jest.fn(),
+        onNext: jest.fn(),
+        onBackToCurrent: jest.fn(),
+      },
+    });
+
+    const audio = await waitFor(() => {
+      expect(document.querySelector("audio")).not.toBeNull();
+      return document.querySelector("audio") as HTMLAudioElement;
+    });
+    fireEvent.ended(audio);
+    expect(onChapterComplete).toHaveBeenCalledTimes(1);
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finalWrite.reject(Object.assign(new Error("busy"), {
+        status: 503,
+        code: "progress_store_busy",
+        retryAfterMs: 2_000,
+      }));
+    });
+    await act(async () => { await jest.advanceTimersByTimeAsync(1_999); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(1);
+    await act(async () => { await jest.advanceTimersByTimeAsync(1); });
+    expect(voiceApi.updateProgress).toHaveBeenCalledTimes(2);
+    expect(voiceApi.updateProgress.mock.calls[1][0]).toMatchObject({
+      day_index: 7,
+      text_hash: "chapter-text-hash",
+      paragraph_index: 1,
+      position_ms: 5_000,
+      completed: true,
+    });
+  });
+
   it("does not advance chapters when next-chapter auto-play is disabled", async () => {
     voiceApi.getSettings.mockResolvedValueOnce({
       ...(await voiceApi.getSettings()),
