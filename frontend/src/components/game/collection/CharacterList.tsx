@@ -89,7 +89,10 @@ export const CharacterList = memo(function CharacterList({
               variant="quiet"
               size="icon-touch"
               aria-label={`删除人物${character.name}`}
-              disabled={deletingEntity === character.name}
+              disabled={
+                deletingEntity?.type === "character" &&
+                deletingEntity.name === character.name
+              }
               onClick={() => onOpenDeleteConfirm("character", character.name)}
               className="shrink-0 text-[var(--text-secondary)] hover:text-[var(--danger-foreground)] focus-visible:text-[var(--danger-foreground)]"
             >

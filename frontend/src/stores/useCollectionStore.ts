@@ -7,6 +7,8 @@ import { create } from "zustand";
 import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem, CollectionResponse, RecognizedEntity, EntityRecognitionResponse } from "@/lib/types";
 import api from "@/lib/api";
 
+type DeletingEntity = { type: "character" | "item" | "landmark"; name: string };
+
 type CollectionEntity = CharacterCollectionItem | ItemCollectionItem | LandmarkCollectionItem;
 
 function mergeVisibleEntityData<T extends CollectionEntity>(nextItems: T[], currentItems: T[]): T[] {
@@ -123,7 +125,7 @@ interface CollectionState {
 
   // 删除状态
   isDeleting: boolean;  // 是否正在删除
-  deletingEntity: string | null;  // 正在删除的实体名称
+  deletingEntity: DeletingEntity | null;  // 正在删除的实体
 
   // 错误
   error: string | null;
@@ -661,7 +663,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
 
   // 删除物品
   deleteItem: async (gameId: number, itemName: string) => {
-    set({ isDeleting: true, deletingEntity: itemName, error: null });
+    set({ isDeleting: true, deletingEntity: { type: "item", name: itemName }, error: null });
 
     try {
       await api.collection.deleteItem(gameId, itemName);
@@ -687,7 +689,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
 
   // 删除人物
   deleteCharacter: async (gameId: number, characterName: string) => {
-    set({ isDeleting: true, deletingEntity: characterName, error: null });
+    set({ isDeleting: true, deletingEntity: { type: "character", name: characterName }, error: null });
 
     try {
       await api.collection.deleteCharacter(gameId, characterName);
@@ -713,7 +715,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
 
   // 删除标志物
   deleteLandmark: async (gameId: number, landmarkName: string) => {
-    set({ isDeleting: true, deletingEntity: landmarkName, error: null });
+    set({ isDeleting: true, deletingEntity: { type: "landmark", name: landmarkName }, error: null });
 
     try {
       await api.collection.deleteLandmark(gameId, landmarkName);

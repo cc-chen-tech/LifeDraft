@@ -76,6 +76,67 @@ describe("CollectionPanel visual contract", () => {
     expect(screen.queryByRole("button", { name: "删除人物林舟" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "删除人物陈晓雨" })).toHaveClass("size-11");
   });
+
+  it("keeps same-name entities in another category enabled and reports row categories", () => {
+    const onItemDelete = jest.fn();
+    const onLandmarkDelete = jest.fn();
+    render(
+      <>
+        <ItemList
+          items={[item]}
+          isLoading={false}
+          onItemClick={() => undefined}
+          onOpenDeleteConfirm={onItemDelete}
+          deletingEntity={{ type: "landmark", name: item.name }}
+        />
+        <LandmarkList
+          landmarks={[{ ...landmark, name: item.name }]}
+          isLoading={false}
+          onLandmarkClick={() => undefined}
+          onOpenDeleteConfirm={onLandmarkDelete}
+        />
+      </>,
+    );
+    const itemDelete = screen.getByRole("button", { name: `删除物品${item.name}` });
+    expect(itemDelete).toBeEnabled();
+    screen.getByRole("button", { name: `删除标志物${item.name}` }).click();
+    expect(onLandmarkDelete).toHaveBeenCalledWith("landmark", item.name);
+    itemDelete.click();
+    expect(onItemDelete).toHaveBeenCalledWith("item", item.name);
+  });
+
+  it("keeps failed row deletion confirmation open with visible feedback", async () => {
+    const user = userEvent.setup();
+    useCollectionStore.setState({
+      characters: [],
+      items: [item],
+      landmarks: [],
+      activeTab: "items",
+      selectedCharacter: null,
+      selectedItem: null,
+      selectedLandmark: null,
+      isLoading: false,
+      isRefreshing: false,
+      generatingImageFor: null,
+      generatingDescriptionFor: null,
+      regeneratingImageFor: null,
+      error: null,
+      isRecognizing: false,
+      recognizedEntities: null,
+      isDeleting: false,
+      deletingEntity: null,
+      deleteItem: jest.fn(async () => {
+        useCollectionStore.setState({ error: "删除失败" });
+        return false;
+      }),
+    });
+    render(<CollectionPanel gameId={0} />);
+    await user.click(screen.getByRole("button", { name: `删除物品${item.name}` }));
+    const dialog = screen.getByRole("dialog", { name: "确认删除" });
+    await user.click(within(dialog).getByRole("button", { name: "删除" }));
+    expect(screen.getByRole("dialog", { name: "确认删除" })).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("删除失败");
+  });
   it("layers a real collection detail dialog above its parent play sheet", async () => {
     const user = userEvent.setup();
     useCollectionStore.setState({

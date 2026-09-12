@@ -93,7 +93,18 @@ export const LandmarkList = memo(function LandmarkList({
             </div>
           </button>
           {onOpenDeleteConfirm && (
-            <Button type="button" variant="quiet" size="icon-touch" aria-label={`删除标志物${landmark.name}`} disabled={deletingEntity === landmark.name} onClick={() => onOpenDeleteConfirm("landmark", landmark.name)} className="shrink-0 text-[var(--text-secondary)] hover:text-[var(--danger-foreground)] focus-visible:text-[var(--danger-foreground)]">
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-touch"
+              aria-label={`删除标志物${landmark.name}`}
+              disabled={
+                deletingEntity?.type === "landmark" &&
+                deletingEntity.name === landmark.name
+              }
+              onClick={() => onOpenDeleteConfirm("landmark", landmark.name)}
+              className="shrink-0 text-[var(--text-secondary)] hover:text-[var(--danger-foreground)] focus-visible:text-[var(--danger-foreground)]"
+            >
               <Trash2 aria-hidden="true" />
             </Button>
           )}

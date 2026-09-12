@@ -93,7 +93,18 @@ export const ItemList = memo(function ItemList({
             </div>
           </button>
           {onOpenDeleteConfirm && (
-            <Button type="button" variant="quiet" size="icon-touch" aria-label={`删除物品${item.name}`} disabled={deletingEntity === item.name} onClick={() => onOpenDeleteConfirm("item", item.name)} className="shrink-0 text-[var(--text-secondary)] hover:text-[var(--danger-foreground)] focus-visible:text-[var(--danger-foreground)]">
+            <Button
+              type="button"
+              variant="quiet"
+              size="icon-touch"
+              aria-label={`删除物品${item.name}`}
+              disabled={
+                deletingEntity?.type === "item" &&
+                deletingEntity.name === item.name
+              }
+              onClick={() => onOpenDeleteConfirm("item", item.name)}
+              className="shrink-0 text-[var(--text-secondary)] hover:text-[var(--danger-foreground)] focus-visible:text-[var(--danger-foreground)]"
+            >
               <Trash2 aria-hidden="true" />
             </Button>
           )}

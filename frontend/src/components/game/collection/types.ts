@@ -48,7 +48,7 @@ export interface CharacterListProps {
   isLoading: boolean;
   onCharacterClick: (character: CharacterCollectionItem) => void;
   onOpenDeleteConfirm?: (type: "character", name: string) => void;
-  deletingEntity?: string | null;
+  deletingEntity?: EntityToDelete | null;
 }
 
 // 物品列表 Props
@@ -57,7 +57,7 @@ export interface ItemListProps {
   isLoading: boolean;
   onItemClick: (item: ItemCollectionItem) => void;
   onOpenDeleteConfirm?: (type: "item", name: string) => void;
-  deletingEntity?: string | null;
+  deletingEntity?: EntityToDelete | null;
 }
 
 // 地标列表 Props
@@ -66,7 +66,7 @@ export interface LandmarkListProps {
   isLoading: boolean;
   onLandmarkClick: (landmark: LandmarkCollectionItem) => void;
   onOpenDeleteConfirm?: (type: "landmark", name: string) => void;
-  deletingEntity?: string | null;
+  deletingEntity?: EntityToDelete | null;
 }
 
 // 人物详情 Props
