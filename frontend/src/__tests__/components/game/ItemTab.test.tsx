@@ -97,9 +97,9 @@ describe('ItemTab', () => {
     expect(document.querySelector('.animate-spin')).toBeInTheDocument();
   });
 
-  it('shows manual add button for items tab', () => {
+  it('shows the contextual add-item button for items tab', () => {
     render(<CollectionPanel gameId={1} />);
-    expect(screen.getByText('手动添加')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '添加物品' })).toBeInTheDocument();
   });
 
   describe('Interactions', () => {

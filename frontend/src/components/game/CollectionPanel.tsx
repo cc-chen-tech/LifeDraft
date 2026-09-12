@@ -444,14 +444,15 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
             size="touch"
             onClick={handleBatchGenerateLandmarkImages}
             disabled={!!generatingImageFor}
-            className="justify-center rounded-none border-l border-[var(--border-default)] px-4"
+            aria-label="批量生成图片"
+            className="shrink-0 justify-center rounded-none border-l border-[var(--border-default)] px-3 sm:px-4"
           >
             {generatingImageFor ? (
-              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              <Loader2 className="size-4 animate-spin sm:mr-1" />
             ) : (
-              <ImageIcon className="w-4 h-4 mr-1" />
+              <ImageIcon className="size-4 sm:mr-1" />
             )}
-            批量生成图片
+            <span className="sr-only sm:not-sr-only">批量生成图片</span>
           </Button>
         )}
       </div>

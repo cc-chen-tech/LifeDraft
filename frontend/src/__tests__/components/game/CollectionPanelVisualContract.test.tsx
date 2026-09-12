@@ -262,6 +262,47 @@ describe("CollectionPanel visual contract", () => {
     await waitFor(() => expect(addAction).toHaveFocus());
   });
 
+  it("keeps all three landmark commands accessible in a compact narrow strip", () => {
+    useCollectionStore.setState({
+      characters: [],
+      items: [],
+      landmarks: [landmark],
+      isLoading: false,
+      isRefreshing: false,
+      activeTab: "landmarks",
+      selectedCharacter: null,
+      selectedItem: null,
+      selectedLandmark: null,
+      generatingImageFor: null,
+      generatingDescriptionFor: null,
+      regeneratingImageFor: null,
+      error: null,
+      isRecognizing: false,
+      recognizedEntities: null,
+      isDeleting: false,
+      deletingEntity: null,
+    });
+
+    render(<CollectionPanel gameId={0} />);
+    const commandStrip = screen.getByRole("group", { name: "收集操作" });
+    const batchAction = within(commandStrip).getByRole("button", {
+      name: "批量生成图片",
+    });
+
+    for (const name of ["添加标志物", "智能识别", "批量生成图片"]) {
+      expect(within(commandStrip).getByRole("button", { name })).toHaveClass(
+        "min-h-11",
+        "min-w-11",
+      );
+    }
+    expect(batchAction).toHaveAttribute("aria-label", "批量生成图片");
+    expect(batchAction).toHaveClass("shrink-0", "px-3", "sm:px-4");
+    expect(within(batchAction).getByText("批量生成图片")).toHaveClass(
+      "sr-only",
+      "sm:not-sr-only",
+    );
+  });
+
   it.each([
     {
       directoryName: "人物目录",
