@@ -60,6 +60,22 @@ const landmark: LandmarkCollectionItem = {
 };
 
 describe("CollectionPanel visual contract", () => {
+  it("exposes separate detail and delete actions for removable directory rows", () => {
+    const onDelete = jest.fn();
+    render(
+      <CharacterList
+        characters={[{ ...character, role: "主角" }, { ...character, name: "陈晓雨", role: "同事" }]}
+        isLoading={false}
+        onCharacterClick={() => undefined}
+        onOpenDeleteConfirm={onDelete}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "查看人物：陈晓雨" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "删除人物陈晓雨" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "删除人物林舟" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除人物陈晓雨" })).toHaveClass("size-11");
+  });
   it("layers a real collection detail dialog above its parent play sheet", async () => {
     const user = userEvent.setup();
     useCollectionStore.setState({
@@ -133,6 +149,7 @@ describe("CollectionPanel visual contract", () => {
         characters: [],
         selectedCharacter: null,
       });
+      return true;
     });
     useCollectionStore.setState({
       characters: [character],

@@ -51,6 +51,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     isRecognizing,
     recognizedEntities,
     isDeleting,
+    deletingEntity,
     fetchCollection,
     setActiveTab,
     selectCharacter,
@@ -354,6 +355,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
 
   const handleOpenDeleteConfirm = (type: "character" | "item" | "landmark", name: string) => {
     rememberDialogOpener(deleteReturnFocusRef);
+    clearError();
     setEntityToDelete({ type, name });
     setShowDeleteConfirm(true);
   };
@@ -361,25 +363,29 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   const handleCloseDeleteConfirm = () => {
     setShowDeleteConfirm(false);
     setEntityToDelete(null);
+    clearError();
   };
 
   const handleConfirmDelete = async () => {
     if (!entityToDelete) return;
 
+    let deleted = false;
     switch (entityToDelete.type) {
       case "character":
-        await deleteCharacter(gameId, entityToDelete.name);
+        deleted = await deleteCharacter(gameId, entityToDelete.name);
         break;
       case "item":
-        await deleteItem(gameId, entityToDelete.name);
+        deleted = await deleteItem(gameId, entityToDelete.name);
         break;
       case "landmark":
-        await deleteLandmark(gameId, entityToDelete.name);
+        deleted = await deleteLandmark(gameId, entityToDelete.name);
         break;
     }
 
-    setShowDeleteConfirm(false);
-    setEntityToDelete(null);
+    if (deleted) {
+      setShowDeleteConfirm(false);
+      setEntityToDelete(null);
+    }
   };
 
   return (
@@ -470,6 +476,8 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
               characters={characters}
               isLoading={isLoading}
               onCharacterClick={handleCharacterClick}
+              onOpenDeleteConfirm={handleOpenDeleteConfirm}
+              deletingEntity={deletingEntity}
             />
           )}
 
@@ -478,6 +486,8 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
               items={items}
               isLoading={isLoading}
               onItemClick={handleItemClick}
+              onOpenDeleteConfirm={handleOpenDeleteConfirm}
+              deletingEntity={deletingEntity}
             />
           )}
 
@@ -486,6 +496,8 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
               landmarks={landmarks}
               isLoading={isLoading}
               onLandmarkClick={handleLandmarkClick}
+              onOpenDeleteConfirm={handleOpenDeleteConfirm}
+              deletingEntity={deletingEntity}
             />
           )}
         </div>
@@ -607,6 +619,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
         onConfirm={handleConfirmDelete}
         entityToDelete={entityToDelete}
         isDeleting={isDeleting}
+        error={error}
       />
     </div>
   );

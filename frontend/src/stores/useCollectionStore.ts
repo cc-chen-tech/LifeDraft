@@ -156,9 +156,9 @@ interface CollectionState {
   createLandmark: (gameId: number, name: string) => Promise<boolean>;
 
   // 删除 Actions
-  deleteItem: (gameId: number, itemName: string) => Promise<void>;
-  deleteCharacter: (gameId: number, characterName: string) => Promise<void>;
-  deleteLandmark: (gameId: number, landmarkName: string) => Promise<void>;
+  deleteItem: (gameId: number, itemName: string) => Promise<boolean>;
+  deleteCharacter: (gameId: number, characterName: string) => Promise<boolean>;
+  deleteLandmark: (gameId: number, landmarkName: string) => Promise<boolean>;
 
   clearSelection: () => void;
   clearError: () => void;
@@ -676,10 +676,12 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       await get().fetchCollection(gameId, true);
 
       set({ isDeleting: false, deletingEntity: null });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "删除物品失败";
       console.error("[deleteItem] 错误:", errorMsg);
       set({ error: errorMsg, isDeleting: false, deletingEntity: null });
+      return false;
     }
   },
 
@@ -700,10 +702,12 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       await get().fetchCollection(gameId, true);
 
       set({ isDeleting: false, deletingEntity: null });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "删除人物失败";
       console.error("[deleteCharacter] 错误:", errorMsg);
       set({ error: errorMsg, isDeleting: false, deletingEntity: null });
+      return false;
     }
   },
 
@@ -724,10 +728,12 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       await get().fetchCollection(gameId, true);
 
       set({ isDeleting: false, deletingEntity: null });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "删除标志物失败";
       console.error("[deleteLandmark] 错误:", errorMsg);
       set({ error: errorMsg, isDeleting: false, deletingEntity: null });
+      return false;
     }
   },
 }));

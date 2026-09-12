@@ -748,5 +748,21 @@ describe('useCollectionStore cache', () => {
       expect(global.fetch).toHaveBeenCalled();
       expect(global.fetch).toHaveBeenCalledWith('/api/collection/1/details', expect.objectContaining({ credentials: 'include' }));
     });
+
+    it.each([
+      ['deleteCharacter', '/api/collection/1/characters/%E6%9E%97%E8%88%9F'],
+      ['deleteItem', '/api/collection/1/items/%E6%97%A7%E7%89%A9%E5%93%81'],
+      ['deleteLandmark', '/api/collection/1/landmarks/%E6%97%A7%E7%A0%81%E5%A4%B4'],
+    ] as const)('%s returns false and preserves the dialog-facing error on failure', async (actionName, endpoint) => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(400, '删除失败'));
+      const action = (useCollectionStore.getState() as unknown as Record<string, (gameId: number, name: string) => Promise<boolean>>)[actionName];
+
+      const succeeded = await action(1, actionName === 'deleteCharacter' ? '林舟' : actionName === 'deleteItem' ? '旧物品' : '旧码头');
+
+      expect(succeeded).toBe(false);
+      expect(useCollectionStore.getState().error).toBe('删除失败');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledWith(endpoint, expect.objectContaining({ method: 'DELETE' }));
+    });
   });
 });

@@ -47,6 +47,8 @@ export interface CharacterListProps {
   characters: CharacterCollectionItem[];
   isLoading: boolean;
   onCharacterClick: (character: CharacterCollectionItem) => void;
+  onOpenDeleteConfirm?: (type: "character", name: string) => void;
+  deletingEntity?: string | null;
 }
 
 // 物品列表 Props
@@ -54,6 +56,8 @@ export interface ItemListProps {
   items: ItemCollectionItem[];
   isLoading: boolean;
   onItemClick: (item: ItemCollectionItem) => void;
+  onOpenDeleteConfirm?: (type: "item", name: string) => void;
+  deletingEntity?: string | null;
 }
 
 // 地标列表 Props
@@ -61,6 +65,8 @@ export interface LandmarkListProps {
   landmarks: LandmarkCollectionItem[];
   isLoading: boolean;
   onLandmarkClick: (landmark: LandmarkCollectionItem) => void;
+  onOpenDeleteConfirm?: (type: "landmark", name: string) => void;
+  deletingEntity?: string | null;
 }
 
 // 人物详情 Props
@@ -160,6 +166,7 @@ export interface DeleteConfirmDialogProps {
   onConfirm: () => Promise<void>;
   entityToDelete: EntityToDelete | null;
   isDeleting: boolean;
+  error?: string | null;
 }
 
 // Tab 切换组件 Props
