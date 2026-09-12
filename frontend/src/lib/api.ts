@@ -990,6 +990,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    // Create character manually
+    createCharacter: (gameId: number, data: { name: string }) =>
+      fetchJson<{ success: boolean }>(`/collection/${gameId}/characters/create`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     // Create item manually
     createItem: (gameId: number, data: { name: string; generate_description?: boolean }) =>
       fetchJson<{
@@ -1008,6 +1014,12 @@ export const api = {
           metadata: Record<string, unknown>; // Intentionally flexible for item metadata
         };
       }>(`/collection/${gameId}/items/create`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    // Create landmark manually
+    createLandmark: (gameId: number, data: { name: string }) =>
+      fetchJson<{ success: boolean }>(`/collection/${gameId}/landmarks/create`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),

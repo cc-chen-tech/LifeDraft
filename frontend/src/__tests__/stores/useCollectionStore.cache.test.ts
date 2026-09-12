@@ -13,6 +13,9 @@
 import { useCollectionStore } from '@/stores/useCollectionStore';
 import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
+type ManualCreateAction = (gameId: number, name: string) => Promise<boolean>;
+type ManualCreateActionName = 'createCharacter' | 'createItem' | 'createLandmark';
+
 // Mock timers for cache TTL tests
 jest.useFakeTimers();
 
@@ -676,6 +679,58 @@ describe('useCollectionStore cache', () => {
       expect(global.fetch).toHaveBeenCalled();
       expect(global.fetch).toHaveBeenCalledWith('/api/collection/1/details', expect.objectContaining({ credentials: 'include' }));
       expect(useCollectionStore.getState().items).toHaveLength(1);
+    });
+
+    it.each([
+      ['createCharacter', '/api/collection/1/characters/create'],
+      ['createItem', '/api/collection/1/items/create'],
+      ['createLandmark', '/api/collection/1/landmarks/create'],
+    ] as const)('%s returns true and refreshes only after creation succeeds', async (actionName, endpoint) => {
+      const createdEntity = { success: true };
+      const refreshedCollection = {
+        game_id: 1,
+        characters: [],
+        items: [],
+        landmarks: [],
+      };
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse(createdEntity))
+        .mockResolvedValueOnce(jsonResponse(refreshedCollection));
+
+      const action = (useCollectionStore.getState() as unknown as Record<ManualCreateActionName, ManualCreateAction>)[actionName];
+      const succeeded = await action(1, '新实体');
+
+      expect(succeeded).toBe(true);
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        1,
+        endpoint,
+        expect.objectContaining({ method: 'POST' }),
+      );
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        2,
+        '/api/collection/1/details',
+        expect.objectContaining({ credentials: 'include' }),
+      );
+      expect(useCollectionStore.getState().error).toBeNull();
+    });
+
+    it.each([
+      ['createCharacter', '/api/collection/1/characters/create'],
+      ['createItem', '/api/collection/1/items/create'],
+      ['createLandmark', '/api/collection/1/landmarks/create'],
+    ] as const)('%s returns false, preserves the error, and skips refresh when creation fails', async (actionName, endpoint) => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(400, '名称已存在'));
+
+      const action = (useCollectionStore.getState() as unknown as Record<ManualCreateActionName, ManualCreateAction>)[actionName];
+      const succeeded = await action(1, '重复实体');
+
+      expect(succeeded).toBe(false);
+      expect(useCollectionStore.getState().error).toBe('名称已存在');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledWith(
+        endpoint,
+        expect.objectContaining({ method: 'POST' }),
+      );
     });
 
     it('deleteItem should fetch fresh data after deletion', async () => {

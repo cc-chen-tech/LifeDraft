@@ -151,7 +151,9 @@ interface CollectionState {
   clearRecognizedEntities: () => void;
 
   // 手动添加 Actions
-  createItem: (gameId: number, name: string, generateDescription?: boolean) => Promise<void>;
+  createCharacter: (gameId: number, name: string) => Promise<boolean>;
+  createItem: (gameId: number, name: string, generateDescription?: boolean) => Promise<boolean>;
+  createLandmark: (gameId: number, name: string) => Promise<boolean>;
 
   // 删除 Actions
   deleteItem: (gameId: number, itemName: string) => Promise<void>;
@@ -598,6 +600,23 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
 
   // ==================== 手动添加 Actions ====================
 
+  // 手动创建人物
+  createCharacter: async (gameId: number, name: string) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      await api.collection.createCharacter(gameId, { name });
+      await get().fetchCollection(gameId, true);
+      set({ isLoading: false });
+      return true;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "创建人物失败";
+      console.error("[createCharacter] 错误:", errorMsg);
+      set({ error: errorMsg, isLoading: false });
+      return false;
+    }
+  },
+
   // 手动创建物品
   createItem: async (gameId: number, name: string, generateDescription: boolean = true) => {
     set({ isLoading: true, error: null });
@@ -612,10 +631,29 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       await get().fetchCollection(gameId, true);
 
       set({ isLoading: false });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "创建物品失败";
       console.error("[createItem] 错误:", errorMsg);
       set({ error: errorMsg, isLoading: false });
+      return false;
+    }
+  },
+
+  // 手动创建标志物
+  createLandmark: async (gameId: number, name: string) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      await api.collection.createLandmark(gameId, { name });
+      await get().fetchCollection(gameId, true);
+      set({ isLoading: false });
+      return true;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "创建标志物失败";
+      console.error("[createLandmark] 错误:", errorMsg);
+      set({ error: errorMsg, isLoading: false });
+      return false;
     }
   },
 
