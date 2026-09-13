@@ -763,21 +763,22 @@ def test_operator_scripts_cannot_start_a_second_production_compose_project() -> 
     assert 'if [ "$(pwd -P)" != "${CANONICAL_DEPLOY_PATH}" ]; then' in deploy_script
 
 
-def test_production_deploy_keeps_model_smoke_gate_for_manual_override() -> None:
+def test_production_deploy_can_manually_release_without_model_smoke() -> None:
     workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
         encoding="utf-8"
     )
 
     assert "force_after_local_preflight" in workflow
+    assert "allow_without_model_smoke" in workflow
+    assert "All non-model checks passed; allow deployment before Model Smoke succeeds." in workflow
     assert "Local preflight passed and GitHub checks are unavailable" in workflow
     assert "'${{ github.event_name }}' === 'workflow_dispatch'" in workflow
     assert "core.warning('Manual production deployment is bypassing GitHub CI after local preflight.')" in workflow
     assert "const requiredWorkflows = [" in workflow
     assert "'Model Smoke'" in workflow
-    gate_block = workflow.split("Manual production deployment is bypassing GitHub CI", 1)[1].split(
-        "const requiredWorkflows", 1
-    )[0]
-    assert "return;" not in gate_block
+    assert "const allowWithoutModelSmoke =" in workflow
+    assert "const smokeIndex = requiredWorkflows.indexOf('Model Smoke');" in workflow
+    assert "requiredWorkflows.splice(smokeIndex, 1);" in workflow
     assert "requiredWorkflows.splice(0, requiredWorkflows.length - 1);" in workflow
 
 

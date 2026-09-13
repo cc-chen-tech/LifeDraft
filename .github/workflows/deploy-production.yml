@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      allow_without_model_smoke:
+        description: "All non-model checks passed; allow deployment before Model Smoke succeeds."
+        required: false
+        default: false
+        type: boolean
   workflow_run:
     workflows: ["E2E Tests", "Model Smoke"]
     types: [completed]
@@ -75,12 +80,20 @@ jobs:
             const bypassCi =
               '${{ github.event_name }}' === 'workflow_dispatch' &&
               '${{ inputs.force_after_local_preflight }}' === 'true';
+            const allowWithoutModelSmoke =
+              '${{ github.event_name }}' === 'workflow_dispatch' &&
+              '${{ inputs.allow_without_model_smoke }}' === 'true';
+            if (bypassCi && allowWithoutModelSmoke) {
+              throw new Error(
+                'Choose either the local-preflight bypass or the Model Smoke exception, not both.'
+              );
+            }
             if (bypassCi) {
               core.warning('Manual production deployment is bypassing GitHub CI after local preflight.');
             }
 
-            // Real-provider smoke is always required, including emergency/manual
-            // deployments.  It is the release gate for production model behavior.
+            // Model Smoke remains the default release gate. An operator may
+            // explicitly publish early after every non-model workflow passes.
             const requiredWorkflows = [
               'Backend Tests',
               'Python Code Quality',
@@ -95,6 +108,11 @@ jobs:
             ];
             if (bypassCi) {
               requiredWorkflows.splice(0, requiredWorkflows.length - 1);
+            }
+            if (allowWithoutModelSmoke) {
+              const smokeIndex = requiredWorkflows.indexOf('Model Smoke');
+              requiredWorkflows.splice(smokeIndex, 1);
+              core.warning('Manual production deployment is proceeding before Model Smoke succeeds.');
             }
             // E2E completion prepares a smoke run; this path cannot deploy.
             if (context.payload.workflow_run?.name === 'E2E Tests') {
