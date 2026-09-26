@@ -218,6 +218,50 @@ def _run_text_checks(generator: Any) -> Dict[str, Any]:
     return {"story_nonempty": True, "continuation_nonempty": True, "options": len(options.options), "json_ok": True}
 
 
+def _run_story_origin_check(generator: Any, collector: ModelEventCollector) -> Dict[str, Any]:
+    from src.game.character_creation import CharacterCreator
+    from src.observability.request_context import RequestContext, request_context
+
+    class CountingGenerator:
+        def __init__(self, delegate: Any) -> None:
+            self.delegate = delegate
+            self.calls = 0
+
+        def generate_completion_json(self, **kwargs: Any) -> Any:
+            self.calls += 1
+            return self.delegate.generate_completion_json(**kwargs)
+
+    counted = CountingGenerator(generator)
+    event_start = len(collector.events)
+    context = RequestContext(
+        request_id=f"{FIXTURE_PREFIX}-{uuid.uuid4().hex}",
+        operation_id=f"{FIXTURE_PREFIX}:story-origin",
+        feature="release_model_smoke",
+    )
+    with request_context(context):
+        origin = CharacterCreator(ai_generator=counted, language="zh").generate_story_origin(
+            player_name="Release Smoke Traveler",
+            life_vision="我想在2026年8月13日从上海开始做设计工作，开局28岁。",
+            previous_settings={},
+        )
+    if origin["start_date"] != "2026-08-13" or origin["starting_age"] != 28:
+        raise ValueError("story_origin_constraints_mismatch")
+    if counted.calls != 1:
+        raise RuntimeError("story_origin_repeated_provider_call")
+    provider_events = [
+        event for event in collector.events[event_start:]
+        if event.get("operation_id") == context.operation_id
+        and event.get("phase") == "provider"
+    ]
+    if len(provider_events) != 1 or provider_events[0].get("outcome") != "success":
+        raise RuntimeError("story_origin_provider_attempts_invalid")
+    if provider_events[0].get("finish_reason") == "length":
+        raise RuntimeError("story_origin_provider_truncated")
+    if provider_events[0].get("finish_reason") != "stop":
+        raise RuntimeError("story_origin_provider_finish_reason_invalid")
+    return {"provider_calls": 1, "constraints_matched": True}
+
+
 def _create_owned_fixture() -> tuple[int, int]:
     from src.database.models import Game, SessionLocal, User
 
@@ -479,6 +523,7 @@ def run(
     tts_provider = MiniMaxTTSProvider()
 
     _check(checks, "text_generation_and_constraints", "openai-compatible", generator.ai_client.model, lambda: _run_text_checks(generator))
+    _check(checks, "story_origin_generation", "openai-compatible", generator.ai_client.model, lambda: _run_story_origin_check(generator, collector))
     _check(checks, "image_generation_persistence_and_resource", "minimax", image_generator.model, lambda: _run_image_check(image_generator, artifact_dir / "images", base_url))
     _check(checks, "tts_generation_persistence_and_playability", "minimax", tts_provider.model, lambda: _run_tts_check(tts_provider, base_url))
     _check(checks, "daily_world_projection_persistence", "openai-compatible", generator.ai_client.model, lambda: _run_projection_check(generator))

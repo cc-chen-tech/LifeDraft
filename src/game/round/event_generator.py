@@ -851,7 +851,10 @@ class RoundEventGenerator:
             available_people=available_people_names,
             language=language,
         )
-        from src.ai.daily_opening import validate_daily_first_opening
+        from src.ai.daily_opening import (
+            split_daily_opening_issues,
+            validate_daily_first_opening,
+        )
 
         daily_issues = validate_daily_first_opening(
             existing_story,
@@ -859,8 +862,10 @@ class RoundEventGenerator:
             character_settings,
             language,
         )
-        if daily_issues:
-            quick_result.issues.extend(daily_issues)
+        daily_hard, daily_warnings = split_daily_opening_issues(daily_issues)
+        quick_result.issues.extend(daily_hard)
+        quick_result.warnings.extend(daily_warnings)
+        if daily_hard:
             quick_result.passed = False
         if quick_result.passed:
             if quick_result.warnings:
@@ -1217,7 +1222,10 @@ class RoundEventGenerator:
                             required_people=sorted(all_parties),
                             language=self.language,
                         )
-                        from src.ai.daily_opening import validate_daily_first_opening
+                        from src.ai.daily_opening import (
+                            split_daily_opening_issues,
+                            validate_daily_first_opening,
+                        )
 
                         daily_issues = validate_daily_first_opening(
                             event_desc,
@@ -1225,8 +1233,12 @@ class RoundEventGenerator:
                             character_settings,
                             self.language,
                         )
-                        if daily_issues:
-                            quick_result.issues.extend(daily_issues)
+                        daily_hard, daily_warnings = split_daily_opening_issues(
+                            daily_issues
+                        )
+                        quick_result.issues.extend(daily_hard)
+                        quick_result.warnings.extend(daily_warnings)
+                        if daily_hard:
                             quick_result.passed = False
                         if not quick_result.passed:
                             last_validation_error = "; ".join(quick_result.issues)

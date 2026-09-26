@@ -24,7 +24,7 @@ function Input({
         "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
         surface === "filled" && "bg-[var(--surface-raised)]",
         surface === "underline" &&
-          "border-x-0 border-t-0 border-b-[var(--border-interactive)] bg-transparent px-0 shadow-none",
+          "border-x-0 border-t-0 border-b-[var(--border-interactive)] bg-transparent px-3 shadow-none",
         controlSize === "touch" && "h-11 min-h-11 py-2.5",
         className
       )}

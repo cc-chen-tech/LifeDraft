@@ -87,6 +87,20 @@ describe('CreatePage', () => {
     imageSpy.restore();
   });
 
+  it('offers a retry when initial story-origin generation fails', async () => {
+    useGameStore.setState({ playerName: '林舟' });
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(errorResponse(422, 'invalid story origin'))
+      .mockResolvedValueOnce(jsonResponse(testOrigin));
+
+    render(<CreatePage />);
+
+    const retry = await screen.findByRole('button', { name: '重试生成故事起点' }, { timeout: 2500 });
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(screen.getByText('2020年代中期的现代都市')).toBeInTheDocument());
+  });
+
   describe('Initial render', () => {
     it('uses one calm reading surface inside the page transition', () => {
       const { container } = render(<CreatePage />);
@@ -579,6 +593,10 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
+
+      act(() => {
+        jest.advanceTimersByTime(650);
+      });
 
       expect(screen.getByRole('status')).toHaveTextContent('角色设定，正在成形');
       expect(screen.queryByText('这一页仍在继续写作')).not.toBeInTheDocument();

@@ -114,6 +114,17 @@ _EN_NARRATIVE_VERBS = {
     "went",
 }
 
+_STYLE_ONLY_ISSUES = frozenset(
+    {"daily_opening_not_single_sentence", "daily_opening_second_paragraph_not_scene"}
+)
+
+
+def split_daily_opening_issues(issues: List[str]) -> tuple[List[str], List[str]]:
+    """Keep personalization and completeness hard while treating paragraph style as advisory."""
+    hard = [issue for issue in issues if issue not in _STYLE_ONLY_ISSUES]
+    warnings = [issue for issue in issues if issue in _STYLE_ONLY_ISSUES]
+    return hard, warnings
+
 
 def _life_vision(state: Dict[str, Any], settings: Optional[Dict[str, Any]]) -> str:
     from src.ai.prompt_sanitizer import sanitize_persisted_life_vision
