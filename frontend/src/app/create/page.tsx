@@ -70,6 +70,7 @@ export default function CreatePage() {
 
     // Local state
     isGenerating,
+    generationError,
     feedback,
     setFeedback,
     showPresetSheet,
@@ -100,6 +101,7 @@ export default function CreatePage() {
     
     // Handlers
     handleRegenerate,
+    handleGenerate,
     handleAcceptAndNext,
     handleSavePreset,
     handleStartGame,
@@ -347,6 +349,20 @@ export default function CreatePage() {
                 <p className="border-l-2 border-[var(--border-default)] py-2 pl-3 text-sm text-[var(--text-secondary)]">
                   请先输入角色姓名
                 </p>
+              )}
+
+            {!isPortraitStep &&
+              !isGenerating &&
+              generationError &&
+              !generatedContent &&
+              characterSettings[currentStepKey] == null && (
+                <div className="mt-4 space-y-3 text-sm text-[var(--text-secondary)]">
+                  <p>{generationError}</p>
+                  <Button type="button" variant="narrative" size="touch" onClick={() => void handleGenerate()}>
+                    <RefreshCw />
+                    重试生成{STEP_LABELS[currentStepKey]}
+                  </Button>
+                </div>
               )}
 
             {(generatedContent || characterSettings[currentStepKey] != null) &&

@@ -293,10 +293,7 @@ class DailyRecommendedPrefetchRepository:
                             (DailyRecommendedPrefetch.status == "processing")
                             & or_(
                                 DailyRecommendedPrefetch.lease_expires_at.is_(None),
-                                cast(
-                                    ColumnElement[bool],
-                                    DailyRecommendedPrefetch.lease_expires_at < now,
-                                ),
+                                DailyRecommendedPrefetch.lease_expires_at < now,
                             )
                         ),
                     ),

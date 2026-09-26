@@ -171,6 +171,8 @@ class EventGenerator:
         thinking: Optional[bool] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
         allow_truncation_recovery: bool = True,
+        request_timeout: Optional[float] = None,
+        request_deadline: Optional[float] = None,
     ) -> Optional[Dict[str, Any]]:
         """Public AI JSON generation interface."""
         if generation_tracker is not None:
@@ -184,6 +186,8 @@ class EventGenerator:
             thinking=thinking,
             generation_tracker=generation_tracker,
             allow_truncation_recovery=allow_truncation_recovery,
+            request_timeout=request_timeout,
+            request_deadline=request_deadline,
         )
 
     def generate_stream(
