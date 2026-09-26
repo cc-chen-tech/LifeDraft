@@ -111,10 +111,26 @@ def select_portrait(db: Session, game_id: int, image_id: int) -> Image:
             raise ValueError("图片文件不可用")
     except (ImageStorageError, OSError) as exc:
         raise ValueError("图片文件不可用") from exc
-    row = db.get(PortraitSelection, game_id)
-    if row is None:
-        db.add(PortraitSelection(game_id=game_id, image_id=image_id, is_user_selected=True))
-    else:
-        row.image_id, row.is_user_selected = image_id, True
-    db.commit()
-    return image
+    # Storage may involve remote IO. Only lock after it returns, then repeat
+    # eligibility checks against fresh database state before saving the choice.
+    from src.services.portrait_candidate_jobs import _lock_game
+
+    try:
+        _lock_game(db, game_id)
+        db.expire_all()
+        image = db.get(Image, image_id)
+        if (image is None or image.game_id != game_id or image.image_type != "character"
+                or image.entity_key != "player_main"):
+            raise ValueError("图片不属于当前主角")
+        if not image.is_active or not is_selectable_candidate(db, game_id, image_id):
+            raise ValueError("图片不可选择")
+        row = db.get(PortraitSelection, game_id)
+        if row is None:
+            db.add(PortraitSelection(game_id=game_id, image_id=image_id, is_user_selected=True))
+        else:
+            row.image_id, row.is_user_selected = image_id, True
+        db.commit()
+        return image
+    except Exception:
+        db.rollback()
+        raise

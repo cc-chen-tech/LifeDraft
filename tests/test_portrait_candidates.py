@@ -782,3 +782,43 @@ def test_feedback_route_rejects_unselected_candidate(ready_three_slot_batch):
             _enqueue_main_portrait_regeneration(db, ids[0], other.image_id, 'regenerate', '短发')
         assert rejected.value.status_code == 422
         assert db.query(PortraitImageGenerationJob).count() == 1
+
+
+def test_selection_revalidates_after_feedback_replaces_source(ready_three_slot_batch, monkeypatch):
+    from threading import Event
+    Session, ids = ready_three_slot_batch
+    storage_started, replacement_finished = Event(), Event()
+    with Session() as db:
+        source_id = selected_portrait(db, ids[1]).image_id
+        pending = enqueue_feedback_job(db, source_id)
+
+    def blocking_read(*args, **kwargs):
+        storage_started.set()
+        assert replacement_finished.wait(timeout=5), 'feedback replacement did not finish'
+        return b'image'
+
+    monkeypatch.setattr('src.services.portrait_selection.ImageStorageService.get_image_data', blocking_read)
+
+    def select_old_source():
+        with Session() as db:
+            try:
+                select_portrait(db, ids[1], source_id)
+            except ValueError:
+                return 'rejected'
+            return 'selected'
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        selection = executor.submit(select_old_source)
+        try:
+            assert storage_started.wait(timeout=5), 'selection did not reach storage'
+            finish_feedback_job(Session, pending)
+        finally:
+            replacement_finished.set()
+        assert selection.result(timeout=5) == 'rejected'
+    with Session() as db:
+        job = db.get(PortraitImageGenerationJob, pending)
+        row = db.get(PortraitSelection, ids[1])
+        assert job.status == 'succeeded'
+        assert row.image_id == job.image_id
+        assert db.get(Image, row.image_id).is_active
+        assert db.query(PortraitCandidateSlot).filter_by(image_id=row.image_id, status='ready').count() == 1
