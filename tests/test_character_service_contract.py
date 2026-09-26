@@ -79,6 +79,7 @@ class StubImageClient:
         reference_image_url=None,
         feedback=None,
         extra_params=None,
+        candidate_mode=False,
     ):
         self.last_generate_call = {
             "name": name,
@@ -89,6 +90,7 @@ class StubImageClient:
             "reference_image_url": reference_image_url,
             "feedback": feedback,
             "extra_params": extra_params,
+            "candidate_mode": candidate_mode,
         }
         self.generate_calls.append(self.last_generate_call)
         return self.images_data, self.primary_url
@@ -183,6 +185,36 @@ class TestGenerateCharacterCandidate:
         assert "禁止赛博朋克" in style
         assert "同一个人" not in style
         assert "面部特征必须绝对保持一致" not in style
+
+    def test_historical_candidate_final_provider_prompt_keeps_era_and_distinct_look(self, db_session):
+        from src.ai.image_client import ImageClient
+
+        game_id, batch_id = candidate_batch(db_session)
+        client = ImageClient(api_key="test-key")
+        sent_prompts = []
+
+        def capture_provider_prompt(prompt, size, extra_params=None):
+            sent_prompts.append(prompt)
+            return b"portrait", prompt, "https://example.com/portrait.png"
+
+        client._generator.generate_image_with_url = capture_provider_prompt
+        service = CharacterImageService(db_session, image_client=client, storage_service=StubImageStorage())
+        service.generate_character_candidate(
+            game_id=game_id, name="于谦", description="明代书生，28岁", era="明代",
+            character_settings={"era": {"era_description": "明朝古代"}},
+            direction=TEST_DIRECTIONS[0], batch_id=batch_id, slot_index=0,
+        )
+        assert len(sent_prompts) == 1
+        prompt = sent_prompts[0]
+        assert "明代" in prompt and "明代书生，28岁" in prompt
+        assert "方脸" in prompt and "浓眉" in prompt and "简洁日常服装" in prompt
+        assert "现代服饰" in prompt  # historical prohibition is retained
+        assert "同一个人" not in prompt
+        assert "相同的脸型" not in prompt
+        assert "保持人物的外貌特征不变" not in prompt
+        assert "2024" not in prompt
+        assert "棉质衬衫、T恤" not in prompt
+        assert "街道、公园、室内、办公室、咖啡厅" not in prompt
 
 
 class FailingImageClient(StubImageClient):

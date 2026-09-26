@@ -274,6 +274,7 @@ class ImageClient:  # noqa: E303
         reference_image_url: Optional[str] = None,
         feedback: Optional[str] = None,
         extra_params: Optional[Dict[str, Any]] = None,
+        candidate_mode: bool = False,
     ) -> Tuple[List[Tuple[bytes, str]], Optional[str]]:
         """生成人物全身像（保证人物一致性）"""
         return self._generator.generate_character_images(
@@ -287,6 +288,7 @@ class ImageClient:  # noqa: E303
             feedback,
             self._prompt_builder,  # 注入 prompt builder
             extra_params,
+            candidate_mode,
         )
 
     def generate_character_images_with_reference(

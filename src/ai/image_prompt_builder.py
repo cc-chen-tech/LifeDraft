@@ -107,6 +107,7 @@ class ImagePromptBuilder:
         style_hint: Optional[str] = None,
         pose_hint: Optional[str] = None,
         feedback: Optional[str] = None,
+        candidate_mode: bool = False,
     ) -> str:
         """
         构建人物形象prompt（优化版本 - 更细致的描述）
@@ -123,7 +124,7 @@ class ImagePromptBuilder:
             构建好的prompt
         """
         # ★ 清洗 era 描述中的科幻暗示词，防止污染图像生成
-        safe_era = self._sanitize_era_for_image(era)
+        safe_era = era.strip() if candidate_mode else self._sanitize_era_for_image(era)
 
         # ★ 消毒人物名称，防止 prompt 注入
         from src.ai.prompt_sanitizer import sanitize_persisted_player_name
@@ -146,10 +147,18 @@ class ImagePromptBuilder:
                 "- 禁止发光效果：眼睛不得发红光/蓝光，禁止任何发光物体或霓虹光效",
                 "- 禁止未来科技：不得出现科幻城市、飞行汽车、高科技机械背景",
                 "- 禁止品牌Logo：不得出现星巴克、苹果等任何真实商业品牌标识",
-                "- 日常服装：穿着普通日常服装（棉质衬衫、T恤、针织外套、牛仔裤、休闲裤、运动鞋等）",
-                "- 真实背景：日常生活场景（街道、公园、室内、办公室、咖啡厅等），自然光线",
             ]
         )
+        if candidate_mode:
+            parts.extend([
+                "- 服装和道具必须符合人物身份、时代和文化",
+                "- 背景必须符合时代和文化，自然光线",
+            ])
+        else:
+            parts.extend([
+                "- 日常服装：穿着普通日常服装（棉质衬衫、T恤、针织外套、牛仔裤、休闲裤、运动鞋等）",
+                "- 真实背景：日常生活场景（街道、公园、室内、办公室、咖啡厅等），自然光线",
+            ])
 
         # 基础信息
         parts.extend(
@@ -209,12 +218,19 @@ class ImagePromptBuilder:
                 "【质量要求】",
                 "- 全身完整展示：头部、躯干、四肢、脚部全部可见",
                 "- 面部清晰：五官比例协调，特征鲜明可辨",
-                "- 人物一致性：如果此前已有该人物的图片，必须保持相同的脸型、五官比例和发型",
-                "- 服装细节：款式、颜色、褶皱、材质都清晰呈现，符合2024年日常穿着",
-                "- 光影立体：有明显的主光源方向，阴影柔和有层次",
-                "- 避免畸形：手指、五官比例正确，没有明显的AI畸变",
             ]
         )
+        if not candidate_mode:
+            parts.append("- 人物一致性：如果此前已有该人物的图片，必须保持相同的脸型、五官比例和发型")
+        parts.append(
+            "- 服装细节：款式、颜色、褶皱、材质都清晰呈现，符合人物所处时代"
+            if candidate_mode else
+            "- 服装细节：款式、颜色、褶皱、材质都清晰呈现，符合2024年日常穿着"
+        )
+        parts.extend([
+            "- 光影立体：有明显的主光源方向，阴影柔和有层次",
+            "- 避免畸形：手指、五官比例正确，没有明显的AI畸变",
+        ])
 
         return "。".join(parts)
 

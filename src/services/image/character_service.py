@@ -85,7 +85,7 @@ class CharacterImageService:
             images, _ = self.image_client.generate_character_images(
                 name=name, description=f"{description}。{direction}", era=era,
                 style_hint=constrained_style, num_images=1,
-                reference_image_url=None,
+                reference_image_url=None, candidate_mode=True,
             )
             if not images:
                 raise ImageServiceError("没有成功生成任何图片")
