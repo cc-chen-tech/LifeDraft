@@ -21,6 +21,7 @@ const defaultProps = {
   presetSaveMessage: "",
   toast: null,
   isGeneratingImage: false,
+  imageGenerationError: null,
   imageFeedback: "",
   onImageFeedbackChange: jest.fn(),
   onRegenerateImage: jest.fn(),
@@ -63,6 +64,37 @@ describe("CompletionScreen - Loading Feedback", () => {
     expect(notice).not.toBeNull();
     expect(notice).toHaveClass("bottom-[var(--app-shell-feedback-bottom)]");
     expect(notice?.closest('[data-slot="page-transition"]')).toBeNull();
+  });
+
+  test("keeps the previous portrait visible while regeneration runs", () => {
+    render(<CompletionScreen {...defaultProps} isGeneratingImage />);
+
+    expect(screen.getByRole("img", { name: "测试角色" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("正在后台重新生成人物形象");
+    expect(screen.queryByRole("button", { name: "完全重生成" })).not.toBeInTheDocument();
+  });
+
+  test("shows a background regeneration failure beside the preserved portrait", () => {
+    render(<CompletionScreen {...defaultProps} imageGenerationError="图片服务暂时不可用" />);
+
+    expect(screen.getByRole("img", { name: "测试角色" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("图片服务暂时不可用");
+  });
+
+  test("retains edit feedback until the background job succeeds", async () => {
+    const onImageFeedbackChange = jest.fn();
+    render(
+      <CompletionScreen
+        {...defaultProps}
+        imageFeedback="换短发"
+        onImageFeedbackChange={onImageFeedbackChange}
+        onRegenerateImage={jest.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "根据意见修改" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "根据意见修改" })).not.toBeDisabled());
+    expect(onImageFeedbackChange).not.toHaveBeenCalledWith("");
   });
 
   test("uses the full reading width when no portrait image exists", () => {

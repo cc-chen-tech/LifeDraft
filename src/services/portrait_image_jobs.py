@@ -165,16 +165,32 @@ def run_portrait_image_job(
         db.commit()
 
         request = job.request_json
-        images = image_service_factory(db).generate_character_image(
-            game_id=int(request["game_id"]),
-            name=str(request["entity_name"]),
-            description=str(request["description"]),
-            era=str(request.get("era") or "现代"),
-            entity_key="player_main",
-            metadata=request.get("extra_context"),
-            num_images=1,
-            feedback=request.get("feedback"),
-        )
+        image_service = image_service_factory(db)
+        operation = request.get("operation", "generate")
+        if operation == "regenerate":
+            images = image_service.regenerate_image(
+                image_id=int(request["source_image_id"]),
+                feedback=request.get("feedback"),
+                new_description=request.get("new_description"),
+            )
+        elif operation == "regenerate_fresh":
+            images = image_service.regenerate_fresh_image(
+                image_id=int(request["source_image_id"]),
+                use_deepseek_prompt=bool(request.get("use_deepseek_prompt", True)),
+            )
+        elif operation == "generate":
+            images = image_service.generate_character_image(
+                game_id=int(request["game_id"]),
+                name=str(request["entity_name"]),
+                description=str(request["description"]),
+                era=str(request.get("era") or "现代"),
+                entity_key="player_main",
+                metadata=request.get("extra_context"),
+                num_images=1,
+                feedback=request.get("feedback"),
+            )
+        else:
+            raise ImageServiceError("unsupported portrait job operation")
         if not images or images[0].image_id is None:
             raise ImageServiceError("no image was persisted")
 

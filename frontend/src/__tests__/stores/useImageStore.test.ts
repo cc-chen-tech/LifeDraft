@@ -234,20 +234,28 @@ describe('useImageStore', () => {
         ).rejects.toThrow('没有可重新生成的图片');
       });
 
-      it('regenerates player image successfully', async () => {
-        const existingImage = { image_id: 1, image_url: 'old' };
-        const newImages = [{ image_id: 2, image_url: 'new' }];
+      it('queues regeneration and keeps the old image until the job succeeds', async () => {
+        const existingImage = { image_id: 1, game_id: 1, image_url: 'old', entity_key: 'player_main' };
+        const newImages = [{ image_id: 2, game_id: 1, image_url: 'new', entity_key: 'player_main' }];
         useImageStore.setState({ playerImages: [existingImage] as any });
-        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ images: newImages }));
+        (global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse({
+          job_id: 10, game_id: 1, status: 'queued', image_id: null, attempt_count: 0,
+        }, 202)).mockResolvedValueOnce(jsonResponse({
+          job_id: 10, game_id: 1, status: 'succeeded', image_id: 2, attempt_count: 1,
+        })).mockResolvedValueOnce(jsonResponse({ images: newImages, total: 1 }));
 
         await useImageStore.getState().regeneratePlayerImage('make it better');
 
-        expect(global.fetch).toHaveBeenCalledWith('/api/images/regenerate', expect.objectContaining({ method: 'POST' }));
+        expect(global.fetch).toHaveBeenCalledWith('/api/images/character/regenerate-async', expect.objectContaining({ method: 'POST' }));
+        expect(useImageStore.getState().playerImages).toEqual([existingImage]);
+        expect(useImageStore.getState().isGeneratingImage).toBe(true);
+        await useImageStore.getState().refreshPortraitImageJob(1);
         expect(useImageStore.getState().playerImages).toEqual(newImages);
+        expect(useImageStore.getState().isGeneratingImage).toBe(false);
       });
 
       it('handles regeneration error', async () => {
-        const existingImage = { image_id: 1, image_url: 'old' };
+        const existingImage = { image_id: 1, game_id: 1, image_url: 'old' };
         useImageStore.setState({ playerImages: [existingImage] as any });
         (global.fetch as jest.Mock).mockRejectedValue(new Error('Regeneration failed'));
 
@@ -255,6 +263,45 @@ describe('useImageStore', () => {
           useImageStore.getState().regeneratePlayerImage('feedback')
         ).rejects.toThrow('Regeneration failed');
 
+        expect(useImageStore.getState().isGeneratingImage).toBe(false);
+      });
+
+      it('recovers a queued job when its enqueue response is lost', async () => {
+        useImageStore.setState({
+          playerImages: [{ image_id: 1, game_id: 1, image_url: 'old' }] as any,
+        });
+        (global.fetch as jest.Mock)
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+          .mockResolvedValueOnce(jsonResponse({
+            job_id: 12, game_id: 1, status: 'queued', image_id: null, attempt_count: 0,
+          }));
+
+        await useImageStore.getState().regeneratePlayerImage('short hair');
+
+        expect(useImageStore.getState()).toMatchObject({
+          isGeneratingImage: true,
+          imageGenerationError: null,
+          portraitImageJob: { job_id: 12, status: 'queued' },
+        });
+        expect((global.fetch as jest.Mock).mock.calls.filter(([url]) => url === '/api/images/character/regenerate-async')).toHaveLength(1);
+      });
+
+      it('does not mistake an earlier successful job for a lost regeneration request', async () => {
+        useImageStore.setState({
+          playerImages: [{ image_id: 1, game_id: 1, image_url: 'old' }] as any,
+          portraitImageJob: null,
+        });
+        (global.fetch as jest.Mock)
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+          .mockResolvedValueOnce(jsonResponse({
+            job_id: 5, game_id: 1, status: 'succeeded', image_id: 1, attempt_count: 1,
+          }))
+          .mockResolvedValueOnce(jsonResponse({
+            images: [{ image_id: 1, game_id: 1, image_url: 'old', entity_key: 'player_main' }], total: 1,
+          }));
+
+        await expect(useImageStore.getState().regeneratePlayerImage('short hair'))
+          .rejects.toThrow('Failed to fetch');
         expect(useImageStore.getState().isGeneratingImage).toBe(false);
       });
     });
@@ -266,20 +313,28 @@ describe('useImageStore', () => {
         ).rejects.toThrow('没有可重新生成的图片');
       });
 
-      it('regenerates fresh player image successfully', async () => {
-        const existingImage = { image_id: 1, image_url: 'old' };
-        const newImages = [{ image_id: 2, image_url: 'new' }];
+      it('queues fresh regeneration and loads the new portrait after polling', async () => {
+        const existingImage = { image_id: 1, game_id: 1, image_url: 'old', entity_key: 'player_main' };
+        const newImages = [{ image_id: 2, game_id: 1, image_url: 'new', entity_key: 'player_main' }];
         useImageStore.setState({ playerImages: [existingImage] as any });
-        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ images: newImages }));
+        (global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse({
+          job_id: 11, game_id: 1, status: 'queued', image_id: null, attempt_count: 0,
+        }, 202)).mockResolvedValueOnce(jsonResponse({
+          job_id: 11, game_id: 1, status: 'succeeded', image_id: 2, attempt_count: 1,
+        })).mockResolvedValueOnce(jsonResponse({ images: newImages, total: 1 }));
 
         await useImageStore.getState().regenerateFreshPlayerImage();
 
-        expect(global.fetch).toHaveBeenCalledWith('/api/images/regenerate-fresh', expect.objectContaining({ method: 'POST' }));
+        expect(global.fetch).toHaveBeenCalledWith('/api/images/character/regenerate-fresh-async', expect.objectContaining({ method: 'POST' }));
+        expect(useImageStore.getState().playerImages).toEqual([existingImage]);
+        expect(useImageStore.getState().isGeneratingImage).toBe(true);
+        await useImageStore.getState().refreshPortraitImageJob(1);
         expect(useImageStore.getState().playerImages).toEqual(newImages);
+        expect(useImageStore.getState().isGeneratingImage).toBe(false);
       });
 
       it('handles regeneration error', async () => {
-        const existingImage = { image_id: 1, image_url: 'old' };
+        const existingImage = { image_id: 1, game_id: 1, image_url: 'old' };
         useImageStore.setState({ playerImages: [existingImage] as any });
         (global.fetch as jest.Mock).mockRejectedValue(new Error('Fresh regeneration failed'));
 

@@ -590,3 +590,26 @@ class TestRegenerateDeletesDeactivatedFiles:
         result = service.regenerate_image(image_id=first[0].image_id)
         assert len(result) == 1
         assert result[0].is_active is True
+
+    def test_failed_fresh_regeneration_keeps_the_existing_image(self, db_session):
+        storage = StubImageStorage()
+        service = CharacterImageService(
+            db_session,
+            image_client=StubImageClient(),
+            storage_service=storage,
+        )
+        first = service.generate_character_image(
+            game_id=1,
+            name="fresh_failure",
+            description="test",
+            entity_key="fresh_failure_key",
+        )
+        source_id = first[0].image_id
+        service.image_client = FailingImageClient()
+
+        with pytest.raises(ImageServiceError):
+            service.regenerate_fresh_image(image_id=source_id, use_deepseek_prompt=False)
+
+        db_session.expire_all()
+        assert db_session.get(ImageModel, source_id).is_active is True
+        assert storage.deleted_paths == []

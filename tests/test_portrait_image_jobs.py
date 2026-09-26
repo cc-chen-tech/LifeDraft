@@ -137,6 +137,51 @@ def test_worker_persists_image_result_with_an_independent_session(temp_db_file):
     verify_db.close()
 
 
+@pytest.mark.parametrize("operation", ["regenerate", "regenerate_fresh"])
+def test_worker_runs_portrait_regeneration_in_background(temp_db_file, operation):
+    engine, _ = temp_db_file
+    Session = sessionmaker(bind=engine)
+    setup_db = Session()
+    user, game = _game(setup_db)
+    request = {
+        "game_id": game.game_id,
+        "entity_key": "player_main",
+        "operation": operation,
+        "source_image_id": 17,
+        "feedback": "短发",
+        "new_description": "29岁古装人物",
+        "use_deepseek_prompt": False,
+    }
+    job, _ = PortraitImageJobService(setup_db).enqueue(user.user_id, request)
+    job_id = job.job_id
+    setup_db.close()
+
+    generated_image = MagicMock(image_id=42)
+
+    class FakeImageService:
+        def __init__(self, _db):
+            pass
+
+        def regenerate_image(self, *, image_id, feedback, new_description):
+            assert operation == "regenerate"
+            assert (image_id, feedback, new_description) == (17, "短发", "29岁古装人物")
+            return [generated_image]
+
+        def regenerate_fresh_image(self, *, image_id, use_deepseek_prompt):
+            assert operation == "regenerate_fresh"
+            assert image_id == 17
+            assert use_deepseek_prompt is False
+            return [generated_image]
+
+    run_portrait_image_job(job_id, session_factory=Session, image_service_factory=FakeImageService)
+
+    verify_db = Session()
+    completed = verify_db.get(PortraitImageGenerationJob, job_id)
+    assert completed.status == "succeeded"
+    assert completed.image_id == 42
+    verify_db.close()
+
+
 def test_worker_records_a_safe_failure_without_provider_or_prompt_details(temp_db_file):
     engine, _ = temp_db_file
     Session = sessionmaker(bind=engine)

@@ -39,5 +39,11 @@ describe("api retry policy", () => {
     expect(
       shouldRetryApiError("/images/opening-illustration/regenerate", 0, 3)
     ).toBe(false);
+    expect(
+      shouldRetryApiError("/images/character/regenerate-async", 0, 3)
+    ).toBe(false);
+    expect(
+      shouldRetryApiError("/images/character/regenerate-fresh-async", 0, 3)
+    ).toBe(false);
   });
 });

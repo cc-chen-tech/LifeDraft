@@ -169,6 +169,7 @@ export default function CreatePage() {
         presetSaveMessage={presetSaveMessage}
         toast={toast}
         isGeneratingImage={isGeneratingImage}
+        imageGenerationError={imageGenerationError}
         imageFeedback={imageFeedback}
         onImageFeedbackChange={setImageFeedback}
         onRegenerateImage={() => regeneratePlayerImage(imageFeedback)}
