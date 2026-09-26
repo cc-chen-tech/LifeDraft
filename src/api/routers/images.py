@@ -28,7 +28,9 @@ from src.api.schemas import (BatchGenerateCharactersRequest,
                              RegenerateImageRequest,
                              RegenerateOpeningIllustrationRequest,
                              RegenerateRoundSceneRequest, RoundSceneResponse)
-from src.api.schemas import CreatePortraitCandidatesRequest, PortraitCandidateBatchResponse
+from src.api.schemas import (CreatePortraitCandidatesRequest, PortraitCandidateBatchResponse,
+                             PortraitSelectionResponse, SelectPortraitRequest)
+from src.services.portrait_selection import select_portrait
 from src.services.portrait_candidate_jobs import (
     enqueue_candidate_batch, candidate_batch_state, retry_candidate_batch, _batch_state,
 )
@@ -363,6 +365,17 @@ def create_candidates(req: CreatePortraitCandidatesRequest,
     schedule_portrait_image_job(int(job.job_id))
     batch = db.query(PortraitCandidateBatch).filter_by(job_id=job.job_id).one()
     return _batch_state(db, batch)
+
+
+@router.put("/character/selection", response_model=PortraitSelectionResponse)
+def put_portrait_selection(req: SelectPortraitRequest,
+                           db: Session = Depends(get_session), user: int = Depends(get_current_user)):
+    verify_game_ownership(db, req.game_id, user)
+    try:
+        image = select_portrait(db, req.game_id, req.image_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return PortraitSelectionResponse(game_id=req.game_id, image_id=int(image.image_id))
 
 
 @router.get("/character/candidates", response_model=Optional[PortraitCandidateBatchResponse])

@@ -12,6 +12,7 @@ from src.ai.image_client import ImageClient
 from src.ai.image_exceptions import ImageProviderError
 from src.database.models import Image as ImageModel
 from src.services.image_storage import ImageStorageService
+from src.services.portrait_selection import selected_portrait
 
 logger = logging.getLogger(__name__)
 
@@ -327,6 +328,9 @@ class ImageService:
                 .filter(
                     ImageModel.image_id == player_image_id,
                     ImageModel.game_id == game_id,
+                    ImageModel.image_type == "character",
+                    ImageModel.entity_key == "player_main",
+                    ImageModel.is_active.is_(True),
                 )
                 .first()
             )
@@ -336,16 +340,7 @@ class ImageService:
                 )
 
         if not player_image:
-            player_image = (
-                self.db.query(ImageModel)
-                .filter(
-                    ImageModel.game_id == game_id,
-                    ImageModel.image_type == "character",
-                    ImageModel.is_primary.is_(True),
-                )
-                .order_by(ImageModel.image_id.desc())
-                .first()
-            )
+            player_image = selected_portrait(self.db, game_id)
             if player_image:
                 logger.info(f"Auto-selected primary player image: {player_image.image_id}")
 

@@ -1,6 +1,7 @@
 """Persistence and legacy selection contracts for protagonist portraits."""
 
 from sqlalchemy.exc import IntegrityError
+from fastapi import HTTPException
 import pytest
 
 from src.database.models import (
@@ -12,7 +13,7 @@ from src.database.models import (
     PortraitSelection,
     User,
 )
-from src.services.portrait_selection import selected_portrait, set_default_portrait
+from src.services.portrait_selection import selected_portrait, select_portrait, set_default_portrait
 
 pytestmark = [pytest.mark.unit]
 
@@ -44,6 +45,106 @@ def add_two_active_portraits(db, game_id: int) -> tuple[Image, Image]:
     db.add_all(portraits)
     db.commit()
     return portraits[0], portraits[1]
+
+
+def bad_image_id(db, kind: str, game_id: int) -> int:
+    foreign = None
+    if kind == "foreign_game":
+        foreign = Game(user_id=db.get(Game, game_id).user_id, initial_state={})
+        db.add(foreign)
+        db.flush()
+    image = Image(
+        game_id=foreign.game_id if foreign else game_id,
+        image_type="character",
+        entity_name="其他人物",
+        entity_key="npc_1" if kind == "npc" else "player_main",
+        prompt_text="invalid choice",
+        storage_path="invalid.png",
+        is_active=kind != "inactive",
+    )
+    db.add(image)
+    db.commit()
+    return image.image_id
+
+
+@pytest.mark.parametrize("bad_image_kind", ["foreign_game", "inactive", "npc"])
+def test_bad_selection_preserves_current(db_session, tmp_path, bad_image_kind):
+    game = create_owned_game(db_session)
+    first, _ = add_two_active_portraits(db_session, game.game_id)
+    first.storage_path = str(tmp_path / "first.png")
+    (tmp_path / "first.png").write_bytes(b"image")
+    db_session.commit()
+    set_default_portrait(db_session, game.game_id, first.image_id)
+    db_session.commit()
+    before = selected_portrait(db_session, game.game_id).image_id
+    with pytest.raises(ValueError):
+        select_portrait(db_session, game.game_id, bad_image_id(db_session, bad_image_kind, game.game_id))
+    assert selected_portrait(db_session, game.game_id).image_id == before
+
+
+def test_ready_slot_selection_persists_and_staged_batch_does_not_override(db_session, tmp_path):
+    from sqlalchemy.orm import Session
+    game = create_owned_game(db_session)
+    old, chosen = add_two_active_portraits(db_session, game.game_id)
+    for image in (old, chosen):
+        image.storage_path = str(tmp_path / f"{image.image_id}.png")
+        (tmp_path / f"{image.image_id}.png").write_bytes(b"image")
+    job = PortraitImageGenerationJob(game_id=game.game_id, user_id=game.user_id, request_json={"game_id": game.game_id})
+    db_session.add(job)
+    db_session.flush()
+    batch = PortraitCandidateBatch(game_id=game.game_id, user_id=game.user_id, job_id=job.job_id, mode="fresh")
+    db_session.add(batch)
+    db_session.flush()
+    db_session.add(PortraitCandidateSlot(batch_id=batch.batch_id, slot_index=1, status="ready", image_id=chosen.image_id))
+    db_session.commit()
+    set_default_portrait(db_session, game.game_id, old.image_id)
+    db_session.commit()
+    assert selected_portrait(db_session, game.game_id).image_id == old.image_id
+    select_portrait(db_session, game.game_id, chosen.image_id)
+    with Session(db_session.get_bind()) as fresh:
+        assert selected_portrait(fresh, game.game_id).image_id == chosen.image_id
+        assert fresh.get(PortraitSelection, game.game_id).is_user_selected is True
+
+
+def test_selection_rejects_unready_or_missing_file(db_session, tmp_path):
+    game = create_owned_game(db_session)
+    old, candidate = add_two_active_portraits(db_session, game.game_id)
+    set_default_portrait(db_session, game.game_id, old.image_id)
+    job = PortraitImageGenerationJob(game_id=game.game_id, user_id=game.user_id, request_json={"game_id": game.game_id})
+    db_session.add(job)
+    db_session.flush()
+    batch = PortraitCandidateBatch(game_id=game.game_id, user_id=game.user_id, job_id=job.job_id, mode="fresh")
+    db_session.add(batch)
+    db_session.flush()
+    slot = PortraitCandidateSlot(batch_id=batch.batch_id, slot_index=1, status="queued", image_id=candidate.image_id)
+    db_session.add(slot)
+    candidate.storage_path = str(tmp_path / "missing.png")
+    db_session.commit()
+    with pytest.raises(ValueError, match="不可选择"):
+        select_portrait(db_session, game.game_id, candidate.image_id)
+    slot.status = "ready"
+    db_session.commit()
+    with pytest.raises(ValueError, match="文件不可用"):
+        select_portrait(db_session, game.game_id, candidate.image_id)
+    assert selected_portrait(db_session, game.game_id).image_id == old.image_id
+
+
+def test_selection_route_checks_owner_and_returns_422(db_session):
+    from src.api.routers.images import put_portrait_selection
+    from src.api.schemas import SelectPortraitRequest
+    game = create_owned_game(db_session)
+    request = SelectPortraitRequest(game_id=game.game_id, image_id=999999)
+    with pytest.raises(HTTPException) as foreign:
+        put_portrait_selection(request, db_session, game.user_id + 1)
+    assert foreign.value.status_code == 404
+    with pytest.raises(HTTPException) as invalid:
+        put_portrait_selection(request, db_session, game.user_id)
+    assert invalid.value.status_code == 422
+
+
+def test_selection_route_requires_authentication(client):
+    response = client.put("/api/images/character/selection", json={"game_id": 1, "image_id": 1})
+    assert response.status_code == 401
 
 
 def test_first_slot_sets_default_but_cannot_override_manual_selection(db_session):

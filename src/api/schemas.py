@@ -543,6 +543,16 @@ class CreatePortraitCandidatesRequest(BaseModel):
     mode: Literal["initial", "fresh"] = "initial"
 
 
+class SelectPortraitRequest(BaseModel):
+    game_id: int
+    image_id: int
+
+
+class PortraitSelectionResponse(BaseModel):
+    game_id: int
+    image_id: int
+
+
 class PortraitCandidateSlotResponse(BaseModel):
     slot_index: int
     status: str
