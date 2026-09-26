@@ -42,7 +42,21 @@ def selected_portrait(db: Session, game_id: int) -> Optional[Image]:
 
 
 def set_default_portrait(db: Session, game_id: int, image_id: int) -> None:
-    if db.get(PortraitSelection, game_id) is not None:
+    from src.services.portrait_candidate_jobs import _lock_game
+
+    # Serialize with manual selection and feedback completion. Refresh after the
+    # lock so a stale session cannot replace a newly committed valid choice.
+    _lock_game(db, game_id)
+    row = db.get(PortraitSelection, game_id, populate_existing=True)
+    if row is not None:
+        current = db.query(Image).filter_by(
+            image_id=row.image_id, game_id=game_id, image_type="character",
+            entity_key="player_main", is_active=True,
+        ).first()
+        if current is not None:
+            return
+        row.image_id, row.is_user_selected = image_id, False
+        db.flush()
         return
 
     try:
@@ -94,7 +108,12 @@ def is_selectable_candidate(db: Session, game_id: int, image_id: int) -> bool:
     if candidate_slot is not None:
         return True
     image = db.get(Image, image_id)
-    return bool(image and image.is_primary and selected == image)
+    # Legacy variants have no slot. Candidate images must never fall through
+    # this compatibility path when their batch is superseded.
+    has_slot = db.query(PortraitCandidateSlot).filter_by(image_id=image_id).first() is not None
+    return bool(image and image.game_id == game_id and image.image_type == "character"
+                and image.entity_key == "player_main" and image.is_active
+                and not has_slot and not (image.metadata_json or {}).get("batch_id"))
 
 
 def select_portrait(db: Session, game_id: int, image_id: int) -> Image:

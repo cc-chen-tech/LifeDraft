@@ -840,3 +840,78 @@ def test_get_portrait_selection_restores_legacy_choice_and_checks_owner(db_sessi
 
 def test_get_portrait_selection_requires_authentication(client):
     assert client.get('/api/images/character/selection?game_id=1').status_code == 401
+
+
+def test_default_repairs_inactive_selection_and_preserves_valid_user_choice(db_session):
+    game = create_owned_game(db_session)
+    old, replacement = add_two_active_portraits(db_session, game.game_id)
+    old.is_active = False
+    db_session.add(PortraitSelection(game_id=game.game_id, image_id=old.image_id, is_user_selected=True))
+    db_session.commit()
+    set_default_portrait(db_session, game.game_id, replacement.image_id)
+    db_session.commit()
+    assert selected_portrait(db_session, game.game_id).image_id == replacement.image_id
+    row = db_session.get(PortraitSelection, game.game_id)
+    assert row.image_id == replacement.image_id
+    assert not row.is_user_selected
+    row.is_user_selected = True
+    old.is_active = True
+    db_session.commit()
+    set_default_portrait(db_session, game.game_id, old.image_id)
+    assert row.image_id == replacement.image_id
+    assert row.is_user_selected
+
+
+def test_active_legacy_nonprimary_variant_can_be_selected(db_session, tmp_path):
+    game = create_owned_game(db_session)
+    _, variant = add_two_active_portraits(db_session, game.game_id)
+    path = tmp_path / 'variant.png'
+    path.write_bytes(b'image')
+    variant.storage_path = str(path)
+    db_session.commit()
+    assert select_portrait(db_session, game.game_id, variant.image_id).image_id == variant.image_id
+    assert selected_portrait(db_session, game.game_id).image_id == variant.image_id
+
+
+def test_new_origin_batch_repairs_deactivated_selection(ready_three_slot_batch, fake_provider):
+    Session, ids = ready_three_slot_batch
+    with Session() as db:
+        old_id = selected_portrait(db, ids[1]).image_id
+        db.query(Image).filter_by(game_id=ids[1]).update({'is_active': False})
+        db.add(GameState(game_id=ids[1], week=1, age=28, state_json={
+            'character_settings': {'story_origin': {'revision': 2}, 'era': {'era_name': '明代'}}}))
+        db.commit()
+        new_job = enqueue_candidate_batch(db, ids[0], ids[1], 'initial').job_id
+    run_candidate_batch(new_job, session_factory=Session, image_service_factory=fake_provider)
+    with Session() as db:
+        state = candidate_batch_state(db, ids[1], ids[0])
+        assert state.completed_count == 3 and state.origin_revision == 2
+        assert state.selected_image_id != old_id
+        assert state.selected_image_id in [slot.image_id for slot in state.slots]
+        assert selected_portrait(db, ids[1]).image_id == state.selected_image_id
+
+
+def test_feedback_missing_reference_job_has_safe_actionable_error(ready_three_slot_batch):
+    from src.services.image.character_service import CharacterImageService
+    Session, ids = ready_three_slot_batch
+    class BrokenReferenceService(CharacterImageService):
+        def __init__(self, db):
+            # Neither provider nor storage constructors are necessary for this failure.
+            self.db = db
+        def _get_image_data(self, original):
+            raise OSError('private-storage-secret')
+        def generate_character_image(self, **kwargs):
+            pytest.fail('missing candidate reference must not call paid generation')
+    with Session() as db:
+        source = selected_portrait(db, ids[1])
+        source_id = source.image_id
+        job_id = enqueue_feedback_job(db, source_id)
+    run_portrait_image_job(job_id, session_factory=Session, image_service_factory=BrokenReferenceService)
+    with Session() as db:
+        job = db.get(PortraitImageGenerationJob, job_id)
+        assert job.status == 'failed'
+        assert job.error_code == 'portrait_reference_unavailable'
+        assert '参考图片' in job.error_message and '重试' in job.error_message
+        assert 'private-storage-secret' not in job.error_message
+        assert selected_portrait(db, ids[1]).image_id == source_id
+        assert db.get(Image, source_id).is_active

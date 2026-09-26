@@ -1,6 +1,7 @@
 """Character image service - 人物图片生成服务."""
 
 import base64
+from copy import deepcopy
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
@@ -12,8 +13,8 @@ from src.ai.image_exceptions import (ContentInspectionError,
                                      ImageGenerationError,
                                      ImageProviderError)
 from src.database.models import Image as ImageModel
-from src.database.models import PortraitCandidateBatch
-from src.services.image import (ImageContentError,
+from src.database.models import PortraitCandidateBatch, PortraitCandidateSlot
+from src.services.image import (ImageContentError, PortraitReferenceUnavailable,
                                 ImageProviderServiceError,
                                 ImageServiceError)
 from src.services.image_storage import ImageStorageService
@@ -97,6 +98,7 @@ class CharacterImageService:
                     "batch_id": batch_id, "slot_index": slot_index,
                     "appearance_direction": direction,
                     "origin_revision": batch.origin_revision,
+                    "characterSettings": deepcopy(character_settings),
                 },
             )
             self.db.commit()
@@ -325,15 +327,22 @@ class CharacterImageService:
         if extract_era_func:
             era = extract_era_func(char_settings) or "现代"
 
+        requires_reference = bool(metadata.get("batch_id")) or self.db.query(
+            PortraitCandidateSlot
+        ).filter_by(image_id=image_id).first() is not None
         reference_url = None
         try:
             image_data = self._get_image_data(original)
+            if requires_reference and not image_data:
+                raise ImageServiceError("参考图片为空")
             ext = original.storage_path.rsplit(".", 1)[-1].lower()
             mime_type = "image/png" if ext == "png" else "image/jpeg"
             base64_data = base64.b64encode(image_data).decode("utf-8")
             reference_url = f"data:{mime_type};base64,{base64_data}"
             logger.info(f"Using current image as reference (base64, {len(image_data)} bytes)")
         except Exception as e:
+            if requires_reference:
+                raise PortraitReferenceUnavailable() from e
             logger.warning(
                 f"Failed to convert image to base64: {e}, will generate without reference"
             )

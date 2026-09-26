@@ -21,6 +21,13 @@ class ImageServiceError(Exception):
     """图像服务错误"""
 
 
+class PortraitReferenceUnavailable(ImageServiceError):
+    """Candidate editing cannot proceed safely without its reference image."""
+
+    def __init__(self):
+        super().__init__("参考图片暂时无法读取，请稍后重试；原形象已保留")
+
+
 class ImageContentError(ImageServiceError):
     """图像内容审核错误"""
 

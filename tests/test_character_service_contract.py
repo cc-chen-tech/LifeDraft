@@ -146,6 +146,7 @@ class TestGenerateCharacterCandidate:
             "batch_id": batch_id, "slot_index": slot_index,
             "appearance_direction": TEST_DIRECTIONS[slot_index],
             "origin_revision": 4,
+            "characterSettings": {"era": {"era_name": "明代", "era_description": "明朝古代"}},
         }
 
     def test_three_calls_share_role_facts_but_vary_face_hair_and_clothing(self, db_session):
@@ -804,3 +805,29 @@ class TestRegenerateDeletesDeactivatedFiles:
         assert db_session.get(ImageModel, source_id).is_active is True
         assert db_session.get(ImageModel, candidates[0].image_id).is_active is False
         assert storage.deleted_paths == []
+
+
+@pytest.mark.parametrize("failure", ["error", "empty"])
+def test_candidate_feedback_requires_readable_reference(db_session, monkeypatch, failure):
+    from src.database.models import PortraitSelection
+    game_id, batch_id = candidate_batch(db_session)
+    client, storage = StubImageClient(), StubImageStorage()
+    service = CharacterImageService(db_session, image_client=client, storage_service=storage)
+    image = service.generate_character_candidate(
+        game_id=game_id, name="于谦", description="明代书生", era="明代",
+        character_settings={"era": {"era_name": "明代"}}, direction=TEST_DIRECTIONS[0],
+        batch_id=batch_id, slot_index=0)
+    image.is_active = True
+    db_session.add(PortraitSelection(game_id=game_id, image_id=image.image_id, is_user_selected=True))
+    db_session.commit()
+    def read(_):
+        if failure == "error":
+            raise OSError("storage unavailable")
+        return b""
+    monkeypatch.setattr(service, "_get_image_data", read)
+    with pytest.raises(ImageServiceError, match="参考图片.*重试"):
+        service.regenerate_image(image.image_id, feedback="换件衣服", defer_activation=True)
+    assert len(client.generate_calls) == 1
+    assert client.last_anchor_call is None
+    assert db_session.get(ImageModel, image.image_id).is_active
+    assert db_session.get(PortraitSelection, game_id).image_id == image.image_id

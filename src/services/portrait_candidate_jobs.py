@@ -155,7 +155,9 @@ def candidate_batch_state(db, game_id, user_id):
     _owned_game(db, game_id, user_id)
     batch = db.query(PortraitCandidateBatch).filter_by(game_id=game_id, user_id=user_id).order_by(
         PortraitCandidateBatch.batch_id.desc()).first()
-    if batch is None:
+    if batch is None or not _origin_is_current(db, db.get(PortraitImageGenerationJob, batch.job_id)):
+        # Read-only recovery exposes only the current origin. A stale completed
+        # batch is not evidence that a new-origin POST was accepted.
         return None
     return _batch_state(db, batch)
 

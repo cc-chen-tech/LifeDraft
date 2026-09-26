@@ -542,6 +542,27 @@ describe('persistent portrait candidates', () => {
     expect(useImageStore.getState().isGeneratingImage).toBe(true);
     expect((global.fetch as jest.Mock).mock.calls.filter(c => c[1]?.method === 'POST')).toHaveLength(1);
   });
+  it('clears stale local batch when current-origin recovery finds no accepted task', async () => {
+    useImageStore.setState({ portraitCandidates: batch as any });
+    (global.fetch as jest.Mock).mockImplementation((url: string, options: RequestInit) => {
+      if (options?.method === 'POST') return Promise.reject(new Error('not accepted'));
+      return Promise.resolve(jsonResponse(null));
+    });
+    await expect(useImageStore.getState().enqueuePortraitCandidates(7, 'initial')).rejects.toThrow('not accepted');
+    expect(useImageStore.getState().portraitCandidates).toBeNull();
+    expect(useImageStore.getState().isGeneratingImage).toBe(false);
+    expect((global.fetch as jest.Mock).mock.calls.filter(c => c[1]?.method === 'POST')).toHaveLength(1);
+  });
+  it('restoring an origin with no current batch never enqueues generation', async () => {
+    useImageStore.setState({ playerImages: images as any, playerImage: images[0] as any, selectedImageId: 11, portraitCandidates: batch as any });
+    (global.fetch as jest.Mock).mockImplementation((url: string) => Promise.resolve(jsonResponse(
+      url.includes('/candidates') || url.includes('/selection') ? null : { images: [] })));
+    await useImageStore.getState().loadPlayerImages(7);
+    expect(useImageStore.getState().portraitCandidates).toBeNull();
+    expect(useImageStore.getState().selectedImageId).toBeNull();
+    expect(useImageStore.getState().playerImage).toBeNull();
+    expect((global.fetch as jest.Mock).mock.calls.filter(c => c[1]?.method === 'POST')).toHaveLength(0);
+  });
   it('stages a fresh batch while retaining the old selected portrait', async () => {
     useImageStore.setState({ playerImages: images as any, playerImage: images[1] as any, selectedImageId: 22 });
     (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ ...batch, mode: 'fresh', status: 'queued', completed_count: 0, slots: [0,1,2].map(slot_index => ({ slot_index, status: 'pending', image_id: null })) }));

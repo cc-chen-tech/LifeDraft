@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.database.models import (Game, GameState, Image,
                                  PortraitImageGenerationJob, PortraitCandidateSlot, PortraitSelection, SessionLocal)
-from src.services.image import ImageContentError, ImageProviderServiceError, ImageServiceError
+from src.services.image import ImageContentError, ImageProviderServiceError, ImageServiceError, PortraitReferenceUnavailable
 from src.services.image_service import ImageService, get_image_thread_pool
 from src.observability.request_context import bind_current_context
 
@@ -159,6 +159,8 @@ def requeue_interrupted_portrait_jobs(db: Session) -> list[int]:
 def _safe_failure(error: Exception) -> tuple[str, str]:
     if isinstance(error, ImageProviderServiceError):
         return error.code, error.public_message
+    if isinstance(error, PortraitReferenceUnavailable):
+        return "portrait_reference_unavailable", str(error)
     if isinstance(error, ImageContentError):
         return "image_content_rejected", "人物形象生成未通过内容检查，请修改设定后重试"
     return "image_generation_failed", "人物形象生成失败，请稍后重试"

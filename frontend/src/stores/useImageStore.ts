@@ -161,11 +161,12 @@ export const useImageStore = create<ImageState>()(
       try {
         batch = await api.images.enqueuePortraitCandidates(gameId, mode);
       } catch (error) {
-        const recovered = await api.images.getPortraitCandidates(gameId).catch(() => null);
+        const recovered = await api.images.getPortraitCandidates(gameId).catch(() => undefined);
         if (activePortraitJobGameId !== gameId) return;
         if (!recovered || (mode === 'fresh' && recovered.batch_id === previousBatch &&
             recovered.status !== 'queued' && recovered.status !== 'running')) {
-          set({ isGeneratingImage: false, imageGenerationError: getPlayerImageErrorMessage(error, "人物形象生成失败") });
+          set({ ...(recovered === null ? { portraitCandidates: null } : {}),
+            isGeneratingImage: false, imageGenerationError: getPlayerImageErrorMessage(error, "人物形象生成失败") });
           throw error;
         }
         batch = recovered;
@@ -457,7 +458,8 @@ export const useImageStore = create<ImageState>()(
         const images = (result.images ?? []).filter(image => image.entity_key === "player_main" || (!image.entity_key && image.entity_name))
           .map(image => ({ ...image, game_id: gameId }));
         // A selection confirmed while these reads were in flight takes precedence.
-        const selectedId = get().selectedImageId !== selectedBefore ? get().selectedImageId : selection?.image_id ?? batch?.selected_image_id ?? get().selectedImageId;
+        const selectedId = get().selectedImageId !== selectedBefore ? get().selectedImageId :
+          selection === null ? null : selection?.image_id ?? batch?.selected_image_id ?? get().selectedImageId;
         const selected = images.find(image => image.image_id === selectedId) ??
           (selectedId == null ? images[0] : get().playerImage?.game_id === gameId ? get().playerImage : null);
         set({ playerImages: images, playerImage: selected ?? null,

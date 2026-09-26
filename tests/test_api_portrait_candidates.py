@@ -64,3 +64,21 @@ def test_selection_read_response_matches_schema(candidate_client, db_session):
     assert response.status_code == 200
     assert response.json() == {'game_id': game.game_id, 'image_id': image.image_id}
     assert db_session.get(PortraitSelection, game.game_id) is None
+
+
+def test_origin_replacement_read_hides_stale_batch_without_generating(candidate_client, db_session):
+    from src.database.models import PortraitImageGenerationJob
+    client, game, _ = candidate_client
+    game.initial_state = {'character_settings': {'story_origin': {'revision': 1}}}
+    db_session.commit()
+    old = client.post('/images/character/candidates', json={'game_id': game.game_id}).json()
+    job = db_session.get(PortraitImageGenerationJob, old['job_id'])
+    job.status = 'succeeded'
+    game.initial_state = {'character_settings': {'story_origin': {'revision': 2}}}
+    db_session.commit()
+    for _ in range(2):
+        assert client.get(f'/images/character/candidates?game_id={game.game_id}').json() is None
+    assert db_session.query(PortraitImageGenerationJob).count() == 1
+    new = client.post('/images/character/candidates', json={'game_id': game.game_id}).json()
+    assert new['origin_revision'] == 2
+    assert client.get(f'/images/character/candidates?game_id={game.game_id}').json() == new
