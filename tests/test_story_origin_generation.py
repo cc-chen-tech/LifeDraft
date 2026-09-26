@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import threading
 from typing import Any, Dict, List
 
 import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
+from src.api.routers import character as character_router
+from src.api.schemas import GenerateStoryOriginRequest
 from src.game.character_creation import CharacterCreator
 
 pytestmark = [pytest.mark.unit]
@@ -58,6 +62,56 @@ def test_story_origin_generator_returns_one_normalized_candidate() -> None:
     assert result == {"revision": 1, **_candidate()}
     assert generator.calls == 1
     assert "birth_year" not in result
+
+
+def test_story_origin_short_json_does_not_consume_thinking_tokens() -> None:
+    class ThinkingSensitiveGenerator:
+        def generate_completion_json(self, **kwargs: Any) -> Dict[str, Any]:
+            if kwargs.get("thinking") is not False:
+                raise ValueError("response truncated before JSON completed")
+            return _candidate()
+
+    creator = CharacterCreator(ai_generator=ThinkingSensitiveGenerator())
+
+    result = creator.generate_story_origin(
+        player_name="林舟",
+        life_vision="在2026年的上海从事数字内容工作",
+        previous_settings={},
+    )
+
+    assert result == {"revision": 1, **_candidate()}
+
+
+@pytest.mark.asyncio
+async def test_story_origin_generation_keeps_event_loop_responsive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = threading.Event()
+    release = threading.Event()
+    release_guard = threading.Timer(1.0, release.set)
+
+    class BlockingCreator:
+        def __init__(self, language: str) -> None:
+            self.language = language
+
+        def generate_story_origin(self, **_: Any) -> Dict[str, Any]:
+            started.set()
+            release.wait()
+            return _candidate()
+
+    monkeypatch.setattr(character_router, "CharacterCreator", BlockingCreator)
+    request = GenerateStoryOriginRequest(player_name="林舟", life_vision="")
+    task = asyncio.create_task(character_router.generate_story_origin(request))
+    release_guard.start()
+
+    try:
+        await asyncio.to_thread(started.wait, 0.8)
+        assert started.is_set()
+        assert not task.done(), "a model call must not block other API requests"
+    finally:
+        release.set()
+        await task
+        release_guard.cancel()
 
 
 def test_story_origin_generator_retries_until_feedback_anchor_matches() -> None:

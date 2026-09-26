@@ -25,6 +25,7 @@ import { resolveApiBase } from './apiBase';
 const API_BASE = resolveApiBase();
 export const LIFE_SUMMARY_REQUEST_TIMEOUT_MS = 30_000;
 export const STORY_VOICE_JOB_REQUEST_TIMEOUT_MS = 20_000;
+export const CHARACTER_GENERATION_REQUEST_TIMEOUT_MS = 60_000;
 
 export interface PortraitImageGenerationJob {
   job_id: number;
@@ -501,10 +502,12 @@ export const api = {
       previous_settings?: CharacterSettings;
       feedback?: string | null;
       language?: string;
-    }) =>
+    }, options?: { signal?: AbortSignal }) =>
       fetchJson<StoryOrigin>('/character/story-origin', {
         method: 'POST',
         body: JSON.stringify(data),
+        signal: options?.signal,
+        timeout: CHARACTER_GENERATION_REQUEST_TIMEOUT_MS,
       }),
     generateSetting: (data: {
       setting_type: string;
@@ -514,10 +517,12 @@ export const api = {
       feedback?: string | null;
       language?: string;
       character_settings?: CharacterSettings
-    }) =>
+    }, options?: { signal?: AbortSignal }) =>
       fetchJson<Record<string, unknown>>('/character/setting', {
         method: 'POST',
         body: JSON.stringify(data),
+        signal: options?.signal,
+        timeout: CHARACTER_GENERATION_REQUEST_TIMEOUT_MS,
       }),
     generateRelationship: (data: {
       relationship_type?: string;
@@ -534,6 +539,7 @@ export const api = {
       fetchJson<{ name: string; relationship: string }>('/character/relationship', {
         method: 'POST',
         body: JSON.stringify(data),
+        timeout: CHARACTER_GENERATION_REQUEST_TIMEOUT_MS,
       }),
     generateRelationshipsSummary: (data: {
       character_settings?: CharacterSettings;
@@ -546,6 +552,7 @@ export const api = {
       fetchJson<{ relationships_description: string }>('/character/relationships-summary', {
         method: 'POST',
         body: JSON.stringify(data),
+        timeout: CHARACTER_GENERATION_REQUEST_TIMEOUT_MS,
       }),
   },
 

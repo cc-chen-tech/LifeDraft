@@ -330,6 +330,70 @@ describe('useCharacterCreation', () => {
   // ===================== Character Generation Flow =====================
 
   describe('handleGenerate', () => {
+    it('waits for the name to settle before auto-generating the story origin', async () => {
+      jest.useFakeTimers();
+      try {
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(testOrigin));
+        const { result } = renderHook(() => useCharacterCreation());
+
+        act(() => result.current.setPlayerName('林'));
+        expect(fetchCalled('/api/character/story-origin')).toBe(false);
+
+        act(() => jest.advanceTimersByTime(300));
+        act(() => result.current.setPlayerName('林舟'));
+        act(() => jest.advanceTimersByTime(500));
+        expect(fetchCalled('/api/character/story-origin')).toBe(false);
+
+        await act(async () => {
+          jest.advanceTimersByTime(200);
+          await Promise.resolve();
+        });
+
+        expect(fetchBody('/api/character/story-origin')?.player_name).toBe('林舟');
+        expect((global.fetch as jest.Mock).mock.calls.filter(
+          (call: unknown[]) => call[0] === '/api/character/story-origin',
+        )).toHaveLength(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('abandons an in-flight origin request when the name changes', async () => {
+      jest.useFakeTimers();
+      try {
+        let firstSignal: AbortSignal | undefined;
+        (global.fetch as jest.Mock)
+          .mockImplementationOnce((_url: string, options: RequestInit) => {
+            firstSignal = options.signal ?? undefined;
+            return new Promise<Response>((_resolve, reject) => {
+              firstSignal?.addEventListener('abort', () =>
+                reject(new DOMException('aborted', 'AbortError')),
+              );
+            });
+          })
+          .mockResolvedValue(jsonResponse(testOrigin));
+        const { result } = renderHook(() => useCharacterCreation());
+
+        act(() => result.current.setPlayerName('林'));
+        await act(async () => {
+          jest.advanceTimersByTime(700);
+          await Promise.resolve();
+        });
+        expect(firstSignal?.aborted).toBe(false);
+
+        act(() => result.current.setPlayerName('林舟'));
+        expect(firstSignal?.aborted).toBe(true);
+
+        await act(async () => {
+          jest.advanceTimersByTime(700);
+          await Promise.resolve();
+        });
+        expect(fetchBody('/api/character/story-origin')?.player_name).toBe('林舟');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('does nothing when hasBasicInfo is false (empty playerName)', async () => {
       const { result } = renderHook(() => useCharacterCreation());
       await act(async () => {

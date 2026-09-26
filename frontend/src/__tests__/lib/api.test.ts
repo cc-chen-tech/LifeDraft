@@ -195,6 +195,31 @@ describe('gameplay', () => {
 
 // ─── character API contract verification ────────────────────────
 describe('character', () => {
+  it('stops waiting when story-origin generation exceeds its deadline', async () => {
+    jest.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      global.fetch = jest.fn((_url: string, options: RequestInit) => {
+        signal = options.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          );
+        });
+      });
+
+      const request = api.character.generateStoryOrigin({ player_name: '林舟' });
+      const rejection = expect(request).rejects.toMatchObject({ name: 'AbortError' });
+      await jest.advanceTimersByTimeAsync(60_000);
+      await rejection;
+
+      expect(signal?.aborted).toBe(true);
+      expect((global.fetch as jest.Mock).mock.calls).toHaveLength(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('generateSetting era returns backend-contract fields: year, era_description, world_context', async () => {
     // Backend contract: era setting returns { year, era_description, world_context }
     // NOT era_name — that's a frontend-only display fallback

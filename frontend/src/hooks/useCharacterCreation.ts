@@ -144,6 +144,7 @@ export interface UseCharacterCreationReturn {
   
   // Local state
   isGenerating: boolean;
+  generationError: string | null;
   feedback: string;
   setFeedback: (feedback: string) => void;
   showPresetSheet: boolean;
@@ -239,6 +240,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   const { language } = useUIStore();
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const activeGenerationRef = useRef<AbortController | null>(null);
+  useEffect(() => () => activeGenerationRef.current?.abort(), []);
   const [feedback, setFeedback] = useState("");
   const [showPresetSheet, setShowPresetSheet] = useState(false);
   const [presetName, setPresetName] = useState("");
@@ -281,8 +285,12 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   const invalidateOriginGeneration = useCallback(() => {
     basicInfoVersionRef.current += 1;
     if (currentStepKey !== "story_origin") return;
+    activeGenerationRef.current?.abort();
+    activeGenerationRef.current = null;
+    setIsGenerating(false);
     autoGenTriggeredRef.current[currentStepKey] = false;
     setGeneratedContent(null);
+    setGenerationError(null);
   }, [currentStepKey]);
 
   const setPlayerName = useCallback(
@@ -330,6 +338,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       } catch (err) {
         lastError = err;
         console.warn(`Attempt ${attempt}/${maxRetries} failed:`, err);
+        if ((err as Error | null)?.name === "AbortError") {
+          throw err;
+        }
         if ((err as { status?: number } | null)?.status === 422) {
           throw err;
         }
@@ -349,8 +360,13 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       ) return;
       const requestInput = { currentStepKey, playerName, lifeVision };
       const requestBasicInfoVersion = basicInfoVersionRef.current;
+      activeGenerationRef.current?.abort();
+      const controller = new AbortController();
+      activeGenerationRef.current = controller;
+      autoGenTriggeredRef.current[currentStepKey] = true;
       setIsGenerating(true);
       setGeneratedContent(null);
+      setGenerationError(null);
 
       try {
         const result = await withRetry<Record<string, unknown>>(() =>
@@ -361,7 +377,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
                 previous_settings: characterSettings,
                 feedback: fb || null,
                 language,
-              }).then((origin) => origin as unknown as Record<string, unknown>)
+              }, { signal: controller.signal }).then((origin) => origin as unknown as Record<string, unknown>)
             : api.character.generateSetting({
             setting_type: currentStepKey,
             player_name: playerName,
@@ -369,7 +385,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
             previous_settings: characterSettings,
             feedback: fb || null,
             language,
-          })
+          }, { signal: controller.signal })
         );
         const latestState = useGameStore.getState();
         const latestInput = {
@@ -387,10 +403,15 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         }
         setGeneratedContent(result);
       } catch (err) {
+        if (controller.signal.aborted) return;
         console.error("Generation failed after retries:", err);
+        setGenerationError("生成失败或等待超时，请重试");
         showToast("error", "生成失败，请重试");
       } finally {
-        setIsGenerating(false);
+        if (activeGenerationRef.current === controller) {
+          activeGenerationRef.current = null;
+          setIsGenerating(false);
+        }
       }
     },
     [currentStepKey, playerName, lifeVision, characterSettings, language, hasBasicInfo, showToast]
@@ -424,8 +445,15 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       !autoGenTriggeredRef.current[currentStepKey];
     
     if (shouldAutoGenerate) {
-      autoGenTriggeredRef.current[currentStepKey] = true;
-      handleGenerate();
+      if (currentStepKey === "story_origin") {
+        const timer = setTimeout(() => {
+          if (!autoGenTriggeredRef.current[currentStepKey]) {
+            void handleGenerate();
+          }
+        }, 650);
+        return () => clearTimeout(timer);
+      }
+      void handleGenerate();
     }
   }, [currentStepKey, hasBasicInfo, isGenerating, generatedContent, characterSettings, isPortraitStep, handleGenerate]);
 
@@ -1030,6 +1058,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     
     // Local state
     isGenerating,
+    generationError,
     feedback,
     setFeedback,
     showPresetSheet,

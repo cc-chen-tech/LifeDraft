@@ -109,7 +109,8 @@ async def generate_story_origin(req: GenerateStoryOriginRequest):
     """Generate one validated date, starting age, and temporal context."""
     creator = CharacterCreator(language=req.language)
     try:
-        return creator.generate_story_origin(
+        return await asyncio.to_thread(
+            creator.generate_story_origin,
             player_name=req.player_name,
             life_vision=req.life_vision,
             previous_settings=req.previous_settings,

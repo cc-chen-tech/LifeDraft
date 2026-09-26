@@ -457,6 +457,7 @@ class CharacterCreator:
                     system_prompt=get_system_prompt("world_building", "en"),
                     temperature=0.9,
                     max_tokens=2048,
+                    thinking=False,
                 )
                 if not isinstance(candidate, dict):
                     raise ValueError("invalid_story_origin")
