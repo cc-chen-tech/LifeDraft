@@ -89,6 +89,76 @@ def test_legacy_game_uses_newest_active_primary_main_character(db_session):
     assert selected_portrait(db_session, game.game_id).image_id == older.image_id
 
 
+def test_legacy_game_with_one_active_primary_image_uses_that_image(db_session):
+    game = create_owned_game(db_session)
+    first = Image(
+        game_id=game.game_id,
+        image_type="character",
+        entity_name="林见微",
+        entity_key="player_main",
+        prompt_text="legacy portrait",
+        storage_path="portraits/legacy.png",
+        is_active=True,
+        is_primary=True,
+    )
+    db_session.add(first)
+    db_session.commit()
+
+    assert db_session.get(PortraitSelection, game.game_id) is None
+    assert selected_portrait(db_session, game.game_id).image_id == first.image_id
+
+
+def test_racing_default_insert_preserves_manual_choice_and_pending_slot(
+    db_session, monkeypatch
+):
+    game = create_owned_game(db_session)
+    first, second = add_two_active_portraits(db_session, game.game_id)
+    job = PortraitImageGenerationJob(
+        game_id=game.game_id,
+        user_id=game.user_id,
+        request_json={"game_id": game.game_id},
+    )
+    db_session.add(job)
+    db_session.flush()
+    batch = PortraitCandidateBatch(
+        game_id=game.game_id,
+        user_id=game.user_id,
+        job_id=job.job_id,
+        mode="initial",
+    )
+    db_session.add(batch)
+    db_session.flush()
+    slot = PortraitCandidateSlot(batch_id=batch.batch_id, slot_index=0)
+    db_session.add(slot)
+    db_session.add(
+        PortraitSelection(game_id=game.game_id, image_id=second.image_id, is_user_selected=True)
+    )
+    db_session.commit()
+
+    slot.status, slot.image_id = "completed", first.image_id
+    real_get = db_session.get
+    stale_read = True
+
+    def get_with_racing_insert(model, key, *args, **kwargs):
+        nonlocal stale_read
+        if model is PortraitSelection and key == game.game_id and stale_read:
+            stale_read = False
+            return None
+        return real_get(model, key, *args, **kwargs)
+
+    # Force the helper's first read to be stale, as if another selection
+    # committed just after it. The actual database row causes a real conflict.
+    monkeypatch.setattr(db_session, "get", get_with_racing_insert)
+    set_default_portrait(db_session, game.game_id, first.image_id)
+    db_session.commit()
+    db_session.expire_all()
+
+    assert db_session.get(PortraitSelection, game.game_id).image_id == second.image_id
+    assert db_session.get(PortraitSelection, game.game_id).is_user_selected is True
+    assert db_session.get(PortraitCandidateSlot, (batch.batch_id, 0)).image_id == first.image_id
+    assert db_session.get(PortraitCandidateSlot, (batch.batch_id, 0)).status == "completed"
+
+
 def test_batch_and_three_slots_persist_with_unique_slot_numbers(db_session):
     game = create_owned_game(db_session)
     job = PortraitImageGenerationJob(

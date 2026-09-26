@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.database.models import Image, PortraitSelection
@@ -39,6 +40,15 @@ def selected_portrait(db: Session, game_id: int) -> Optional[Image]:
 
 
 def set_default_portrait(db: Session, game_id: int, image_id: int) -> None:
-    if db.get(PortraitSelection, game_id) is None:
-        db.add(PortraitSelection(game_id=game_id, image_id=image_id, is_user_selected=False))
-        db.flush()
+    if db.get(PortraitSelection, game_id) is not None:
+        return
+
+    try:
+        with db.begin_nested():
+            db.add(PortraitSelection(game_id=game_id, image_id=image_id, is_user_selected=False))
+            db.flush()
+    except IntegrityError:
+        # Another transaction may have selected a portrait since the empty read.
+        # Roll back only the insert, leaving the caller's image and slot writes intact.
+        if db.get(PortraitSelection, game_id) is None:
+            raise
