@@ -30,7 +30,7 @@ from src.api.schemas import (BatchGenerateCharactersRequest,
                              RegenerateRoundSceneRequest, RoundSceneResponse)
 from src.api.schemas import (CreatePortraitCandidatesRequest, PortraitCandidateBatchResponse,
                              PortraitSelectionResponse, SelectPortraitRequest)
-from src.services.portrait_selection import select_portrait
+from src.services.portrait_selection import select_portrait, selected_portrait
 from src.services.portrait_candidate_jobs import (
     enqueue_candidate_batch, candidate_batch_state, retry_candidate_batch, _batch_state,
 )
@@ -365,6 +365,14 @@ def create_candidates(req: CreatePortraitCandidatesRequest,
     schedule_portrait_image_job(int(job.job_id))
     batch = db.query(PortraitCandidateBatch).filter_by(job_id=job.job_id).one()
     return _batch_state(db, batch)
+
+
+@router.get("/character/selection", response_model=Optional[PortraitSelectionResponse])
+def get_portrait_selection(game_id: int,
+                           db: Session = Depends(get_session), user: int = Depends(get_current_user)):
+    verify_game_ownership(db, game_id, user)
+    image = selected_portrait(db, game_id)
+    return PortraitSelectionResponse(game_id=game_id, image_id=int(image.image_id)) if image else None
 
 
 @router.put("/character/selection", response_model=PortraitSelectionResponse)

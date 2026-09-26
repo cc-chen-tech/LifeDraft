@@ -15,6 +15,8 @@ describe('useImageStore', () => {
       playerImage: null,
       playerImages: [],
       selectedImageIndex: 0,
+      selectedImageId: null,
+      portraitCandidates: null,
       isGeneratingImage: false,
       imageGenerationError: null,
       portraitImageJob: null,
@@ -343,23 +345,20 @@ describe('useImageStore', () => {
         ).rejects.toThrow('没有可重新生成的图片');
       });
 
-      it('queues fresh regeneration and loads the new portrait after polling', async () => {
-        const existingImage = { image_id: 1, game_id: 1, image_url: 'old', entity_key: 'player_main' };
-        const newImages = [{ image_id: 2, game_id: 1, image_url: 'new', entity_key: 'player_main' }];
-        useImageStore.setState({ playerImages: [existingImage] as any });
-        (global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse({
-          job_id: 11, game_id: 1, status: 'queued', image_id: null, attempt_count: 0,
-        }, 202)).mockResolvedValueOnce(jsonResponse({
-          job_id: 11, game_id: 1, status: 'succeeded', image_id: 2, attempt_count: 1,
-        })).mockResolvedValueOnce(jsonResponse({ images: newImages, total: 1 }));
-
+      it('queues a fresh candidate batch and preserves the old selection after polling', async () => {
+        const old = { image_id: 1, game_id: 1, image_url: 'old', entity_key: 'player_main' };
+        const fresh = { image_id: 2, game_id: 1, image_url: 'new', entity_key: 'player_main' };
+        const batch = { batch_id: 9, job_id: 11, game_id: 1, mode: 'fresh', status: 'queued', selected_image_id: 1, completed_count: 0, slots: [] };
+        useImageStore.getState().setPlayerImage(old as any);
+        (global.fetch as jest.Mock).mockImplementation((url: string, options: RequestInit) => Promise.resolve(jsonResponse(
+          options?.method === 'POST' ? batch : url.includes('/candidates') ? { ...batch, status: 'succeeded', completed_count: 3 } :
+          url.includes('/selection') ? { game_id: 1, image_id: 1 } : { images: [old, fresh], total: 2 })));
         await useImageStore.getState().regenerateFreshPlayerImage();
-
-        expect(global.fetch).toHaveBeenCalledWith('/api/images/character/regenerate-fresh-async', expect.objectContaining({ method: 'POST' }));
-        expect(useImageStore.getState().playerImages).toEqual([existingImage]);
+        expect(global.fetch).toHaveBeenCalledWith('/api/images/character/candidates', expect.objectContaining({ method: 'POST' }));
         expect(useImageStore.getState().isGeneratingImage).toBe(true);
         await useImageStore.getState().refreshPortraitImageJob(1);
-        expect(useImageStore.getState().playerImages).toEqual(newImages);
+        expect(useImageStore.getState().playerImages).toEqual([old, fresh]);
+        expect(useImageStore.getState().selectedImageId).toBe(1);
         expect(useImageStore.getState().isGeneratingImage).toBe(false);
       });
 
@@ -496,4 +495,79 @@ describe('useImageStore', () => {
   });
 
   // ★ 场景插画测试已移至 useGameStore.test.ts
+});
+
+
+describe('persistent portrait candidates', () => {
+  const images = [11, 22, 33].map(image_id => ({ image_id, game_id: 7, entity_key: 'player_main', image_url: `url${image_id}` }));
+  const batch = { batch_id: 9, job_id: 8, game_id: 7, mode: 'initial', status: 'failed', completed_count: 2, selected_image_id: 22,
+    slots: [{ slot_index: 0, image_id: 11, status: 'ready' }, { slot_index: 1, image_id: 22, status: 'ready' }, { slot_index: 2, image_id: null, status: 'failed' }] };
+  beforeEach(() => { useImageStore.getState().clearCache(); global.fetch = jest.fn(); });
+  afterEach(() => { useImageStore.getState().stopPortraitImagePolling(); });
+  it('restores server selection for legacy images without a candidate batch', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string) => Promise.resolve(jsonResponse(
+      url.includes('/selection') ? { game_id: 7, image_id: 22 } : url.includes('/candidates') ? null : { images })));
+    await useImageStore.getState().loadPlayerImages(7);
+    expect(useImageStore.getState().selectedImageId).toBe(22);
+    expect(useImageStore.getState().playerImage?.image_id).toBe(22);
+    expect(useImageStore.getState().portraitCandidates).toBeNull();
+  });
+  it('restores server selection and preserves it when image order changes', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string) => Promise.resolve(jsonResponse(url.includes('/candidates') ? batch : { images })));
+    await useImageStore.getState().loadPlayerImages(7);
+    expect(useImageStore.getState().playerImage?.image_id).toBe(22);
+    useImageStore.getState().setPlayerImages([...images].reverse() as any);
+    expect(useImageStore.getState().playerImage?.image_id).toBe(22);
+  });
+  it('waits for server selection confirmation and keeps selection after rejection', async () => {
+    useImageStore.setState({ playerImages: images as any, playerImage: images[0] as any, selectedImageId: 11 });
+    let resolve!: (response: Response) => void;
+    (global.fetch as jest.Mock).mockReturnValue(new Promise<Response>(r => { resolve = r; }));
+    const pending = useImageStore.getState().selectPlayerImage(22);
+    expect(useImageStore.getState().selectedImageId).toBe(11);
+    resolve(jsonResponse({ game_id: 7, image_id: 22 })); await pending;
+    expect(useImageStore.getState().selectedImageId).toBe(22);
+    expect(global.fetch).toHaveBeenCalledWith('/api/images/character/selection', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ game_id: 7, image_id: 22 }) }));
+    (global.fetch as jest.Mock).mockRejectedValue(new Error('Rejected'));
+    await expect(useImageStore.getState().selectPlayerImage(11)).rejects.toThrow('Rejected');
+    expect(useImageStore.getState().selectedImageId).toBe(22);
+  });
+  it('recovers a lost enqueue response without another generation request', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string, options: RequestInit) => {
+      if (options?.method === 'POST') return Promise.reject(new Error('lost response'));
+      return Promise.resolve(jsonResponse(url.includes('/candidates') ? { ...batch, status: 'running' } : { images }));
+    });
+    await useImageStore.getState().enqueuePortraitCandidates(7, 'initial');
+    expect(useImageStore.getState().portraitCandidates?.batch_id).toBe(9);
+    expect(useImageStore.getState().isGeneratingImage).toBe(true);
+    expect((global.fetch as jest.Mock).mock.calls.filter(c => c[1]?.method === 'POST')).toHaveLength(1);
+  });
+  it('stages a fresh batch while retaining the old selected portrait', async () => {
+    useImageStore.setState({ playerImages: images as any, playerImage: images[1] as any, selectedImageId: 22 });
+    (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ ...batch, mode: 'fresh', status: 'queued', completed_count: 0, slots: [0,1,2].map(slot_index => ({ slot_index, status: 'pending', image_id: null })) }));
+    await useImageStore.getState().regenerateFreshPlayerImage();
+    expect(global.fetch).toHaveBeenCalledWith('/api/images/character/candidates', expect.objectContaining({ body: JSON.stringify({ game_id: 7, mode: 'fresh' }) }));
+    expect(useImageStore.getState().playerImage?.image_id).toBe(22);
+  });
+  it('continues fetching images if a completed batch is ahead of the image list', async () => {
+    jest.useFakeTimers();
+    const complete = { ...batch, status: 'succeeded', completed_count: 3, slots: [11,22,33].map((image_id, slot_index) => ({ image_id, slot_index, status: 'ready' })) };
+    useImageStore.setState({ portraitCandidates: complete });
+    let reads = 0;
+    (global.fetch as jest.Mock).mockImplementation((url: string) => Promise.resolve(jsonResponse(
+      url.includes('/candidates') ? complete : url.includes('/selection') ? { game_id: 7, image_id: 22 } : { images: ++reads === 1 ? images.slice(0, 2) : images })));
+    try {
+      await useImageStore.getState().refreshPortraitCandidates(7);
+      await jest.advanceTimersByTimeAsync(3000);
+      expect(useImageStore.getState().playerImages).toHaveLength(3);
+      expect(reads).toBe(2);
+    } finally { useImageStore.getState().stopPortraitImagePolling(); jest.useRealTimers(); }
+  });
+  it('retries only the missing slots of the existing batch', async () => {
+    useImageStore.setState({ portraitCandidates: batch });
+    (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ ...batch, status: 'queued' }));
+    await useImageStore.getState().retryMissingPortraitSlots(9);
+    expect(global.fetch).toHaveBeenCalledWith('/api/images/character/candidates/9/retry', expect.objectContaining({ method: 'POST' }));
+    expect(useImageStore.getState().portraitCandidates?.completed_count).toBe(2);
+  });
 });

@@ -7,6 +7,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useCharacterCreation } from '@/hooks/useCharacterCreation';
 import { useCharacterStore, useGameStore } from '@/stores/useGameStore';
 import { useImageStore } from '@/stores/useImageStore';
+import { useSessionStore } from '@/stores/useSessionStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 import { INPUT_LIMITS } from '@/types/input-limits.generated';
@@ -47,7 +48,7 @@ function fetchCalled(url: string): boolean {
 
 // -- Store method spying --
 const GAME_METHODS = ['nextCreationStep', 'prevCreationStep', 'updateCharacterSetting', 'resetCreation', 'setGameSession'] as const;
-const IMAGE_METHODS = ['generatePlayerImage', 'regeneratePlayerImage', 'regenerateFreshPlayerImage'] as const;
+const IMAGE_METHODS = ['enqueuePortraitCandidates', 'generatePlayerImage', 'regeneratePlayerImage', 'regenerateFreshPlayerImage'] as const;
 
 type GameStoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (typeof GAME_METHODS)[number]>>;
 type ImageStoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useImageStore, (typeof IMAGE_METHODS)[number]>>;
@@ -97,6 +98,36 @@ describe('useCharacterCreation', () => {
   afterEach(() => {
     gameSpy.restore();
     imageSpy.restore();
+  });
+
+  it('enqueues the replaced story origin once when the world step is accepted', async () => {
+    useSessionStore.setState({ gameId: 7 });
+    useCharacterStore.setState({ playerName: 'Test', creationStep: 0, characterSettings: { story_origin: testOrigin } });
+    useGameStore.setState({ gameId: 7, creationStep: 0, playerName: 'Test', characterSettings: { story_origin: testOrigin } } as never);
+    (global.fetch as jest.Mock).mockImplementation((url: string) => Promise.resolve(jsonResponse(
+      url.includes('/story-origin') && url.includes('/games/') ? { character_settings: { story_origin: { ...testOrigin, revision: 2 }, world: {} } } :
+      url.includes('/story-origin') ? { ...testOrigin, revision: 2 } : {})));
+    const { result } = renderHook(() => useCharacterCreation());
+    await act(async () => { await result.current.handleGenerate('new origin'); });
+    await act(async () => { await result.current.handleAcceptAndNext(); });
+    expect(result.current.currentStepKey).toBe('world');
+    expect(result.current.gameId).toBe(7);
+    expect(result.current.playerName).toBe('Test');
+    await act(async () => { await result.current.handleAcceptAndNext(); });
+    await act(async () => { await result.current.handleAcceptAndNext(); });
+    expect(imageSpy.spies.enqueuePortraitCandidates).toHaveBeenCalledTimes(1);
+    expect(imageSpy.spies.enqueuePortraitCandidates).toHaveBeenCalledWith(7, 'initial');
+    expect(fetchBody('/api/games/7/character-settings')).toMatchObject({ character_settings: { world: {} } });
+    useSessionStore.setState({ gameId: null });
+  });
+
+  it('does not enqueue portraits when opening an old one-image game', async () => {
+    useGameStore.setState({ gameId: 7, creationStep: 3, playerName: 'Test', characterSettings: { family: {}, relationships: {}, traits: {} } } as never);
+    useImageStore.setState({ playerImages: [{ image_id: 11, image_url: 'old', game_id: 7 }] } as never);
+    renderHook(() => useCharacterCreation());
+    await act(async () => {});
+    expect(imageSpy.spies.enqueuePortraitCandidates).not.toHaveBeenCalled();
+    expect(imageSpy.spies.generatePlayerImage).not.toHaveBeenCalled();
   });
 
   // ===================== Initial State =====================
@@ -1312,6 +1343,8 @@ describe('useCharacterCreation', () => {
       });
 
       expect(gameSpy.spies.setGameSession).toHaveBeenCalledWith(50, '50');
+      expect(imageSpy.spies.enqueuePortraitCandidates).toHaveBeenCalledWith(50, 'initial');
+      expect(imageSpy.spies.enqueuePortraitCandidates.mock.invocationCallOrder[0]).toBeLessThan(gameSpy.spies.nextCreationStep.mock.invocationCallOrder[0]);
       expect(gameSpy.spies.nextCreationStep).toHaveBeenCalled();
     });
 

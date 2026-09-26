@@ -304,13 +304,18 @@ export function CompletionScreen({
                       ) : (
                         <RotateCcw />
                       )}
-                      完全重生成
+                      完全重生成（三张新形象）
                     </Button>
                   </div>
                 </div>
               )}
             </div>
           </section>
+
+          <div className="mt-4 space-y-2">
+            <Button variant="narrative" size="touch" onClick={onBack}>选择人物形象</Button>
+            <p className="text-xs text-[var(--text-secondary)]">完全重生成会生成三张新形象，约进行三次图片生成。可返回选择，选中新图后才切换当前形象。</p>
+          </div>
 
           <section className="mt-8 border-t border-[var(--border-default)] pt-6">
             {characterSettings.story_origin != null && (

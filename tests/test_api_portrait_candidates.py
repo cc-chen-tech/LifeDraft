@@ -48,3 +48,19 @@ def test_wrong_owner_rejected_for_create_read_retry(candidate_client):
 def test_legacy_game_has_no_batch_and_no_generation(candidate_client):
     client, game, _ = candidate_client
     assert client.get(f"/images/character/candidates?game_id={game.game_id}").json() is None
+
+
+def test_selection_read_response_matches_schema(candidate_client, db_session):
+    from src.database.models import Image, PortraitSelection
+    client, game, _ = candidate_client
+    path = f'/images/character/selection?game_id={game.game_id}'
+    assert client.get(path).json() is None
+    image = Image(game_id=game.game_id, image_type='character', entity_key='player_main',
+                  entity_name='主角', prompt_text='portrait', storage_path='portrait.png',
+                  is_active=True, is_primary=True)
+    db_session.add(image)
+    db_session.commit()
+    response = client.get(path)
+    assert response.status_code == 200
+    assert response.json() == {'game_id': game.game_id, 'image_id': image.image_id}
+    assert db_session.get(PortraitSelection, game.game_id) is None

@@ -822,3 +822,21 @@ def test_selection_revalidates_after_feedback_replaces_source(ready_three_slot_b
         assert row.image_id == job.image_id
         assert db.get(Image, row.image_id).is_active
         assert db.query(PortraitCandidateSlot).filter_by(image_id=row.image_id, status='ready').count() == 1
+
+
+def test_get_portrait_selection_restores_legacy_choice_and_checks_owner(db_session):
+    from src.api.routers.images import get_portrait_selection
+    game = create_owned_game(db_session)
+    assert get_portrait_selection(game.game_id, db_session, game.user_id) is None
+    first, second = add_two_active_portraits(db_session, game.game_id)
+    assert get_portrait_selection(game.game_id, db_session, game.user_id).image_id == first.image_id
+    db_session.add(PortraitSelection(game_id=game.game_id, image_id=second.image_id, is_user_selected=True))
+    db_session.commit()
+    assert get_portrait_selection(game.game_id, db_session, game.user_id).image_id == second.image_id
+    with pytest.raises(HTTPException) as exc:
+        get_portrait_selection(game.game_id, db_session, game.user_id + 1)
+    assert exc.value.status_code == 404
+
+
+def test_get_portrait_selection_requires_authentication(client):
+    assert client.get('/api/images/character/selection?game_id=1').status_code == 401
