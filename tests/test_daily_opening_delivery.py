@@ -99,6 +99,53 @@ def test_first_day_style_variance_is_safe_to_resume() -> None:
         )
 
 
+def test_failed_first_day_master_retry_accepts_style_variance_with_harness() -> None:
+    state = _first_day_state()
+    state["resume_view"] = {
+        "phase": "failed",
+        "failure": {"code": "RETRY_EXHAUSTED", "summary": "故事生成未能完成"},
+    }
+    client = MagicMock()
+    client.call.return_value = STYLE_VARIANT_STORY
+    generator = StoryGenerator(client, quality_level=QualityLevel.MASTER)
+    generator._harness_enabled = True
+    generator._soft_narrative_lengths = True
+    generator._validation_pipeline = MagicMock()
+    generator._validation_pipeline.validate.return_value = MagicMock(
+        passed=True,
+        score=95,
+        critical_failures=[],
+        high_warnings=[],
+        medium_notes=[],
+        low_notes=[],
+    )
+    generator._diagnostics = MagicMock()
+    options = MagicMock()
+    options.generate_options_only.return_value = GameEvent(
+        event_description=STYLE_VARIANT_STORY,
+        options=[EventOption(text="继续", effects={}) for _ in range(3)],
+    )
+    options.validate_options_consistency.return_value = []
+
+    with patch(
+        "src.ai.quick_validator.quick_validate_story",
+        return_value=QuickValidationResult(passed=True, issues=[], warnings=[]),
+    ):
+        event = generator.generate_round_event(
+            player_state=state,
+            character_settings={"name": "林岚"},
+            language="zh",
+            round_number=0,
+            round_context="",
+            option_generator=options,
+        )
+
+    assert event.event_description == STYLE_VARIANT_STORY
+    assert client.call.call_count == 1
+    generator._validation_pipeline.validate.assert_called_once()
+    options.generate_options_only.assert_called_once()
+
+
 def test_first_day_missing_protagonist_still_blocks_story_delivery() -> None:
     story = (
         "她想开一间社区书店，却还凑不齐租金。她决定先把账目理清。\n\n"
