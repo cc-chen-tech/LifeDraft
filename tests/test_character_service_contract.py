@@ -216,6 +216,34 @@ class TestGenerateCharacterCandidate:
         assert "棉质衬衫、T恤" not in prompt
         assert "街道、公园、室内、办公室、咖啡厅" not in prompt
 
+    def test_candidate_final_provider_prompt_sanitizes_scifi_era_description(self, db_session):
+        from src.ai.image_client import ImageClient
+
+        game_id, batch_id = candidate_batch(db_session)
+        client = ImageClient(api_key="test-key")
+        sent_prompts = []
+
+        def capture_provider_prompt(prompt, size, extra_params=None):
+            sent_prompts.append(prompt)
+            return b"portrait", prompt, "https://example.com/portrait.png"
+
+        client._generator.generate_image_with_url = capture_provider_prompt
+        service = CharacterImageService(db_session, image_client=client, storage_service=StubImageStorage())
+        service.generate_character_candidate(
+            game_id=game_id, name="小岚", description="现代护士，27岁",
+            era="2026年中国，人工智能与全息投影融入日常生活",
+            character_settings={"era": {"era_description": "现代城市"}},
+            direction=TEST_DIRECTIONS[1], batch_id=batch_id, slot_index=1,
+        )
+        assert len(sent_prompts) == 1
+        prompt = sent_prompts[0]
+        era_section = prompt[prompt.index("【时代背景】"):prompt.index("【外貌特征】")]
+        assert "2026" in era_section
+        assert "人工智能" not in era_section
+        assert "全息投影" not in era_section
+        assert "清瘦长脸" in prompt
+        assert "同一个人" not in prompt
+
 
 class FailingImageClient(StubImageClient):
     """ImageClient stub that raises on generate."""

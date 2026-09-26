@@ -124,7 +124,14 @@ class ImagePromptBuilder:
             构建好的prompt
         """
         # ★ 清洗 era 描述中的科幻暗示词，防止污染图像生成
-        safe_era = era.strip() if candidate_mode else self._sanitize_era_for_image(era)
+        if candidate_mode and len(era.strip()) < 5 and not any(
+            keyword in era for keyword in self._SCI_FI_ERA_KEYWORDS
+        ):
+            # The legacy sanitizer replaces short labels such as 明代 with a
+            # 2024 modern-city fallback. Keep those labels as supplied.
+            safe_era = era.strip()
+        else:
+            safe_era = self._sanitize_era_for_image(era)
 
         # ★ 消毒人物名称，防止 prompt 注入
         from src.ai.prompt_sanitizer import sanitize_persisted_player_name
