@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from typing import Any, Dict, List
 
 import pytest
 from fastapi.testclient import TestClient
+from fastapi import HTTPException
 
 from src.api.main import app
 from src.api.routers import character as character_router
@@ -80,6 +82,75 @@ def test_story_origin_short_json_does_not_consume_thinking_tokens() -> None:
     )
 
     assert result == {"revision": 1, **_candidate()}
+
+
+def test_story_origin_provider_call_has_timeout_without_truncation_recovery() -> None:
+    calls: List[Dict[str, Any]] = []
+
+    class RecordingGenerator:
+        def generate_completion_json(self, **kwargs: Any) -> Dict[str, Any]:
+            calls.append(kwargs)
+            return _candidate()
+
+    CharacterCreator(ai_generator=RecordingGenerator()).generate_story_origin(
+        player_name="林舟", life_vision="认真生活", previous_settings={}
+    )
+
+    assert len(calls) == 1
+    assert 0 < calls[0]["request_timeout"] <= 20
+    assert time.monotonic() < calls[0]["request_deadline"] <= time.monotonic() + 45
+    assert calls[0]["allow_truncation_recovery"] is False
+
+
+@pytest.mark.asyncio
+async def test_story_origin_route_rejects_when_generation_slots_are_full(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    semaphore = threading.BoundedSemaphore(1)
+    semaphore.acquire()
+    monkeypatch.setattr(character_router, "_story_origin_slots", semaphore)
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            await character_router.generate_story_origin(
+                GenerateStoryOriginRequest(player_name="林舟", life_vision="")
+            )
+        assert exc_info.value.status_code == 503
+    finally:
+        semaphore.release()
+
+
+@pytest.mark.asyncio
+async def test_story_origin_route_returns_timeout_while_worker_holds_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = threading.Event()
+    release = threading.Event()
+    semaphore = threading.BoundedSemaphore(1)
+
+    class BlockingCreator:
+        def __init__(self, language: str) -> None:
+            self.language = language
+
+        def generate_story_origin(self, **_: Any) -> Dict[str, Any]:
+            started.set()
+            release.wait(timeout=2)
+            return _candidate()
+
+    monkeypatch.setattr(character_router, "CharacterCreator", BlockingCreator)
+    monkeypatch.setattr(character_router, "_story_origin_slots", semaphore)
+    monkeypatch.setattr(character_router, "_STORY_ORIGIN_ROUTE_TIMEOUT_SECONDS", 0.05)
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            await character_router.generate_story_origin(
+                GenerateStoryOriginRequest(player_name="林舟", life_vision="")
+            )
+        assert started.is_set()
+        assert exc_info.value.status_code == 504
+        assert not semaphore.acquire(blocking=False)
+    finally:
+        release.set()
+    assert await asyncio.to_thread(semaphore.acquire, True, 1)
+    semaphore.release()
 
 
 @pytest.mark.asyncio

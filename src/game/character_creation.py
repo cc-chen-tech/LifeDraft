@@ -4,6 +4,7 @@ import json
 import logging
 import random
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from config.feature_flags import get_feature
@@ -449,8 +450,12 @@ class CharacterCreator:
             return validate_story_origin(deterministic_candidate)
 
         last_error: Optional[Exception] = None
+        deadline = time.monotonic() + 45.0
 
         for attempt in range(3):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
             try:
                 candidate = self.ai_generator.generate_completion_json(
                     prompt=prompt,
@@ -458,6 +463,9 @@ class CharacterCreator:
                     temperature=0.9,
                     max_tokens=2048,
                     thinking=False,
+                    allow_truncation_recovery=False,
+                    request_timeout=min(12.0, remaining),
+                    request_deadline=deadline,
                 )
                 if not isinstance(candidate, dict):
                     raise ValueError("invalid_story_origin")

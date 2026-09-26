@@ -1,6 +1,8 @@
 """Request-shape contracts for opt-in DeepSeek V4 thinking control."""
 
 import json
+import threading
+import time
 from collections.abc import Callable, Iterator
 from typing import Any, Dict, Optional
 
@@ -89,6 +91,71 @@ def _capture_transport(seen: list[dict[str, Any]]) -> httpx.MockTransport:
         return _completion_response(request, body)
 
     return httpx.MockTransport(handler)
+
+
+def test_json_generation_passes_timeout_to_provider_transport() -> None:
+    seen_timeouts: list[dict[str, float]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_timeouts.append(request.extensions["timeout"])
+        return _completion_response(
+            request, json.loads(request.content), content='{"ok": true}'
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        ai_client = _ai_client("deepseek-v4-flash", http_client)
+        generator = object.__new__(EventGenerator)
+        generator.ai_client = ai_client
+        result = generator.generate_completion_json(
+            prompt="one short JSON object",
+            request_timeout=7.5,
+            allow_truncation_recovery=False,
+        )
+
+    assert result == {"ok": True}
+    assert len(seen_timeouts) == 1
+    assert seen_timeouts[0]["read"] == 7.5
+
+
+def test_deadlined_json_call_waits_only_until_deadline_for_provider_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    semaphore = threading.Semaphore(1)
+    semaphore.acquire()
+    monkeypatch.setattr(AIClient, "_semaphore", semaphore)
+    with httpx.Client(transport=_capture_transport([])) as http_client:
+        client = _ai_client("deepseek-v4-flash", http_client)
+        started = time.monotonic()
+        try:
+            with pytest.raises(TimeoutError):
+                client.call_json(
+                    "system", "user", request_deadline=started + 0.02
+                )
+            assert time.monotonic() - started < 0.5
+        finally:
+            semaphore.release()
+
+
+def test_deadlined_json_call_disables_sdk_retries() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(503, json={"error": {"message": "busy"}}, request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = _ai_client("deepseek-v4-flash", http_client)
+        client.client = client.client.with_options(max_retries=2)
+        with pytest.raises(openai.APIStatusError):
+            client.call_json(
+                "system",
+                "user",
+                request_timeout=0.1,
+                request_deadline=time.monotonic() + 0.5,
+                allow_truncation_recovery=False,
+            )
+
+    assert len(requests) == 1
 
 
 def _ai_client(model: str, http_client: httpx.Client) -> AIClient:

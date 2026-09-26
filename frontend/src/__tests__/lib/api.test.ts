@@ -195,6 +195,14 @@ describe('gameplay', () => {
 
 // ─── character API contract verification ────────────────────────
 describe('character', () => {
+  it('returns one provider failure without replaying generation', async () => {
+    global.fetch = jest.fn(() => mockFetchResponse({ detail: 'unavailable' }, 500));
+
+    await expect(api.character.generateStoryOrigin({ player_name: '林舟' })).rejects.toThrow();
+
+    expect((global.fetch as jest.Mock).mock.calls).toHaveLength(1);
+  }, 15000);
+
   it('stops waiting when story-origin generation exceeds its deadline', async () => {
     jest.useFakeTimers();
     try {

@@ -12,6 +12,7 @@ import logging
 import re
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
@@ -34,6 +35,21 @@ logger = logging.getLogger(__name__)
 
 # ★ max_tokens 自动降级配置
 MAX_TOKENS_FALLBACK_LEVELS = [8000, 6000, 4000]  # 降级序列
+
+
+@contextmanager
+def _provider_slot(semaphore: threading.Semaphore, deadline: Optional[float]) -> Iterator[None]:
+    if deadline is None:
+        with semaphore:
+            yield
+        return
+    if not semaphore.acquire(timeout=max(0.0, deadline - time.monotonic())):
+        raise TimeoutError("AI provider queue deadline exceeded")
+    try:
+        yield
+    finally:
+        semaphore.release()
+
 
 # ★ 模型降级链默认备选模型
 _DEFAULT_FALLBACK_MODELS: List[str] = [
@@ -268,6 +284,7 @@ class AIClient:
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
         request_timeout: Optional[float] = None,
+        request_deadline: Optional[float] = None,
         usage_callback: Optional[Callable[[AIUsage], None]] = None,
         thinking: Optional[bool] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
@@ -301,7 +318,7 @@ class AIClient:
             return e2e_response
 
         # C-04: 使用信号量限制并发调用
-        with self._semaphore:
+        with _provider_slot(self._semaphore, request_deadline):
             if generation_tracker is not None:
                 budget_check_started_at = time.monotonic()
                 try:
@@ -319,7 +336,7 @@ class AIClient:
                     )
                     raise
             # ★ 模型降级链：开启时自动切换备选模型
-            if get_feature("model_fallback"):
+            if request_deadline is None and get_feature("model_fallback"):
                 return self._call_with_model_fallback(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
@@ -347,6 +364,7 @@ class AIClient:
                 frequency_penalty=frequency_penalty,
                 presence_penalty=presence_penalty,
                 request_timeout=request_timeout,
+                request_deadline=request_deadline,
                 usage_callback=usage_callback,
                 thinking=thinking,
                 generation_tracker=generation_tracker,
@@ -441,6 +459,7 @@ class AIClient:
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
         request_timeout: Optional[float] = None,
+        request_deadline: Optional[float] = None,
         usage_callback: Optional[Callable[[AIUsage], None]] = None,
         thinking: Optional[bool] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
@@ -459,7 +478,10 @@ class AIClient:
 
         # ★ max_tokens 自动降级重试逻辑
         current_max_tokens = max_tokens
-        fallback_tokens = [t for t in MAX_TOKENS_FALLBACK_LEVELS if t < max_tokens]
+        fallback_tokens = (
+            [t for t in MAX_TOKENS_FALLBACK_LEVELS if t < max_tokens]
+            if request_deadline is None else []
+        )
         tokens_to_try = [max_tokens] + fallback_tokens
 
         last_error = None
@@ -476,6 +498,11 @@ class AIClient:
                 if attempt > 0 and generation_tracker is not None:
                     generation_tracker.consume_retry()
                 effective_request_timeout = request_timeout
+                if request_deadline is not None:
+                    remaining = request_deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError("AI provider deadline exceeded")
+                    effective_request_timeout = min(request_timeout or remaining, remaining)
                 if generation_tracker is not None:
                     generation_tracker.assert_before_provider_call()
                     remaining = generation_tracker.remaining_seconds
@@ -486,6 +513,8 @@ class AIClient:
                             else remaining
                         )
                 client = self.require_openai_client()
+                if request_deadline is not None:
+                    client = client.with_options(max_retries=0)
                 if stream_callback:
                     # ★ 构建额外参数（仅在非零时传入，避免不支持的API报错）
                     extra_params: Dict[str, Any] = {}
@@ -695,6 +724,8 @@ class AIClient:
         thinking: Optional[bool] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
         allow_truncation_recovery: bool = True,
+        request_timeout: Optional[float] = None,
+        request_deadline: Optional[float] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Call AI and parse response as JSON.
@@ -721,6 +752,8 @@ class AIClient:
             thinking=thinking,
             generation_tracker=generation_tracker,
             _allow_truncation_recovery=allow_truncation_recovery,
+            request_timeout=request_timeout,
+            request_deadline=request_deadline,
         )
         parsed = extract_json(content)
         if parsed is None:

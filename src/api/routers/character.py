@@ -22,6 +22,8 @@ from src.observability.request_context import bind_current_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+_story_origin_slots = threading.BoundedSemaphore(4)
+_STORY_ORIGIN_ROUTE_TIMEOUT_SECONDS = 50
 
 # ★ 开场故事防重复缓存：{content_hash: {"generating": bool, "result": str, "timestamp": float}}
 # P0-正确性修复：key 从 player_name 改为请求内容哈希，
@@ -108,14 +110,29 @@ async def generate_setting(req: GenerateSettingRequest):
 async def generate_story_origin(req: GenerateStoryOriginRequest):
     """Generate one validated date, starting age, and temporal context."""
     creator = CharacterCreator(language=req.language)
+
+    def generate_with_slot():
+        if not _story_origin_slots.acquire(blocking=False):
+            raise HTTPException(status_code=503, detail="story_origin_busy")
+        try:
+            return creator.generate_story_origin(
+                player_name=req.player_name,
+                life_vision=req.life_vision,
+                previous_settings=req.previous_settings,
+                feedback=req.feedback,
+            )
+        finally:
+            _story_origin_slots.release()
+
     try:
-        return await asyncio.to_thread(
-            creator.generate_story_origin,
-            player_name=req.player_name,
-            life_vision=req.life_vision,
-            previous_settings=req.previous_settings,
-            feedback=req.feedback,
+        return await asyncio.wait_for(
+            asyncio.to_thread(generate_with_slot),
+            timeout=_STORY_ORIGIN_ROUTE_TIMEOUT_SECONDS,
         )
+    except HTTPException:
+        raise
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="story_origin_generation_timeout") from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=422,

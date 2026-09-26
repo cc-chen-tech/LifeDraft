@@ -92,6 +92,19 @@ function validateRelationshipCandidate(
   };
 }
 
+async function retryBackgroundGeneration<T>(request: () => Promise<T>): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    const status = (error as { status?: number } | null)?.status;
+    if ((error as Error | null)?.name === "AbortError" || status === 422 || (status != null && status < 500)) {
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return request();
+  }
+}
+
 export type ToastType = { type: "success" | "error"; message: string } | null;
 export type PresetSaveStatus = "idle" | "saving" | "error";
 
@@ -242,7 +255,14 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const activeGenerationRef = useRef<AbortController | null>(null);
-  useEffect(() => () => activeGenerationRef.current?.abort(), []);
+  const activeGenerationPromiseRef = useRef<Promise<Record<string, unknown>> | null>(null);
+  const generationRunIdRef = useRef(0);
+  const isMountedRef = useRef(true);
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    generationRunIdRef.current += 1;
+    activeGenerationRef.current?.abort();
+  }, []);
   const [feedback, setFeedback] = useState("");
   const [showPresetSheet, setShowPresetSheet] = useState(false);
   const [presetName, setPresetName] = useState("");
@@ -285,8 +305,8 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   const invalidateOriginGeneration = useCallback(() => {
     basicInfoVersionRef.current += 1;
     if (currentStepKey !== "story_origin") return;
-    activeGenerationRef.current?.abort();
-    activeGenerationRef.current = null;
+    // The server keeps working after a browser abort. Wait for that request to
+    // settle before starting another one for the edited input.
     setIsGenerating(false);
     autoGenTriggeredRef.current[currentStepKey] = false;
     setGeneratedContent(null);
@@ -325,33 +345,6 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     }
   }, []);
 
-  // Retry wrapper
-  const withRetry = async <T,>(
-    fn: () => Promise<T>,
-    maxRetries: number = 3,
-    delayMs: number = 1000
-  ): Promise<T> => {
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        return await fn();
-      } catch (err) {
-        lastError = err;
-        console.warn(`Attempt ${attempt}/${maxRetries} failed:`, err);
-        if ((err as Error | null)?.name === "AbortError") {
-          throw err;
-        }
-        if ((err as { status?: number } | null)?.status === 422) {
-          throw err;
-        }
-        if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, delayMs * attempt));
-        }
-      }
-    }
-    throw lastError;
-  };
-
   const handleGenerate = useCallback(
     async (fb?: string) => {
       if (
@@ -360,16 +353,32 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       ) return;
       const requestInput = { currentStepKey, playerName, lifeVision };
       const requestBasicInfoVersion = basicInfoVersionRef.current;
-      activeGenerationRef.current?.abort();
-      const controller = new AbortController();
-      activeGenerationRef.current = controller;
+      const runId = ++generationRunIdRef.current;
       autoGenTriggeredRef.current[currentStepKey] = true;
       setIsGenerating(true);
       setGeneratedContent(null);
       setGenerationError(null);
 
+      const previousRequest = activeGenerationPromiseRef.current;
+      if (previousRequest) {
+        try {
+          await previousRequest;
+        } catch {
+          // The previous result belongs to older input and is ignored below.
+        }
+      }
+      if (
+        !isMountedRef.current ||
+        runId !== generationRunIdRef.current ||
+        requestBasicInfoVersion !== basicInfoVersionRef.current
+      ) return;
+
+      const controller = new AbortController();
+      activeGenerationRef.current = controller;
+      setIsGenerating(true);
+
       try {
-        const result = await withRetry<Record<string, unknown>>(() =>
+        const request: Promise<Record<string, unknown>> =
           currentStepKey === "story_origin"
             ? api.character.generateStoryOrigin({
                 player_name: playerName,
@@ -385,8 +394,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
             previous_settings: characterSettings,
             feedback: fb || null,
             language,
-          }, { signal: controller.signal })
-        );
+          }, { signal: controller.signal });
+        activeGenerationPromiseRef.current = request;
+        const result = await request;
         const latestState = useGameStore.getState();
         const latestInput = {
           currentStepKey: CREATION_STEPS[latestState.creationStep],
@@ -394,6 +404,8 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
           lifeVision: latestState.lifeVision,
         };
         if (
+          !isMountedRef.current ||
+          runId !== generationRunIdRef.current ||
           requestBasicInfoVersion !== basicInfoVersionRef.current ||
           latestInput.currentStepKey !== requestInput.currentStepKey ||
           latestInput.playerName !== requestInput.playerName ||
@@ -403,14 +415,20 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         }
         setGeneratedContent(result);
       } catch (err) {
-        if (controller.signal.aborted) return;
-        console.error("Generation failed after retries:", err);
+        if (
+          !isMountedRef.current ||
+          controller.signal.aborted ||
+          runId !== generationRunIdRef.current ||
+          requestBasicInfoVersion !== basicInfoVersionRef.current
+        ) return;
+        console.error("Generation failed:", err);
         setGenerationError("生成失败或等待超时，请重试");
         showToast("error", "生成失败，请重试");
       } finally {
         if (activeGenerationRef.current === controller) {
           activeGenerationRef.current = null;
-          setIsGenerating(false);
+          activeGenerationPromiseRef.current = null;
+          if (isMountedRef.current) setIsGenerating(false);
         }
       }
     },
@@ -532,8 +550,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
           for (let pi = 0; pi < 3; pi++) {
             console.log(`[runAutoGeneration] Generating relationship person ${pi + 1}/3...`);
             setAutoGenLabel("生成关键人物");
-            const person = await withRetry(() =>
-              api.character.generateRelationship({
+            const person = await retryBackgroundGeneration(() => api.character.generateRelationship({
                 player_name: playerName,
                 life_vision: lifeVision,
                 previous_settings: settings,
@@ -541,35 +558,30 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
                 person_index: pi,
                 total_needed: 3,
                 language,
-              })
-            );
+              }));
             people.push(person);
           }
           console.log(`[runAutoGeneration] Generating relationships summary...`);
           setAutoGenLabel("整理人际关系");
-          const summaryResult = await withRetry(() =>
-            api.character.generateRelationshipsSummary({
+          const summaryResult = await retryBackgroundGeneration(() => api.character.generateRelationshipsSummary({
               player_name: playerName,
               life_vision: lifeVision,
               previous_settings: settings,
               key_people: people,
               language,
-            })
-          );
+            }));
           result = {
             relationships_description: (summaryResult as Record<string, unknown>).relationships_description || "",
             key_people: people,
           };
         } else {
-          result = await withRetry(() =>
-            api.character.generateSetting({
+          result = await retryBackgroundGeneration(() => api.character.generateSetting({
               setting_type: step,
               player_name: playerName,
               life_vision: lifeVision,
               previous_settings: settings,
               language,
-            })
-          );
+            }));
         }
 
         const commitOriginRevision = (
@@ -579,7 +591,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         settings[step] = result;
         updateCharacterSetting(step, result);
       } catch (err) {
-        console.error(`Auto-generate ${step} failed after retries:`, err);
+        console.error(`Auto-generate ${step} failed:`, err);
         failedSteps.push(step);
       }
     }

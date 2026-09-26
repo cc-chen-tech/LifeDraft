@@ -65,6 +65,7 @@ function handle401Redirect() {
 
 export function shouldRetryApiResponse(status: number, url: string, attemptIndex: number): boolean {
   if (url.includes('/voice-reading/')) return false;
+  if (isCharacterGenerationMutation(url)) return false;
   if (isChoiceMutation(url)) return false;
   if (isImageGenerationMutation(url)) return false;
   if (status === 502 || status === 504) return true;
@@ -76,6 +77,7 @@ export function shouldRetryApiResponse(status: number, url: string, attemptIndex
 
 export function shouldRetryApiError(url: string, attemptIndex: number, retries: number): boolean {
   if (url.includes('/voice-reading/')) return false;
+  if (isCharacterGenerationMutation(url)) return false;
   if (isChoiceMutation(url)) return false;
   if (isImageGenerationMutation(url)) return false;
   return attemptIndex < retries - 1;
@@ -83,6 +85,15 @@ export function shouldRetryApiError(url: string, attemptIndex: number, retries: 
 
 function isChoiceMutation(url: string): boolean {
   return url.endsWith('/choice-sync') || url.endsWith('/custom-choice-sync');
+}
+
+function isCharacterGenerationMutation(url: string): boolean {
+  return [
+    '/character/story-origin',
+    '/character/setting',
+    '/character/relationship',
+    '/character/relationships-summary',
+  ].includes(url);
 }
 
 function isImageGenerationMutation(url: string): boolean {
