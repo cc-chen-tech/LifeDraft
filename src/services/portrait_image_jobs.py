@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 ACTIVE_JOB_STATUSES = ("queued", "running")
 _job_lock = threading.Lock()
 _scheduled_job_ids: set[int] = set()
+_reschedule_requested_ids: set[int] = set()
 
 
 def _current_origin_revision(db: Session, game_id: int) -> Optional[int]:
@@ -269,9 +270,12 @@ def run_portrait_image_job(
 
 
 def schedule_portrait_image_job(job_id: int) -> None:
-    """Submit a job once; persistence keeps it recoverable if submission is interrupted."""
+    """Coalesce deliveries without dropping a retry during worker cleanup."""
     with _job_lock:
         if job_id in _scheduled_job_ids:
+            # A terminal job may already have been committed back to queued
+            # while the previous callback still owns its scheduling marker.
+            _reschedule_requested_ids.add(job_id)
             return
         _scheduled_job_ids.add(job_id)
 
@@ -281,8 +285,21 @@ def schedule_portrait_image_job(job_id: int) -> None:
         finally:
             with _job_lock:
                 _scheduled_job_ids.discard(job_id)
+                reschedule = job_id in _reschedule_requested_ids
+                _reschedule_requested_ids.discard(job_id)
+            if reschedule:
+                # Submit outside the lock. If another caller wins this handoff,
+                # it receives the marker and our request is coalesced again.
+                # The persisted job claim prevents extra provider execution.
+                schedule_portrait_image_job(job_id)
 
-    get_image_thread_pool().submit(bind_current_context(_run))
+    try:
+        get_image_thread_pool().submit(bind_current_context(_run))
+    except Exception:
+        with _job_lock:
+            _scheduled_job_ids.discard(job_id)
+            _reschedule_requested_ids.discard(job_id)
+        raise
 
 
 def recover_pending_portrait_image_jobs() -> list[int]:

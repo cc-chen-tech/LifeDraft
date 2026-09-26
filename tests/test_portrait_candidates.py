@@ -410,3 +410,46 @@ def test_dispatch_and_startup_recovery_resume_candidate_slots(batch_with_two_rea
     assert scheduled == [ids[2]]
     jobs.run_portrait_image_job(ids[2], session_factory=Session, image_service_factory=fake_provider)
     assert fake_provider.generated_slot_indices == [2]
+
+
+def test_retry_after_terminal_commit_before_scheduler_cleanup_is_dispatched(
+    batch_setup, fake_provider, monkeypatch,
+):
+    """A retry accepted while the old callback is unwinding must not be lost."""
+    from threading import Event
+    import src.services.portrait_image_jobs as jobs
+    Session, ids = batch_setup
+    terminal_committed, allow_cleanup, retry_finished = Event(), Event(), Event()
+    fake_provider.fail = {1}
+    calls = []
+    real_run = jobs.run_portrait_image_job
+
+    def paused_worker(job_id):
+        calls.append(job_id)
+        real_run(job_id, session_factory=Session, image_service_factory=fake_provider)
+        if len(calls) == 1:
+            terminal_committed.set()
+            assert allow_cleanup.wait(timeout=5)
+        else:
+            retry_finished.set()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        monkeypatch.setattr(jobs, "get_image_thread_pool", lambda: pool)
+        monkeypatch.setattr(jobs, "run_portrait_image_job", paused_worker)
+        jobs.schedule_portrait_image_job(ids[2])
+        try:
+            assert terminal_committed.wait(timeout=5)
+            with Session() as db:
+                state = candidate_batch_state(db, ids[1], ids[0])
+                assert state.status == "partial_failed"
+                assert state.completed_count == 2
+                retry_candidate_batch(db, state.batch_id, ids[0])
+            fake_provider.fail = set()
+            jobs.schedule_portrait_image_job(ids[2])
+        finally:
+            allow_cleanup.set()
+        assert retry_finished.wait(timeout=5), "accepted retry was stranded in queued state"
+    assert calls == [ids[2], ids[2]]
+    assert fake_provider.generated_slot_indices == [0, 1, 2, 1]
+    with Session() as db:
+        assert candidate_batch_state(db, ids[1], ids[0]).status == "succeeded"
