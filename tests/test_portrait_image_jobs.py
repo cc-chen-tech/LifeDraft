@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from sqlalchemy.orm import sessionmaker
 
 import src.services.portrait_image_jobs as portrait_jobs
-from src.database.models import Game, PortraitImageGenerationJob, User
+from src.database.models import Game, GameState, Image, PortraitImageGenerationJob, User
 from src.services.portrait_image_jobs import (
     PortraitImageJobService,
     recover_pending_portrait_image_jobs,
@@ -143,11 +143,19 @@ def test_worker_runs_portrait_regeneration_in_background(temp_db_file, operation
     Session = sessionmaker(bind=engine)
     setup_db = Session()
     user, game = _game(setup_db)
+    source = Image(
+        game_id=game.game_id, image_type="character", entity_name="林见微",
+        entity_key="player_main", prompt_text="old", storage_path="old.png", is_active=True,
+    )
+    setup_db.add(source)
+    setup_db.commit()
+    game_id = game.game_id
+    source_id = source.image_id
     request = {
         "game_id": game.game_id,
         "entity_key": "player_main",
         "operation": operation,
-        "source_image_id": 17,
+        "source_image_id": source_id,
         "feedback": "短发",
         "new_description": "29岁古装人物",
         "use_deepseek_prompt": False,
@@ -156,29 +164,110 @@ def test_worker_runs_portrait_regeneration_in_background(temp_db_file, operation
     job_id = job.job_id
     setup_db.close()
 
-    generated_image = MagicMock(image_id=42)
+    deleted_paths = []
 
     class FakeImageService:
-        def __init__(self, _db):
-            pass
+        def __init__(self, db):
+            self.db = db
 
-        def regenerate_image(self, *, image_id, feedback, new_description):
+        def candidate(self):
+            image = Image(
+                game_id=game_id, image_type="character", entity_name="林见微",
+                entity_key="player_main", prompt_text="new", storage_path="new.png",
+                is_active=False,
+            )
+            self.db.add(image)
+            self.db.commit()
+            return [image]
+
+        def regenerate_image(self, *, image_id, feedback, new_description, defer_activation):
             assert operation == "regenerate"
-            assert (image_id, feedback, new_description) == (17, "短发", "29岁古装人物")
-            return [generated_image]
+            assert (image_id, feedback, new_description) == (source_id, "短发", "29岁古装人物")
+            assert defer_activation is True
+            return self.candidate()
 
-        def regenerate_fresh_image(self, *, image_id, use_deepseek_prompt):
+        def regenerate_fresh_image(self, *, image_id, use_deepseek_prompt, defer_activation):
             assert operation == "regenerate_fresh"
-            assert image_id == 17
+            assert image_id == source_id
             assert use_deepseek_prompt is False
-            return [generated_image]
+            assert defer_activation is True
+            return self.candidate()
+
+        def delete_image_files(self, images):
+            deleted_paths.extend(image.storage_path for image in images)
 
     run_portrait_image_job(job_id, session_factory=Session, image_service_factory=FakeImageService)
 
     verify_db = Session()
     completed = verify_db.get(PortraitImageGenerationJob, job_id)
     assert completed.status == "succeeded"
-    assert completed.image_id == 42
+    assert verify_db.get(Image, source_id).is_active is False
+    assert verify_db.get(Image, completed.image_id).is_active is True
+    assert deleted_paths == ["old.png"]
+    verify_db.close()
+
+
+@pytest.mark.parametrize("initial_revision", [None, 1])
+def test_superseded_regeneration_does_not_replace_a_newer_portrait(temp_db_file, initial_revision):
+    engine, _ = temp_db_file
+    Session = sessionmaker(bind=engine)
+    setup_db = Session()
+    user, game = _game(setup_db)
+    if initial_revision is not None:
+        game.initial_state = {"character_settings": {"story_origin": {"revision": initial_revision}}}
+    source = Image(
+        game_id=game.game_id, image_type="character", entity_name="林见微",
+        entity_key="player_main", prompt_text="old", storage_path="old.png", is_active=True,
+    )
+    setup_db.add(source)
+    setup_db.commit()
+    game_id, source_id = game.game_id, source.image_id
+    job, _ = PortraitImageJobService(setup_db).enqueue(user.user_id, {
+        "game_id": game_id, "entity_key": "player_main", "operation": "regenerate",
+        "source_image_id": source_id,
+    })
+    job_id = job.job_id
+    setup_db.close()
+    deleted_paths = []
+    image_ids = {}
+
+    class FakeImageService:
+        def __init__(self, db):
+            self.db = db
+
+        def regenerate_image(self, *, image_id, feedback, new_description, defer_activation):
+            assert image_id == source_id
+            assert defer_activation is True
+            candidate = Image(
+                game_id=game_id, image_type="character", entity_name="林见微",
+                entity_key="player_main", prompt_text="stale", storage_path="stale.png",
+                is_active=False,
+            )
+            newer = Image(
+                game_id=game_id, image_type="character", entity_name="林见微",
+                entity_key="player_main", prompt_text="current", storage_path="current.png",
+                is_active=True,
+            )
+            self.db.add_all([candidate, newer])
+            self.db.get(Image, source_id).is_active = False
+            self.db.add(GameState(
+                game_id=game_id, week=0, age=28,
+                state_json={"character_settings": {"story_origin": {"revision": (initial_revision or 0) + 1}}},
+            ))
+            self.db.commit()
+            image_ids.update(candidate=candidate.image_id, newer=newer.image_id)
+            return [candidate]
+
+        def delete_image_files(self, images):
+            deleted_paths.extend(image.storage_path for image in images)
+
+    run_portrait_image_job(job_id, session_factory=Session, image_service_factory=FakeImageService)
+
+    verify_db = Session()
+    assert verify_db.get(PortraitImageGenerationJob, job_id).status == "failed"
+    assert verify_db.get(Image, image_ids["newer"]).is_active is True
+    assert verify_db.get(Image, image_ids["candidate"]).is_active is False
+    assert deleted_paths == ["stale.png"]
     verify_db.close()
 
 

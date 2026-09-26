@@ -613,3 +613,28 @@ class TestRegenerateDeletesDeactivatedFiles:
         db_session.expire_all()
         assert db_session.get(ImageModel, source_id).is_active is True
         assert storage.deleted_paths == []
+
+    @pytest.mark.parametrize("fresh", [False, True])
+    def test_deferred_regeneration_keeps_the_current_portrait(self, db_session, fresh):
+        storage = StubImageStorage()
+        service = CharacterImageService(
+            db_session, image_client=StubImageClient(), storage_service=storage,
+        )
+        first = service.generate_character_image(
+            game_id=1, name="deferred", description="test", entity_key="player_main",
+        )
+        source_id = first[0].image_id
+
+        if fresh:
+            candidates = service.regenerate_fresh_image(
+                image_id=source_id, use_deepseek_prompt=False, defer_activation=True,
+            )
+        else:
+            candidates = service.regenerate_image(
+                image_id=source_id, defer_activation=True,
+            )
+
+        db_session.expire_all()
+        assert db_session.get(ImageModel, source_id).is_active is True
+        assert db_session.get(ImageModel, candidates[0].image_id).is_active is False
+        assert storage.deleted_paths == []

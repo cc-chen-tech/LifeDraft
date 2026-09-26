@@ -63,6 +63,7 @@ class CharacterImageService:
         feedback: Optional[str] = None,
         reference_image_url: Optional[str] = None,
         keep_old_active: bool = False,
+        candidate_only: bool = False,
     ) -> List[ImageModel]:
         """
         生成人物全身像图片（保证人物一致性）
@@ -79,6 +80,7 @@ class CharacterImageService:
             feedback: 用户反馈
             reference_image_url: 参考图片URL
             keep_old_active: 是否保持旧图片活跃（用于重新生成时避免闪烁）
+            candidate_only: 保存未启用的候选图，等待后台任务确认后切换
 
         Returns:
             Image模型实例列表
@@ -89,7 +91,7 @@ class CharacterImageService:
 
         # ★ 修复：如果 keep_old_active=True，不在生成前停用旧图片
         # 这样可以避免图片生成过程中的"空窗期"
-        if not keep_old_active:
+        if not (keep_old_active or candidate_only):
             # 停用该实体的所有旧图片
             self.db.query(ImageModel).filter(
                 ImageModel.game_id == game_id,
@@ -174,7 +176,7 @@ class CharacterImageService:
                     storage_type=storage_type,
                     metadata_json=merged_metadata,
                     version=1,
-                    is_active=True,
+                    is_active=not candidate_only,
                     is_primary=is_primary,
                     primary_image_id=None,
                 )
@@ -219,6 +221,7 @@ class CharacterImageService:
         new_description: Optional[str] = None,
         build_description_func: Optional[Callable[[Dict[str, Any]], str]] = None,
         extract_era_func: Optional[Callable[[Dict[str, Any]], Optional[str]]] = None,
+        defer_activation: bool = False,
     ) -> List[ImageModel]:
         """
         重新生成图片（保持人物一致性）
@@ -281,7 +284,11 @@ class CharacterImageService:
                 feedback=feedback,
                 reference_image_url=reference_url,
                 keep_old_active=True,
+                candidate_only=defer_activation,
             )
+
+            if defer_activation:
+                return new_images
 
             # ★ 新图片生成成功后，停用旧图片
             new_image_ids = [img.image_id for img in new_images]
@@ -340,6 +347,7 @@ class CharacterImageService:
         build_description_func: Optional[Callable[[Dict[str, Any]], str]] = None,
         extract_era_func: Optional[Callable[[Dict[str, Any]], Optional[str]]] = None,
         use_deepseek_prompt: bool = True,
+        defer_activation: bool = False,
     ) -> List[ImageModel]:
         """
         完全重新生成图片（抛弃历史修改）
@@ -407,7 +415,11 @@ class CharacterImageService:
                 feedback=None,
                 reference_image_url=None,
                 keep_old_active=True,
+                candidate_only=defer_activation,
             )
+
+            if defer_activation:
+                return new_images
 
             new_image_ids = [img.image_id for img in new_images]
             if original.entity_key:

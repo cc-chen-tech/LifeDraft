@@ -239,6 +239,17 @@ export const useImageStore = create<ImageState>()(
         if (job.status === "succeeded") {
           clearPortraitJobPollTimer();
           await get().loadPlayerImages(gameId);
+          if (activePortraitJobGameId !== gameId) return;
+          if (!get().playerImages.some((image) => image.image_id === job.image_id)) {
+            set({ isGeneratingImage: true, imageGenerationError: null });
+            portraitJobPollTimer = setTimeout(() => {
+              portraitJobPollTimer = null;
+              if (activePortraitJobGameId === gameId) {
+                void get().refreshPortraitImageJob(gameId);
+              }
+            }, PORTRAIT_JOB_POLL_INTERVAL_MS);
+            return;
+          }
           set({ isGeneratingImage: false, imageGenerationError: null, imageFeedback: "" });
           return;
         }

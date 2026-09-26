@@ -5,6 +5,7 @@
 
 import { useImageStore } from '@/stores/useImageStore';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
+import api from '@/lib/api';
 
 describe('useImageStore', () => {
   beforeEach(() => {
@@ -204,6 +205,35 @@ describe('useImageStore', () => {
           imageGenerationError: null,
           playerImages: [{ image_id: 42, image_url: 'url42', entity_key: 'player_main' }],
         });
+      });
+
+      it('retries image retrieval after a successful job when the image list fails once', async () => {
+        jest.useFakeTimers();
+        const oldImage = { image_id: 1, game_id: 1, image_url: 'old', entity_key: 'player_main' };
+        const newImage = { image_id: 42, game_id: 1, image_url: 'new', entity_key: 'player_main' };
+        useImageStore.setState({ playerImages: [oldImage] as any, isGeneratingImage: true });
+        const jobSpy = jest.spyOn(api.images, 'getLatestCharacterPortraitJob').mockResolvedValue({
+          job_id: 9, game_id: 1, status: 'succeeded', image_id: 42, attempt_count: 1,
+        });
+        const imageSpy = jest.spyOn(api.images, 'listByGame')
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+          .mockResolvedValueOnce({ images: [newImage], total: 1 });
+
+        try {
+          await useImageStore.getState().refreshPortraitImageJob(1);
+          expect(useImageStore.getState().playerImages).toEqual([oldImage]);
+          expect(useImageStore.getState().isGeneratingImage).toBe(true);
+
+          await jest.advanceTimersByTimeAsync(3_000);
+          expect(imageSpy).toHaveBeenCalledTimes(2);
+          expect(useImageStore.getState().playerImages).toEqual([newImage]);
+          expect(useImageStore.getState().isGeneratingImage).toBe(false);
+        } finally {
+          useImageStore.getState().stopPortraitImagePolling();
+          jobSpy.mockRestore();
+          imageSpy.mockRestore();
+          jest.useRealTimers();
+        }
       });
 
       it('stores a safe background provider failure and allows a retry', async () => {
