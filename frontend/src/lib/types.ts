@@ -421,6 +421,35 @@ export interface GameListItem {
   created_at?: string;
 }
 
+export interface OwnedPublicStory {
+  game_id: number;
+  title: string;
+  chapter_count: number;
+  can_publish: boolean;
+  enabled: boolean;
+  public_id: string | null;
+  updated_at: string | null;
+}
+
+export interface PublicStoryCard {
+  public_id: string;
+  title: string;
+  author_name: string;
+  chapter_count: number;
+  excerpt: string;
+  updated_at: string | null;
+}
+
+export interface PublicStoryList {
+  items: PublicStoryCard[];
+  has_more: boolean;
+  next_offset: number;
+}
+
+export interface PublicStory extends PublicStoryCard {
+  chapters: Array<{ number: number; date: string | null; text: string }>;
+}
+
 export interface PresetInfo {
   preset_id: number;
   preset_name?: string;

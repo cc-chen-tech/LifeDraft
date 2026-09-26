@@ -2,6 +2,26 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+.plaza-prose p + p,
+.plaza-prose ul + p,
+.plaza-prose p + ul,
+.plaza-prose blockquote + p {
+  margin-top: 1.35em;
+}
+
+.plaza-prose ul,
+.plaza-prose ol {
+  padding-left: 1.5em;
+  margin-top: 1em;
+  list-style: revert;
+}
+
+.plaza-prose blockquote {
+  border-left: 2px solid var(--border-strong);
+  padding-left: 1.2em;
+  color: var(--text-secondary);
+}
+
 @font-face {
   font-family: "Spline Sans Variable";
   font-style: normal;

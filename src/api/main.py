@@ -28,6 +28,7 @@ from src.api.routers import (
     gameplay,
     games,
     images,
+    plaza,
     presets,
     story,
     voice_reading,
@@ -316,6 +317,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ---- Register routers ----
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(games.router, prefix="/api/games", tags=["Games"])
+app.include_router(plaza.router, prefix="/api/plaza", tags=["Plaza"])
 app.include_router(character.router, prefix="/api/character", tags=["Character"])
 app.include_router(presets.router, prefix="/api/presets", tags=["Presets"])
 app.include_router(gameplay.router, prefix="/api/games", tags=["Gameplay"])

@@ -48,6 +48,15 @@ function createProps(overrides: Partial<PlayToolsProps> = {}): PlayToolsProps {
 }
 
 describe("PlayTools", () => {
+  it("opens sharing management from the game tools", async () => {
+    const user = userEvent.setup();
+    const onShare = jest.fn();
+    render(<PlayTools {...createProps({ onShare })} />);
+    await user.click(screen.getByRole("button", { name: "打开工具" }));
+    await user.click(within(screen.getByRole("dialog", { name: "游戏工具" })).getByRole("button", { name: "分享我的故事" }));
+    expect(onShare).toHaveBeenCalledTimes(1);
+  });
+
   it("offers one desktop tools trigger and four mobile shortcuts backed by one modal sheet", async () => {
     const user = userEvent.setup();
     const props = createProps();

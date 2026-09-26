@@ -535,6 +535,11 @@ export default function PlayPage() {
     router.push("/");
   }, [closeAssistantAndSound, router]);
 
+  const handleShare = useCallback(() => {
+    closeAssistantAndSound();
+    router.push("/plaza/manage");
+  }, [closeAssistantAndSound, router]);
+
   // Keep the memoized reading frame stable while the story stream updates.
   const toolsProps = useMemo(
     () => ({
@@ -556,6 +561,7 @@ export default function PlayPage() {
       onOpenSummary: handleOpenSummary,
       onRegenerate: handleCoordinatedRegenerate,
       onHome: handleHome,
+      onShare: handleShare,
       onConstraintLevelChange: setConstraintLevel,
       onNarrativeStyleChange: handleStyleChange,
       onSceneImageChange: setEnableSceneImage,
@@ -584,6 +590,7 @@ export default function PlayPage() {
       handleOpenSummary,
       handleCoordinatedRegenerate,
       handleHome,
+      handleShare,
       setConstraintLevel,
       handleStyleChange,
       setEnableSceneImage,

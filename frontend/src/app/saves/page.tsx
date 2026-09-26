@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowLeft, Play, Trash2 } from "lucide-react";
 
 import {
@@ -240,6 +241,9 @@ export default function SavesPage() {
           <p className="mt-2 leading-7 text-[var(--text-secondary)]">
             从上次停下的地方，继续这一页人生。
           </p>
+          <Link href="/plaza/manage" className="mt-4 inline-flex min-h-11 items-center rounded-[var(--radius-control)] border border-[var(--border-interactive)] px-4 text-sm text-[var(--text-primary)] hover:bg-[var(--surface-raised)]">
+            分享我的故事
+          </Link>
         </div>
 
         {pageFeedback ? (

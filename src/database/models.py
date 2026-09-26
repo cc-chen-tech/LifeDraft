@@ -145,6 +145,9 @@ class Game(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    story_publication = relationship(
+        "StoryPublication", back_populates="game", uselist=False, cascade="all, delete-orphan"
+    )
 
     # ★ 复合索引：加速 list_saved_games 查询 (user_id + ending_type IS NULL + ORDER BY updated_at)
     __table_args__ = (
@@ -177,6 +180,20 @@ class GameState(Base):
         # ★ 加速 load_saved_game 的 ORDER BY created_at DESC 查询
         Index("ix_game_state_game_created", "game_id", "created_at"),
     )
+
+
+class StoryPublication(Base):
+    """Owner-controlled anonymous plaza visibility, separate from friend sharing."""
+
+    __tablename__ = "story_publications"
+
+    game_id = Column(Integer, ForeignKey("games.game_id"), primary_key=True)
+    public_id = Column(String(32), nullable=False, unique=True, index=True)
+    enabled = Column(Boolean, nullable=False, default=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    game = relationship("Game", back_populates="story_publication")
 
 
 class Decision(Base):

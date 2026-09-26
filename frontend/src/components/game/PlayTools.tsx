@@ -59,6 +59,7 @@ export interface PlayToolsProps {
   onOpenSummary: () => void;
   onRegenerate: () => void;
   onHome: () => void;
+  onShare?: () => void;
   onConstraintLevelChange: (level: PlayConstraintLevel) => void;
   onNarrativeStyleChange: (styleId: string) => void;
   onSceneImageChange: (enabled: boolean) => void;
@@ -103,6 +104,7 @@ export function PlayTools({
   onOpenSummary,
   onRegenerate,
   onHome,
+  onShare,
   onConstraintLevelChange,
   onNarrativeStyleChange,
   onSceneImageChange,
@@ -288,6 +290,18 @@ export function PlayTools({
                 当前人生
               </h3>
               <div className="border-t border-[var(--border-default)]">
+                {onShare ? (
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    size="touch"
+                    className={toolRowClassName}
+                    onClick={() => closeBefore(onShare)}
+                  >
+                    <BookOpen className="h-4 w-4" />
+                    分享我的故事
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="quiet"

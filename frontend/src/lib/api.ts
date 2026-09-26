@@ -19,6 +19,9 @@ import type {
   VoiceUploadConsentRequest,
   VoicePreviewResponse,
   GameStateResponse,
+  OwnedPublicStory,
+  PublicStory,
+  PublicStoryList,
 } from './types';
 import { resolveApiBase } from './apiBase';
 
@@ -306,6 +309,21 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
 }
 
 export const api = {
+  plaza: {
+    list: (q = '', offset = 0, limit = 20) => {
+      const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+      if (q.trim()) params.set('q', q.trim());
+      return fetchJson<PublicStoryList>(`/plaza?${params.toString()}`, { cache: 'no-store' });
+    },
+    get: (publicId: string) =>
+      fetchJson<PublicStory>(`/plaza/${encodeURIComponent(publicId)}`, { cache: 'no-store' }),
+    mine: () => fetchJson<OwnedPublicStory[]>('/plaza/mine', { cache: 'no-store' }),
+    setPublication: (gameId: number, enabled: boolean) =>
+      fetchJson<OwnedPublicStory>(`/plaza/mine/${gameId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ enabled }),
+      }),
+  },
   // Auth
   auth: {
     register: (data: { display_name: string }) =>
