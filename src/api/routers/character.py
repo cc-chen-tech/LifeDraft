@@ -8,6 +8,7 @@ import threading
 import time
 from typing import Any, Dict, Optional
 
+import openai
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
@@ -131,7 +132,7 @@ async def generate_story_origin(req: GenerateStoryOriginRequest):
         )
     except HTTPException:
         raise
-    except asyncio.TimeoutError as exc:
+    except (asyncio.TimeoutError, openai.APITimeoutError) as exc:
         raise HTTPException(status_code=504, detail="story_origin_generation_timeout") from exc
     except ValueError as exc:
         raise HTTPException(

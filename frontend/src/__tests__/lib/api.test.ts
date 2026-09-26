@@ -195,8 +195,8 @@ describe('gameplay', () => {
 
 // ─── character API contract verification ────────────────────────
 describe('character', () => {
-  it('returns one provider failure without replaying generation', async () => {
-    global.fetch = jest.fn(() => mockFetchResponse({ detail: 'unavailable' }, 500));
+  it.each([500, 504])('returns one provider failure (%i) without replaying generation', async (status) => {
+    global.fetch = jest.fn(() => mockFetchResponse({ detail: 'unavailable' }, status));
 
     await expect(api.character.generateStoryOrigin({ player_name: '林舟' })).rejects.toThrow();
 

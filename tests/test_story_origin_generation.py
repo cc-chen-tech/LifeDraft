@@ -5,6 +5,8 @@ import threading
 import time
 from typing import Any, Dict, List
 
+import httpx
+import openai
 import pytest
 from fastapi.testclient import TestClient
 from fastapi import HTTPException
@@ -13,6 +15,7 @@ from src.api.main import app
 from src.api.routers import character as character_router
 from src.api.schemas import GenerateStoryOriginRequest
 from src.game.character_creation import CharacterCreator
+from src.game import character_creation as character_creation_module
 
 pytestmark = [pytest.mark.unit]
 
@@ -97,9 +100,73 @@ def test_story_origin_provider_call_has_timeout_without_truncation_recovery() ->
     )
 
     assert len(calls) == 1
-    assert 0 < calls[0]["request_timeout"] <= 20
+    assert 40 < calls[0]["request_timeout"] <= 45
     assert time.monotonic() < calls[0]["request_deadline"] <= time.monotonic() + 45
     assert calls[0]["allow_truncation_recovery"] is False
+
+
+def test_story_origin_does_not_retry_a_provider_timeout() -> None:
+    class TimingOutGenerator:
+        calls = 0
+
+        def generate_completion_json(self, **_: Any) -> Dict[str, Any]:
+            self.calls += 1
+            raise TimeoutError("provider took too long")
+
+    generator = TimingOutGenerator()
+    with pytest.raises(TimeoutError):
+        CharacterCreator(ai_generator=generator).generate_story_origin(
+            player_name="林舟", life_vision="认真生活", previous_settings={}
+        )
+    assert generator.calls == 1
+
+
+def test_story_origin_exhausted_deadline_is_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        character_creation_module, "_STORY_ORIGIN_DEADLINE_SECONDS", 0.01,
+        raising=False,
+    )
+
+    class SlowInvalidGenerator:
+        calls = 0
+
+        def generate_completion_json(self, **_: Any) -> None:
+            self.calls += 1
+            time.sleep(0.02)
+
+    generator = SlowInvalidGenerator()
+    with pytest.raises(TimeoutError):
+        CharacterCreator(ai_generator=generator).generate_story_origin(
+            player_name="林舟", life_vision="认真生活", previous_settings={}
+        )
+    assert generator.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_story_origin_route_reports_provider_timeout_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TimingOutCreator:
+        calls = 0
+
+        def __init__(self, language: str) -> None:
+            self.language = language
+
+        def generate_story_origin(self, **_: Any) -> Dict[str, Any]:
+            type(self).calls += 1
+            raise openai.APITimeoutError(
+                request=httpx.Request("POST", "https://provider.test/v1/chat/completions")
+            )
+
+    monkeypatch.setattr(character_router, "CharacterCreator", TimingOutCreator)
+    with pytest.raises(HTTPException) as exc_info:
+        await character_router.generate_story_origin(
+            GenerateStoryOriginRequest(player_name="林舟", life_vision="")
+        )
+    assert exc_info.value.status_code == 504
+    assert TimingOutCreator.calls == 1
 
 
 @pytest.mark.asyncio
