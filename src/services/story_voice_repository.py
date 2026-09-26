@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, cast
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from src.database.models import (
     DailyRecommendedPrefetch,
@@ -222,6 +223,9 @@ class StoryVoiceReadingRepository:
         """Atomically recover a processing job whose worker lease expired."""
         current_time = now or datetime.utcnow()
         stale_before = current_time - PROCESSING_LEASE_DURATION
+        updated_at_column = cast(
+            ColumnElement[Optional[datetime]], VoiceReadingJob.updated_at
+        )
         recovered = (
             self.db.query(VoiceReadingJob)
             .filter(
@@ -230,7 +234,7 @@ class StoryVoiceReadingRepository:
                 VoiceReadingJob.status == "processing",
                 or_(
                     VoiceReadingJob.updated_at.is_(None),
-                    VoiceReadingJob.updated_at < stale_before,
+                    updated_at_column < stale_before,
                 ),
             )
             .update(
@@ -349,6 +353,9 @@ class StoryVoiceReadingRepository:
         """Put an abandoned processing job into a durable terminal state."""
         current_time = now or datetime.utcnow()
         stale_before = current_time - PROCESSING_LEASE_DURATION
+        updated_at_column = cast(
+            ColumnElement[Optional[datetime]], VoiceReadingJob.updated_at
+        )
         failed = (
             self.db.query(VoiceReadingJob)
             .filter(
@@ -357,7 +364,7 @@ class StoryVoiceReadingRepository:
                 VoiceReadingJob.status == "processing",
                 or_(
                     VoiceReadingJob.updated_at.is_(None),
-                    VoiceReadingJob.updated_at < stale_before,
+                    updated_at_column < stale_before,
                 ),
             )
             .update(
