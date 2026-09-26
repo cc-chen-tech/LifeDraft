@@ -631,10 +631,10 @@ class AIClient:
                                     thinking=thinking,
                                     generation_tracker=generation_tracker,
                                 )
-                        elif (
-                            not _allow_truncation_recovery
-                            and isinstance(response_format, dict)
-                            and response_format.get("type") == "json_object"
+                        elif not _allow_truncation_recovery and (
+                            (isinstance(response_format, dict)
+                             and response_format.get("type") == "json_object")
+                            or not isinstance(extract_json(content), dict)
                         ):
                             raise AIResponseTruncatedError(current_max_tokens)
 

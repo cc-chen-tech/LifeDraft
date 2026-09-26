@@ -14,6 +14,8 @@ from fastapi import HTTPException
 from src.api.main import app
 from src.api.routers import character as character_router
 from src.api.schemas import GenerateStoryOriginRequest
+from src.ai.client import AIClient, AIResponseTruncatedError
+from src.ai.generator import EventGenerator
 from src.game.character_creation import CharacterCreator
 from src.game import character_creation as character_creation_module
 
@@ -119,6 +121,48 @@ def test_story_origin_does_not_retry_a_provider_timeout() -> None:
             player_name="林舟", life_vision="认真生活", previous_settings={}
         )
     assert generator.calls == 1
+
+
+def test_story_origin_does_not_regenerate_after_provider_reports_truncation() -> None:
+    requests: List[httpx.Request] = []
+
+    def truncated_response(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-truncated",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "deepseek-v4-flash",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": '{"start_date": "2026-'},
+                    "finish_reason": "length",
+                }],
+            },
+            request=request,
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(truncated_response)) as http_client:
+        ai_client = object.__new__(AIClient)
+        ai_client.api_key = "test-key"
+        ai_client.model = "deepseek-v4-flash"
+        ai_client.client = openai.OpenAI(
+            api_key="test-key",
+            base_url="https://provider.test/v1",
+            http_client=http_client,
+            max_retries=0,
+        )
+        generator = object.__new__(EventGenerator)
+        generator.ai_client = ai_client
+
+        with pytest.raises(AIResponseTruncatedError):
+            CharacterCreator(ai_generator=generator).generate_story_origin(
+                player_name="林舟", life_vision="认真生活", previous_settings={}
+            )
+
+    assert len(requests) == 1
 
 
 def test_story_origin_exhausted_deadline_is_a_timeout(
