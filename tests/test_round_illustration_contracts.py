@@ -121,3 +121,76 @@ def test_scene_persistence_records_week_round_stage_and_fallback_prompt_without_
     scene = db.records[0]
     assert (scene.game_id, scene.week, scene.round_number, scene.stage) == (7, 3, 1, "result")
     assert scene.referenced_images == []
+
+
+@pytest.mark.integration
+def test_scene_uses_selected_portrait_even_when_protagonist_is_an_involved_entity(db_session):
+    from src.database.models import Game, Image as ImageModel, PortraitSelection, SceneImage
+
+    game = Game(initial_state={})
+    db_session.add(game)
+    db_session.flush()
+    portraits = [
+        ImageModel(
+            game_id=game.game_id,
+            image_type="character",
+            entity_name="林岚",
+            entity_key="player_main",
+            prompt_text=f"portrait {index}",
+            storage_path=f"portrait-{index}.png",
+            is_active=True,
+            is_primary=index == 1,
+        )
+        for index in (1, 2)
+    ]
+    npc = ImageModel(
+        game_id=game.game_id,
+        image_type="character",
+        entity_name="文叔",
+        entity_key="npc_1",
+        prompt_text="mentor",
+        storage_path="mentor.png",
+        is_active=True,
+    )
+    db_session.add_all([*portraits, npc])
+    db_session.flush()
+    db_session.add(PortraitSelection(
+        game_id=game.game_id, image_id=portraits[1].image_id, is_user_selected=True
+    ))
+    db_session.commit()
+
+    class SceneClient:
+        def analyze_story_for_illustration(self, **_kwargs):
+            return "书院门口", "林岚与文叔谈话"
+
+        def edit_image(self, **kwargs):
+            assert kwargs["reference_image"] == f"reference-{portraits[1].image_id}"
+            return [(b"scene", "prompt")]
+
+    class SceneStorage:
+        def save_image(self, **_kwargs):
+            return "scene.png", "local"
+
+    service = RoundIllustrationService(SceneClient(), SceneStorage(), db_session)
+    service._get_image_url_as_base64 = lambda image, **_kwargs: f"reference-{image['image_id']}"
+    service._generate_round_illustration_sync(
+        game_id=game.game_id,
+        round_number=1,
+        story_text="林岚与文叔在书院门口谈话。",
+        character_settings={"relationships": {"key_people": [
+            {"name": "林岚", "relationship": "主角"},
+            {"name": "文叔", "relationship": "导师"},
+        ]}},
+        player_name="林岚",
+        existing_images=[
+            {"image_id": image.image_id, "entity_name": image.entity_name,
+             "image_type": image.image_type, "entity_key": image.entity_key}
+            for image in [portraits[0], portraits[1], npc]
+        ],
+        week=0,
+    )
+
+    scene = db_session.query(SceneImage).filter_by(game_id=game.game_id).one()
+    assert scene.referenced_images[0] == portraits[1].image_id
+    assert portraits[0].image_id not in scene.referenced_images
+    assert npc.image_id in scene.referenced_images
