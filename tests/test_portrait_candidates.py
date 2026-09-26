@@ -196,3 +196,217 @@ def test_batch_and_three_slots_persist_with_unique_slot_numbers(db_session):
     with pytest.raises(IntegrityError):
         db_session.commit()
     db_session.rollback()
+
+# Durable batch orchestration contracts.
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from sqlalchemy.orm import sessionmaker
+from src.database.models import GameState
+from src.services.portrait_candidate_jobs import (
+    enqueue_candidate_batch, run_candidate_batch, candidate_batch_state, retry_candidate_batch,
+)
+
+
+@pytest.fixture
+def batch_setup(temp_db_file):
+    Session = sessionmaker(bind=temp_db_file[0])
+    with Session() as db:
+        game = create_owned_game(db)
+        game.initial_state = {"player_name": "林见微", "character_settings": {
+            "age": 28, "gender": "女", "era": {"era_name": "宋代"},
+            "story_origin": {"revision": 1}, "personality": "谨慎"}}
+        db.commit()
+        job = enqueue_candidate_batch(db, game.user_id, game.game_id, "initial")
+        ids = game.user_id, game.game_id, job.job_id
+    return Session, ids
+
+
+@pytest.fixture
+def fake_provider():
+    class Provider:
+        generated_slot_indices = []
+        calls = []
+        fail = set()
+        def __init__(self, db):
+            self.db = db
+        def generate_character_candidate(self, **kwargs):
+            index = kwargs["slot_index"]
+            self.generated_slot_indices.append(index)
+            self.calls.append(kwargs)
+            if index in self.fail:
+                raise RuntimeError("secret provider message")
+            image = Image(game_id=kwargs["game_id"], image_type="character",
+                entity_key="player_main", entity_name=kwargs["name"], prompt_text="prompt",
+                storage_path=f"candidate-{index}.png", is_active=False,
+                metadata_json={"batch_id": kwargs["batch_id"], "slot_index": index})
+            self.db.add(image)
+            self.db.commit()
+            return image
+    return Provider
+
+
+@pytest.fixture
+def batch_with_two_ready_slots(batch_setup):
+    Session, ids = batch_setup
+    with Session() as db:
+        batch = db.query(PortraitCandidateBatch).filter_by(job_id=ids[2]).one()
+        for index in (0, 1):
+            image = Image(game_id=ids[1], image_type="character", entity_key="player_main",
+                entity_name="林见微", prompt_text="saved", storage_path=f"saved-{index}.png", is_active=True)
+            db.add(image)
+            db.flush()
+            slot = db.get(PortraitCandidateSlot, (batch.batch_id, index))
+            slot.status, slot.image_id = "ready", image.image_id
+        db.commit()
+    return batch_setup
+
+
+def test_batch_returns_before_provider_and_reuses_same_origin(db_session):
+    owner = create_owned_game(db_session)
+    first = enqueue_candidate_batch(db_session, owner.user_id, owner.game_id, "initial")
+    second = enqueue_candidate_batch(db_session, owner.user_id, owner.game_id, "initial")
+    assert first.job_id == second.job_id
+    assert first.status == "queued"
+    assert db_session.query(PortraitCandidateSlot).count() == 3
+
+
+def test_retry_only_missing_slot_after_worker_restart(batch_with_two_ready_slots, fake_provider):
+    Session, ids = batch_with_two_ready_slots
+    run_candidate_batch(ids[2], session_factory=Session, image_service_factory=fake_provider)
+    assert fake_provider.generated_slot_indices == [2]
+    with Session() as db:
+        state = candidate_batch_state(db, ids[1], ids[0])
+        assert state.completed_count == 3
+        assert state.status == "succeeded"
+        assert enqueue_candidate_batch(db, ids[0], ids[1], "initial").job_id == ids[2]
+
+
+def test_partial_failure_retry_and_frozen_snapshot(batch_setup, fake_provider):
+    Session, ids = batch_setup
+    with Session() as db:
+        db.add(GameState(game_id=ids[1], week=0, age=28, state_json={
+            "player_name": "changed", "character_settings": {"story_origin": {"revision": 1}}}))
+        db.commit()
+    fake_provider.fail = {1}
+    run_candidate_batch(ids[2], session_factory=Session, image_service_factory=fake_provider)
+    with Session() as db:
+        state = candidate_batch_state(db, ids[1], ids[0])
+        assert state.status == "partial_failed"
+        assert state.completed_count == 2
+        selected = state.selected_image_id
+        assert state.slots[1].error_code == "image_generation_failed"
+        retry_candidate_batch(db, state.batch_id, ids[0])
+    fake_provider.fail = set()
+    run_candidate_batch(ids[2], session_factory=Session, image_service_factory=fake_provider)
+    assert fake_provider.generated_slot_indices == [0, 1, 2, 1]
+    assert all(call["name"] == "林见微" and call["era"] == "宋代" for call in fake_provider.calls)
+    assert all(call["character_settings"]["age"] == 28 for call in fake_provider.calls)
+    assert len({call["direction"] for call in fake_provider.calls}) == 3
+    with Session() as db:
+        assert candidate_batch_state(db, ids[1], ids[0]).selected_image_id == selected
+
+
+def test_saved_inactive_image_reconciled_without_provider_call(batch_setup, fake_provider):
+    Session, ids = batch_setup
+    with Session() as db:
+        batch = db.query(PortraitCandidateBatch).filter_by(job_id=ids[2]).one()
+        image = fake_provider(db).generate_character_candidate(game_id=ids[1], name="林见微", batch_id=batch.batch_id, slot_index=0)
+        image_id = image.image_id
+    fake_provider.generated_slot_indices.clear()
+    run_candidate_batch(ids[2], session_factory=Session, image_service_factory=fake_provider)
+    assert fake_provider.generated_slot_indices == [1, 2]
+    with Session() as db:
+        assert db.get(Image, image_id).is_active
+
+
+def test_stale_origin_during_provider_does_not_activate(batch_setup, fake_provider):
+    Session, ids = batch_setup
+    class StaleProvider(fake_provider):
+        def generate_character_candidate(self, **kwargs):
+            image = super().generate_character_candidate(**kwargs)
+            self.db.add(GameState(game_id=ids[1], week=0, age=28,
+                state_json={"character_settings": {"story_origin": {"revision": 2}}}))
+            self.db.commit()
+            return image
+    run_candidate_batch(ids[2], session_factory=Session, image_service_factory=StaleProvider)
+    with Session() as db:
+        assert db.query(Image).filter_by(is_active=True).count() == 0
+        assert db.get(PortraitSelection, ids[1]) is None
+        assert db.get(PortraitImageGenerationJob, ids[2]).error_code == "story_origin_superseded"
+    assert fake_provider.generated_slot_indices == [0]
+
+
+def test_simultaneous_enqueue_uses_database_uniqueness(temp_db_file):
+    Session = sessionmaker(bind=temp_db_file[0])
+    with Session() as db:
+        game = create_owned_game(db)
+        user_id, game_id = game.user_id, game.game_id
+    barrier = Barrier(2)
+    def enqueue(_):
+        with Session() as db:
+            barrier.wait()
+            return enqueue_candidate_batch(db, user_id, game_id, "initial").job_id
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        ids = list(pool.map(enqueue, range(2)))
+    assert ids[0] == ids[1]
+    with Session() as db:
+        assert db.query(PortraitCandidateBatch).count() == 1
+        assert db.query(PortraitCandidateSlot).count() == 3
+
+
+def test_fresh_batch_keeps_legacy_selection_and_excludes_overlapping_modes(batch_setup, fake_provider):
+    Session, ids = batch_setup
+    with Session() as db:
+        assert enqueue_candidate_batch(db, ids[0], ids[1], "fresh").job_id == ids[2]
+        old, _ = add_two_active_portraits(db, ids[1])
+        old.is_primary = True
+        db.query(Image).filter(Image.image_id != old.image_id).update({"is_primary": False})
+        db.commit()
+        old_id = old.image_id
+    run_candidate_batch(ids[2], session_factory=Session, image_service_factory=fake_provider)
+    with Session() as db:
+        assert candidate_batch_state(db, ids[1], ids[0]).selected_image_id == old_id
+        fresh = enqueue_candidate_batch(db, ids[0], ids[1], "fresh")
+        assert fresh.job_id != ids[2]
+        fresh_id = fresh.job_id
+    run_candidate_batch(fresh_id, session_factory=Session, image_service_factory=fake_provider)
+    with Session() as db:
+        assert candidate_batch_state(db, ids[1], ids[0]).selected_image_id == old_id
+        assert db.get(Image, old_id).is_active is True
+
+
+def test_duplicate_worker_delivery_does_not_repeat_provider(batch_setup, fake_provider):
+    from threading import Event
+    Session, ids = batch_setup
+    entered, release = Event(), Event()
+    class SlowProvider(fake_provider):
+        def generate_character_candidate(self, **kwargs):
+            if kwargs["slot_index"] == 0:
+                entered.set()
+                assert release.wait(timeout=5)
+            return super().generate_character_candidate(**kwargs)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(run_candidate_batch, ids[2], session_factory=Session, image_service_factory=SlowProvider)
+        assert entered.wait(timeout=5)
+        try:
+            duplicate = pool.submit(run_candidate_batch, ids[2], session_factory=Session, image_service_factory=SlowProvider)
+            duplicate.result(timeout=5)
+        finally:
+            release.set()
+        first.result(timeout=5)
+    assert fake_provider.generated_slot_indices == [0, 1, 2]
+
+
+def test_dispatch_and_startup_recovery_resume_candidate_slots(batch_with_two_ready_slots, fake_provider, monkeypatch):
+    import src.services.portrait_image_jobs as jobs
+    Session, ids = batch_with_two_ready_slots
+    with Session() as db:
+        db.get(PortraitImageGenerationJob, ids[2]).status = "running"
+        db.commit()
+    scheduled = []
+    monkeypatch.setattr(jobs, "SessionLocal", Session)
+    monkeypatch.setattr(jobs, "schedule_portrait_image_job", scheduled.append)
+    assert jobs.recover_pending_portrait_image_jobs() == [ids[2]]
+    assert scheduled == [ids[2]]
+    jobs.run_portrait_image_job(ids[2], session_factory=Session, image_service_factory=fake_provider)
+    assert fake_provider.generated_slot_indices == [2]

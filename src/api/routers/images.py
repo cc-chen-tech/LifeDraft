@@ -28,6 +28,11 @@ from src.api.schemas import (BatchGenerateCharactersRequest,
                              RegenerateImageRequest,
                              RegenerateOpeningIllustrationRequest,
                              RegenerateRoundSceneRequest, RoundSceneResponse)
+from src.api.schemas import CreatePortraitCandidatesRequest, PortraitCandidateBatchResponse
+from src.services.portrait_candidate_jobs import (
+    enqueue_candidate_batch, candidate_batch_state, retry_candidate_batch, _batch_state,
+)
+from src.database.models import PortraitCandidateBatch
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import PortraitImageGenerationJob, User
@@ -348,6 +353,34 @@ async def generate_image(
     except Exception as e:
         logger.exception(f"Unexpected error in generate_image: {e}")
         raise HTTPException(status_code=500, detail=f"图片生成失败: {e}")
+
+
+@router.post("/character/candidates", status_code=202, response_model=PortraitCandidateBatchResponse)
+def create_candidates(req: CreatePortraitCandidatesRequest,
+                      db: Session = Depends(get_session), user: int = Depends(get_current_user)):
+    verify_game_ownership(db, req.game_id, user)
+    job = enqueue_candidate_batch(db, user, req.game_id, req.mode)
+    schedule_portrait_image_job(int(job.job_id))
+    batch = db.query(PortraitCandidateBatch).filter_by(job_id=job.job_id).one()
+    return _batch_state(db, batch)
+
+
+@router.get("/character/candidates", response_model=Optional[PortraitCandidateBatchResponse])
+def get_candidates(game_id: int, db: Session = Depends(get_session), user: int = Depends(get_current_user)):
+    verify_game_ownership(db, game_id, user)
+    return candidate_batch_state(db, game_id, user)
+
+
+@router.post("/character/candidates/{batch_id}/retry", status_code=202,
+             response_model=PortraitCandidateBatchResponse)
+def retry_candidates(batch_id: int, db: Session = Depends(get_session), user: int = Depends(get_current_user)):
+    batch = db.get(PortraitCandidateBatch, batch_id)
+    if batch is None or batch.user_id != user:
+        raise HTTPException(status_code=404, detail="候选批次不存在")
+    verify_game_ownership(db, batch.game_id, user)
+    job = retry_candidate_batch(db, batch_id, user)
+    schedule_portrait_image_job(int(job.job_id))
+    return _batch_state(db, batch)
 
 
 def _portrait_job_response(job: PortraitImageGenerationJob) -> PortraitImageGenerationJobResponse:

@@ -538,6 +538,32 @@ class ImageListResponse(BaseModel):
     total: int
 
 
+class CreatePortraitCandidatesRequest(BaseModel):
+    game_id: int
+    mode: Literal["initial", "fresh"] = "initial"
+
+
+class PortraitCandidateSlotResponse(BaseModel):
+    slot_index: int
+    status: str
+    image_id: Optional[int] = None
+    error_code: Optional[str] = None
+
+
+class PortraitCandidateBatchResponse(BaseModel):
+    batch_id: int
+    job_id: int
+    game_id: int
+    mode: str
+    origin_revision: Optional[int] = None
+    status: str
+    slots: List[PortraitCandidateSlotResponse]
+    completed_count: int
+    selected_image_id: Optional[int] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+
+
 class PortraitImageGenerationJobResponse(BaseModel):
     """Safe public state for a durable main-character portrait job."""
 

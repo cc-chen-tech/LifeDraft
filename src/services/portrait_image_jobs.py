@@ -159,6 +159,13 @@ def run_portrait_image_job(
         if job is None or job.status not in ACTIVE_JOB_STATUSES:
             return
 
+        if (job.request_json or {}).get("operation") == "candidate_batch":
+            from src.services.portrait_candidate_jobs import run_candidate_batch
+            db.close()
+            run_candidate_batch(job_id, session_factory=session_factory,
+                                image_service_factory=image_service_factory)
+            return
+
         if not _origin_is_current(db, job):
             _mark_superseded(db, job)
             return
