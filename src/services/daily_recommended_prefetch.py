@@ -341,16 +341,16 @@ def cleanup_expired_daily_recommended_prefetch(
         expired = (
             db.query(DailyRecommendedPrefetch)
             .filter(
-                DailyRecommendedPrefetch.updated_at < cutoff,
+                as_sql_condition(DailyRecommendedPrefetch.updated_at < cutoff),
                 or_(
                     DailyRecommendedPrefetch.status.in_(
                         {"failed", "invalidated", "consumed"}
                     ),
-                    as_sql_condition(
+                    (
                         DailyRecommendedPrefetch.status.in_(
                             {"queued", "processing", "story_ready", "ready"}
                         )
-                        & DailyRecommendedPrefetch.demanded.is_(False),
+                        & DailyRecommendedPrefetch.demanded.is_(False)
                     ),
                 ),
             )
