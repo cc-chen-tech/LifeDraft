@@ -13,7 +13,8 @@ from src.database.models import (
     PortraitSelection,
     User,
 )
-from src.services.portrait_selection import selected_portrait, select_portrait, set_default_portrait
+from src.services.portrait_selection import (is_selectable_candidate, selected_portrait,
+                                             select_portrait, set_default_portrait)
 
 pytestmark = [pytest.mark.unit]
 
@@ -127,6 +128,50 @@ def test_selection_rejects_unready_or_missing_file(db_session, tmp_path):
     with pytest.raises(ValueError, match="文件不可用"):
         select_portrait(db_session, game.game_id, candidate.image_id)
     assert selected_portrait(db_session, game.game_id).image_id == old.image_id
+
+
+def test_only_current_and_latest_staged_batch_are_selectable(db_session, tmp_path):
+    game = create_owned_game(db_session)
+    images = []
+    for label in ("A", "B", "C"):
+        path = tmp_path / f"{label}.png"
+        path.write_bytes(b"image")
+        image = Image(game_id=game.game_id, image_type="character", entity_name="林见微",
+                      entity_key="player_main", prompt_text=label,
+                      storage_path=str(path), is_active=True, is_primary=False)
+        db_session.add(image)
+        db_session.flush()
+        job = PortraitImageGenerationJob(game_id=game.game_id, user_id=game.user_id,
+                                         request_json={"game_id": game.game_id, "origin_revision": None})
+        db_session.add(job)
+        db_session.flush()
+        batch = PortraitCandidateBatch(game_id=game.game_id, user_id=game.user_id,
+                                       job_id=job.job_id, mode="fresh")
+        db_session.add(batch)
+        db_session.flush()
+        db_session.add(PortraitCandidateSlot(batch_id=batch.batch_id, slot_index=0,
+                                             status="ready", image_id=image.image_id))
+        images.append(image)
+    db_session.add(PortraitSelection(game_id=game.game_id, image_id=images[1].image_id,
+                                     is_user_selected=True))
+    db_session.commit()
+
+    assert is_selectable_candidate(db_session, game.game_id, images[1].image_id)
+    assert is_selectable_candidate(db_session, game.game_id, images[2].image_id)
+    with pytest.raises(ValueError, match="不可选择"):
+        select_portrait(db_session, game.game_id, images[0].image_id)
+    assert selected_portrait(db_session, game.game_id).image_id == images[1].image_id
+    assert select_portrait(db_session, game.game_id, images[2].image_id).image_id == images[2].image_id
+
+
+def test_legacy_current_main_image_can_be_selected(db_session, tmp_path):
+    game = create_owned_game(db_session)
+    image, _ = add_two_active_portraits(db_session, game.game_id)
+    path = tmp_path / "legacy.png"
+    path.write_bytes(b"image")
+    image.storage_path = str(path)
+    db_session.commit()
+    assert select_portrait(db_session, game.game_id, image.image_id).image_id == image.image_id
 
 
 def test_selection_route_checks_owner_and_returns_422(db_session):

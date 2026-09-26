@@ -749,7 +749,7 @@ class ImageService:
         if not player_image:
             player_image = selected_portrait(self.db, game_id)
             if player_image:
-                logger.info(f"Auto-selected primary player image: {player_image.image_id}")
+                logger.info(f"Using selected player image: {player_image.image_id}")
 
         if player_image:
             try:

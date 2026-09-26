@@ -57,24 +57,44 @@ def set_default_portrait(db: Session, game_id: int, image_id: int) -> None:
 
 
 def is_selectable_candidate(db: Session, game_id: int, image_id: int) -> bool:
-    """Accept a ready candidate from the current origin or the legacy main image."""
+    """Accept ready portraits from the selected batch or latest staged batch."""
     from src.services.portrait_image_jobs import _origin_is_current
 
-    slots = (
-        db.query(PortraitCandidateSlot, PortraitCandidateBatch)
-        .join(PortraitCandidateBatch, PortraitCandidateBatch.batch_id == PortraitCandidateSlot.batch_id)
-        .filter(PortraitCandidateBatch.game_id == game_id,
-                PortraitCandidateSlot.image_id == image_id,
-                PortraitCandidateSlot.status == "ready")
+    batches = (
+        db.query(PortraitCandidateBatch)
+        .filter(PortraitCandidateBatch.game_id == game_id)
+        .order_by(PortraitCandidateBatch.batch_id.desc())
         .all()
     )
-    if slots:
-        return any(
-            _origin_is_current(db, db.get(PortraitImageGenerationJob, batch.job_id))
-            for _, batch in slots
-        )
+    current_batches = [
+        batch for batch in batches
+        if _origin_is_current(db, db.get(PortraitImageGenerationJob, batch.job_id))
+    ]
+    selected = selected_portrait(db, game_id)
+    selected_batch_id = None
+    if selected is not None:
+        for batch in current_batches:
+            selected_slot = db.query(PortraitCandidateSlot).filter_by(
+                batch_id=batch.batch_id, image_id=selected.image_id, status="ready"
+            ).first()
+            if selected_slot is not None:
+                selected_batch_id = batch.batch_id
+                break
+    eligible_batch_ids = {current_batches[0].batch_id} if current_batches else set()
+    if selected_batch_id is not None:
+        eligible_batch_ids.add(selected_batch_id)
+    candidate_slot = (
+        db.query(PortraitCandidateSlot, PortraitCandidateBatch)
+        .join(PortraitCandidateBatch, PortraitCandidateBatch.batch_id == PortraitCandidateSlot.batch_id)
+        .filter(PortraitCandidateBatch.batch_id.in_(eligible_batch_ids),
+                PortraitCandidateSlot.image_id == image_id,
+                PortraitCandidateSlot.status == "ready")
+        .first()
+    )
+    if candidate_slot is not None:
+        return True
     image = db.get(Image, image_id)
-    return bool(image and image.is_primary and selected_portrait(db, game_id) == image)
+    return bool(image and image.is_primary and selected == image)
 
 
 def select_portrait(db: Session, game_id: int, image_id: int) -> Image:
