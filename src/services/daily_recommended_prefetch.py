@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from src.ai.models import GameEvent
+from src.database.query_types import as_sql_condition
 from src.game.round.daily_choice_processor import project_daily_choice
 from src.services.daily_recommended_prefetch_repository import (
     DailyRecommendedPrefetchRepository,
@@ -345,11 +346,11 @@ def cleanup_expired_daily_recommended_prefetch(
                     DailyRecommendedPrefetch.status.in_(
                         {"failed", "invalidated", "consumed"}
                     ),
-                    (
+                    as_sql_condition(
                         DailyRecommendedPrefetch.status.in_(
                             {"queued", "processing", "story_ready", "ready"}
                         )
-                        & DailyRecommendedPrefetch.demanded.is_(False)
+                        & DailyRecommendedPrefetch.demanded.is_(False),
                     ),
                 ),
             )

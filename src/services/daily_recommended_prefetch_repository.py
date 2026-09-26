@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.database.models import DailyRecommendedPrefetch, Game
+from src.database.query_types import as_sql_condition
 
 
 LEASE_DURATION = timedelta(minutes=5)
@@ -290,7 +291,7 @@ class DailyRecommendedPrefetchRepository:
                         (DailyRecommendedPrefetch.status == "processing")
                         & or_(
                             DailyRecommendedPrefetch.lease_expires_at.is_(None),
-                            DailyRecommendedPrefetch.lease_expires_at < now,
+                            as_sql_condition(DailyRecommendedPrefetch.lease_expires_at < now),
                         )
                     ),
                 ),

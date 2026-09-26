@@ -17,6 +17,7 @@ from src.database.models import (
     VoiceReadingSegment,
     VoiceReadingSetting,
 )
+from src.database.query_types import as_sql_condition
 
 PROCESSING_LEASE_DURATION = timedelta(minutes=10)
 
@@ -230,7 +231,7 @@ class StoryVoiceReadingRepository:
                 VoiceReadingJob.status == "processing",
                 or_(
                     VoiceReadingJob.updated_at.is_(None),
-                    VoiceReadingJob.updated_at < stale_before,
+                    as_sql_condition(VoiceReadingJob.updated_at < stale_before),
                 ),
             )
             .update(
@@ -357,7 +358,7 @@ class StoryVoiceReadingRepository:
                 VoiceReadingJob.status == "processing",
                 or_(
                     VoiceReadingJob.updated_at.is_(None),
-                    VoiceReadingJob.updated_at < stale_before,
+                    as_sql_condition(VoiceReadingJob.updated_at < stale_before),
                 ),
             )
             .update(
