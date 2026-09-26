@@ -1,6 +1,7 @@
 import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -79,6 +80,153 @@ def test_model_smoke_report_schema_is_payload_free():
     assert "prompt" not in serialized
     assert "response" not in serialized
     assert "story text" not in serialized
+
+
+def test_story_origin_smoke_checks_real_origin_validation_with_one_call():
+    from src.observability.request_context import current_request_context
+
+    collector = SimpleNamespace(events=[])
+
+    class Provider:
+        def generate_completion_json(self, **_kwargs):
+            context = current_request_context()
+            collector.events.append({
+                "operation_id": context.operation_id,
+                "phase": "provider",
+                "outcome": "success",
+                "finish_reason": "stop",
+            })
+            return {
+                "start_date": "2026-08-13",
+                "starting_age": 28,
+                "era_description": "2020年代的上海",
+                "life_stage_description": "28岁的职业阶段",
+                "world_context": "上海的现代设计行业",
+            }
+
+    assert model_smoke._run_story_origin_check(Provider(), collector) == {
+        "provider_calls": 1,
+        "constraints_matched": True,
+    }
+
+
+def test_story_origin_smoke_rejects_hidden_second_provider_call():
+    from src.observability.request_context import current_request_context
+
+    collector = SimpleNamespace(events=[])
+
+    class Provider:
+        calls = 0
+
+        def generate_completion_json(self, **_kwargs):
+            self.calls += 1
+            context = current_request_context()
+            collector.events.append({
+                "operation_id": context.operation_id,
+                "phase": "provider",
+                "outcome": "success",
+                "finish_reason": "stop",
+            })
+            return {
+                "start_date": "2026-08-13",
+                "starting_age": 27 if self.calls == 1 else 28,
+                "era_description": "2020年代的上海",
+                "life_stage_description": "设计师的职业阶段",
+                "world_context": "上海的现代设计行业",
+            }
+
+    provider = Provider()
+    with pytest.raises(RuntimeError, match="story_origin_repeated_provider_call"):
+        model_smoke._run_story_origin_check(provider, collector)
+    assert provider.calls == 2
+
+
+def test_story_origin_smoke_rejects_hidden_transport_retry():
+    from src.observability.request_context import current_request_context
+
+    collector = SimpleNamespace(events=[])
+
+    class Provider:
+        def generate_completion_json(self, **_kwargs):
+            context = current_request_context()
+            for _ in range(2):
+                collector.events.append({
+                    "operation_id": context.operation_id,
+                    "phase": "provider",
+                    "outcome": "success",
+                    "finish_reason": "stop",
+                })
+            return {
+                "start_date": "2026-08-13",
+                "starting_age": 28,
+                "era_description": "2020年代的上海",
+                "life_stage_description": "设计师的职业阶段",
+                "world_context": "上海的现代设计行业",
+            }
+
+    with pytest.raises(RuntimeError, match="story_origin_provider_attempts_invalid"):
+        model_smoke._run_story_origin_check(Provider(), collector)
+
+
+def test_story_origin_smoke_rejects_provider_token_limit():
+    from src.observability.request_context import current_request_context
+
+    collector = SimpleNamespace(events=[])
+
+    class Provider:
+        def generate_completion_json(self, **_kwargs):
+            context = current_request_context()
+            collector.events.append({
+                "operation_id": context.operation_id,
+                "phase": "provider",
+                "outcome": "success",
+                "finish_reason": "length",
+            })
+            return {
+                "start_date": "2026-08-13",
+                "starting_age": 28,
+                "era_description": "2020年代的上海",
+                "life_stage_description": "设计师的职业阶段",
+                "world_context": "上海的现代设计行业",
+            }
+
+    with pytest.raises(RuntimeError, match="story_origin_provider_truncated"):
+        model_smoke._run_story_origin_check(Provider(), collector)
+
+
+def test_model_smoke_run_includes_story_origin_in_release_report(monkeypatch, tmp_path):
+    from src.ai import generator as generator_module
+    from src.ai import image_generator as image_module
+    from src.services import minimax_story_tts_provider as tts_module
+
+    fake_text_generator = SimpleNamespace(ai_client=SimpleNamespace(model="test-text"))
+    monkeypatch.setattr(generator_module, "EventGenerator", lambda **_kwargs: fake_text_generator)
+    monkeypatch.setattr(image_module, "ImageGenerator", lambda: SimpleNamespace(model="test-image"))
+    monkeypatch.setattr(tts_module, "MiniMaxTTSProvider", lambda: SimpleNamespace(model="test-tts"))
+    monkeypatch.setattr(model_smoke, "_require_real_credentials", lambda: None)
+    monkeypatch.setattr(model_smoke, "_check_audio_runtime", lambda: None)
+    monkeypatch.setattr(
+        model_smoke, "_configure_safe_logging", lambda _path: SimpleNamespace(events=[])
+    )
+    for name in ("_run_text_checks", "_run_image_check", "_run_tts_check", "_run_projection_check"):
+        monkeypatch.setattr(model_smoke, name, lambda *_args: {})
+    origin_checks = []
+
+    def origin_check(generator, _collector):
+        origin_checks.append(generator)
+        return {"provider_calls": 1, "constraints_matched": True}
+
+    monkeypatch.setattr(model_smoke, "_run_story_origin_check", origin_check)
+    report_path = tmp_path / "smoke-summary.json"
+    assert model_smoke.run(report_path, tmp_path / "artifacts", None) == 0
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    origin = next(
+        check for check in report["checks"] if check["name"] == "story_origin_generation"
+    )
+    assert origin["outcome"] == "passed"
+    assert origin["details"] == {"provider_calls": 1, "constraints_matched": True}
+    assert origin_checks == [fake_text_generator]
 
 
 def test_model_smoke_writes_provider_events_as_jsonl(tmp_path):
