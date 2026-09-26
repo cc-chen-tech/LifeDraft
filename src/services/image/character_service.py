@@ -12,12 +12,19 @@ from src.ai.image_exceptions import (ContentInspectionError,
                                      ImageGenerationError,
                                      ImageProviderError)
 from src.database.models import Image as ImageModel
+from src.database.models import PortraitCandidateBatch
 from src.services.image import (ImageContentError,
                                 ImageProviderServiceError,
                                 ImageServiceError)
 from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
+
+CANDIDATE_DIRECTIONS = (
+    "外貌方向一：方脸、浓眉、利落的发型；穿符合身份和时代的简洁日常服装",
+    "外貌方向二：清瘦长脸、细眉、柔和的发型；穿符合身份和时代的另一种层次搭配",
+    "外貌方向三：圆脸、短眉、蓬松的发型；穿符合身份和时代的不同剪裁服装",
+)
 
 
 class CharacterImageService:
@@ -32,6 +39,83 @@ class CharacterImageService:
         self.db = db
         self.image_client = image_client or ImageClient()
         self.storage_service = storage_service or ImageStorageService()
+
+    def _save_character_image(
+        self, *, game_id: int, name: str, image_data: bytes, prompt: str,
+        storage_name: str, entity_key: str, metadata: Dict[str, Any],
+        is_active: bool, is_primary: bool,
+    ) -> ImageModel:
+        """Store one image and add its database record to the current transaction."""
+        storage_path, storage_type = self.storage_service.save_image(
+            image_data=image_data, game_id=game_id, image_type="character",
+            entity_name=storage_name,
+        )
+        image_model = ImageModel(
+            game_id=game_id, image_type="character", entity_name=name,
+            entity_key=entity_key, prompt_text=prompt, storage_path=storage_path,
+            storage_type=storage_type, metadata_json=metadata, version=1,
+            is_active=is_active, is_primary=is_primary, primary_image_id=None,
+        )
+        self.db.add(image_model)
+        return image_model
+
+    def generate_character_candidate(
+        self, *, game_id: int, name: str, description: str, era: str,
+        character_settings: Dict[str, Any], direction: str, batch_id: int,
+        slot_index: int,
+    ) -> ImageModel:
+        """Generate one independent portrait for a persisted candidate slot."""
+        batch = self.db.get(PortraitCandidateBatch, batch_id)
+        if batch is None or batch.game_id != game_id:
+            raise ImageServiceError("候选形象批次不存在")
+
+        # The shared helper's historical branch asks multiple images to retain
+        # one face. Candidate slots deliberately vary faces, while retaining
+        # all period, clothing, and prop restrictions.
+        era_constraints = _build_image_era_constraints(character_settings, "zh")
+        same_face_lines = (
+            "人物一致性：", "【人物一致性要求", "同一人物的多张图片必须是同一个人",
+            "仅允许服装和姿势变化，面部特征必须绝对保持一致",
+        )
+        constrained_style = "\n".join(
+            line for line in era_constraints.splitlines()
+            if not any(cue in line for cue in same_face_lines)
+        )
+        try:
+            images, _ = self.image_client.generate_character_images(
+                name=name, description=f"{description}。{direction}", era=era,
+                style_hint=constrained_style, num_images=1,
+                reference_image_url=None,
+            )
+            if not images:
+                raise ImageServiceError("没有成功生成任何图片")
+            image = self._save_character_image(
+                game_id=game_id, name=name, image_data=images[0][0],
+                prompt=images[0][1], storage_name=f"{name}_{slot_index + 1}",
+                entity_key="player_main", is_active=False, is_primary=False,
+                metadata={
+                    "batch_id": batch_id, "slot_index": slot_index,
+                    "appearance_direction": direction,
+                    "origin_revision": batch.origin_revision,
+                },
+            )
+            self.db.commit()
+            self.db.refresh(image)
+            return image
+        except ContentInspectionError as e:
+            self.db.rollback()
+            raise ImageContentError(str(e), e.original_prompt or "") from e
+        except ImageProviderError as e:
+            self.db.rollback()
+            raise ImageProviderServiceError.from_provider(e) from e
+        except ImageGenerationError as e:
+            self.db.rollback()
+            raise ImageServiceError(f"图像生成失败: {e}") from e
+        except Exception as e:
+            self.db.rollback()
+            if isinstance(e, ImageServiceError):
+                raise
+            raise ImageServiceError(f"生成人物形象失败: {e}") from e
 
     def _delete_image_files(self, images: List[ImageModel]) -> None:
         """P3-存储修复：删除已停用图片的磁盘/OSS 文件。
@@ -150,13 +234,6 @@ class CharacterImageService:
             primary_image_model = None
 
             for idx, (image_data, prompt) in enumerate(images_data):
-                storage_path, storage_type = self.storage_service.save_image(
-                    image_data=image_data,
-                    game_id=game_id,
-                    image_type="character",
-                    entity_name=f"{name}_{idx + 1}",
-                )
-
                 is_primary = idx == 0 and not reference_image_url
 
                 # ★ 将锚点数据合并到 metadata_json
@@ -166,22 +243,13 @@ class CharacterImageService:
                     "appearance_anchor": anchor_data,  # ★ 保存外貌锚点
                 }
 
-                image_model = ImageModel(
-                    game_id=game_id,
-                    image_type="character",
-                    entity_name=name,
+                image_model = self._save_character_image(
+                    game_id=game_id, name=name, image_data=image_data,
+                    prompt=prompt, storage_name=f"{name}_{idx + 1}",
                     entity_key=entity_key or f"character_{name}",
-                    prompt_text=prompt,
-                    storage_path=storage_path,
-                    storage_type=storage_type,
-                    metadata_json=merged_metadata,
-                    version=1,
-                    is_active=not candidate_only,
+                    metadata=merged_metadata, is_active=not candidate_only,
                     is_primary=is_primary,
-                    primary_image_id=None,
                 )
-
-                self.db.add(image_model)
                 image_models.append(image_model)
 
                 if is_primary:

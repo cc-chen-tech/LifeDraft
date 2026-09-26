@@ -85,6 +85,18 @@ class ImageService:
 
     # ==================== 人物图片方法 ====================
 
+    def generate_character_candidate(
+        self, *, game_id: int, name: str, description: str, era: str,
+        character_settings: Dict[str, Any], direction: str, batch_id: int,
+        slot_index: int,
+    ) -> ImageModel:
+        """Generate one inactive protagonist candidate for the batch worker."""
+        return self._character_service.generate_character_candidate(
+            game_id=game_id, name=name, description=description, era=era,
+            character_settings=character_settings, direction=direction,
+            batch_id=batch_id, slot_index=slot_index,
+        )
+
     def generate_character_image(
         self,
         game_id: int,
