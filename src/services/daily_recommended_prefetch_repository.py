@@ -8,9 +8,9 @@ from typing import Any, Optional, cast
 from uuid import uuid4
 
 from sqlalchemy import case, or_
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from sqlalchemy.sql.elements import ColumnElement
 
 from src.database.models import DailyRecommendedPrefetch, Game
 
@@ -281,22 +281,21 @@ class DailyRecommendedPrefetchRepository:
     def claim(self, prefetch_id: int) -> Optional[str]:
         now = datetime.utcnow()
         token = uuid4().hex
-        lease_expiration_column = cast(
-            ColumnElement[Optional[datetime]],
-            DailyRecommendedPrefetch.lease_expires_at,
-        )
         updated = (
             self.db.query(DailyRecommendedPrefetch)
             .filter(
                 DailyRecommendedPrefetch.prefetch_id == prefetch_id,
                 or_(
                     DailyRecommendedPrefetch.status == "queued",
-                    (
-                        (DailyRecommendedPrefetch.status == "processing")
-                        & or_(
-                            DailyRecommendedPrefetch.lease_expires_at.is_(None),
-                            lease_expiration_column < now,
-                        )
+                    cast(
+                        ColumnElement[bool],
+                        (
+                            (DailyRecommendedPrefetch.status == "processing")
+                            & or_(
+                                DailyRecommendedPrefetch.lease_expires_at.is_(None),
+                                DailyRecommendedPrefetch.lease_expires_at < now,
+                            )
+                        ),
                     ),
                 ),
             )

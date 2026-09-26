@@ -881,7 +881,10 @@ class StoryGenerator:
             temperature = 0.75  # 允许更多创意
             logger.info(f"Dynamic temperature: {temperature} (new event)")
 
-        from src.ai.daily_opening import validate_daily_first_opening
+        from src.ai.daily_opening import (
+            split_daily_opening_issues,
+            validate_daily_first_opening,
+        )
         from src.ai.quick_validator import quick_validate_story
 
         # 最多尝试次数：默认仅保留 QUICK 重试的一次回退；只有启用约束增强时才走 profile 次数重试。
@@ -926,8 +929,10 @@ class StoryGenerator:
                 character_settings,
                 language,
             )
-            if opening_issues:
-                result.issues.extend(opening_issues)
+            opening_hard, opening_warnings = split_daily_opening_issues(opening_issues)
+            result.issues.extend(opening_hard)
+            result.warnings.extend(opening_warnings)
+            if opening_hard:
                 result.passed = False
             result.findings = findings_from_legacy(
                 issues=result.issues,

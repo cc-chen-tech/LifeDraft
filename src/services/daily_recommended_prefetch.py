@@ -14,8 +14,6 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, cast
 
-from sqlalchemy.sql.elements import ColumnElement
-
 from src.ai.models import GameEvent
 from src.game.round.daily_choice_processor import project_daily_choice
 from src.services.daily_recommended_prefetch_repository import (
@@ -324,6 +322,7 @@ def cleanup_expired_daily_recommended_prefetch(
     """Remove expired speculative rows and unconsumed narration assets."""
 
     from sqlalchemy import or_
+    from sqlalchemy.sql.elements import ColumnElement
 
     from src.database.models import (
         DailyRecommendedPrefetch,
@@ -339,22 +338,22 @@ def cleanup_expired_daily_recommended_prefetch(
     files_to_remove: set[Path] = set()
     removed = 0
     try:
-        updated_at_column = cast(
-            ColumnElement[datetime], DailyRecommendedPrefetch.updated_at
-        )
         expired = (
             db.query(DailyRecommendedPrefetch)
             .filter(
-                updated_at_column < cutoff,
+                DailyRecommendedPrefetch.updated_at < cutoff,
                 or_(
                     DailyRecommendedPrefetch.status.in_(
                         {"failed", "invalidated", "consumed"}
                     ),
-                    (
-                        DailyRecommendedPrefetch.status.in_(
-                            {"queued", "processing", "story_ready", "ready"}
-                        )
-                        & DailyRecommendedPrefetch.demanded.is_(False)
+                    cast(
+                        ColumnElement[bool],
+                        (
+                            DailyRecommendedPrefetch.status.in_(
+                                {"queued", "processing", "story_ready", "ready"}
+                            )
+                            & DailyRecommendedPrefetch.demanded.is_(False)
+                        ),
                     ),
                 ),
             )
