@@ -599,3 +599,186 @@ def test_retry_after_terminal_commit_before_scheduler_cleanup_is_dispatched(
     assert fake_provider.generated_slot_indices == [0, 1, 2, 1]
     with Session() as db:
         assert candidate_batch_state(db, ids[1], ids[0]).status == "succeeded"
+
+# Feedback edits use the real durable worker; only the paid provider is faked.
+from src.services.portrait_image_jobs import PortraitImageJobService, run_portrait_image_job
+
+
+@pytest.fixture
+def ready_three_slot_batch(batch_setup, fake_provider, tmp_path):
+    Session, ids = batch_setup
+    run_candidate_batch(ids[2], session_factory=Session, image_service_factory=fake_provider)
+    with Session() as db:
+        for image in db.query(Image):
+            path = tmp_path / f'{image.image_id}.png'
+            path.write_bytes(b'original')
+            image.storage_path = str(path)
+        db.commit()
+    return Session, ids
+
+
+def enqueue_feedback_job(db, source_id):
+    source = db.get(Image, source_id)
+    return PortraitImageJobService(db).enqueue(db.get(Game, source.game_id).user_id, {
+        'game_id': source.game_id, 'operation': 'regenerate',
+        'source_image_id': source_id, 'feedback': '换一件明代衣服',
+    })[0].job_id
+
+
+def finish_feedback_job(Session, job_id, callback=None, fail=False):
+    class EditProvider:
+        def __init__(self, db):
+            self.db = db
+        def regenerate_image(self, **kwargs):
+            source = self.db.get(Image, kwargs['image_id'])
+            if callback:
+                callback(self.db, source)
+            if fail:
+                raise RuntimeError('provider failure')
+            image = Image(game_id=source.game_id, image_type='character', entity_key='player_main',
+                          entity_name=source.entity_name, prompt_text='edited',
+                          storage_path=source.storage_path + '.new', is_active=False)
+            self.db.add(image)
+            self.db.commit()
+            return [image]
+        def delete_image_files(self, images):
+            from pathlib import Path
+            for image in images:
+                Path(image.storage_path).unlink(missing_ok=True)
+    run_portrait_image_job(job_id, session_factory=Session, image_service_factory=EditProvider)
+
+
+def complete_feedback_job(Session, source_id):
+    with Session() as db:
+        job_id = enqueue_feedback_job(db, source_id)
+    finish_feedback_job(Session, job_id)
+    return job_id
+
+
+def test_feedback_replaces_only_target_slot(ready_three_slot_batch):
+    Session, ids = ready_three_slot_batch
+    with Session() as db:
+        source_id = selected_portrait(db, ids[1]).image_id
+        others = [i.image_id for i in db.query(Image) if i.image_id != source_id]
+    job_id = complete_feedback_job(Session, source_id)
+    with Session() as db:
+        job = db.get(PortraitImageGenerationJob, job_id)
+        assert job.status == 'succeeded'
+        assert all(db.get(Image, i).is_active for i in others)
+        assert selected_portrait(db, ids[1]).image_id == job.image_id
+        assert db.query(PortraitCandidateSlot).filter_by(image_id=job.image_id, status='ready').count() == 1
+
+
+def test_selection_changed_during_edit_is_not_stolen(ready_three_slot_batch):
+    Session, ids = ready_three_slot_batch
+    with Session() as db:
+        source_id = selected_portrait(db, ids[1]).image_id
+        other_id = db.query(Image).filter(Image.image_id != source_id).first().image_id
+        pending = enqueue_feedback_job(db, source_id)
+    finish_feedback_job(Session, pending, lambda db, source: select_portrait(db, ids[1], other_id))
+    with Session() as db:
+        assert selected_portrait(db, ids[1]).image_id == other_id
+        assert db.get(Image, other_id).is_active
+
+
+@pytest.mark.parametrize('supersede', [False, True])
+def test_failed_or_superseded_edit_preserves_source(ready_three_slot_batch, supersede):
+    from pathlib import Path
+    Session, ids = ready_three_slot_batch
+    with Session() as db:
+        source = selected_portrait(db, ids[1])
+        source_id, source_path = source.image_id, source.storage_path
+        pending = enqueue_feedback_job(db, source_id)
+    def change_origin(db, source):
+        db.add(GameState(game_id=ids[1], week=0, age=28,
+                         state_json={'character_settings': {'story_origin': {'revision': 2}}}))
+        db.commit()
+    finish_feedback_job(Session, pending, change_origin if supersede else None, fail=not supersede)
+    with Session() as db:
+        assert selected_portrait(db, ids[1]).image_id == source_id
+        assert db.query(PortraitCandidateSlot).filter_by(image_id=source_id, status='ready').count() == 1
+        assert Path(source_path).exists()
+
+
+def test_feedback_does_not_reuse_unrelated_candidate_job(ready_three_slot_batch):
+    Session, ids = ready_three_slot_batch
+    with Session() as db:
+        staged = enqueue_candidate_batch(db, ids[0], ids[1], 'fresh')
+        source_id = selected_portrait(db, ids[1]).image_id
+        edit_id = enqueue_feedback_job(db, source_id)
+        assert edit_id != staged.job_id
+        assert enqueue_feedback_job(db, source_id) == edit_id
+
+
+@pytest.mark.parametrize('failures', [{0, 1, 2}, {1}])
+def test_fresh_batch_keeps_choice_and_retries_only_missing(ready_three_slot_batch, fake_provider, failures, monkeypatch):
+    Session, ids = ready_three_slot_batch
+    with Session() as db:
+        old = selected_portrait(db, ids[1]).image_id
+        fresh_id = enqueue_candidate_batch(db, ids[0], ids[1], 'fresh').job_id
+        assert selected_portrait(db, ids[1]).image_id == old
+    fake_provider.generated_slot_indices.clear()
+    fake_provider.fail = failures
+    run_candidate_batch(fresh_id, session_factory=Session, image_service_factory=fake_provider)
+    with Session() as db:
+        state = candidate_batch_state(db, ids[1], ids[0])
+        assert state.selected_image_id == old
+        ready = [s.image_id for s in state.slots if s.status == 'ready']
+        if ready:
+            monkeypatch.setattr('src.services.portrait_selection.ImageStorageService.get_image_data', lambda *a: b'image')
+            select_portrait(db, ids[1], ready[0])
+        retry_candidate_batch(db, state.batch_id, ids[0])
+    fake_provider.fail = set()
+    run_candidate_batch(fresh_id, session_factory=Session, image_service_factory=fake_provider)
+    assert fake_provider.generated_slot_indices == [0, 1, 2] + sorted(failures)
+
+
+def test_source_slot_changed_during_edit_is_not_overwritten(ready_three_slot_batch):
+    from pathlib import Path
+    Session, ids = ready_three_slot_batch
+    with Session() as db:
+        source = selected_portrait(db, ids[1])
+        source_id, path = source.image_id, source.storage_path
+        pending = enqueue_feedback_job(db, source_id)
+    def replace_slot(db, source):
+        slot = db.query(PortraitCandidateSlot).filter_by(image_id=source.image_id).one()
+        other = db.query(Image).filter(Image.image_id != source.image_id).first()
+        slot.image_id = other.image_id
+        db.commit()
+    finish_feedback_job(Session, pending, replace_slot)
+    with Session() as db:
+        job = db.get(PortraitImageGenerationJob, pending)
+        assert job.status == 'failed'
+        assert job.error_code == 'portrait_source_superseded'
+        assert db.get(Image, source_id).is_active
+        assert Path(path).exists()
+
+
+def test_legacy_edit_preserves_staged_candidates(ready_three_slot_batch):
+    Session, ids = ready_three_slot_batch
+    with Session() as db:
+        ready_ids = [i.image_id for i in db.query(Image)]
+        legacy = Image(game_id=ids[1], image_type='character', entity_key='player_main',
+                       entity_name='legacy', prompt_text='legacy', storage_path='legacy.png',
+                       is_primary=True, is_active=True)
+        db.add(legacy)
+        db.flush()
+        db.get(PortraitSelection, ids[1]).image_id = legacy.image_id
+        db.commit()
+        source_id = legacy.image_id
+    pending = complete_feedback_job(Session, source_id)
+    with Session() as db:
+        assert all(db.get(Image, image_id).is_active for image_id in ready_ids)
+        assert selected_portrait(db, ids[1]).image_id == db.get(PortraitImageGenerationJob, pending).image_id
+
+
+def test_feedback_route_rejects_unselected_candidate(ready_three_slot_batch):
+    from src.api.routers.images import _enqueue_main_portrait_regeneration
+    Session, ids = ready_three_slot_batch
+    with Session() as db:
+        selected_id = selected_portrait(db, ids[1]).image_id
+        other = db.query(Image).filter(Image.image_id != selected_id).first()
+        with pytest.raises(HTTPException) as rejected:
+            _enqueue_main_portrait_regeneration(db, ids[0], other.image_id, 'regenerate', '短发')
+        assert rejected.value.status_code == 422
+        assert db.query(PortraitImageGenerationJob).count() == 1

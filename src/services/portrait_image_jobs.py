@@ -8,7 +8,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from src.database.models import (Game, GameState, Image,
-                                 PortraitImageGenerationJob, SessionLocal)
+                                 PortraitImageGenerationJob, PortraitCandidateSlot, PortraitSelection, SessionLocal)
 from src.services.image import ImageContentError, ImageProviderServiceError, ImageServiceError
 from src.services.image_service import ImageService, get_image_thread_pool
 from src.observability.request_context import bind_current_context
@@ -81,7 +81,21 @@ class PortraitImageJobService:
         entity_key = str(request_json.get("entity_key") or "player_main")
 
         with _job_lock:
-            existing = (
+            # Capture the identity of the edited slot before calling a provider.
+            # An absent slot is deliberately legacy single-image behavior.
+            source_id = request_json.get("source_image_id")
+            if source_id is not None:
+                slot = self.db.query(PortraitCandidateSlot).filter_by(
+                    image_id=source_id, status="ready").first()
+                if slot is not None:
+                    from src.services.portrait_selection import selected_portrait, is_selectable_candidate
+                    selected = selected_portrait(self.db, game_id)
+                    if (selected is None or selected.image_id != source_id
+                            or not is_selectable_candidate(self.db, game_id, source_id)):
+                        raise ValueError("只能从当前选中的形象开始")
+                    request_json["source_batch_id"] = slot.batch_id
+                    request_json["source_slot_index"] = slot.slot_index
+            existing_jobs = (
                 self.db.query(PortraitImageGenerationJob)
                 .filter(
                     PortraitImageGenerationJob.game_id == game_id,
@@ -90,8 +104,11 @@ class PortraitImageJobService:
                     PortraitImageGenerationJob.status.in_(ACTIVE_JOB_STATUSES),
                 )
                 .order_by(PortraitImageGenerationJob.created_at.desc())
-                .first()
+                .all()
             )
+            existing = next((item for item in existing_jobs
+                if (item.request_json or {}).get("operation", "generate") == request_json.get("operation", "generate")
+                and (item.request_json or {}).get("source_image_id") == source_id), None)
             if existing:
                 if _origin_is_current(self.db, existing):
                     return existing, True
@@ -209,6 +226,11 @@ def run_portrait_image_job(
         if not images or images[0].image_id is None:
             raise ImageServiceError("no image was persisted")
 
+        # Serialize the final fence and slot swap with batch writes. Refresh
+        # objects after provider execution, which may have taken minutes.
+        from src.services.portrait_candidate_jobs import _lock_game
+        _lock_game(db, int(job.game_id))
+        db.expire_all()
         db.refresh(job)
         if job.status != "running" or not _origin_is_current(db, job):
             db.query(Image).filter(Image.image_id == int(images[0].image_id)).update(
@@ -231,18 +253,48 @@ def run_portrait_image_job(
                 or candidate.entity_key != "player_main"
             ):
                 raise ImageServiceError("regeneration candidate is missing or invalid")
-            old_images = (
-                db.query(Image)
-                .filter(
-                    Image.game_id == job.game_id,
-                    Image.entity_key == "player_main",
-                    Image.is_active.is_(True),
-                    Image.image_id != candidate.image_id,
+            source_slot = None
+            if "source_batch_id" in request:
+                from src.services.portrait_selection import is_selectable_candidate
+                source_slot = db.get(PortraitCandidateSlot,
+                    (request["source_batch_id"], request["source_slot_index"]))
+                source_id = int(request["source_image_id"])
+                if (source_slot is None or source_slot.status != "ready"
+                        or source_slot.image_id != source_id
+                        or not is_selectable_candidate(db, int(job.game_id), source_id)):
+                    candidate.is_active = False
+                    job.status, job.error_code = "failed", "portrait_source_superseded"
+                    job.error_message = "原人物形象已更新，请从当前形象重新开始"
+                    db.commit()
+                    image_service.delete_image_files(images)
+                    return
+                source_slot.image_id = candidate.image_id
+                db.get(Image, source_id).is_active = False
+                # Compare-and-swap preserves a selection made during generation.
+                db.query(PortraitSelection).filter_by(
+                    game_id=job.game_id, image_id=source_id).update(
+                        {"image_id": candidate.image_id}, synchronize_session=False)
+                # Retain source files: durable batch/job history still references
+                # them. Unrelated candidates must never be deleted.
+            else:
+                old_images = (
+                    db.query(Image)
+                    .filter(
+                        Image.game_id == job.game_id,
+                        Image.entity_key == "player_main",
+                        Image.is_active.is_(True),
+                        Image.image_id != candidate.image_id,
+                        ~Image.image_id.in_(db.query(PortraitCandidateSlot.image_id).filter(
+                            PortraitCandidateSlot.image_id.isnot(None))),
+                    )
+                    .all()
                 )
-                .all()
-            )
             for old_image in old_images:
                 old_image.is_active = False
+            if source_slot is None:
+                db.query(PortraitSelection).filter_by(
+                    game_id=job.game_id, image_id=int(request["source_image_id"])).update(
+                        {"image_id": candidate.image_id}, synchronize_session=False)
             candidate.is_active = True
 
         job.image_id = int(images[0].image_id)

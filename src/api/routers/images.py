@@ -446,15 +446,18 @@ def _enqueue_main_portrait_regeneration(
     source = verify_image_ownership(db, image_id, user)
     if source.image_type != "character" or source.entity_key != "player_main" or not source.is_active:
         raise HTTPException(status_code=422, detail="只能重新生成当前主角形象")
-    job, _ = PortraitImageJobService(db).enqueue(user, {
-        "game_id": int(source.game_id),
-        "entity_key": "player_main",
-        "operation": operation,
-        "source_image_id": int(source.image_id),
-        "feedback": feedback,
-        "new_description": new_description,
-        "use_deepseek_prompt": use_deepseek_prompt,
-    })
+    try:
+        job, _ = PortraitImageJobService(db).enqueue(user, {
+            "game_id": int(source.game_id),
+            "entity_key": "player_main",
+            "operation": operation,
+            "source_image_id": int(source.image_id),
+            "feedback": feedback,
+            "new_description": new_description,
+            "use_deepseek_prompt": use_deepseek_prompt,
+        })
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     schedule_portrait_image_job(int(job.job_id))
     return _portrait_job_response(job)
 
