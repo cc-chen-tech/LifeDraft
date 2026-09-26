@@ -307,15 +307,19 @@ export const useImageStore = create<ImageState>()(
     refreshPortraitImageJob: async (gameId) => {
       if (!gameId) return;
 
-      if (get().portraitCandidates?.game_id === gameId && (!get().portraitImageJob || get().portraitImageJob?.job_id === get().portraitCandidates?.job_id)) {
-        await get().refreshPortraitCandidates(gameId);
-        return;
-      }
       activePortraitJobGameId = gameId;
       clearPortraitJobPollTimer();
       try {
         const job = await api.images.getLatestCharacterPortraitJob(gameId);
         if (activePortraitJobGameId !== gameId) return;
+        // A restored batch can be complete while a later feedback edit is running.
+        // Discover the latest durable task before choosing the polling lifecycle.
+        const batch = get().portraitCandidates;
+        if (batch?.game_id === gameId && (!job || job.job_id === batch.job_id)) {
+          set({ portraitImageJob: job });
+          await get().refreshPortraitCandidates(gameId);
+          return;
+        }
         if (!job) {
           clearPortraitJobPollTimer();
           set({ portraitImageJob: null, isGeneratingImage: false });
@@ -361,7 +365,8 @@ export const useImageStore = create<ImageState>()(
       } catch (err) {
         if (activePortraitJobGameId !== gameId) return;
         console.warn("[refreshPortraitImageJob] Unable to refresh durable job", err);
-        if (get().portraitImageJob?.status === "queued" || get().portraitImageJob?.status === "running") {
+        if (get().portraitImageJob?.status === "queued" || get().portraitImageJob?.status === "running" ||
+            get().portraitCandidates?.status === "queued" || get().portraitCandidates?.status === "running") {
           clearPortraitJobPollTimer();
           portraitJobPollTimer = setTimeout(() => {
             portraitJobPollTimer = null;
