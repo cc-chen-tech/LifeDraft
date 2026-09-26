@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, cast
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from src.database.models import (
     DailyRecommendedPrefetch,
@@ -230,7 +231,7 @@ class StoryVoiceReadingRepository:
                 VoiceReadingJob.status == "processing",
                 or_(
                     VoiceReadingJob.updated_at.is_(None),
-                    VoiceReadingJob.updated_at < stale_before,
+                    cast(ColumnElement[bool], VoiceReadingJob.updated_at < stale_before),
                 ),
             )
             .update(
@@ -357,7 +358,7 @@ class StoryVoiceReadingRepository:
                 VoiceReadingJob.status == "processing",
                 or_(
                     VoiceReadingJob.updated_at.is_(None),
-                    VoiceReadingJob.updated_at < stale_before,
+                    cast(ColumnElement[bool], VoiceReadingJob.updated_at < stale_before),
                 ),
             )
             .update(

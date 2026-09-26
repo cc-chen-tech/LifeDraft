@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import threading
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import uuid4
 
 from sqlalchemy import case, or_
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -286,12 +287,18 @@ class DailyRecommendedPrefetchRepository:
                 DailyRecommendedPrefetch.prefetch_id == prefetch_id,
                 or_(
                     DailyRecommendedPrefetch.status == "queued",
-                    (
-                        (DailyRecommendedPrefetch.status == "processing")
-                        & or_(
-                            DailyRecommendedPrefetch.lease_expires_at.is_(None),
-                            DailyRecommendedPrefetch.lease_expires_at < now,
-                        )
+                    cast(
+                        ColumnElement[bool],
+                        (
+                            (DailyRecommendedPrefetch.status == "processing")
+                            & or_(
+                                DailyRecommendedPrefetch.lease_expires_at.is_(None),
+                                cast(
+                                    ColumnElement[bool],
+                                    DailyRecommendedPrefetch.lease_expires_at < now,
+                                ),
+                            )
+                        ),
                     ),
                 ),
             )
