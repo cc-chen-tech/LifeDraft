@@ -49,7 +49,8 @@ def normalize_chinese_punctuation(text: Optional[str]) -> Optional[str]:
     normalized = normalized.replace('!"', "！”")
 
     # 清理标点后多余空格
-    normalized = re.sub(r"([：，。！？；])\s+([^\n])", r"\1\2", normalized)
+    # Keep paragraph breaks: \s also matches newlines and erases model output structure.
+    normalized = re.sub(r"([：，。！？；])[ \t]+([^\n])", r"\1\2", normalized)
     return normalized
 
 
