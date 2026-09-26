@@ -439,6 +439,31 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     }
   }, [currentStepKey, hasBasicInfo, isGenerating, generatedContent, characterSettings, isPortraitStep, handleGenerate]);
 
+  // A reload retains only the game ID locally. Recover an accepted portrait batch
+  // and its character facts from the server without creating another generation.
+  useEffect(() => {
+    if (!gameId || playerName || Object.keys(characterSettings).length) return;
+    let cancelled = false;
+    const restore = async () => {
+      const batch = await api.images.getPortraitCandidates(gameId);
+      if (!batch || cancelled) return;
+      const saved = await api.games.load(gameId);
+      const current = useGameStore.getState();
+      if (cancelled || current.gameId !== gameId || current.playerName ||
+          Object.keys(current.characterSettings).length) return;
+      const settings = saved.player_state.character_settings;
+      if (!settings?.story_origin || !settings.world) return;
+      current.replaceCharacterSettings(settings);
+      current.setPlayerName(saved.player_state.player_name || "");
+      current.setLifeVision(saved.player_state.life_vision || "");
+      current.setCreationStep(CREATION_STEPS.indexOf("portrait"));
+    };
+    void restore().catch(() => {
+      // Leave local creation inputs untouched when recovery is unavailable.
+    });
+    return () => { cancelled = true; };
+  }, [gameId, playerName, characterSettings]);
+
   const portraitOriginNeedsEnqueue = useRef(false);
 
   // Restoring this step only reads persisted state; creation enqueues at world acceptance.
