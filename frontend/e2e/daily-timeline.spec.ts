@@ -465,3 +465,91 @@ test('refresh after a saved choice safely retries generation on the advanced day
   await expect(page.getByRole('button', { name: '继续调查' })).toBeVisible();
   expect(generationCalls).toBe(1);
 });
+
+test('a failed first-day save can retry into a playable story', async ({ page }) => {
+  const gameId = 880004;
+  const timeline = {
+    version: 2,
+    start_date: '2026-08-13',
+    current_date: '2026-08-13',
+    day_index: 0,
+    day_number: 1,
+    completed_days: 0,
+    week_number: 1,
+    weekday: 4,
+    total_days: 672,
+  };
+  const state = {
+    game_id: gameId,
+    player_state: {
+      player_name: '林岚',
+      age: 28,
+      timeline_version: 2,
+      timeline,
+      day_history: [],
+      character_settings: { name: '林岚', life_vision: '开一间社区书店' },
+      resume_view: {
+        phase: 'failed',
+        failure: {
+          code: 'RETRY_EXHAUSTED',
+          summary: '故事生成未能完成',
+          detail: 'daily_opening_not_single_sentence',
+          retryable: true,
+          attempts_used: 2,
+          quality_level: 'master',
+        },
+      },
+    },
+    progress: { timeline },
+    round_info: { timeline, current_round: 0, game_over: false },
+    current_event: null,
+    constraint_level: 'master',
+  };
+  const story = '林岚想开一间社区书店，却还凑不齐租金。她决定先把账目理清。\n\n清晨她来到旧街店面，房东催她答复。';
+  let generationCalls = 0;
+
+  await page.route(`**/api/games/${gameId}`, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(state) }),
+  );
+  await page.route('**/api/games/active', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(state) }),
+  );
+  await page.route(`**/api/games/${gameId}/event`, async (route) => {
+    generationCalls += 1;
+    await route.fulfill({
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+      body: `event: complete\ndata: ${JSON.stringify({
+        event_id: 'daily-0-retried',
+        revision: 1,
+        story_date: '2026-08-13',
+        event_description: story,
+        options: [
+          { text: '签下租约', effects: {} },
+          { text: '争取宽限', effects: {} },
+        ],
+      })}\n\ndata: [DONE]\n\n`,
+    });
+  });
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
+  );
+  await stubHighQualityNarration(page);
+  await page.route(`**/api/images/**/${gameId}**`, (route) =>
+    route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }),
+  );
+
+  await page.goto(`/play?gameId=${gameId}`);
+  const failure = page.getByRole('alert').filter({ hasText: '故事生成未能完成' });
+  await expect(failure).toBeVisible();
+  await failure.getByRole('button', { name: '再次生成' }).click();
+  await page.getByRole('button', { name: '查看故事正文' }).first().click();
+  const storyRegion = page.getByRole('region', { name: '故事正文' });
+  await expect(storyRegion.getByText(
+    '林岚想开一间社区书店，却还凑不齐租金。她决定先把账目理清。',
+  )).toBeVisible();
+  await expect(storyRegion.getByText('清晨她来到旧街店面，房东催她答复。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '签下租约' })).toBeVisible();
+  await expect(failure).not.toBeVisible();
+  expect(generationCalls).toBe(1);
+});

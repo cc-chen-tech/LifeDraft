@@ -330,6 +330,127 @@ describe('useCharacterCreation', () => {
   // ===================== Character Generation Flow =====================
 
   describe('handleGenerate', () => {
+    it('waits for the name to settle before auto-generating the story origin', async () => {
+      jest.useFakeTimers();
+      try {
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(testOrigin));
+        const { result } = renderHook(() => useCharacterCreation());
+
+        act(() => result.current.setPlayerName('林'));
+        expect(fetchCalled('/api/character/story-origin')).toBe(false);
+
+        act(() => jest.advanceTimersByTime(300));
+        act(() => result.current.setPlayerName('林舟'));
+        act(() => jest.advanceTimersByTime(500));
+        expect(fetchCalled('/api/character/story-origin')).toBe(false);
+
+        await act(async () => {
+          jest.advanceTimersByTime(200);
+          await Promise.resolve();
+        });
+
+        expect(fetchBody('/api/character/story-origin')?.player_name).toBe('林舟');
+        expect((global.fetch as jest.Mock).mock.calls.filter(
+          (call: unknown[]) => call[0] === '/api/character/story-origin',
+        )).toHaveLength(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('waits for the old origin request before generating with edited input', async () => {
+      jest.useFakeTimers();
+      let resolveFirst!: (response: Response) => void;
+      let resolveSecond!: (response: Response) => void;
+      try {
+        (global.fetch as jest.Mock)
+          .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveFirst = resolve; }))
+          .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveSecond = resolve; }));
+        const { result } = renderHook(() => useCharacterCreation());
+
+        act(() => result.current.setPlayerName('林'));
+        await act(async () => {
+          jest.advanceTimersByTime(700);
+          await Promise.resolve();
+        });
+        expect((global.fetch as jest.Mock).mock.calls).toHaveLength(1);
+
+        act(() => result.current.setPlayerName('林舟'));
+        await act(async () => {
+          jest.advanceTimersByTime(700);
+          await Promise.resolve();
+        });
+
+        expect((global.fetch as jest.Mock).mock.calls).toHaveLength(1);
+
+        await act(async () => {
+          resolveFirst(jsonResponse(testOrigin));
+          await Promise.resolve();
+        });
+        expect(fetchBody('/api/character/story-origin')?.player_name).toBe('林舟');
+        expect(result.current.isGenerating).toBe(true);
+        await act(async () => {
+          resolveSecond(jsonResponse(testOrigin));
+          await Promise.resolve();
+        });
+        expect(result.current.isGenerating).toBe(false);
+      } finally {
+        if (resolveFirst) resolveFirst(jsonResponse(testOrigin));
+        if (resolveSecond) resolveSecond(jsonResponse(testOrigin));
+        jest.useRealTimers();
+      }
+    });
+
+    it('does not launch queued generation after leaving the page', async () => {
+      jest.useFakeTimers();
+      let resolveFirst!: (response: Response) => void;
+      try {
+        (global.fetch as jest.Mock)
+          .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveFirst = resolve; }))
+          .mockResolvedValue(jsonResponse(testOrigin));
+        const { result, unmount } = renderHook(() => useCharacterCreation());
+
+        act(() => result.current.setPlayerName('林'));
+        await act(async () => {
+          jest.advanceTimersByTime(700);
+          await Promise.resolve();
+        });
+        act(() => result.current.setPlayerName('林舟'));
+        await act(async () => {
+          jest.advanceTimersByTime(700);
+          await Promise.resolve();
+        });
+        expect((global.fetch as jest.Mock).mock.calls).toHaveLength(1);
+
+        unmount();
+        await act(async () => {
+          resolveFirst(jsonResponse(testOrigin));
+          await Promise.resolve();
+        });
+        expect((global.fetch as jest.Mock).mock.calls).toHaveLength(1);
+      } finally {
+        if (resolveFirst) resolveFirst(jsonResponse(testOrigin));
+        jest.useRealTimers();
+      }
+    });
+
+    it('does not repeat a failed generation before showing retry', async () => {
+      useGameStore.setState({ playerName: '林舟', characterSettings: { story_origin: testOrigin } } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(errorResponse(500, 'provider unavailable'));
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+      jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await act(async () => {
+        await result.current.handleGenerate();
+      });
+
+      expect((global.fetch as jest.Mock).mock.calls.filter(
+        (call: unknown[]) => call[0] === '/api/character/story-origin',
+      )).toHaveLength(1);
+      expect(result.current.generationError).not.toBeNull();
+    }, 15000);
+
     it('does nothing when hasBasicInfo is false (empty playerName)', async () => {
       const { result } = renderHook(() => useCharacterCreation());
       await act(async () => {
@@ -897,6 +1018,45 @@ describe('useCharacterCreation', () => {
         'traits',
         { personality: ['谨慎'] },
       );
+    });
+
+    it('retries one transient background failure before leaving a step incomplete', async () => {
+      jest.useFakeTimers();
+      try {
+        useGameStore.setState({
+          creationStep: 2,
+          gameId: null,
+          playerName: '阿衡',
+          lifeVision: '建立长久事业',
+          characterSettings: {
+            story_origin: testOrigin,
+            family: { family_background: '普通家庭' },
+            relationships: { relationships_description: '旧友仍在' },
+          },
+        } as never);
+        (global.fetch as jest.Mock)
+          .mockResolvedValueOnce(errorResponse(503, 'provider busy'))
+          .mockResolvedValue(jsonResponse({ personality: ['谨慎'] }));
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        const { result } = renderHook(() => useCharacterCreation());
+        let generation!: Promise<void>;
+        act(() => { generation = result.current.runAutoGeneration(false); });
+        await act(async () => {
+          await Promise.resolve();
+          jest.advanceTimersByTime(500);
+          await generation;
+        });
+
+        expect((global.fetch as jest.Mock).mock.calls.filter(
+          (call: unknown[]) => call[0] === '/api/character/setting',
+        )).toHaveLength(2);
+        expect(gameSpy.spies.updateCharacterSetting).toHaveBeenCalledWith(
+          'traits', { personality: ['谨慎'] },
+        );
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('exposes each actual automatic background step while the generation loop advances', async () => {

@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, cast
 
 from src.ai.models import GameEvent
 from src.database.query_types import as_sql_condition
@@ -323,6 +323,7 @@ def cleanup_expired_daily_recommended_prefetch(
     """Remove expired speculative rows and unconsumed narration assets."""
 
     from sqlalchemy import or_
+    from sqlalchemy.sql.elements import ColumnElement
 
     from src.database.models import (
         DailyRecommendedPrefetch,
@@ -346,11 +347,14 @@ def cleanup_expired_daily_recommended_prefetch(
                     DailyRecommendedPrefetch.status.in_(
                         {"failed", "invalidated", "consumed"}
                     ),
-                    (
-                        DailyRecommendedPrefetch.status.in_(
-                            {"queued", "processing", "story_ready", "ready"}
-                        )
-                        & DailyRecommendedPrefetch.demanded.is_(False)
+                    cast(
+                        ColumnElement[bool],
+                        (
+                            DailyRecommendedPrefetch.status.in_(
+                                {"queued", "processing", "story_ready", "ready"}
+                            )
+                            & DailyRecommendedPrefetch.demanded.is_(False)
+                        ),
                     ),
                 ),
             )

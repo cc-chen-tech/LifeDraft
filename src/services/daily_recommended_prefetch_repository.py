@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import threading
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import uuid4
 
 from sqlalchemy import case, or_
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.database.models import DailyRecommendedPrefetch, Game
-from src.database.query_types import as_sql_condition
 
 
 LEASE_DURATION = timedelta(minutes=5)
@@ -287,12 +287,15 @@ class DailyRecommendedPrefetchRepository:
                 DailyRecommendedPrefetch.prefetch_id == prefetch_id,
                 or_(
                     DailyRecommendedPrefetch.status == "queued",
-                    (
-                        (DailyRecommendedPrefetch.status == "processing")
-                        & or_(
-                            DailyRecommendedPrefetch.lease_expires_at.is_(None),
-                            as_sql_condition(DailyRecommendedPrefetch.lease_expires_at < now),
-                        )
+                    cast(
+                        ColumnElement[bool],
+                        (
+                            (DailyRecommendedPrefetch.status == "processing")
+                            & or_(
+                                DailyRecommendedPrefetch.lease_expires_at.is_(None),
+                                DailyRecommendedPrefetch.lease_expires_at < now,
+                            )
+                        ),
                     ),
                 ),
             )

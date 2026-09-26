@@ -4,6 +4,7 @@ import json
 import logging
 import random
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from config.feature_flags import get_feature
@@ -23,6 +24,7 @@ from src.game.story_origin import validate_story_origin
 from src.game.world_fact_safety import qualify_generated_world_facts
 
 logger = logging.getLogger(__name__)
+_STORY_ORIGIN_DEADLINE_SECONDS = 45.0
 
 PLACEHOLDER_NAME_PREFIXES = ("测试", "示例", "玩家", "主角", "用户")
 ANCIENT_ERA_CUES = (
@@ -449,14 +451,22 @@ class CharacterCreator:
             return validate_story_origin(deterministic_candidate)
 
         last_error: Optional[Exception] = None
+        deadline = time.monotonic() + _STORY_ORIGIN_DEADLINE_SECONDS
 
         for attempt in range(3):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("story_origin_generation_timeout") from last_error
             try:
                 candidate = self.ai_generator.generate_completion_json(
                     prompt=prompt,
                     system_prompt=get_system_prompt("world_building", "en"),
                     temperature=0.9,
                     max_tokens=2048,
+                    thinking=False,
+                    allow_truncation_recovery=False,
+                    request_timeout=remaining,
+                    request_deadline=deadline,
                 )
                 if not isinstance(candidate, dict):
                     raise ValueError("invalid_story_origin")
@@ -473,6 +483,8 @@ class CharacterCreator:
                     exc,
                 )
 
+        if time.monotonic() >= deadline:
+            raise TimeoutError("story_origin_generation_timeout") from last_error
         raise ValueError("story_origin_generation_failed") from last_error
 
     def generate_setting(
