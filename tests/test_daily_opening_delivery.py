@@ -159,9 +159,7 @@ def test_failed_first_day_retry_commits_playable_event_with_real_validators(
             "failure": {"code": "RETRY_EXHAUSTED", "retryable": True},
         },
     )
-    ai = EventGenerator(
-        api_key="test-key", use_cache=False, quality_level=QualityLevel.MASTER
-    )
+    ai = EventGenerator(api_key="test-key", use_cache=False, quality_level=QualityLevel.MASTER)
     prose_requests: list[str] = []
 
     def provider_response(**kwargs: object) -> str:
@@ -196,9 +194,7 @@ def test_failed_first_day_retry_commits_playable_event_with_real_validators(
     )
     streamed: list[str] = []
 
-    event = generator.generate_round_event(
-        force_regenerate=True, stream_callback=streamed.append
-    )
+    event = generator.generate_round_event(force_regenerate=True, stream_callback=streamed.append)
 
     assert event is not None
     assert event.event_description == STYLE_VARIANT_STORY
@@ -212,12 +208,136 @@ def test_failed_first_day_retry_commits_playable_event_with_real_validators(
     assert ai.ai_client.call.call_count == 2  # prose plus the real consistency judge
 
 
-def test_first_day_missing_protagonist_still_blocks_story_delivery() -> None:
+def test_first_day_missing_protagonist_draft_is_never_delivered() -> None:
     story = (
         "她想开一间社区书店，却还凑不齐租金。她决定先把账目理清。\n\n"
         "父亲的承诺与积蓄都悬在心头，她反复盘算手中能用的筹码。\n\n"
         "清晨她来到旧街的店面，翻看租约上的期限和押金条款。"
     )
 
+    event, _, _ = _generate_first_day(story)
+
+    assert event.event_description != story
+    assert "林岚" in event.event_description
+    assert event.delivery_notice is not None
+
+
+def test_first_day_hard_rejections_deliver_only_a_valid_safe_opening(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    monkeypatch.setenv("ENABLE_UNIFIED_NARRATIVE_BUDGETS", "false")
+    invalid_draft = "于谦端起一杯拿铁，却未考虑远方。\n\n他打算先休息。"
+    state = {
+        "game_id": 157,
+        "week": 0,
+        "current_round": 0,
+        "player_name": "于谦",
+        "life_vision": "占领蒙古",
+        "timeline": {"version": 2, "day_index": 0, "day_number": 1},
+    }
+    settings = {
+        "name": "于谦",
+        "era": {"era_description": "明永乐十九年"},
+    }
+    client = MagicMock()
+    client.call.return_value = invalid_draft
+    generator = StoryGenerator(client, quality_level=QualityLevel.MASTER)
+    options = MagicMock()
+
+    event = generator.generate_round_event(
+        player_state=state,
+        character_settings=settings,
+        language="zh",
+        round_number=0,
+        round_context="",
+        option_generator=options,
+    )
+
+    assert "拿铁" not in event.event_description
+    assert "于谦" in event.event_description
+    assert "占领蒙古" in event.event_description
+    assert len(event.options) == 3
+    assert event.delivery_notice is not None
+    assert event.delivery_notice.code == "SAFE_FIRST_DAY_FALLBACK"
+    assert client.call.call_count <= 3
+    options.generate_options_only.assert_not_called()
+
+
+def test_unsafe_first_day_fallback_does_not_bypass_era_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    state = {
+        "game_id": 158,
+        "week": 0,
+        "current_round": 0,
+        "player_name": "于谦",
+        "life_vision": "喝一杯拿铁",
+        "timeline": {"version": 2, "day_index": 0, "day_number": 1},
+    }
+    settings = {"name": "于谦", "era": {"era_description": "明永乐十九年"}}
+    client = MagicMock()
+    client.call.return_value = "于谦点了一杯拿铁。\n\n他走进星巴克。"
+
     with pytest.raises(StoryGenerationFailure):
-        _generate_first_day(story)
+        StoryGenerator(client, quality_level=QualityLevel.EXPERT).generate_round_event(
+            player_state=state,
+            character_settings=settings,
+            language="zh",
+            round_number=0,
+            round_context="",
+            option_generator=MagicMock(),
+        )
+
+
+def test_safe_first_day_fallback_is_saved_with_three_playable_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    monkeypatch.setenv("ENABLE_UNIFIED_NARRATIVE_BUDGETS", "false")
+    state = PlayerState(
+        player_name="于谦",
+        life_vision="占领蒙古",
+        character_settings={
+            "name": "于谦",
+            "era": {"era_description": "明永乐十九年"},
+            "relationships": {"key_people": []},
+        },
+        timeline=build_daily_timeline(start_date="1421-04-15", day_index=0),
+        timeline_version=2,
+    )
+    ai = EventGenerator(api_key="test-key", use_cache=False, quality_level=QualityLevel.EXPERT)
+    rejected_draft = "于谦端起一杯拿铁，却未考虑远方。\n\n他打算先休息。"
+    ai.ai_client.call = MagicMock(return_value=rejected_draft)
+    introductions = CharacterIntroductionService(
+        player_state_getter=lambda: state, character_creator=MagicMock()
+    )
+    relationships = MagicMock()
+    relationships.get_triggered_events.return_value = []
+    committed: list[GameEvent] = []
+    generator = RoundEventGenerator(
+        player_state_getter=lambda: state,
+        ai_generator=ai,
+        language_getter=lambda: "zh",
+        character_introduction_service=introductions,
+        summary_selector=MagicMock(),
+        relationship_service=relationships,
+        event_callback=lambda event, _state: committed.append(event),
+    )
+    streamed: list[str] = []
+
+    event = generator.generate_round_event(stream_callback=streamed.append)
+
+    assert event is not None
+    assert "拿铁" not in event.event_description
+    assert "于谦" in event.event_description
+    assert "占领蒙古" in event.event_description
+    assert len(event.options) == 3
+    assert event.delivery_notice is not None
+    assert event.story_date == "1421-04-15"
+    assert state.current_event_data == event.model_dump()
+    assert committed == [event]
+    assert streamed == [event.event_description]

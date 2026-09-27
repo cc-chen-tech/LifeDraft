@@ -1969,6 +1969,71 @@ class StoryGenerator:
             _emit_selected_story(best_valid_story_text)
             return event
 
+        timeline = player_state.get("timeline")
+        if (
+            self._soft_narrative_lengths
+            and provider_requests_used > 0
+            and _hard_findings(last_findings)
+            and isinstance(timeline, dict)
+            and timeline.get("version") == 2
+            and int(timeline.get("day_index") or 0) == 0
+        ):
+            from src.ai.daily_opening import build_first_day_fallback_candidate
+            from src.game.daily_transition import prepare_daily_option_transitions
+
+            safe_opening = build_first_day_fallback_candidate(
+                player_state, character_settings, language
+            )
+            if safe_opening:
+                safe_opening = normalize_generated_story(safe_opening, language=language)
+                safe_result = _quick_validate_round_story(safe_opening)
+                if safe_result.passed and not _hard_shape_issues(safe_opening):
+                    fallback_options = OptionGenerator.complete_new_event_options(
+                        [],
+                        story_description=safe_opening,
+                        language=language,
+                        decision_history=player_state.get("decision_history", []),
+                    )
+                    fallback_options = prepare_daily_option_transitions(
+                        fallback_options, player_state, language=language
+                    )
+                    if language == "zh":
+                        summary = "已使用简短开场继续游戏"
+                        reason = (
+                            "模型草稿未通过必要检查；这段开场已经通过人物与时代检查。"
+                            "你可以继续，也可以重新生成。"
+                        )
+                    else:
+                        summary = "Continuing with a short opening"
+                        reason = (
+                            "Model drafts failed required checks. This opening passed "
+                            "character and era checks; you can continue or regenerate."
+                        )
+                    event = GameEvent(
+                        event_description=safe_opening,
+                        options=fallback_options,
+                        delivery_notice=StoryDeliveryNotice(
+                            code="SAFE_FIRST_DAY_FALLBACK",
+                            summary=summary,
+                            reason=reason,
+                            attempts_used=max(1, provider_requests_used),
+                        ),
+                    )
+                    logger.info(
+                        "story_generation_outcome operation_id=%s game_id=%s quality=%s "
+                        "attempts=%d committed=true fallback=safe_first_day",
+                        generation_operation_id,
+                        player_state.get("game_id"),
+                        self.quality_level.value,
+                        provider_requests_used,
+                    )
+                    _emit_selected_story(safe_opening)
+                    return event
+                logger.warning(
+                    "Safe first-day opening rejected by required checks: %s",
+                    safe_result.issues,
+                )
+
         message = "Story generation failed before producing a valid event"
         if last_generation_error is not None:
             message = f"{message}: {last_generation_error}"

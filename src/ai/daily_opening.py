@@ -134,6 +134,31 @@ def _life_vision(state: Dict[str, Any], settings: Optional[Dict[str, Any]]) -> s
     )
 
 
+def build_first_day_fallback_candidate(
+    player_state: Dict[str, Any],
+    character_settings: Optional[Dict[str, Any]],
+    language: str,
+) -> str:
+    """Construct a minimal opening without reusing a rejected model draft."""
+    protagonist = resolve_protagonist_name(player_state, character_settings, None)
+    if not protagonist:
+        return ""
+    vision = _life_vision(player_state, character_settings).strip("。！？.!? \n")
+    if language == "zh":
+        aim = vision or "走出眼前的困局"
+        return (
+            f"{protagonist}想要{aim}，却明白眼前的局势仍有许多未知。\n\n"
+            f"清晨，{protagonist}停下脚步，把已经知道的事实重新理清。"
+            "下一步必须由自己决定：先查明情况，找人核实，还是暂缓行动。"
+        )
+    aim = vision or "find a way forward"
+    return (
+        f"{protagonist} wants to {aim}, but the situation is still uncertain.\n\n"
+        f"In the morning, {protagonist} pauses to review what is already known. "
+        "The next step is a choice: investigate, seek advice, or wait for more evidence."
+    )
+
+
 def _has_vision_anchor(first: str, vision: str, language: str) -> bool:
     if not vision.strip():
         return True

@@ -29,7 +29,9 @@ class EventOption(BaseModel):
 class StoryDeliveryNotice(BaseModel):
     """Sanitized player-facing explanation for a deliverable degraded story."""
 
-    code: Literal["SOFT_VALIDATION_FALLBACK"] = "SOFT_VALIDATION_FALLBACK"
+    code: Literal["SOFT_VALIDATION_FALLBACK", "SAFE_FIRST_DAY_FALLBACK"] = (
+        "SOFT_VALIDATION_FALLBACK"
+    )
     summary: str
     reason: str
     retryable: bool = True
