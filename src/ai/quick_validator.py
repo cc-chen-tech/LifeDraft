@@ -415,7 +415,15 @@ class QuickValidator:
             if part
         )
         era_type = cls._infer_era_type(combined)
-        if not era_type and cls._looks_like_plain_realistic_settings(character_settings):
+        # Generic relationship/occupation sections imply a modern default only
+        # when no era was supplied. Regnal dates such as 明永乐十九年 may not
+        # match our short keyword list; preserve them for the era validator
+        # instead of rejecting historical vocabulary as modern-world drift.
+        if (
+            not era_type
+            and not era_context_text.strip()
+            and cls._looks_like_plain_realistic_settings(character_settings)
+        ):
             era_type = "modern"
         return {
             "era": era_text or combined[:80],

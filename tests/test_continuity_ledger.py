@@ -9,6 +9,27 @@ import pytest
 pytestmark = [pytest.mark.unit]
 
 
+@pytest.mark.parametrize("reference", ["明年二月", "来年2月", "去年二月", "前年2月"])
+def test_relative_year_reference_is_not_a_claim_about_today(reference):
+    ledger = ContinuityLedger.from_player_state(_state())
+    result = ledger.validate_story(
+        f"八月的粮册已经送到。粮食只够支应到{reference}，必须重新核对。",
+        date_info={"year": 1426, "month": 8, "age": 28}, week=0, round_number=0,
+    )
+    assert not any(issue.code == "date_mismatch" for issue in result.issues)
+
+
+def test_future_reference_does_not_hide_a_separate_wrong_current_month():
+    ledger = ContinuityLedger.from_player_state(_state())
+    result = ledger.validate_story(
+        "粮食只够支应到明年二月，但今天是二月，账本已经送到。",
+        date_info={"year": 1426, "month": 8, "age": 28}, week=0, round_number=0,
+    )
+    dates = [issue for issue in result.issues if issue.code == "date_mismatch"]
+    assert len(dates) == 1
+    assert dates[0].observed == "二月"
+
+
 
 def _settings() -> dict:
     return {
