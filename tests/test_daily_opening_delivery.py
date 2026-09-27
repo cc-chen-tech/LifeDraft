@@ -457,11 +457,14 @@ def test_first_day_consistency_circuit_reaches_safe_opening(monkeypatch, caplog,
     client.call.side_effect = [STYLE_VARIANT_STORY, rejection, STYLE_VARIANT_STORY, rejection]
     generator = StoryGenerator(client, quality_level=QualityLevel.MASTER)
     emitted = []
-    event = generator.generate_round_event(
-        player_state=_first_day_state(), character_settings={'name': '林岚'}, language='zh',
-        round_number=0, round_context='', option_generator=MagicMock(),
-        world_model=MagicMock(continuity_ledger=None), stream_callback=emitted.append,
-    )
+    from src.observability.diagnostics import diagnostic_context
+    from src.observability.validation_evidence import decrypt_validation_evidence
+    with diagnostic_context(user_id=111):
+        event = generator.generate_round_event(
+            player_state=_first_day_state(), character_settings={'name': '林岚'}, language='zh',
+            round_number=0, round_context='', option_generator=MagicMock(),
+            world_model=MagicMock(continuity_ledger=None), stream_callback=emitted.append,
+        )
     assert event.delivery_notice.code == 'SAFE_FIRST_DAY_FALLBACK'
     assert event.event_description != STYLE_VARIANT_STORY
     assert emitted == [event.event_description]
@@ -475,6 +478,14 @@ def test_first_day_consistency_circuit_reaches_safe_opening(monkeypatch, caplog,
     assert all(r['outcome'] == 'rejected' for r in checks)
     assert 'private rejected' not in json.dumps(records)
     assert 'private story excerpt' not in json.dumps(records)
+    evidence = [r for r in records if r.get('event') == 'story_validation_evidence'
+                and r.get('phase') in {'consistency_initial', 'consistency_repair'}]
+    assert [r['phase'] for r in evidence] == ['consistency_initial', 'consistency_repair']
+    assert all(r.get('encrypted_evidence') for r in evidence)
+    decoded = [decrypt_validation_evidence(r, user_id=111, operation_id=r['operation_id']) for r in evidence]
+    assert all(r['issues'][0]['description'] == 'private rejected identity conflict' for r in decoded)
+    assert decoded[0]['attempt_id'] != decoded[1]['attempt_id']
+    assert all(r['game_id'] == 1 for r in decoded)
 
 
 @pytest.mark.parametrize(('day_index', 'soft_lengths'), [(1, True), (0, False)])

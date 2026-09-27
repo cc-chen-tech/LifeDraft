@@ -1039,6 +1039,15 @@ class StoryGenerator:
             hard = [finding for finding in findings if finding.severity is FindingSeverity.HARD]
             if hard:
                 last_hard_rejection = hard
+                from src.observability.validation_evidence import emit_validation_evidence
+                emit_validation_evidence(
+                    "finding", [{"code": f.code, "severity": f.severity.value,
+                                 "description": f.message, "evidence": f.evidence,
+                                 "repair_instruction": f.repair_instruction} for f in hard],
+                    story_text=story_text or "", game_id=player_state.get("game_id"),
+                    operation_id=generation_operation_id,
+                    attempt_id=f"{generation_operation_id}:{provider_requests_used}",
+                )
             for finding in findings:
                 emit_diagnostic("story_finding", phase="validation", outcome="rejected" if finding.severity.value == "hard" else "warning",
                                 game_id=player_state.get("game_id"), operation_id=generation_operation_id,
@@ -1073,7 +1082,7 @@ class StoryGenerator:
                 and int(timeline.get("day_index") or 0) == 0
             )
 
-        def _record_consistency_check(result: Any, phase: str) -> None:
+        def _record_consistency_check(result: Any, phase: str, candidate: str) -> None:
             # Provider-authored explanations may quote private stories. Only
             # fixed categories and deterministic ledger codes enter diagnostics.
             dimensions = {"geographic", "career", "personality", "temporal", "commitment",
@@ -1085,6 +1094,17 @@ class StoryGenerator:
                 rule = getattr(issue, "rule_code", "")
                 dimension = issue.dimension if issue.dimension in dimensions else "unknown"
                 codes.append(rule if rule in ledger_codes else f"consistency_{dimension}")
+            if result.issues:
+                from src.observability.validation_evidence import emit_validation_evidence
+                emit_validation_evidence(
+                    f"consistency_{phase}", [
+                        {"code": code, "severity": issue.severity, "description": issue.description,
+                         "evidence": issue.evidence, "repair_instruction": issue.fix_suggestion}
+                        for code, issue in zip(codes, result.issues)
+                    ], story_text=candidate, game_id=player_state.get("game_id"),
+                    operation_id=generation_operation_id,
+                    attempt_id=f"{generation_operation_id}:{provider_requests_used}",
+                )
             emit_diagnostic("story_consistency_check", phase=phase,
                             outcome="rejected" if result.has_critical_issues else "passed",
                             game_id=player_state.get("game_id"), operation_id=generation_operation_id,
@@ -2369,7 +2389,7 @@ class StoryGenerator:
         narrative_budget: Optional[NarrativeBudget] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
         story_call: Optional[Callable[..., str]] = None,
-        validation_observer: Optional[Callable[[Any, str], None]] = None,
+        validation_observer: Optional[Callable[[Any, str, str], None]] = None,
     ) -> str:
         """
         Validate story consistency and retry once if CRITICAL issues found.
@@ -2411,7 +2431,7 @@ class StoryGenerator:
             )
 
             if validation_observer is not None:
-                validation_observer(validation, "initial")
+                validation_observer(validation, "initial", story_text)
             if validation.passed:
                 return story_text
 
@@ -2529,7 +2549,7 @@ class StoryGenerator:
                     ),
                 )
                 if validation_observer is not None:
-                    validation_observer(repaired_validation, "repair")
+                    validation_observer(repaired_validation, "repair", retry_story)
                 if (
                     repaired_validation.passed
                     or not repaired_validation.has_critical_issues

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 test.describe('protected real-provider release smoke evidence', () => {
-  test('delivers the persisted daily opening through authenticated play and reload', async ({ page, context }) => {
+  test('delivers the persisted daily opening through authenticated play and reload', async ({ page, context }, testInfo) => {
     const reportPath = process.env.MODEL_SMOKE_REPORT;
     const screenshotPath = process.env.MODEL_SMOKE_SCREENSHOT;
     test.skip(!reportPath, 'MODEL_SMOKE_REPORT is only set by the protected model-smoke flow');
@@ -13,7 +13,7 @@ test.describe('protected real-provider release smoke evidence', () => {
     const report = JSON.parse(fs.readFileSync(reportPath as string, 'utf8')) as {
       schema_version: number;
       status: string;
-      checks: Array<{ name: string; outcome: string; details?: { delivery_mode?: string } }>;
+      checks: Array<{ name: string; outcome: string; details?: { delivery_mode?: string; event_id?: string } }>;
       model_events: { count: number; fallback_count: number; unknown_error_count: number };
     };
     expect(report.schema_version).toBe(1);
@@ -32,6 +32,22 @@ test.describe('protected real-provider release smoke evidence', () => {
     const body = await saved.json();
     const event = body.current_event as { event_id: string; revision: number; delivery_notice?: { code: string }; story_date: string; event_description: string; options: Array<{ text: string }> };
     const delivery = report.checks.find((check) => check.name === 'daily_opening_delivery');
+    // A prior attempt reaches settlement only after the owned UI/reload checks.
+    // If its POST committed but readback failed, validate that exact receipt
+    // instead of trying to render an already-cleared first-day event.
+    if (!event && testInfo.retry > 0) {
+      expect(delivery?.details?.event_id).toBeTruthy();
+      expect(body.constraint_level).toBe('master');
+      expect(body.player_state.timeline.day_index).toBe(1);
+      const settled = body.player_state.day_history.at(-1);
+      expect(settled).toEqual(expect.objectContaining({
+        event_id: delivery?.details?.event_id, day_index: 0,
+        story_date: '1421-04-15', choice_option_index: 0,
+      }));
+      expect(settled.options).toHaveLength(3);
+      expect(settled.event_description).toContain('于谦');
+      return;
+    }
     if (delivery?.details?.delivery_mode === 'safe_first_day') {
       expect(event.delivery_notice?.code).toBe('SAFE_FIRST_DAY_FALLBACK');
     } else {

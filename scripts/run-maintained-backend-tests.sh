@@ -25,6 +25,7 @@ maintained_tests=(
   tests/test_round_illustration_contracts.py
   tests/test_image_service_persistence_contracts.py
   tests/test_diagnostic_lifecycle.py
+  tests/test_validation_evidence.py
   tests/test_request_observability.py
   tests/test_model_telemetry.py
   tests/test_model_provider_telemetry.py
