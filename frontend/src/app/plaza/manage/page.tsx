@@ -19,7 +19,7 @@ export default function ManagePlazaPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [feedback, setFeedback] = useState("");
+  const [feedback, setFeedback] = useState<{ storyId: number; message: string; error: boolean } | null>(null);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
@@ -58,21 +58,25 @@ export default function ManagePlazaPage() {
   async function toggle(story: OwnedPublicStory) {
     if (busyId !== null) return;
     setBusyId(story.game_id);
-    setFeedback("");
+    setFeedback(null);
     try {
       const result = await api.plaza.setPublication(story.game_id, !story.enabled);
       setStories((current) => current.map((item) => item.game_id === story.game_id ? result : item));
-      setFeedback(result.enabled ? `“${story.title}”已公开，今后完成的章节也会自动出现。` : `“${story.title}”已关闭公开，原链接现在无法阅读。`);
+      setFeedback({
+        storyId: story.game_id,
+        message: result.enabled ? `“${story.title}”已分享到故事广场，今后完成的章节也会自动出现。` : `“${story.title}”已关闭分享，原链接现在无法阅读。`,
+        error: false,
+      });
     } catch {
-      setFeedback("更改公开状态失败，请重试。");
+      setFeedback({ storyId: story.game_id, message: "更改分享状态失败，请重试。", error: true });
     } finally {
       setBusyId(null);
     }
   }
 
-  async function copyLink(publicId: string) {
+  async function copyLink(storyId: number, publicId: string) {
     const success = await copyToClipboard(`${window.location.origin}/plaza/${publicId}`);
-    setFeedback(success ? "公开链接已复制。" : "复制失败，请重试。");
+    setFeedback({ storyId, message: success ? "公开链接已复制。" : "复制失败，请重试。", error: !success });
   }
 
   return (
@@ -81,9 +85,8 @@ export default function ManagePlazaPage() {
       <main className="mx-auto w-full max-w-4xl px-5 pb-24 pt-12 sm:px-8 sm:pt-20">
         <div className="border-b border-[var(--border-default)] pb-9">
           <h1 className="font-serif text-4xl sm:text-5xl">分享我的故事</h1>
-          <p className="mt-5 max-w-2xl leading-8 text-[var(--text-secondary)]">每个故事只有一个公开开关。打开后，已完成的章节和今后完成的新章节都能在广场阅读；关闭后，整个故事和原链接会立即失效。</p>
+          <p className="mt-5 max-w-2xl leading-8 text-[var(--text-supporting)]">选择一个故事，点“分享到故事广场”即可公开全部已完成章节；新章节完成后会自动更新。你可以随时关闭分享，公开链接也会立即失效。</p>
         </div>
-        {feedback ? <p role="status" aria-live="polite" className="mt-6 border border-[var(--border-default)] bg-[var(--surface-raised)] px-4 py-3 text-sm">{feedback}</p> : null}
         {authStatus === "checking" ? <p role="status" className="py-16 text-center text-[var(--text-secondary)]">正在确认登录…</p> : authStatus === "error" ? (
           <div role="alert" className="mt-8 border border-[var(--border-default)] bg-[var(--surface-reading)] p-8">
             <p>无法确认登录状态，请稍后重试。</p>
@@ -109,25 +112,31 @@ export default function ManagePlazaPage() {
         ) : (
           <ul className="mt-8 space-y-3">
             {stories.map((story) => (
-              <li key={story.game_id} className="border border-[var(--border-default)] bg-[var(--surface-reading)] p-5 sm:p-7">
-                <div className="flex flex-wrap items-start justify-between gap-5">
+              <li key={story.game_id} className={`border bg-[var(--surface-reading)] p-5 sm:p-7 ${story.enabled ? "border-[var(--success-border)]" : "border-[var(--border-default)]"}`}>
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <h2 className="break-words font-serif text-2xl">{story.title}</h2>
-                    <p className="mt-2 text-sm text-[var(--text-secondary)]">{story.chapter_count} 章已完成 · {story.enabled ? "广场可见" : "仅自己可见"}</p>
+                    <p className="mt-2 text-sm text-[var(--text-primary)]">{story.chapter_count} 章已完成</p>
                   </div>
-                  <button type="button" role="switch" aria-label={`公开${story.title}`} aria-checked={story.enabled} disabled={busyId !== null || (!story.can_publish && !story.enabled)} onClick={() => void toggle(story)} className={`relative h-8 w-14 shrink-0 rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40 ${story.enabled ? "border-[var(--success-border)] bg-[var(--success-foreground)]" : "border-[var(--border-strong)] bg-[var(--surface-raised)]"}`}>
-                    <span aria-hidden="true" className={`absolute top-1 size-6 rounded-full bg-[var(--surface-canvas)] transition-[left] ${story.enabled ? "left-7" : "left-1"}`} />
-                  </button>
+                  <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
+                    <button type="button" disabled={busyId !== null || (!story.can_publish && !story.enabled)} onClick={() => void toggle(story)} className={`inline-flex min-h-11 items-center justify-center rounded-[var(--radius-control)] border px-5 py-2.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--text-primary)] disabled:cursor-not-allowed ${story.enabled ? "border-[var(--danger-border)] bg-[var(--danger-subtle)] text-[var(--danger-foreground)] hover:bg-[var(--danger-border)] hover:text-[var(--text-primary)]" : story.can_publish ? "border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--surface-canvas)] hover:bg-[var(--text-secondary)]" : "border-[var(--border-strong)] bg-[var(--surface-raised)] text-[var(--text-primary)]"}`}>
+                      {busyId === story.game_id ? (story.enabled ? "正在关闭分享…" : "正在分享…") : story.enabled ? "关闭分享" : story.can_publish ? "分享到故事广场" : "完成第一章后可分享"}
+                    </button>
+                    <span className={`rounded-[var(--radius-control)] border px-3 py-1 text-xs font-medium ${story.enabled ? "border-[var(--success-border)] bg-[var(--success-subtle)] text-[var(--success-foreground)]" : "border-[var(--border-strong)] bg-[var(--surface-raised)] text-[var(--text-primary)]"}`}>
+                      {story.enabled ? "已分享到故事广场" : "仅自己可见"}
+                    </span>
+                  </div>
                 </div>
-                <p className="mt-5 border-t border-[var(--border-default)] pt-4 text-sm leading-6 text-[var(--text-secondary)]">
-                  {story.enabled ? "已完成章节全部公开，后续完成的章节会自动更新。" : story.can_publish ? "打开开关后，整篇故事都会公开。" : "完成第一章后即可公开。"}
+                <p className="mt-5 border-t border-[var(--border-default)] pt-4 text-sm leading-6 text-[var(--text-supporting)]">
+                  {story.enabled ? "已完成章节全部公开，后续完成的章节会自动更新。" : story.can_publish ? "分享后，整个故事的已完成章节都会在广场公开。" : "完成第一章后，就能把整个故事分享到广场。"}
                 </p>
                 {story.enabled && story.public_id ? (
                   <div className="mt-4 flex flex-wrap gap-3">
                     <Link href={`/plaza/${story.public_id}`} className="inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] border border-[var(--border-interactive)] px-4 text-sm hover:bg-[var(--surface-raised)]" aria-label="查看公开故事"><ExternalLink className="size-4" /> 查看公开故事</Link>
-                    <Button type="button" variant="quiet" size="touch" onClick={() => void copyLink(story.public_id!)}><Copy className="size-4" /> 复制链接</Button>
+                    <Button type="button" variant="narrative" size="touch" onClick={() => void copyLink(story.game_id, story.public_id!)}><Copy className="size-4" /> 复制链接</Button>
                   </div>
                 ) : null}
+                {feedback?.storyId === story.game_id ? <p role={feedback.error ? "alert" : "status"} className={`mt-4 border px-4 py-3 text-sm ${feedback.error ? "border-[var(--danger-border)] bg-[var(--danger-subtle)] text-[var(--danger-foreground)]" : "border-[var(--success-border)] bg-[var(--success-subtle)] text-[var(--text-primary)]"}`}>{feedback.message}</p> : null}
               </li>
             ))}
           </ul>

@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { api } from "@/lib/api";
 import { useUserStore } from "@/stores/useUserStore";
 import PlazaPage from "@/app/plaza/page";
@@ -87,19 +87,47 @@ it("reads chapters from a direct public link", async () => {
   expect(screen.getByText("第二天")).toBeInTheDocument();
 });
 
-it("uses one switch for the whole story and hides its link when off", async () => {
+it("names the share action and confirms the whole story is public beside the story", async () => {
+  plaza.mine.mockResolvedValue([{ game_id: 7, title: "林晚", chapter_count: 2,
+    can_publish: true, enabled: false, public_id: "public-1", updated_at: null }]);
+  plaza.setPublication.mockResolvedValue({ game_id: 7, title: "林晚", chapter_count: 2,
+    can_publish: true, enabled: true, public_id: "public-1", updated_at: null });
+
+  render(<ManagePlazaPage />);
+  const story = within(await screen.findByRole("listitem"));
+  expect(story.getByText("仅自己可见")).toBeInTheDocument();
+  fireEvent.click(story.getByRole("button", { name: "分享到故事广场" }));
+
+  await waitFor(() => expect(plaza.setPublication).toHaveBeenCalledWith(7, true));
+  expect(await story.findByText("已分享到故事广场")).toBeInTheDocument();
+  expect(story.getByRole("link", { name: "查看公开故事" })).toBeInTheDocument();
+  expect(story.getByRole("button", { name: "关闭分享" })).toBeInTheDocument();
+});
+
+it("names the close action and hides the public link when sharing is off", async () => {
   plaza.mine.mockResolvedValue([{ game_id: 7, title: "林晚", chapter_count: 2,
     can_publish: true, enabled: true, public_id: "public-1", updated_at: null }]);
   plaza.setPublication.mockResolvedValue({ game_id: 7, title: "林晚", chapter_count: 2,
     can_publish: true, enabled: false, public_id: "public-1", updated_at: null });
   render(<ManagePlazaPage />);
-  const toggle = await screen.findByRole("switch", { name: "公开林晚" });
-  expect(toggle).toHaveAttribute("aria-checked", "true");
-  expect(screen.getByRole("link", { name: "查看公开故事" })).toBeInTheDocument();
-  fireEvent.click(toggle);
+  const story = within(await screen.findByRole("listitem"));
+  expect(story.getByText("已分享到故事广场")).toBeInTheDocument();
+  expect(story.getByRole("link", { name: "查看公开故事" })).toBeInTheDocument();
+  fireEvent.click(story.getByRole("button", { name: "关闭分享" }));
   await waitFor(() => expect(plaza.setPublication).toHaveBeenCalledWith(7, false));
-  expect(toggle).toHaveAttribute("aria-checked", "false");
-  expect(screen.queryByRole("link", { name: "查看公开故事" })).not.toBeInTheDocument();
+  expect(story.getByText("仅自己可见")).toBeInTheDocument();
+  expect(story.queryByRole("link", { name: "查看公开故事" })).not.toBeInTheDocument();
+  expect(story.getByRole("button", { name: "分享到故事广场" })).toBeInTheDocument();
+});
+
+it("explains why a story without a completed chapter cannot be shared", async () => {
+  plaza.mine.mockResolvedValue([{ game_id: 8, title: "于谦", chapter_count: 0,
+    can_publish: false, enabled: false, public_id: null, updated_at: null }]);
+  render(<ManagePlazaPage />);
+  const story = within(await screen.findByRole("listitem"));
+  expect(story.getByRole("button", { name: "完成第一章后可分享" })).toBeDisabled();
+  expect(story.getByText("完成第一章后，就能把整个故事分享到广场。")).toBeInTheDocument();
+  expect(plaza.setPublication).not.toHaveBeenCalled();
 });
 
 it("explains that authors must log in without blocking anonymous reading", async () => {

@@ -195,6 +195,14 @@ def test_candidate_batch_reports_each_slot_and_terminal_state(temp_db_file, capl
     slots = _records(caplog, "portrait_slot_finished")
     assert len(slots) == (0 if mode == "superseded" else 3)
     assert all(event["batch_id"] and event["job_id"] == job_id for event in slots)
+    for event in slots:
+        assert (event["user_id"], event["game_id"]) == (user_id, game_id)
+        assert event["segment_index"] == event["slot_index"]
+        assert event["attempt_id"] == f"portrait-job-{job_id}-attempt-1-slot-{event['slot_index']}"
+    if mode != "superseded":
+        assert len({event["attempt_id"] for event in slots}) == 3
+        assert len(_records(caplog, "portrait_job_started")) == 1
+        assert len(_records(caplog, "portrait_job_finished")) == 1
 
 
 def test_scene_provider_success_then_database_failure_is_not_delivery_success(db_session, tmp_path, monkeypatch, caplog):
