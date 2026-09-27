@@ -318,11 +318,8 @@ class TestEraAnachronismContract:
         assert "第7章" in prompt, "提示词应包含数字章节号'第7章'"
         assert "时间线标题约束" in prompt, "现代背景提示词应包含时间线标题约束区块"
 
-    @pytest.mark.xfail(
-        reason="currency_name 默认为'货币'，碳信用货币功能尚未实现", strict=True
-    )
-    def test_currency_is_carbon_credit_in_prompt(self):
-        """提示词中的货币单位必须是'碳信用'而非'元'（Bug #24 回归测试）"""
+    def test_future_prompt_does_not_restore_retired_currency_balance(self):
+        """Legacy wealth data must not restore a numerical currency resource."""
         from config.prompts.story_prompts import get_event_generation_prompt
 
         player_state = {
@@ -348,15 +345,12 @@ class TestEraAnachronismContract:
             character_settings=character_settings,
         )
 
-        assert "碳信用" in prompt, "提示词中的货币单位应为'碳信用'"
-        # 检查财富行不使用旧的"元"货币单位（排除"元素""多元"等合法用法）
-        # 旧格式: 财富：10,000元 | 新格式: 财富：10,000碳信用
-        import re
-
-        wealth_lines = [line for line in prompt.split("\n") if "财富：" in line]
-        for line in wealth_lines:
-            assert "碳信用" in line, f"财富行应使用'碳信用': {line}"
-            assert not re.search(r"\d元", line), f"财富行不应使用'元'作为货币单位: {line}"
+        assert "2157年未来世界" in prompt
+        assert "高科技" in prompt
+        assert "财富：" not in prompt
+        assert "碳信用" not in prompt
+        assert "10,000" not in prompt
+        assert "10000" not in prompt
 
     def test_first_chapter_has_special_constraints(self):
         """第一章（total_chapter=1）应有特殊约束禁止提及'上回'"""

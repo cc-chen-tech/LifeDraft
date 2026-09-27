@@ -147,37 +147,59 @@ class TestDataclassInstantiation:
 
 
 class TestIntegrationImports:
-    """Test that new modules will be importable from existing modules after integration.
+    """Exercise the shipped integration instead of obsolete Phase 3 API names."""
 
-    These tests are expected to FAIL until Phase 3 integration is complete (TDD red phase).
-    They are marked with xfail to indicate they are known-failing until implementation.
-    """
+    @pytest.mark.parametrize("enabled,failures", [(True, 1), (True, 3), (False, 1)])
+    def test_client_call_uses_bounded_fallback_when_enabled(self, monkeypatch, enabled, failures):
+        import json
 
-    @pytest.mark.xfail(
-        reason="Phase 3 Task 12: AIClient integration not yet done", strict=True
-    )
-    def test_client_has_call_with_fallback(self):
+        import httpx
+        import openai
+
+        from config.feature_flags import reset_features
         from src.ai.client import AIClient
 
-        assert hasattr(AIClient, "call_with_fallback")
+        reset_features()
+        monkeypatch.setenv("ENABLE_MODEL_FALLBACK", str(enabled).lower())
+        monkeypatch.delenv("E2E_DETERMINISTIC_STORY", raising=False)
+        seen = []
 
-    @pytest.mark.xfail(
-        reason="Phase 3 Task 14: Settings integration not yet done", strict=True
-    )
-    def test_settings_has_feature_flags(self):
-        from config.settings import Settings
+        def respond(request):
+            body = json.loads(request.content)
+            seen.append(body["model"])
+            if len(seen) <= failures:
+                return httpx.Response(503, json={"error": {"message": "unavailable"}}, request=request)
+            return httpx.Response(200, json={
+                "id": "test-completion", "object": "chat.completion", "created": 0,
+                "model": body["model"], "choices": [{"index": 0,
+                    "message": {"role": "assistant", "content": "Recovered story"},
+                    "finish_reason": "stop"}],
+            }, request=request)
 
-        settings = Settings()
-        assert hasattr(settings, "FEATURE_FLAGS")
+        with httpx.Client(transport=httpx.MockTransport(respond)) as transport:
+            client = object.__new__(AIClient)
+            client.api_key = "test-key"
+            client.model = "deepseek-v4-flash"
+            client.client = openai.OpenAI(api_key="test-key", base_url="https://provider.test/v1",
+                                          http_client=transport, max_retries=0)
+            if enabled and failures == 1:
+                assert client.call("system", "user") == "Recovered story"
+            else:
+                with pytest.raises(openai.APIStatusError) as caught:
+                    client.call("system", "user")
+                assert caught.value.status_code == 503
+        expected = ["deepseek-v4-flash", "deepseek-v4-pro", "gpt-4o-mini"]
+        assert seen == expected[:(failures + 1 if enabled and failures == 1 else 3 if enabled else 1)]
 
-    @pytest.mark.xfail(
-        reason="Phase 3 Task 14: Settings integration not yet done", strict=True
-    )
-    def test_settings_has_model_fallback_chain(self):
-        from config.settings import Settings
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_settings_exports_live_feature_flags(self, monkeypatch, enabled):
+        from config.feature_flags import reset_features
+        from config.settings import get_all_features, get_feature
 
-        settings = Settings()
-        assert hasattr(settings, "MODEL_FALLBACK_CHAIN")
+        reset_features()
+        monkeypatch.setenv("ENABLE_MODEL_FALLBACK", str(enabled).lower())
+        assert get_feature("model_fallback") is enabled
+        assert get_all_features()["model_fallback"] is enabled
 
 
 class TestCrossModuleImports:

@@ -114,3 +114,21 @@ def test_recovered_contracts_are_not_hidden_by_stale_xfails():
 
     assert all("origin/main drift" not in source for source in recovered_sources)
     assert all("当前使用 get_current_user_optional" not in source for source in recovered_sources)
+
+
+def test_pytest_reports_exemptions_and_recovered_contracts_stay_active():
+    import ast
+    import configparser
+
+    config = configparser.ConfigParser()
+    config.read(PROJECT_ROOT / "pytest.ini")
+    assert "-ra" in config["pytest"]["addopts"].split()
+    for filename in (
+        "test_import_new_modules.py",
+        "test_era_anachronism_contract.py",
+        "test_frontend_contract_alignment.py",
+    ):
+        tree = ast.parse((PROJECT_ROOT / "tests" / filename).read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute):
+                assert node.attr not in {"xfail", "skip", "skipif"}, filename

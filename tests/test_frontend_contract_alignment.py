@@ -613,41 +613,56 @@ class TestChoiceSyncResponseShape:
             409,
         ), f"Expected 400/404/409 (no event to process), got {resp.status_code}: {resp.text[:200]}"
 
-    @pytest.mark.skip(
-        reason="Requires a game with an active event (options) to test full response shape. "
-        "Need to: 1) create game, 2) generate an event via event-sync, 3) submit choice. "
-        "This requires LLM API keys and multiple sequential API calls."
-    )
-    def test_choice_sync_full_response_shape(self):
-        """Full response shape test for choice-sync (requires game with active event).
+    def test_choice_sync_full_response_shape(self, client, auth_headers, game_via_api, monkeypatch):
+        """Settle an actual daily event through HTTP, then reload its SQLite receipt."""
+        from src.ai.models import EventOption, GameEvent
+        from src.api.deps import get_db
+        from src.api.session_store import session_store
+        from src.game.daily_timeline import build_daily_timeline
 
-        Expected response from backend _post_choice_pipeline:
-        {
-            "story_continuation": str,
-            "summary": str,
-            "effects_applied": {"energy": int, "mood": int, ...},
-            "need_weekly_summary": bool,
-            "weekly_summary": str | None,   (optional)
-            "bonus_effects": dict | None,   (optional)
-            "game_over": bool,
-        }
-
-        Frontend api.ts WRONGLY types this as:
-        {
-            result: string,
-            story: string,
-            current_round: number,
-            current_week: number,
-            player_state: PlayerState,
-            summary?: string,
-            need_weekly_summary?: boolean,
-            weekly_summary?: string,
-            game_over?: boolean,
-        }
-
-        The runtime code uses backend field names directly (see handleChoiceComplete).
-        """
-        pass
+        session = session_store.get(game_via_api, 1)
+        assert session is not None
+        loop = session.game_loop
+        # Optional enrichment runs after settlement and is outside this response
+        # contract; keep it from starting unrelated provider work in this test.
+        monkeypatch.setattr(loop._daily_choice_processor, "postprocess_callback", None)
+        monkeypatch.setenv("ENABLE_DAILY_RECOMMENDED_PREFETCH", "false")
+        state = loop.player_state
+        state.timeline_version = 2
+        state.timeline = build_daily_timeline(start_date="2026-08-13", day_index=0)
+        state.energy = 50
+        state.mood = 50
+        loop.current_event = GameEvent(
+            event_id="contract-daily-choice", revision=1, story_date="2026-08-13",
+            event_description="主角收到邀请，需要决定是否赴约。",
+            options=[EventOption(text="接受邀请", effects={"energy": -5, "mood": 4},
+                                 transition_text="话音落下，未散的余韵正悄然走向明日。"),
+                     EventOption(text="婉拒邀请", effects={})],
+        )
+        state.current_event_data = loop.current_event.model_dump()
+        database = get_db()
+        assert database.save_game_progress(game_via_api, state)
+        with patch("src.api.deps.decode_token", return_value=1):
+            response = client.post(f"/api/games/{game_via_api}/choice-sync", headers=auth_headers,
+                                   json={"option_index": 0, "event_id": "contract-daily-choice", "revision": 1})
+        assert response.status_code == 200, response.text
+        result = response.json()
+        for field in ("story_continuation", "summary", "transition_text"):
+            assert isinstance(result[field], str)
+        assert result["transition_text"] == "话音落下，未散的余韵正悄然走向明日。"
+        assert result["effects_applied"] == {"energy": -5, "mood": 4}
+        assert result["effects_requested"] == {"energy": -5, "mood": 4}
+        assert result["resource_warnings"] == []
+        assert result["need_weekly_summary"] is False
+        assert result["weekly_summary"] is None
+        assert result["game_over"] is False
+        assert result["next_timeline"]["day_index"] == 1
+        assert result["next_timeline"]["current_date"] == "2026-08-14"
+        saved = database.load_saved_game(game_via_api, 1)
+        assert saved["energy"] == 45
+        assert saved["mood"] == 54
+        assert saved["current_event_data"] is None
+        assert saved["day_history"][-1]["choice_result"] == result
 
     def test_choice_sync_schema_documents_actual_fields(self):
         """Document the actual choice-sync return fields from the code.
