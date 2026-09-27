@@ -69,6 +69,10 @@ def file_story_database(tmp_path, monkeypatch):
     from src.database import models, state_repository, game_repository, session_repository
     from src.database.db import GameDatabase
     from src.api.session_store import session_store
+    from src.ai.client import AIClient
+    # Restored API loops create their own clients for optional enrichment.
+    # Keep those workers offline as well as the explicit per-test generator.
+    monkeypatch.setattr(AIClient, 'call', lambda self, **kwargs: '{}')
     # Temporary databases reuse small integer IDs. Keep their restored API
     # sessions isolated from the process-wide cache for the normal test DB.
     monkeypatch.setattr(session_store, '_sessions', {})
@@ -88,6 +92,10 @@ def file_story_database(tmp_path, monkeypatch):
     finally:
         for session in list(session_store._sessions.values()):
             session.game_loop.shutdown()
+            # Production shutdown is deliberately non-blocking. Tests must
+            # drain writes before the next fixture rebinds SessionLocal and
+            # reuses game_id=1 in a different temporary database.
+            session.game_loop._daily_postprocessor.shutdown(wait=True, cancel_futures=True)
         session_store._sessions.clear()
         engine.dispose()
 
@@ -138,7 +146,9 @@ def test_safe_first_day_reloads_from_file_database_and_owned_api(file_story_data
         loop.shutdown()
 
 
-def test_model_smoke_daily_opening_uses_production_generation_and_file_readback(file_story_database, monkeypatch, tmp_path):
+@pytest.mark.parametrize('rejection', ['none', 'judge', 'ledger'])
+def test_model_smoke_daily_opening_uses_production_generation_and_file_readback(file_story_database, monkeypatch, tmp_path, rejection, caplog):
+    caplog.set_level('INFO', logger='diagnostic')
     from scripts import model_smoke
     from src.ai.generator import EventGenerator
     from src.ai.harness.quality_level import QualityLevel
@@ -152,7 +162,10 @@ def test_model_smoke_daily_opening_uses_production_generation_and_file_readback(
     def provider(**kwargs):
         calls.append(kwargs)
         if kwargs['system_prompt'].startswith(STORY_NOVELIST_ZH):
-            return prose
+            return prose.replace('于谦想要', '四十岁的于谦想要') if rejection == 'ledger' else prose
+        if kwargs['system_prompt'] == get_system_prompt('consistency_validator', 'zh') and rejection == 'judge':
+            return json.dumps({'should_retry': True, 'issues': [{'dimension': 'identity', 'severity': 'CRITICAL',
+                'description': 'private fixture conflict', 'fix_suggestion': 'remove conflicting identity'}]})
         if kwargs['system_prompt'] != get_system_prompt('option_generator', 'zh'):
             return '{"issues":[],"should_retry":false}'
         return json.dumps({'event_description': prose, 'options': [
@@ -161,6 +174,13 @@ def test_model_smoke_daily_opening_uses_production_generation_and_file_readback(
             {'text': '走访熟悉边地的人，询问行程', 'effects': {}}]}, ensure_ascii=False)
     monkeypatch.setattr(ai.ai_client, 'call', provider)
     result = model_smoke._run_daily_opening_check(ai, tmp_path, None)
+    assert result['delivery_mode'] == ('model' if rejection == 'none' else 'safe_first_day')
+    if rejection != 'none':
+        checks = [r.event_data for r in caplog.records if hasattr(r, 'event_data')
+                  and r.event_data.get('event') == 'story_consistency_check']
+        expected = 'age_mismatch' if rejection == 'ledger' else 'consistency_identity'
+        assert [r['phase'] for r in checks] == ['initial', 'repair']
+        assert all(expected in r['finding_codes'] for r in checks)
     assert result['quality_level'] == 'master'
     assert result['story_date'] == '1421-04-15'
     assert result['persisted'] is True
@@ -172,6 +192,34 @@ def test_model_smoke_daily_opening_uses_production_generation_and_file_readback(
     assert 'auth_token' not in json.dumps(result)
     session_file = tmp_path / 'smoke-browser-session.json'
     assert session_file.stat().st_mode & 0o077 == 0
+    # Resume the saved opener through the owned API, settle a choice, then read
+    # durable day 2. This uses the production choice route and database writes.
+    from fastapi.testclient import TestClient
+    from src.api.main import app
+    from src.api import deps
+    from src.api.routers import games
+    from src.api.routers.gameplay import choices
+    from src.services import daily_recommended_prefetch
+    session = json.loads(session_file.read_text())
+    for module in (deps, games, choices, sse_helpers):
+        monkeypatch.setattr(module, 'get_db', lambda: file_story_database)
+    monkeypatch.setattr(daily_recommended_prefetch, 'ensure_daily_recommended_prefetch', lambda **kwargs: None)
+    monkeypatch.setattr(daily_recommended_prefetch, 'resolve_choice_prefetch_for_game', lambda **kwargs: None)
+    headers = {'Authorization': f"Bearer {session['auth_token']}"}
+    with TestClient(app) as client:
+        before = client.get(f"/api/games/{result['game_id']}", headers=headers)
+        assert before.status_code == 200
+        event = before.json()['current_event']
+        chosen = client.post(f"/api/games/{result['game_id']}/choice-sync", headers=headers, json={
+            'option_index': 0, 'event_id': event['event_id'], 'revision': event['revision'],
+        })
+        assert chosen.status_code == 200, chosen.text
+        assert chosen.json()['next_timeline']['day_index'] == 1
+        after = client.get(f"/api/games/{result['game_id']}", headers=headers)
+        assert after.status_code == 200
+        assert after.json()['player_state']['timeline']['day_index'] == 1
+        assert after.json()['player_state']['day_history'][-1]['event_id'] == event['event_id']
+
 
 
 def test_prefetch_double_database_failure_still_logs_terminal_identity(monkeypatch, caplog):
@@ -202,7 +250,7 @@ def test_prefetch_double_database_failure_still_logs_terminal_identity(monkeypat
     assert 'private' not in str(records)
 
 
-@pytest.mark.parametrize('stage', ['quick', 'harness'])
+@pytest.mark.parametrize('stage', ['quick', 'harness', 'consistency'])
 def test_validator_crash_cannot_become_a_retry_or_safe_fallback(monkeypatch, caplog, stage):
     caplog.set_level("INFO", logger="diagnostic")
     from unittest.mock import MagicMock
@@ -219,12 +267,15 @@ def test_validator_crash_cannot_become_a_retry_or_safe_fallback(monkeypatch, cap
         raise RuntimeError('private validator context')
     if stage == 'quick':
         monkeypatch.setattr(quick_validator, 'quick_validate_story', broken)
+    elif stage == 'consistency':
+        monkeypatch.setattr('src.ai.consistency_validator.ConsistencyValidator.validate_story', broken)
     else:
         generator._validation_pipeline = SimpleNamespace(validate=broken)
     with pytest.raises(StoryGenerationFailure) as caught:
         generator.generate_round_event(player_state={'game_id': 99, 'player_name': '林岚', 'life_vision': '开一间社区书店',
             'week': 0, 'current_round': 0, 'timeline': {'version': 2, 'day_index': 0, 'day_number': 1}},
-            character_settings={'name': '林岚'}, language='zh', round_number=0, round_context='', option_generator=MagicMock())
+            character_settings={'name': '林岚'}, language='zh', round_number=0, round_context='', option_generator=MagicMock(),
+            world_model=MagicMock(continuity_ledger=None) if stage == 'consistency' else None)
     assert caught.value.failure_code.value == 'VALIDATION_SERVICE_ERROR'
     assert client.call.call_count == 1
     failures = [record.event_data for record in caplog.records if hasattr(record, 'event_data')

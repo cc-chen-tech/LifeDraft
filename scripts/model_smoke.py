@@ -313,8 +313,13 @@ def _run_daily_opening_check(generator: Any, artifact_dir: Path, base_url: Optio
         with diagnostic_context(user_id=user_id, game_id=game_id, feature="release_model_smoke",
                                 operation_id=f"{FIXTURE_PREFIX}:daily:{uuid.uuid4().hex}"):
             event = loop.generate_round_event(force_regenerate=True)
-            if event is None or event.delivery_notice is not None:
-                raise ValueError("daily_opening_missing_or_fallback")
+            if event is None:
+                raise ValueError("daily_opening_missing")
+            delivery_mode = "model"
+            if event.delivery_notice is not None:
+                if event.delivery_notice.code != "SAFE_FIRST_DAY_FALLBACK":
+                    raise ValueError("daily_opening_unexpected_fallback")
+                delivery_mode = "safe_first_day"
             if not event.event_id or event.story_date != "1421-04-15" or len(event.options) != 3:
                 raise ValueError("daily_opening_contract_invalid")
             if not all(option.text.strip() for option in event.options):
@@ -344,7 +349,8 @@ def _run_daily_opening_check(generator: Any, artifact_dir: Path, base_url: Optio
                 json.dump({"game_id": game_id, "auth_token": create_token(user_id)}, handle)
             return {"game_id": game_id, "event_id": event.event_id, "persisted": True,
                     "options": len(event.options), "paragraphs": len(paragraphs), "provider_calls": calls,
-                    "quality_level": generator.story_gen.quality_level.value, "story_date": event.story_date}
+                    "quality_level": generator.story_gen.quality_level.value, "story_date": event.story_date,
+                    "delivery_mode": delivery_mode}
     finally:
         generator.ai_client.call = original_call
         loop.shutdown()
@@ -561,6 +567,9 @@ def _build_report(
     errors: List[str] = []
     if provider_failures and not unknown_events:
         warnings.append("provider_retry_observed")
+    if any(check.get("name") == "daily_opening_delivery"
+           and (check.get("details") or {}).get("delivery_mode") == "safe_first_day" for check in checks):
+        errors.append("daily_opening_used_safe_fallback")
     if fallback_events:
         errors.append("fallback_requires_manual_confirmation")
     if unknown_events:

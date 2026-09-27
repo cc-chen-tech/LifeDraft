@@ -56,9 +56,11 @@ _ANCIENT_FORBIDDEN_MODERN = [
     "优衣库",
     "ZARA",
     "H&M",
-    "苹果",
+    # Bare 苹果/小米 are also ordinary historical foods. Devices are covered
+    # by 手机/电脑 above; only unambiguous company names belong here.
+    "苹果公司",
     "华为",
-    "小米",
+    "小米公司",
     "淘宝",
     "京东",
     "拼多多",

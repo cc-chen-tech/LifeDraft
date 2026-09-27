@@ -15,7 +15,9 @@ from src.services.story_voice_repository import StoryVoiceReadingRepository
 
 @pytest.fixture
 def voice_db(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'voice.db'}", connect_args={"timeout": 0.05})
+    # Match production's SQLite busy timeout. A 50ms timeout spuriously fails
+    # concurrent worker/readback tests under coverage instrumentation in CI.
+    engine = create_engine(f"sqlite:///{tmp_path / 'voice.db'}", connect_args={"timeout": 30})
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
     with factory() as db:

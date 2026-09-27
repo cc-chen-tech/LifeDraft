@@ -100,6 +100,46 @@ def test_first_day_style_variance_is_safe_to_resume() -> None:
     )
 
 
+def test_missing_vision_retry_explains_the_required_opening_edit() -> None:
+    story = STYLE_VARIANT_STORY.replace(
+        "林岚想开一间社区书店，却还凑不齐租金。她决定先把账目理清。",
+        "林岚心里装着远方的梦想，却还被眼前的困境绊住。",
+    )
+    _, client, _ = _generate_first_day(story)
+    repair = client.call.call_args_list[1].kwargs["user_prompt"]
+    feedback = repair.split("上一稿存在以下确定性问题：", 1)[1].split("【上一稿全文】", 1)[0]
+    assert "首段" in feedback
+    assert "开一间社区书店" in feedback
+    assert "明确写出" in feedback
+
+
+def test_harness_rejection_then_judge_budget_exhaustion_keeps_first_day_playable(monkeypatch):
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
+    monkeypatch.setenv("ENABLE_SOFT_NARRATIVE_LENGTHS", "true")
+    story = (
+        "林岚想开一间社区书店，却还凑不齐租金。\n\n清晨，她坐在书桌前核对租约。\n\n"
+        + "".join(f"她把第{i}条租约抄进本子，记下押金金额与交付期限，窗外的脚步声渐渐远去。" for i in range(38))
+        + "\n\n林岚合上本子，望着窗外的灯火。"
+    )
+    client = MagicMock()
+    client.call.side_effect = lambda **kwargs: (
+        story if kwargs["system_prompt"].startswith(STORY_NOVELIST_ZH)
+        else '{"issues": [], "should_retry": false}'
+    )
+    generator = StoryGenerator(client, quality_level=QualityLevel.MASTER)
+    emitted = []
+    event = generator.generate_round_event(
+        player_state=_first_day_state(), character_settings={"name": "林岚"}, language="zh",
+        round_number=0, round_context="", option_generator=MagicMock(),
+        world_model=MagicMock(continuity_ledger=None), stream_callback=emitted.append,
+    )
+    assert event.delivery_notice.code == "SAFE_FIRST_DAY_FALLBACK"
+    assert event.event_description != story
+    assert len(event.options) == 3
+    assert emitted == [event.event_description]
+    assert client.call.call_count <= 6
+
+
 def test_failed_first_day_master_retry_accepts_style_variance_with_harness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -396,3 +436,75 @@ def test_full_sentence_vision_survives_actual_retry_exhaustion(monkeypatch, lang
     assert '想要我想' not in event.event_description
     assert 'wants to I want' not in event.event_description
     assert all(anchor in event.event_description for anchor in anchors)
+
+
+@pytest.mark.parametrize('unified_budget', ['false', 'true'])
+def test_first_day_consistency_circuit_reaches_safe_opening(monkeypatch, caplog, unified_budget):
+    """Repeated CRITICAL judge findings stop repairs, then deliver a checked opener."""
+    import json
+    import logging
+    from config.logging_config import JsonLogFormatter
+    monkeypatch.setenv('ENABLE_CONSTRAINT_HARNESS', 'true')
+    monkeypatch.setenv('ENABLE_SOFT_NARRATIVE_LENGTHS', 'true')
+    monkeypatch.setenv('ENABLE_UNIFIED_NARRATIVE_BUDGETS', unified_budget)
+    caplog.set_level(logging.INFO)
+    rejection = json.dumps({'should_retry': True, 'issues': [{
+        'dimension': 'identity', 'severity': 'CRITICAL',
+        'description': 'private rejected identity conflict',
+        'evidence': 'private story excerpt', 'fix_suggestion': 'private fix',
+    }]})
+    client = MagicMock()
+    client.call.side_effect = [STYLE_VARIANT_STORY, rejection, STYLE_VARIANT_STORY, rejection]
+    generator = StoryGenerator(client, quality_level=QualityLevel.MASTER)
+    emitted = []
+    from src.observability.diagnostics import diagnostic_context
+    from src.observability.validation_evidence import decrypt_validation_evidence
+    with diagnostic_context(user_id=111):
+        event = generator.generate_round_event(
+            player_state=_first_day_state(), character_settings={'name': '林岚'}, language='zh',
+            round_number=0, round_context='', option_generator=MagicMock(),
+            world_model=MagicMock(continuity_ledger=None), stream_callback=emitted.append,
+        )
+    assert event.delivery_notice.code == 'SAFE_FIRST_DAY_FALLBACK'
+    assert event.event_description != STYLE_VARIANT_STORY
+    assert emitted == [event.event_description]
+    assert len(event.options) == 3
+    assert event.delivery_notice.attempts_used == 2
+    assert client.call.call_count == 4
+    records = [json.loads(JsonLogFormatter().format(r)) for r in caplog.records]
+    checks = [r for r in records if r.get('event') == 'story_consistency_check']
+    assert [r['phase'] for r in checks] == ['initial', 'repair']
+    assert all(r['finding_codes'] == ['consistency_identity'] for r in checks)
+    assert all(r['outcome'] == 'rejected' for r in checks)
+    assert 'private rejected' not in json.dumps(records)
+    assert 'private story excerpt' not in json.dumps(records)
+    evidence = [r for r in records if r.get('event') == 'story_validation_evidence'
+                and r.get('phase') in {'consistency_initial', 'consistency_repair'}]
+    assert [r['phase'] for r in evidence] == ['consistency_initial', 'consistency_repair']
+    assert all(r.get('encrypted_evidence') for r in evidence)
+    decoded = [decrypt_validation_evidence(r, user_id=111, operation_id=r['operation_id']) for r in evidence]
+    assert all(r['issues'][0]['description'] == 'private rejected identity conflict' for r in decoded)
+    assert decoded[0]['attempt_id'] != decoded[1]['attempt_id']
+    assert all(r['game_id'] == 1 for r in decoded)
+
+
+@pytest.mark.parametrize(('day_index', 'soft_lengths'), [(1, True), (0, False)])
+def test_consistency_circuit_cannot_enable_fallback_outside_first_day_policy(monkeypatch, day_index, soft_lengths):
+    import json
+    monkeypatch.setenv('ENABLE_CONSTRAINT_HARNESS', 'true')
+    monkeypatch.setenv('ENABLE_SOFT_NARRATIVE_LENGTHS', str(soft_lengths).lower())
+    monkeypatch.setenv('ENABLE_UNIFIED_NARRATIVE_BUDGETS', 'false')
+    # Long enough for strict MASTER shape checks to reach consistency validation.
+    story = STYLE_VARIANT_STORY + '\n\n' + ''.join(f'林岚仔细核对租约第{i}条，把尚待核实的事项逐一记下。' for i in range(60))
+    rejection = json.dumps({'should_retry': True, 'issues': [{
+        'dimension': 'identity', 'severity': 'CRITICAL', 'description': 'identity conflict',
+        'fix_suggestion': 'repair identity',
+    }]})
+    client = MagicMock()
+    client.call.side_effect = [story, rejection, story, rejection]
+    generator = StoryGenerator(client, quality_level=QualityLevel.MASTER)
+    state = _first_day_state()
+    state['timeline']['day_index'] = day_index
+    with pytest.raises(StoryGenerationFailure, match='repeated consistency'):
+        generator.generate_round_event(player_state=state, character_settings={'name': '林岚'}, language='zh',
+            round_number=0, round_context='', option_generator=MagicMock(), world_model=MagicMock(continuity_ledger=None))

@@ -973,6 +973,7 @@ class StoryGenerator:
         best_soft_story_rank: Optional[tuple[int, float, int, int]] = None
         last_generation_error: Optional[Exception] = None
         last_findings: list[ValidationFinding] = []
+        last_hard_rejection: list[ValidationFinding] = []
         provider_requests_used = 0
         generation_operation_id = operation_id or uuid.uuid4().hex
 
@@ -1034,6 +1035,19 @@ class StoryGenerator:
                 stream_callback(candidate)
 
         def _log_findings(findings: list[ValidationFinding], disposition: str) -> None:
+            nonlocal last_hard_rejection
+            hard = [finding for finding in findings if finding.severity is FindingSeverity.HARD]
+            if hard:
+                last_hard_rejection = hard
+                from src.observability.validation_evidence import emit_validation_evidence
+                emit_validation_evidence(
+                    "finding", [{"code": f.code, "severity": f.severity.value,
+                                 "description": f.message, "evidence": f.evidence,
+                                 "repair_instruction": f.repair_instruction} for f in hard],
+                    story_text=story_text or "", game_id=player_state.get("game_id"),
+                    operation_id=generation_operation_id,
+                    attempt_id=f"{generation_operation_id}:{provider_requests_used}",
+                )
             for finding in findings:
                 emit_diagnostic("story_finding", phase="validation", outcome="rejected" if finding.severity.value == "hard" else "warning",
                                 game_id=player_state.get("game_id"), operation_id=generation_operation_id,
@@ -1056,6 +1070,47 @@ class StoryGenerator:
             findings: list[ValidationFinding],
         ) -> list[ValidationFinding]:
             return [finding for finding in findings if finding.severity.value == "hard"]
+
+        def _can_use_safe_first_day_opening() -> bool:
+            timeline = player_state.get("timeline")
+            return bool(
+                self._soft_narrative_lengths
+                and provider_requests_used > 0
+                and (_hard_findings(last_findings) or last_hard_rejection)
+                and isinstance(timeline, dict)
+                and timeline.get("version") == 2
+                and int(timeline.get("day_index") or 0) == 0
+            )
+
+        def _record_consistency_check(result: Any, phase: str, candidate: str) -> None:
+            # Provider-authored explanations may quote private stories. Only
+            # fixed categories and deterministic ledger codes enter diagnostics.
+            dimensions = {"geographic", "career", "personality", "temporal", "commitment",
+                          "causal", "fabrication", "identity", "timeline", "validation_response"}
+            ledger_codes = {"date_mismatch", "age_mismatch", "deceased_active",
+                            "identity_role_conflict", "canonical_name_conflict", "completed_event_rollback"}
+            codes = []
+            for issue in result.issues:
+                rule = getattr(issue, "rule_code", "")
+                dimension = issue.dimension if issue.dimension in dimensions else "unknown"
+                codes.append(rule if rule in ledger_codes else f"consistency_{dimension}")
+            if result.issues:
+                from src.observability.validation_evidence import emit_validation_evidence
+                emit_validation_evidence(
+                    f"consistency_{phase}", [
+                        {"code": code, "severity": issue.severity, "description": issue.description,
+                         "evidence": issue.evidence, "repair_instruction": issue.fix_suggestion}
+                        for code, issue in zip(codes, result.issues)
+                    ], story_text=candidate, game_id=player_state.get("game_id"),
+                    operation_id=generation_operation_id,
+                    attempt_id=f"{generation_operation_id}:{provider_requests_used}",
+                )
+            emit_diagnostic("story_consistency_check", phase=phase,
+                            outcome="rejected" if result.has_critical_issues else "passed",
+                            game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                            attempt=provider_requests_used,
+                            attempt_id=f"{generation_operation_id}:{provider_requests_used}",
+                            finding_codes=codes, count=len(result.critical_issues))
 
         def _set_best_story(candidate: Optional[str]) -> None:
             if not candidate:
@@ -1195,6 +1250,20 @@ class StoryGenerator:
             issues: list[str],
         ) -> str:
             issue_lines = "\n".join(f"- {issue}" for issue in issues[:8])
+            if "daily_opening_missing_vision_anchor" in issues:
+                from src.ai.prompt_sanitizer import sanitize_persisted_life_vision
+
+                vision = sanitize_persisted_life_vision(str(
+                    player_state.get("life_vision")
+                    or (character_settings or {}).get("life_vision") or ""
+                ))
+                issue_lines += (
+                    f"\n- 首段没有明确体现人生愿景，请在首段明确写出“{vision}”，"
+                    "并说明眼前阻碍；仅在后文暗示这个愿景不能修复此问题。"
+                    if language == "zh" else
+                    f'\n- The first paragraph must explicitly state the life vision "{vision}" '
+                    'and its immediate obstacle; hinting at it later does not fix the opening.'
+                )
             if language == "zh":
                 return (
                     base_prompt
@@ -1606,6 +1675,7 @@ class StoryGenerator:
                         narrative_budget=narrative_budget,
                         generation_tracker=generation_tracker,
                         story_call=_call_candidate_story,
+                        validation_observer=_record_consistency_check,
                     )
                     post_validation_quick_result = _quick_validate_round_story(
                         story_text
@@ -1724,6 +1794,11 @@ class StoryGenerator:
                     )
 
                     if terminal_validation_failed:
+                        last_findings = [ValidationFinding(
+                            code=str(failure.constraint_type), severity=FindingSeverity.HARD,
+                            confidence=1.0, source="harness", message=str(failure.evidence),
+                        ) for failure in hard_validation_failures]
+                        _log_findings(last_findings, "retry")
                         best_valid_story_text = best_story_before_attempt
 
                     diagnostic_report = (
@@ -1881,6 +1956,8 @@ class StoryGenerator:
                                 attempt=provider_requests_used, max_attempts=max_story_requests)
                 logger.warning("Round request budget exhausted: %s", e)
                 best_valid_story_text = ""
+                if not _hard_findings(last_findings) and last_hard_rejection:
+                    last_findings = list(last_hard_rejection)
                 if final_shape_issues:
                     last_generation_error = ValueError(
                         "Story shape validation failed: "
@@ -1909,6 +1986,7 @@ class StoryGenerator:
                 # for the player-facing terminal failure instead.
                 best_valid_story_text = ""
                 last_findings = list(e.findings)
+                _log_findings(last_findings, "retry")
                 last_generation_error = e
                 retry_hint = _build_findings_retry_hint(last_findings)
                 logger.warning(
@@ -1918,6 +1996,12 @@ class StoryGenerator:
                 )
                 if e.circuit_break:
                     if len(best_soft_story_text) <= 20:
+                        if _can_use_safe_first_day_opening():
+                            emit_diagnostic("story_retry", phase="consistency", outcome="stopped",
+                                            game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                            attempt=provider_requests_used, finding_codes=[f.code for f in last_findings],
+                                            reason="consistency_circuit_break", disposition="safe_opening_selection")
+                            break
                         raise
                     previous_hard_fingerprints = set()
                     if (
@@ -2050,15 +2134,7 @@ class StoryGenerator:
             _emit_selected_story(best_valid_story_text)
             return event
 
-        timeline = player_state.get("timeline")
-        if (
-            self._soft_narrative_lengths
-            and provider_requests_used > 0
-            and _hard_findings(last_findings)
-            and isinstance(timeline, dict)
-            and timeline.get("version") == 2
-            and int(timeline.get("day_index") or 0) == 0
-        ):
+        if _can_use_safe_first_day_opening():
             from src.ai.daily_opening import build_first_day_fallback_candidate
             from src.game.daily_transition import prepare_daily_option_transitions
 
@@ -2313,6 +2389,7 @@ class StoryGenerator:
         narrative_budget: Optional[NarrativeBudget] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
         story_call: Optional[Callable[..., str]] = None,
+        validation_observer: Optional[Callable[[Any, str, str], None]] = None,
     ) -> str:
         """
         Validate story consistency and retry once if CRITICAL issues found.
@@ -2353,6 +2430,8 @@ class StoryGenerator:
                 ),
             )
 
+            if validation_observer is not None:
+                validation_observer(validation, "initial", story_text)
             if validation.passed:
                 return story_text
 
@@ -2469,6 +2548,8 @@ class StoryGenerator:
                         else get_generation_budget(self.quality_level.value).max_tokens
                     ),
                 )
+                if validation_observer is not None:
+                    validation_observer(repaired_validation, "repair", retry_story)
                 if (
                     repaired_validation.passed
                     or not repaired_validation.has_critical_issues

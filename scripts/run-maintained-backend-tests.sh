@@ -25,6 +25,7 @@ maintained_tests=(
   tests/test_round_illustration_contracts.py
   tests/test_image_service_persistence_contracts.py
   tests/test_diagnostic_lifecycle.py
+  tests/test_validation_evidence.py
   tests/test_request_observability.py
   tests/test_model_telemetry.py
   tests/test_model_provider_telemetry.py
@@ -44,6 +45,8 @@ maintained_tests=(
   tests/test_public_story_plaza.py
   tests/test_ai_retry_failure_contract_no_mock.py
   tests/test_daily_opening_delivery.py
+  tests/test_era_context_regnal_dates.py
+  tests/test_continuity_ledger.py
   tests/test_collection_field_db_contract_no_mock.py
   tests/test_gate_contracts_no_mock.py
   tests/test_shift_left_e2e_contract_no_mock.py

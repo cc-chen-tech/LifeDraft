@@ -322,3 +322,13 @@ def test_daily_release_smoke_uses_production_flags_without_credential_traces():
     assert 'e2e/model-smoke.spec.ts --project=core --workers=1 --trace=off' in runner
     assert 'trace.zip' not in workflow
     assert 'await expect(expand).toBeVisible()' in browser
+
+
+def test_safe_opening_is_playable_but_does_not_pass_model_quality_release_gate():
+    report = model_smoke._build_report([
+        {"name": "daily_opening_delivery", "outcome": "passed", "details": {
+            "delivery_mode": "safe_first_day", "persisted": True, "options": 3,
+        }},
+    ], [], "2026-09-27T00:00:00Z")
+    assert report["status"] == "failed"
+    assert "daily_opening_used_safe_fallback" in report["errors"]

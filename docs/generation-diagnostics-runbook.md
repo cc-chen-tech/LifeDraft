@@ -21,7 +21,7 @@ jq -c 'select(.operation_id == "voice:456" or (.job_type == "voice" and .job_id 
 
 | 链路 | 保留的关键结果 | 主要回归文件 |
 | --- | --- | --- |
-| 故事草稿 | 每稿 provider、shape、quick、Harness 检查、finding code、重试/熔断/兜底 | `test_story_delivery_diagnostics.py`, `test_daily_opening_delivery.py` |
+| 故事草稿 | 每稿 provider、shape、quick、一致性初稿/修订稿、Harness 检查、finding code、重试/熔断/兜底 | `test_story_delivery_diagnostics.py`, `test_daily_opening_delivery.py` |
 | 故事交付 | 保存成功后才发送正文/complete；保存失败还原旧状态；失败记录再次保存失败也单独留痕 | `test_story_delivery_diagnostics.py`, `test_round_event_sse_terminal_contracts.py` |
 | 故事起点 | 截断、超时、调用上限、重复点击与明确重试 | `test_story_origin_generation.py`, 前端 `api.test.ts`, `CreatePage.test.tsx` |
 | 推荐预取 | 入队、运行、校验、持久化、恢复与二次数据库异常 | `test_daily_recommended_prefetch.py`, `test_story_delivery_diagnostics.py` |
@@ -32,7 +32,26 @@ jq -c 'select(.operation_id == "voice:456" or (.job_type == "voice" and .job_id 
 | 用户关联 | 并发用户、嵌套上下文、worker 重启、生成器入口不丢身份 | `test_diagnostic_lifecycle.py`, `test_request_observability.py`, image/voice/story diagnostics |
 | 日志保留 | JSON 格式、源码位置、异常类型/安全调用栈、供应商业务码/trace、独立轮转文件 | `test_diagnostic_lifecycle.py`, `test_model_telemetry.py` |
 
-不记录故事正文、prompt、音频内容、密钥、原始供应商错误消息。校验日志保留规则码和稿次，因此能回答“第几稿被哪条规则拒绝”；不能借这些日志重建原始草稿。错误发生位置保留文件名、函数和行号，不保留栈局部变量或代码行。
+普通日志不记录明文故事、prompt、音频、密钥、原始供应商错误消息。校验元数据保留规则码和稿次；需要具体拒稿原因时使用下述加密证据。错误发生位置保留文件名、函数和行号，不保留栈局部变量或代码行。
+
+一致性检查使用 `story_consistency_check`，`phase=initial/repair` 和 `attempt_id` 区分初稿与修订稿。`finding_codes` 保留权威账本的 `age_mismatch`、`date_mismatch`、`identity_role_conflict` 等规则码；模型判断保留允许列表内的 `consistency_identity` 等类别，未知类别写为 `consistency_unknown`，不记录原始描述或证据文本。重复硬冲突停止修订时记录 `reason=consistency_circuit_break`；符合首日条件才进入安全开场选择，校验服务异常仍直接失败。
+
+## 加密拒稿证据
+
+`story_validation_evidence` 与上述元数据日志并存，使用同一文件轮转。`phase=consistency_initial/consistency_repair` 分别记录初稿和修订稿；`phase=finding` 记录 quick/Harness 硬拒绝。通过 `user_id`、`game_id`、`operation_id`、`attempt_id` 关联。
+
+`encrypted_evidence` 使用 Fernet 认证加密，包含最多 4 个问题的具体描述、证据、证据附近短片段、修订建议、候选 hash 和开头/结尾各 160 字符。字段和密文大小均有上限，密钥先脱敏再加密；不保存完整草稿、prompt 或音频。超出的条数记录为 `truncated_issue_count`。这个证据能判断例如“明年二月”是否被误当成当天月份，但不能完整重建故事。
+
+默认从运行环境的 `JWT_SECRET` 派生独立用途密钥；可用 `DIAGNOSTIC_EVIDENCE_KEY` 单独配置。`evidence_key_id` 用于识别应使用哪份密钥。轮换密钥后，历史证据需要旧密钥才能解密；旧日志原先未记录的内容不能恢复。不要将密钥放在命令参数、PR 或 CI 产物中。
+
+具有后端环境访问权限的运维人员，在同一环境下显式指定用户与请求：
+
+```sh
+python -m scripts.read_validation_evidence \
+  --user-id 123 --operation-id 'operation-id-from-log' logs/app.log logs/app.log.1
+```
+
+命令逐行读取、过滤其他用户与请求，并验证加密记录中的身份与外层日志一致；输出包含私密诊断片段，只用于授权排查，不作为公共 CI 产物上传。损坏密文、错误密钥、读取失败返回非零状态；无记录也明确返回非零状态。缺少密钥或加密失败时，生成流程继续，但写入 `error_code=validation_evidence_unavailable`，不会无声丢弃，也不会降级输出明文。
 
 ## 测试与发布边界
 
@@ -40,7 +59,10 @@ jq -c 'select(.operation_id == "voice:456" or (.job_type == "voice" and .job_id 
 - `./test.sh full-backend`：自动发现 `tests/` 下的全部 Python 测试。普通 PR 的 Backend Tests 工作流执行此命令，新增测试无需手动进入 40 文件白名单。
 - `./test.sh acceptance`（兼容别名 `all`）：分层验收组合，**不是全部 pytest**。
 - 前端 CI 运行全部 Jest；E2E core 使用确定性模型检查真实 UI/保存/恢复链路。它不能证明线上供应商会按预期输出。
-- 受保护的 Model Smoke 另行调用真实供应商，新增历史人物 MASTER 首章：真实 GameLoop、校验、选项、SQLite 保存、权限读回、`/play` 正文/选项和刷新。失败兜底不得冒充真实模型通过；有调用/时间上限。开关与本次生产核对值一致：Harness 与软篇幅开启，统一预算关闭。
+- 受保护的 Model Smoke 另行调用真实供应商，新增历史人物 MASTER 首章：真实 GameLoop、校验、选项、SQLite 保存、权限读回、`/play` 正文/选项和刷新。安全开场也执行保存、授权读取、浏览器刷新和选项结算至第二天，并以 `delivery_mode=safe_first_day` 明确标记。可玩性与模型质量分别验收：只要用了安全开场，报告仍以 `daily_opening_used_safe_fallback` 阻止自动发布，不能冒充模型正文通过；有调用/时间上限。开关与本次生产核对值一致：Harness 与软篇幅开启，统一预算关闭。
 - Model Smoke 浏览器登录使用隔离测试账户；临时会话文件权限为 0600，不上传。该流程禁用 Playwright trace，避免其网络记录包含认证 cookie。
+- Model Smoke 的选择结算若已提交、但随后读回短暂失败，Playwright 重试通过已保存的 `day_history` 验证原事件、首日日期、所选选项和第二天时间线；不会再次假设 `current_event` 仍存在。该恢复分支仅用于重试，首次执行仍须完成正文/选项/刷新验收。
+
+日志证据回归覆盖加解密往返、两用户并发归属、篡改身份、错误密钥、缺失密钥、凭据脱敏、大小上限、轮转文件重复读取，以及真实生成流程中初稿/修订稿的独立证据。CI maintained coverage 注册 `test_validation_evidence.py`。
 
 本地通过、远端 CI 通过、真实模型验收、合并、上线是不同状态。PR 中分别记录本次证据；此文档不宣称改动已经部署。

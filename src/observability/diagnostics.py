@@ -16,6 +16,7 @@ SAFE_FIELDS = IDENTITY_FIELDS | frozenset({
     "error_code", "provider_code", "provider_trace_id", "retryable", "finding_codes", "severity",
     "disposition", "duration_ms", "size_bytes", "count", "persisted", "used_fallback", "reason",
     "recovery_count", "selected_image_id", "http_status", "status", "provider", "model",
+    "evidence_key_id",
 })
 _TOKEN = re.compile(r"^[A-Za-z0-9_.:/-]{1,160}$")
 
@@ -81,6 +82,10 @@ def exception_metadata(error: Optional[BaseException]) -> Dict[str, Any]:
 def emit_diagnostic(event: str, *, phase: str, outcome: str, error: Optional[BaseException] = None, **fields: Any) -> Dict[str, Any]:
     payload = {"event": _safe(event) or "diagnostic", "phase": _safe(phase), "outcome": _safe(outcome), **context_metadata()}
     payload.update({k: _safe(v) for k, v in fields.items() if k in SAFE_FIELDS and _safe(v) is not None})
+    # Only authenticated ciphertext may cross this explicit evidence boundary.
+    encrypted = fields.get("encrypted_evidence")
+    if event == "story_validation_evidence" and isinstance(encrypted, str) and re.fullmatch(r"[A-Za-z0-9_=-]{80,32768}", encrypted):
+        payload["encrypted_evidence"] = encrypted
     payload.update(exception_metadata(error))
     logging.getLogger("diagnostic").log(
         logging.WARNING if outcome in {"failed", "failure", "error"} else logging.INFO,

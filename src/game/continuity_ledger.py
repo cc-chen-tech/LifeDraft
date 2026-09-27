@@ -22,6 +22,10 @@ LEDGER_VERSION = 1
 MAX_TIMELINE_ENTRIES = 600
 MAX_CONFLICTS = 100
 
+# These expressions qualify the immediately following month, not the current
+# scene date. Do not ignore a whole sentence: it may also contain a real drift.
+_OTHER_YEAR_PREFIX = re.compile(r"(?:明年|来年|次年|翌年|去年|前年|上年|往年)(?:的)?\s*$")
+
 _DECEASED_WORDS = ("已经去世", "已去世", "已故", "去世", "死亡", "身亡", "病逝", "亡故")
 _MEMORY_WORDS = (
     "回忆",
@@ -495,6 +499,8 @@ class ContinuityLedger:
         expected_month = _int_or_none(date_info.get("month"))
         claims: List[tuple[Optional[int], int, str]] = []
         for match in re.finditer(r"(?:(\d{4})年)?(\d{1,2})月", story_text):
+            if _OTHER_YEAR_PREFIX.search(story_text[max(0, match.start() - 8):match.start()]):
+                continue
             context = story_text[
                 max(0, match.start() - 24) : min(len(story_text), match.end() + 12)
             ]
@@ -506,6 +512,8 @@ class ContinuityLedger:
         for match in re.finditer(
             r"([一二两三四五六七八九十]{1,3})月(?:初|中|底|末)?", story_text
         ):
+            if _OTHER_YEAR_PREFIX.search(story_text[max(0, match.start() - 8):match.start()]):
+                continue
             context = story_text[
                 max(0, match.start() - 24) : min(len(story_text), match.end() + 12)
             ]

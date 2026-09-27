@@ -21,6 +21,7 @@ class ConsistencyIssue:
     description: str  # Human-readable description of the issue
     fix_suggestion: str  # Suggested fix for the issue
     evidence: str = ""  # Exact excerpt from the rejected story, when available
+    rule_code: str = ""  # Deterministic ledger rule; never copied from provider prose.
 
 
 @dataclass
@@ -124,6 +125,7 @@ class ConsistencyValidator:
                     issues = [
                         ConsistencyIssue(
                             dimension=issue.category,
+                            rule_code=issue.code,
                             severity="CRITICAL",
                             description=issue.message,
                             fix_suggestion=(
