@@ -11,8 +11,10 @@ import { copyToClipboard } from "@/lib/utils";
 import { useUserStore } from "@/stores/useUserStore";
 
 export default function ManagePlazaPage() {
-  const { isAuthenticated, fetchMe } = useUserStore();
-  const [authChecked, setAuthChecked] = useState(false);
+  const setUser = useUserStore((state) => state.setUser);
+  const clearAuth = useUserStore((state) => state.clearAuth);
+  const [authStatus, setAuthStatus] = useState<"checking" | "authenticated" | "anonymous" | "error">("checking");
+  const [authRetry, setAuthRetry] = useState(0);
   const [stories, setStories] = useState<OwnedPublicStory[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -21,17 +23,25 @@ export default function ManagePlazaPage() {
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      setAuthChecked(true);
-      return;
-    }
     let cancelled = false;
-    void fetchMe().finally(() => { if (!cancelled) setAuthChecked(true); });
+    api.auth.me().then((user) => {
+      if (cancelled) return;
+      setUser(user);
+      setAuthStatus("authenticated");
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      if ((error as { status?: number })?.status === 401) {
+        clearAuth();
+        setAuthStatus("anonymous");
+      } else {
+        setAuthStatus("error");
+      }
+    });
     return () => { cancelled = true; };
-  }, [isAuthenticated, fetchMe]);
+  }, [authRetry, clearAuth, setUser]);
 
   useEffect(() => {
-    if (!authChecked || !isAuthenticated) return;
+    if (authStatus !== "authenticated") return;
     let cancelled = false;
     api.plaza.mine().then((result) => {
       if (cancelled) return;
@@ -43,7 +53,7 @@ export default function ManagePlazaPage() {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [authChecked, isAuthenticated, reload]);
+  }, [authStatus, reload]);
 
   async function toggle(story: OwnedPublicStory) {
     if (busyId !== null) return;
@@ -74,7 +84,12 @@ export default function ManagePlazaPage() {
           <p className="mt-5 max-w-2xl leading-8 text-[var(--text-secondary)]">每个故事只有一个公开开关。打开后，已完成的章节和今后完成的新章节都能在广场阅读；关闭后，整个故事和原链接会立即失效。</p>
         </div>
         {feedback ? <p role="status" aria-live="polite" className="mt-6 border border-[var(--border-default)] bg-[var(--surface-raised)] px-4 py-3 text-sm">{feedback}</p> : null}
-        {!authChecked ? <p role="status" className="py-16 text-center text-[var(--text-secondary)]">正在确认登录…</p> : !isAuthenticated ? (
+        {authStatus === "checking" ? <p role="status" className="py-16 text-center text-[var(--text-secondary)]">正在确认登录…</p> : authStatus === "error" ? (
+          <div role="alert" className="mt-8 border border-[var(--border-default)] bg-[var(--surface-reading)] p-8">
+            <p>无法确认登录状态，请稍后重试。</p>
+            <Button type="button" variant="narrative" className="mt-5" onClick={() => { setAuthStatus("checking"); setAuthRetry((value) => value + 1); }}>重试确认登录</Button>
+          </div>
+        ) : authStatus === "anonymous" ? (
           <div className="mt-8 border border-[var(--border-default)] bg-[var(--surface-reading)] p-8">
             <h2 className="font-serif text-2xl">登录后管理分享</h2>
             <p className="mt-3 text-[var(--text-secondary)]">阅读广场故事无需登录。要公开或关闭自己的故事，请先登录。</p>

@@ -17,10 +17,12 @@ export default function PlazaPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoadMoreError(false);
     api.plaza.list(query).then((result) => {
       if (cancelled) return;
       setItems(result.items);
@@ -46,13 +48,14 @@ export default function PlazaPage() {
   async function loadMore() {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
+    setLoadMoreError(false);
     try {
       const result = await api.plaza.list(query, nextOffset);
       setItems((current) => [...current, ...result.items]);
       setHasMore(result.has_more);
       setNextOffset(result.next_offset);
     } catch {
-      setError(true);
+      setLoadMoreError(true);
     } finally {
       setLoadingMore(false);
     }
@@ -110,7 +113,10 @@ export default function PlazaPage() {
                 </li>
               ))}
             </ul>
-            {hasMore ? <div className="mt-9 text-center"><Button type="button" variant="narrative" size="touch" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "载入中…" : "更多故事"}</Button></div> : null}
+            {hasMore ? <div className="mt-9 text-center">
+              {loadMoreError ? <p role="alert" className="mb-4 text-sm text-[var(--text-secondary)]">加载更多故事失败，已载入的故事仍可阅读。</p> : null}
+              <Button type="button" variant="narrative" size="touch" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "载入中…" : loadMoreError ? "重试加载更多故事" : "更多故事"}</Button>
+            </div> : null}
           </>
         )}
       </main>

@@ -27,10 +27,37 @@ jest.mock("@/lib/api", () => ({
 const plaza = api.plaza as jest.Mocked<typeof api.plaza>;
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  jest.resetAllMocks();
+  (api.auth.me as jest.Mock).mockResolvedValue({
+    user_id: 1, public_id: "author01", display_name: "作者", private_id: "secret",
+  });
   useUserStore.setState({ isAuthenticated: true, user: {
     user_id: 1, public_id: "author01", display_name: "作者", private_id: "secret",
   } });
+});
+
+it("keeps loaded stories visible and retries the failed next page", async () => {
+  plaza.list
+    .mockResolvedValueOnce({ items: [{
+      public_id: "public-1", title: "林晚", author_name: "作者", chapter_count: 2,
+      excerpt: "第一天的故事", updated_at: "2026-09-01T00:00:00Z",
+    }], has_more: true, next_offset: 1 })
+    .mockRejectedValueOnce(new Error("Network unavailable"))
+    .mockResolvedValueOnce({ items: [{
+      public_id: "public-2", title: "周宁", author_name: "另一位作者", chapter_count: 1,
+      excerpt: "另一段故事", updated_at: "2026-09-02T00:00:00Z",
+    }], has_more: false, next_offset: 2 });
+
+  render(<PlazaPage />);
+  expect(await screen.findByRole("link", { name: /阅读林晚/ })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "更多故事" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("加载更多故事失败");
+  expect(screen.getByRole("link", { name: /阅读林晚/ })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "重试加载更多故事" }));
+
+  expect(await screen.findByRole("link", { name: /阅读周宁/ })).toBeInTheDocument();
+  expect(plaza.list).toHaveBeenNthCalledWith(3, "", 1);
 });
 
 it("lets a visitor browse a story without an account prompt", async () => {
@@ -82,4 +109,19 @@ it("explains that authors must log in without blocking anonymous reading", async
   expect(await screen.findByText("登录后管理分享")).toBeInTheDocument();
   expect(screen.getByText("阅读广场故事无需登录。要公开或关闭自己的故事，请先登录。")).toBeInTheDocument();
   expect(plaza.mine).not.toHaveBeenCalled();
+});
+
+it("offers an authentication retry after a network failure instead of claiming logout", async () => {
+  useUserStore.setState({ isAuthenticated: false, user: null });
+  (api.auth.me as jest.Mock).mockRejectedValueOnce(new Error("Network unavailable"));
+  plaza.mine.mockResolvedValue([]);
+
+  render(<ManagePlazaPage />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("无法确认登录状态");
+  expect(screen.queryByText("登录后管理分享")).not.toBeInTheDocument();
+  expect(plaza.mine).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "重试确认登录" }));
+  expect(await screen.findByText("还没有可以管理的故事")).toBeInTheDocument();
+  expect(plaza.mine).toHaveBeenCalledTimes(1);
 });
