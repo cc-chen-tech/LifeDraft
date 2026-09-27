@@ -13,6 +13,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -37,10 +38,13 @@ jobs:
           pip install -r requirements.txt
           pip install pytest-asyncio
 
-      - name: Run maintained backend gates
+      - name: Install offline audio runtime
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Run full backend discovery and static gates
         run: |
           ./test.sh mypy
-          ./scripts/run-maintained-backend-tests.sh test
+          ./test.sh full-backend
         env:
           PYTHONPATH: ${{ github.workspace }}
           TESTING: 'true'

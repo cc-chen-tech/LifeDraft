@@ -425,6 +425,9 @@ run_mypy() {
     
     echo -e "${YELLOW}运行 mypy 严格静态类型检查...${NC}"
     MYPY_STRICT_TARGETS=(
+        src/observability/diagnostics.py
+        src/observability/request_context.py
+        src/observability/model_telemetry.py
         src/ai/text_quality.py
         src/services/minimax_config.py
         src/services/minimax_story_tts_provider.py
@@ -944,7 +947,7 @@ run_model_smoke_impl() {
             export E2E_FRONTEND_PORT
             export MODEL_SMOKE_REPORT="$smoke_report"
             export MODEL_SMOKE_SCREENSHOT="$smoke_screenshot"
-            run_playwright_command "model-smoke" npx playwright test e2e/model-smoke.spec.ts --project=core --workers=1 --trace=on
+            run_playwright_command "model-smoke" npx playwright test e2e/model-smoke.spec.ts --project=core --workers=1 --trace=off
             playwright_result=$?
         else
             echo -e "${RED}smoke 前端启动失败，日志: $FRONTEND_LOG${NC}" >&2

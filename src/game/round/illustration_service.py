@@ -23,6 +23,9 @@ from src.services.image_service import get_image_thread_pool  # C-05: 使用共�
 from src.services.image_storage import ImageStorageService
 from src.services.portrait_selection import selected_portrait
 
+from src.observability.diagnostics import emit_diagnostic
+from src.observability.request_context import bind_current_context
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,7 +80,7 @@ class RoundIllustrationService:
             established_facts: 已建立的世界事实列表（含 category="item" 的重要物品）
         """
         # C-05: 使用线程池替代裸线程
-        get_image_thread_pool().submit(
+        future = get_image_thread_pool().submit(bind_current_context(
             self._generate_round_illustration_sync,
             game_id,
             round_number,
@@ -92,7 +95,14 @@ class RoundIllustrationService:
             story_date,
             day_index,
             validity_callback,
-        )
+        ))
+        def observe(completed):
+            try:
+                completed.result()
+            except BaseException as error:
+                emit_diagnostic("image_worker_crashed", phase="worker", outcome="failed",
+                                error=error, game_id=game_id)
+        future.add_done_callback(observe)
         week_display = f"第{week + 1}周" if week is not None else "未知周"
         logger.info(
             f"[RoundIllustration] 启动异步生成: game={game_id}, {week_display}, round {round_number}, stage={stage}"
@@ -149,6 +159,7 @@ class RoundIllustrationService:
             world_model_data: 世界模型数据（用于识别跨轮次反复出现的实体/物品）
             established_facts: 已建立的世界事实列表（含 category="item" 的重要物品）
         """
+        diagnostic_phase = "generation"
         try:
             # ★ 如果没有传入 week，尝试从数据库获取
             if week is None:
@@ -275,8 +286,11 @@ class RoundIllustrationService:
                     game_id,
                     day_index,
                 )
+                emit_diagnostic("image_delivery_finished", phase="origin_fence", outcome="superseded",
+                                game_id=game_id, reason="event_revision_changed", persisted=False)
                 return
 
+            diagnostic_phase = "storage"
             # Step 4: 保存图片 - 包含完整层级信息
             # ★ week 从0开始，entity_name 显示时 +1，与前端一致
             display_week = (week + 1) if week is not None else 0
@@ -290,6 +304,7 @@ class RoundIllustrationService:
                 stage=stage,
             )
 
+            diagnostic_phase = "persistence"
             # Step 5: 创建数据库记录 - 包含 week 字段
             scene_image = SceneImage(
                 game_id=game_id,
@@ -341,6 +356,8 @@ class RoundIllustrationService:
             logger.info(
                 f"[RoundIllustration] 场景插画生成完成: scene_id={scene_image.scene_id}, {week_display}, stage={stage}"
             )
+            emit_diagnostic("image_delivery_finished", phase="persistence", outcome="succeeded",
+                            game_id=game_id, asset_id=scene_image.scene_id, persisted=True)
 
         except ContentInspectionError as e:
             logger.warning(f"[RoundIllustration] Content inspection failed: {e}")
@@ -350,6 +367,8 @@ class RoundIllustrationService:
             raise  # ★ 重新抛出，避免外层打印虚假的 "success" 日志
         except Exception as e:
             logger.error(f"[RoundIllustration] Unexpected error: {e}")
+            emit_diagnostic("image_delivery_finished", phase=diagnostic_phase, outcome="failed",
+                            error=e, game_id=game_id, persisted=False)
             self.db.rollback()
             raise  # ★ 重新抛出未知异常
 
@@ -495,6 +514,9 @@ class RoundIllustrationService:
 
         except Exception as e:
             logger.warning(f"[RoundIllustration] Failed to get image as base64: {e}")
+            emit_diagnostic("image_reference_fallback", phase="reference", outcome="fallback",
+                            error=e, game_id=game_id, asset_id=image_info.get("image_id"),
+                            used_fallback=True, reason="reference_unavailable")
             return None
 
     def _compress_reference_image(

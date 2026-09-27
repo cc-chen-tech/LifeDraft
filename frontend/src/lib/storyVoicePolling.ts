@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { reportDiagnostic } from "./remote-log";
 import type { VoiceReadingJobResponse } from "./types";
 
 // Waiting owns its listeners and timer, so changing a story also cancels backoff.
@@ -27,6 +28,7 @@ export async function pollStoryVoiceJob(
   onJob: (job: VoiceReadingJobResponse) => void,
   onConnectionRetry: (retrying: boolean) => void,
   usingBrowserSpeech: () => boolean,
+  context: { gameId?: number } = {},
 ) {
   let job = initial;
   let failures = 0;
@@ -40,14 +42,19 @@ export async function pollStoryVoiceJob(
     try {
       job = await api.voice_reading.getJob(initial.job_id, signal);
       if (signal.aborted) return;
+      if (failures) reportDiagnostic("voice_poll_recovered", { ...context, outcome: "recovered", phase: "polling", jobId: initial.job_id, operationId: `voice:${initial.job_id}`, attempt: failures });
       failures = 0;
       onConnectionRetry(false);
       onJob(job);
     } catch (error) {
       if (signal.aborted) return;
       const failure = error as { status?: number; retryAfterMs?: number };
-      if (failure.status && failure.status >= 400 && failure.status < 500 && failure.status !== 429) throw error;
+      if (failure.status && failure.status >= 400 && failure.status < 500 && failure.status !== 429) {
+        reportDiagnostic("voice_poll_failed", { ...context, phase: "polling", jobId: initial.job_id, operationId: `voice:${initial.job_id}`, httpStatus: failure.status });
+        throw error;
+      }
       failures += 1;
+      reportDiagnostic("voice_poll_retry", { ...context, outcome: "retry", phase: "polling", jobId: initial.job_id, operationId: `voice:${initial.job_id}`, httpStatus: failure.status, attempt: failures });
       retryAfter = failure.retryAfterMs ?? 0;
       onConnectionRetry(true);
     }

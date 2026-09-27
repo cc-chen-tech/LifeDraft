@@ -22,6 +22,8 @@ from src.services.image.appearance_anchor import CharacterAppearanceAnchor
 from src.services.image.style_manager import style_manager
 from src.services.image_storage import ImageStorageService
 
+from src.observability.diagnostics import emit_diagnostic
+
 logger = logging.getLogger(__name__)
 
 
@@ -205,6 +207,7 @@ class SceneImageService:
             temporal_hint = temporal_palette.atmosphere
             logger.info(f"Applied temporal progression: week {week}, hint: {temporal_hint[:50]}...")
 
+        diagnostic_phase = "generation"
         try:
             # Step 1: 分析故事选择场景
             scene_desc, illustration_prompt = self.image_client.analyze_story_for_illustration(
@@ -401,6 +404,7 @@ class SceneImageService:
                     logger.error(f"Content inspection still failed after rewrite: {e2}")
                     raise ImageContentError("内容审核未通过，请尝试使用其他描述方式", new_prompt)
 
+            diagnostic_phase = "storage"
             # Step 4: 保存图片
             # ★ week 从0开始，entity_name 显示时 +1，与前端一致
             display_week = (week + 1) if week is not None else 0
@@ -414,6 +418,7 @@ class SceneImageService:
                 stage=stage,
             )
 
+            diagnostic_phase = "persistence"
             # Step 5: 创建 SceneImage 记录
             # ★ 使用 try/except 处理 IntegrityError，防止并发请求重复写入
             new_scene = SceneImage(
@@ -436,6 +441,8 @@ class SceneImageService:
                 self.db.refresh(new_scene)
                 week_display = f"第{week + 1}周" if week is not None else "未知周"
                 logger.info(f"场景插画创建完成: scene_id={new_scene.scene_id}, {week_display}")
+                emit_diagnostic("image_delivery_finished", phase="persistence", outcome="succeeded",
+                                game_id=game_id, asset_id=new_scene.scene_id, persisted=True)
                 return new_scene
             except IntegrityError as exc:
                 self.db.rollback()
@@ -476,6 +483,8 @@ class SceneImageService:
             raise ImageServiceError(f"场景插画生成失败: {e}")
         except Exception as e:
             logger.error(f"Unexpected error in generate_round_scene_image: {e}")
+            emit_diagnostic("image_delivery_finished", phase=diagnostic_phase,
+                            outcome="failed", error=e, game_id=game_id, persisted=False)
             self.db.rollback()
             raise ImageServiceError(f"生成场景插画失败: {e}")
 
@@ -521,6 +530,7 @@ class SceneImageService:
         if player_image_id and get_player_image_func:
             reference_url, _ = get_player_image_func(game_id, player_image_id)
 
+        diagnostic_phase = "generation"
         try:
             image_data, prompt_used, scene_desc = self.image_client.generate_opening_illustration(
                 story_text=story_text,
@@ -530,6 +540,7 @@ class SceneImageService:
                 era_constraints=era_constraints,
             )
 
+            diagnostic_phase = "storage"
             storage_path, storage_type = self.storage_service.save_image(
                 image_data=image_data,
                 game_id=game_id,
@@ -556,11 +567,14 @@ class SceneImageService:
                 is_primary=True,
             )
 
+            diagnostic_phase = "persistence"
             self.db.add(image_model)
             self.db.commit()
             self.db.refresh(image_model)
 
             logger.info(f"Opening illustration saved: image_id={image_model.image_id}")
+            emit_diagnostic("image_delivery_finished", phase="persistence", outcome="succeeded",
+                            game_id=game_id, asset_id=image_model.image_id, persisted=True)
             return image_model
 
         except ContentInspectionError as e:
@@ -574,6 +588,8 @@ class SceneImageService:
             raise ImageServiceError(f"插画生成失败: {e}")
         except Exception as e:
             logger.error(f"Unexpected error in generate_opening_illustration: {e}")
+            emit_diagnostic("image_delivery_finished", phase=diagnostic_phase, outcome="failed",
+                            error=e, game_id=game_id, persisted=False)
             self.db.rollback()
             raise ImageServiceError(f"生成开场插画失败: {e}")
 

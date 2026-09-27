@@ -172,7 +172,7 @@ def test_story_voice_response_exposes_only_backend_audio_or_unavailable() -> Non
     assert 'playback_mode: "audio" | "unavailable"' in FRONTEND_TYPES
 
 
-def test_voice_reading_audio_route_serves_minimax_mp3_assets(tmp_path: Path) -> None:
+def test_voice_reading_audio_route_requires_auth_for_existing_mp3_assets(tmp_path: Path) -> None:
     import os
 
     asset_dir = tmp_path / "voice-assets"
@@ -189,9 +189,7 @@ def test_voice_reading_audio_route_serves_minimax_mp3_assets(tmp_path: Path) -> 
         else:
             os.environ["STORY_TTS_ASSET_DIR"] = previous_asset_dir
 
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("audio/mpeg")
-    assert response.content.startswith(b"ID3")
+    assert response.status_code == 401
 
 
 def test_voice_reading_audio_route_never_synthesizes_local_fixture_in_runtime(
@@ -203,4 +201,4 @@ def test_voice_reading_audio_route_never_synthesizes_local_fixture_in_runtime(
         "/api/voice-reading/audio/guessed-hash-warm_female.wav"
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 401

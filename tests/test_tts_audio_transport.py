@@ -1,14 +1,38 @@
 """HTTP transport contracts for provider-generated narration assets."""
 
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 from src.api.main import app
+from src.api.deps import get_current_user
+from src.database.models import SessionLocal, User
+from src.services.story_voice_repository import StoryVoiceReadingRepository
 import pytest
 
 pytestmark = [pytest.mark.unit]
 
+
+
+@pytest.fixture(autouse=True)
+def authenticated_asset(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "voice-transport-test-secret")
+    with SessionLocal() as db:
+        user = User(private_id=uuid4().hex, public_id=uuid4().hex[:12])
+        db.add(user)
+        db.flush()
+        user_id = user.user_id
+        StoryVoiceReadingRepository(db).create_asset(
+            user_id=user_id, context={"source_type": "current_story", "text_hash": "range"},
+            voice_id="warm_female", speed=1., provider="minimax", model="test",
+            storage_path="/api/voice-reading/audio/minimax-range.mp3", duration_ms=1000, status="ready")
+        db.commit()
+    app.dependency_overrides[get_current_user] = lambda: user_id
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
 
 
 def _write_minimax_asset(asset_dir: Path) -> None:
@@ -27,7 +51,7 @@ def test_voice_reading_audio_returns_a_range_capable_file_response(
     assert response.status_code == 200
     assert response.content == b"0123456789"
     assert response.headers["content-type"].startswith("audio/mpeg")
-    assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert response.headers["cache-control"] == "private, no-store"
     assert response.headers["accept-ranges"] == "bytes"
     assert response.headers["content-length"] == "10"
     assert response.headers["last-modified"]

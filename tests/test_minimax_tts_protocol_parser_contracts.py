@@ -222,7 +222,7 @@ def test_runtime_image_installs_ffmpeg_for_scene_assembly() -> None:
 
 
 def test_tts_protocol_rejects_provider_error_and_parses_nested_download_url() -> None:
-    with pytest.raises(RuntimeError, match="1008 quota exhausted"):
+    with pytest.raises(RuntimeError, match="code=1008"):
         _raise_for_base_resp({"base_resp": {"status_code": 1008, "status_msg": "quota exhausted"}})
 
     response = Response(

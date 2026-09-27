@@ -260,3 +260,20 @@ def test_every_non_deploy_workflow_cancels_only_obsolete_pr_runs() -> None:
         assert (
             concurrency.get("cancel-in-progress") == expected_cancel
         ), path.name
+
+
+def test_backend_ci_runs_full_discovery_and_regressions_are_in_quick_gate():
+    backend = (WORKFLOW_DIR / 'backend-tests.yml').read_text()
+    assert './test.sh full-backend' in backend
+    runner = (ROOT / 'scripts/run-maintained-backend-tests.sh').read_text()
+    for name in (
+        'test_story_origin_generation.py', 'test_daily_recommended_prefetch.py',
+        'test_narration_plan_contract.py', 'test_story_voice_recovery.py',
+        'test_story_voice_shutdown.py', 'test_portrait_image_jobs.py',
+        'test_portrait_origin_fence.py', 'test_round_illustration_contracts.py',
+        'test_diagnostic_lifecycle.py', 'test_image_diagnostics.py',
+        'test_story_delivery_diagnostics.py', 'test_voice_diagnostics.py', 'test_voice_enqueue_trace.py',
+        'test_voice_audio_ownership.py', 'test_request_observability.py',
+        'test_model_provider_telemetry.py',
+    ):
+        assert 'tests/' + name in runner, name

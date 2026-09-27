@@ -13,6 +13,7 @@ from src.ai.image_exceptions import ImageProviderError
 from src.database.models import Image as ImageModel
 from src.services.image_storage import ImageStorageService
 from src.services.portrait_selection import selected_portrait
+from src.observability.diagnostics import emit_diagnostic
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class ImageProviderServiceError(ImageServiceError):
         self.retryable = provider_error.retryable
         self.public_message = provider_error.public_message
         self.provider_trace_id = provider_error.provider_trace_id
+        self.status_code = provider_error.status_code
 
     @classmethod
     def from_provider(cls, error: ImageProviderError) -> "ImageProviderServiceError":
@@ -360,6 +362,9 @@ class ImageService:
                 return f"data:{mime_type};base64,{base64_data}", player_image.image_id
             except Exception as e:
                 logger.warning(f"Failed to get player image: {e}")
+                emit_diagnostic("image_reference_fallback", phase="reference", outcome="fallback",
+                                error=e, game_id=game_id, asset_id=player_image.image_id,
+                                used_fallback=True, reason="reference_unavailable")
 
         return None, None
 

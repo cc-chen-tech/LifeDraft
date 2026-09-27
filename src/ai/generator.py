@@ -12,6 +12,7 @@ All existing public method signatures are preserved for backward compatibility.
 
 import json
 import logging
+from dataclasses import replace
 from typing import Any, Callable, Dict, List, Optional
 
 from config.feature_flags import get_feature
@@ -350,7 +351,8 @@ class EventGenerator:
             or (parent_context.operation_id if parent_context is not None else None)
             or resolve_operation_id(None)
         )
-        context = RequestContext(
+        context = replace(
+            parent_context or RequestContext(request_id=resolve_request_id(None)),
             request_id=(
                 parent_context.request_id
                 if parent_context is not None

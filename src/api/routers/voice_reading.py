@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
+from typing import Optional
+
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from fastapi.responses import FileResponse
@@ -10,6 +11,8 @@ from sqlalchemy.orm import Session
 from starlette.types import Message, Receive, Scope, Send
 
 from src.api.deps import get_current_user, get_session
+from src.database.models import GeneratedVoiceAsset
+from src.observability.diagnostics import emit_diagnostic
 from src.api.schemas import (
     MessageResponse,
     StoryVoiceReadingRequest,
@@ -85,10 +88,21 @@ def preview_voice(
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> VoicePreviewResponse:
-    # user_id is intentionally resolved for the same ownership/auth boundary
-    # as the rest of voice-reading APIs; previews are shared cache artifacts.
-    del user_id
-    result = get_service(db).preview_voice(request.voice_id)
+    service = get_service(db)
+    result = service.preview_voice(request.voice_id)
+    # Preview bytes can be cached physically, but each listener gets an owned
+    # asset record so the same authenticated audio route serves all playback.
+    existing = db.query(GeneratedVoiceAsset).filter_by(
+        user_id=user_id, storage_path=result["audio_url"], status="ready"
+    ).first()
+    if existing is None:
+        metadata = service.provider.metadata()
+        StoryVoiceReadingRepository(db).create_asset(
+            user_id=user_id, context={"source_type": "voice_preview", "text_hash": "preview:" + result["voice_id"]},
+            voice_id=result["voice_id"], speed=1.0, provider=metadata.provider, model=metadata.model,
+            storage_path=result["audio_url"], duration_ms=result["duration_ms"], status="ready",
+        )
+        db.commit()
     return VoicePreviewResponse(**result)
 
 
@@ -99,8 +113,35 @@ def request_story_reading(
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> StoryVoiceReadingResponse:
-    response = get_service(db).request_reading(user_id, request)
-    db.commit()
+    job_id: Optional[int] = None
+    try:
+        response = get_service(db).request_reading(user_id, request)
+        job_id = response.job_id
+        db.commit()
+    except Exception as error:
+        # Log independently of the failed transaction. A generated ID alone
+        # must never be reported as a durably enqueued task.
+        emit_diagnostic(
+            "voice_job_enqueue_failed", phase="enqueue", outcome="failure", error=error,
+            user_id=user_id, game_id=request.context.game_id, job_id=job_id,
+            job_type="voice", persisted=False,
+        )
+        try:
+            db.rollback()
+        except Exception as rollback_error:
+            emit_diagnostic(
+                "voice_job_enqueue_rollback_failed", phase="rollback", outcome="failure",
+                error=rollback_error, user_id=user_id, game_id=request.context.game_id,
+                job_id=job_id, job_type="voice", persisted=False,
+            )
+        raise
+    # Keep the originating HTTP request/operation identity here. The worker
+    # uses a stable voice:<job_id> operation after restart; job_id joins both.
+    emit_diagnostic(
+        "voice_job_enqueued", phase="enqueue", outcome="success", user_id=user_id,
+        game_id=request.context.game_id, job_id=response.job_id, job_type="voice",
+        status=response.status, persisted=True,
+    )
     if response.status == "queued":
         background_tasks.add_task(process_story_voice_job, user_id, response.job_id)
     return response
@@ -183,6 +224,8 @@ def update_voice_reading_progress(
             completed=request.completed,
         )
     except ProgressStoreBusy as error:
+        emit_diagnostic("voice_progress", phase="persistence", outcome="failure", error=error,
+                        user_id=user_id, game_id=request.game_id, error_code="progress_store_busy", retryable=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"error_code": "progress_store_busy", "message": "Progress will be retried"},
@@ -192,7 +235,15 @@ def update_voice_reading_progress(
 
 
 @router.get("/audio/{file_name}")
-async def get_voice_reading_audio(file_name: str) -> Response:
+def get_voice_reading_audio(
+    file_name: str, user_id: int = Depends(get_current_user), db: Session = Depends(get_session)
+) -> Response:
+    storage_path = f"/api/voice-reading/audio/{file_name}"
+    owned = db.query(GeneratedVoiceAsset).filter_by(
+        user_id=user_id, storage_path=storage_path, status="ready"
+    ).first()
+    if owned is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")
     if not (file_name.endswith(".wav") or file_name.endswith(".mp3")):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")
     generated_audio_path = generated_voice_file_path(file_name)
@@ -201,7 +252,7 @@ async def get_voice_reading_audio(file_name: str) -> Response:
         return _StandardRangeFileResponse(
             path=generated_audio_path,
             media_type=media_type,
-            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            headers={"Cache-Control": "private, no-store", "Vary": "Cookie, Authorization"},
         )
     if not build_minimax_config().local_audio_enabled:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")
@@ -214,13 +265,13 @@ async def get_voice_reading_audio(file_name: str) -> Response:
     text_hash, voice_id = stem.rsplit(marker, 1)
     if not text_hash or not voice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")
-    # P2-性能修复：确定性 WAV 合成是 CPU 密集循环（约 12.8 万次采样），
-    # 移出事件循环执行。
-    wav_content = await asyncio.to_thread(build_deterministic_wav, text_hash, voice_id)
+    # This synchronous route runs in FastAPI's thread pool, keeping database
+    # reads and deterministic fixture synthesis off the ASGI event loop.
+    wav_content = build_deterministic_wav(text_hash, voice_id)
     return Response(
         content=wav_content,
         media_type="audio/wav",
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        headers={"Cache-Control": "private, no-store", "Vary": "Cookie, Authorization"},
     )
 
 

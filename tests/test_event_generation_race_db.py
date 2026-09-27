@@ -70,13 +70,13 @@ class TestDurableGenerationLifecycle:
             next_chunk = asyncio.create_task(first.__anext__())
             assert await asyncio.to_thread(started.wait, 1)
             chunk = await asyncio.wait_for(next_chunk, timeout=1)
-            if "同一个后台任务" not in chunk:
-                chunk = await asyncio.wait_for(first.__anext__(), timeout=1)
-            assert "同一个后台任务" in chunk
+            # Uncommitted candidate text is buffered; disconnect on progress.
+            assert "event: status" in chunk
+            assert "同一个后台任务" not in chunk
             await first.aclose()
 
             second = stream_round_event(
-                game_loop, 91, session=session, last_event_id=0
+                game_loop, 91, session=session, last_event_id=-1
             )
             release.set()
             payload = await asyncio.wait_for(_collect_stream(second), timeout=2)

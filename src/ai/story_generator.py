@@ -51,7 +51,7 @@ from src.ai.generation_budget import get_daily_generation_budget, get_generation
 from src.ai.models import GameEvent, StoryDeliveryNotice
 from src.ai.option_generator import OptionGenerator
 from src.ai.prompt_sanitizer import sanitize_persisted_player_name
-from src.ai.story_exceptions import StoryGenerationFailure
+from src.ai.story_exceptions import GenerationFailureCode, StoryGenerationFailure
 from src.ai.story_validation import (
     FindingSeverity,
     ValidationFinding,
@@ -64,6 +64,8 @@ if TYPE_CHECKING:
     from src.ai.cache import EventCache
     from src.ai.quick_validator import QuickValidationResult
     from src.game.world_model import WorldModel
+
+from src.observability.diagnostics import diagnostic_context as story_diagnostic_context, emit_diagnostic
 
 logger = logging.getLogger(__name__)
 
@@ -915,7 +917,7 @@ class StoryGenerator:
             if required_name and required_name not in required_people_names:
                 required_people_names.append(required_name)
 
-        def _quick_validate_round_story(candidate: str) -> QuickValidationResult:
+        def _quick_validate_round_story_impl(candidate: str) -> QuickValidationResult:
             result = quick_validate_story(
                 story_text=candidate,
                 character_settings=character_settings,
@@ -939,7 +941,24 @@ class StoryGenerator:
                 warnings=result.warnings,
                 source="quick_validator",
             )
+            emit_diagnostic("story_validation", phase="quick", outcome="passed" if result.passed else "rejected",
+                            game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                            attempt=provider_requests_used, finding_codes=[f.code for f in result.findings])
             return result
+
+        def _quick_validate_round_story(candidate: str) -> QuickValidationResult:
+            try:
+                with story_diagnostic_context(attempt_id=f"{generation_operation_id}:{provider_requests_used}"):
+                    return _quick_validate_round_story_impl(candidate)
+            except StoryGenerationFailure:
+                raise
+            except Exception as error:
+                emit_diagnostic("story_validation", phase="quick", outcome="failed", error=error,
+                                game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                attempt=provider_requests_used, attempt_id=f"{generation_operation_id}:{provider_requests_used}",
+                                error_code="VALIDATION_SERVICE_ERROR")
+                raise StoryGenerationFailure("Story quick validator implementation failed",
+                    failure_code=GenerationFailureCode.VALIDATION_SERVICE_ERROR, circuit_break=True) from error
 
         committed_stories = self._committed_round_stories(
             player_state,
@@ -981,7 +1000,19 @@ class StoryGenerator:
             # construction has succeeded. Suppress provider streaming so a
             # rejected draft can never flash in the reader.
             kwargs["stream_callback"] = None
-            candidate = self._call_required_round_story(**kwargs)
+            with story_diagnostic_context(**({"game_id": player_state["game_id"]} if player_state.get("game_id") is not None else {}),
+                                          operation_id=generation_operation_id,
+                                          attempt_id=f"{generation_operation_id}:{provider_requests_used}"):
+                emit_diagnostic("story_candidate", phase="provider", outcome="started",
+                                attempt=provider_requests_used, max_attempts=max_story_requests)
+                try:
+                    candidate = self._call_required_round_story(**kwargs)
+                except Exception as exc:
+                    emit_diagnostic("story_candidate", phase="provider", outcome="failed", error=exc,
+                                    attempt=provider_requests_used, max_attempts=max_story_requests)
+                    raise
+                emit_diagnostic("story_candidate", phase="provider", outcome="passed",
+                                attempt=provider_requests_used, size_bytes=len(candidate.encode("utf-8")))
             candidate_hash = hashlib.sha256(candidate.encode("utf-8")).hexdigest()[:12]
             logger.info(
                 "story_candidate operation_id=%s game_id=%s quality=%s request=%d "
@@ -996,11 +1027,18 @@ class StoryGenerator:
             return candidate
 
         def _emit_selected_story(candidate: str) -> None:
+            emit_diagnostic("story_generation", phase="accepted", outcome="passed",
+                            game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                            attempt=provider_requests_used, persisted=False)
             if stream_callback and candidate:
                 stream_callback(candidate)
 
         def _log_findings(findings: list[ValidationFinding], disposition: str) -> None:
             for finding in findings:
+                emit_diagnostic("story_finding", phase="validation", outcome="rejected" if finding.severity.value == "hard" else "warning",
+                                game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                attempt=provider_requests_used, finding_codes=[finding.code],
+                                severity=finding.severity.value, disposition=disposition)
                 logger.info(
                     "story_finding operation_id=%s game_id=%s request=%d code=%s "
                     "severity=%s confidence=%.2f disposition=%s fingerprint=%s",
@@ -1058,6 +1096,9 @@ class StoryGenerator:
                 if self._soft_narrative_lengths
                 else set()
             )
+            emit_diagnostic("story_validation", phase="shape", outcome="rejected" if any(i not in soft_length_issues for i in shape_issues) else "passed",
+                            game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                            attempt=provider_requests_used, finding_codes=shape_issues)
             return [
                 issue
                 for issue in shape_issues
@@ -1245,6 +1286,9 @@ class StoryGenerator:
                 )
                 quick_circuit_broken = False
                 if repeated_from_previous_candidate:
+                    emit_diagnostic("story_circuit", phase="quick", outcome="stopped",
+                                    game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                    attempt=provider_requests_used, reason="repeated_hard_finding")
                     logger.warning(
                         "Story validation circuit breaker: repeated hard fingerprint(s)=%s",
                         sorted(repeated_from_previous_candidate),
@@ -1616,6 +1660,7 @@ class StoryGenerator:
                 # Harness 检查（仅在开启时执行），支持在无效内容上继续 retry
                 if self._harness_enabled and self._validation_pipeline:
                     diagnostic_context = {
+                        "diagnostic_attempt": provider_requests_used,
                         "character_settings": character_settings,
                         "available_people": available_people_names,
                         "relationship_events": relationship_events,
@@ -1627,11 +1672,23 @@ class StoryGenerator:
                         "world_model_state": getattr(world_model, "__dict__", None),
                         "character_habits": character_habits,
                     }
-                    validation_result = self._validation_pipeline.validate(
-                        story_text=story_text,
-                        context=diagnostic_context,
-                        profile=self._quality_profile,
-                    )
+                    try:
+                        with story_diagnostic_context(attempt_id=f"{generation_operation_id}:{provider_requests_used}"):
+                            validation_result = self._validation_pipeline.validate(
+                                story_text=story_text,
+                                context=diagnostic_context,
+                                profile=self._quality_profile,
+                            )
+                    except StoryGenerationFailure:
+                        raise
+                    except Exception as error:
+                        raise StoryGenerationFailure("Story harness implementation failed",
+                            failure_code=GenerationFailureCode.VALIDATION_SERVICE_ERROR,
+                            circuit_break=True) from error
+                    emit_diagnostic("story_validation", phase="harness", outcome="passed" if validation_result.passed else "rejected",
+                                    game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                    attempt=provider_requests_used,
+                                    finding_codes=[f.constraint_type for f in validation_result.critical_failures])
                     candidate_validation_score = float(validation_result.score)
                     harness_soft_warning_count = sum(
                         len(getattr(validation_result, field_name, []) or [])
@@ -1704,6 +1761,9 @@ class StoryGenerator:
                             attempt=attempt,
                         )
                     if should_retry:
+                        emit_diagnostic("story_retry", phase="harness", outcome="retrying",
+                                        game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                        attempt=provider_requests_used, max_attempts=max_story_requests)
                         if status_callback:
                             status_callback("retry")
                         logger.info(
@@ -1781,6 +1841,9 @@ class StoryGenerator:
                     available_people=available_people_names,
                     language=language,
                 )
+                emit_diagnostic("story_validation", phase="options", outcome="repairing" if option_issues else "passed",
+                                game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                attempt=provider_requests_used, count=len(option_issues))
                 if option_issues:
                     logger.warning(f"Options consistency issues found: {option_issues}")
                     option_generator.ensure_options_consistency(
@@ -1813,6 +1876,9 @@ class StoryGenerator:
                 logger.warning(f"Round event attempt {attempt + 1} failed: {e}")
                 last_generation_error = e
             except GenerationBudgetError as e:
+                emit_diagnostic("story_circuit", phase="budget", outcome="stopped", error=e,
+                                game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                attempt=provider_requests_used, max_attempts=max_story_requests)
                 logger.warning("Round request budget exhausted: %s", e)
                 best_valid_story_text = ""
                 if final_shape_issues:
@@ -1832,6 +1898,12 @@ class StoryGenerator:
                     last_generation_error = e
                 break
             except StoryGenerationFailure as e:
+                if e.failure_code is GenerationFailureCode.VALIDATION_SERVICE_ERROR:
+                    emit_diagnostic("story_generation", phase="validation", outcome="failed",
+                                    error=e, error_code=e.failure_code.value,
+                                    game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                    attempt=provider_requests_used, attempt_id=f"{generation_operation_id}:{provider_requests_used}")
+                    raise
                 # A candidate rejected by a hard consistency check is never a
                 # safe historical fallback. Preserve its structured findings
                 # for the player-facing terminal failure instead.
@@ -1881,6 +1953,9 @@ class StoryGenerator:
                 break
 
             if attempt < max_attempts - 1:
+                emit_diagnostic("story_retry", phase="candidate", outcome="retrying",
+                                game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                attempt=provider_requests_used, max_attempts=max_story_requests)
                 retry_hint = None if not retry_hint else retry_hint
                 continue
 
@@ -1933,6 +2008,9 @@ class StoryGenerator:
                     attempts_used=max(1, provider_requests_used),
                 ),
             )
+            emit_diagnostic("story_fallback", phase="selection", outcome="accepted",
+                            game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                            attempt=provider_requests_used, used_fallback=True, reason="soft_warning")
             _emit_selected_story(best_soft_story_text)
             return event
 
@@ -1966,6 +2044,9 @@ class StoryGenerator:
                 event_description=best_valid_story_text,
                 options=fallback_options,
             )
+            emit_diagnostic("story_fallback", phase="selection", outcome="accepted",
+                            game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                            attempt=provider_requests_used, used_fallback=True, reason="historical")
             _emit_selected_story(best_valid_story_text)
             return event
 
@@ -2027,6 +2108,9 @@ class StoryGenerator:
                         self.quality_level.value,
                         provider_requests_used,
                     )
+                    emit_diagnostic("story_fallback", phase="selection", outcome="accepted",
+                                    game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                    attempt=provider_requests_used, used_fallback=True, reason="safe_first_day")
                     _emit_selected_story(safe_opening)
                     return event
                 logger.warning(
@@ -2034,6 +2118,10 @@ class StoryGenerator:
                     safe_result.issues,
                 )
 
+        emit_diagnostic("story_generation", phase="terminal", outcome="failed",
+                        error=last_generation_error, game_id=player_state.get("game_id"),
+                        operation_id=generation_operation_id, attempt=provider_requests_used,
+                        finding_codes=[f.code for f in last_findings], persisted=False)
         message = "Story generation failed before producing a valid event"
         if last_generation_error is not None:
             message = f"{message}: {last_generation_error}"
@@ -2443,6 +2531,7 @@ class StoryGenerator:
             logger.error(f"Story validation/retry failed: {e}")
             raise StoryGenerationFailure(
                 "consistency validation service unavailable",
+                failure_code=GenerationFailureCode.VALIDATION_SERVICE_ERROR,
                 findings=[
                     ValidationFinding(
                         code="VALIDATION_SERVICE_ERROR",

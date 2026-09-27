@@ -15,6 +15,8 @@ from typing import Any, Dict, Optional, Tuple
 from config.settings import settings
 from src.utils.image_compressor import compress_image
 
+from src.observability.diagnostics import emit_diagnostic
+
 logger = logging.getLogger(__name__)
 
 
@@ -102,12 +104,20 @@ class ImageStorageService:
             stage=stage,
         )
 
-        if self.storage_type == "local":
-            return self._save_local(image_data, filename)
-        elif self.storage_type == "oss":
-            return self._save_oss(image_data, filename, metadata)
-        else:
-            raise ImageStorageError(f"不支持的存储类型: {self.storage_type}")
+        try:
+            if self.storage_type == "local":
+                result = self._save_local(image_data, filename)
+            elif self.storage_type == "oss":
+                result = self._save_oss(image_data, filename, metadata)
+            else:
+                raise ImageStorageError(f"不支持的存储类型: {self.storage_type}")
+        except Exception as error:
+            emit_diagnostic("image_storage_finished", phase="storage", outcome="failed",
+                            error=error, game_id=game_id, persisted=False)
+            raise
+        emit_diagnostic("image_storage_finished", phase="storage", outcome="succeeded",
+                        game_id=game_id, persisted=True, size_bytes=len(image_data))
+        return result
 
     def _generate_filename(
         self,
@@ -188,10 +198,9 @@ class ImageStorageService:
             full_path = self.local_path / filename
 
         # 确保目录存在
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-
         # 写入文件
         try:
+            full_path.parent.mkdir(parents=True, exist_ok=True)
             with open(full_path, "wb") as f:
                 f.write(compressed_data)
 

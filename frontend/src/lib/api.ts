@@ -24,6 +24,7 @@ import type {
   PublicStoryList,
 } from './types';
 import { resolveApiBase } from './apiBase';
+import { reportDiagnostic } from './remote-log';
 
 const API_BASE = resolveApiBase();
 export const LIFE_SUMMARY_REQUEST_TIMEOUT_MS = 30_000;
@@ -299,6 +300,9 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
         });
       }
 
+      reportDiagnostic(errorCode ?? 'api_http_failed', { phase: 'http', httpStatus: response.status,
+        requestId: response.headers?.get('X-Request-ID') ?? undefined,
+        operationId: response.headers?.get('X-Operation-ID') ?? undefined });
       console.error(`[API Error] ${url} failed with ${response.status}:`, errorMessage);
 
       // ★ 401 未授权 - 使用防竞态的重定向处理

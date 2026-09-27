@@ -34,7 +34,7 @@ def test_maintained_backend_manifest_is_shared_by_both_ci_workflows() -> None:
     assert (
         "./scripts/run-maintained-backend-tests.sh coverage" in coverage_workflow
     )
-    assert "./scripts/run-maintained-backend-tests.sh test" in backend_workflow
+    assert "./test.sh full-backend" in backend_workflow
     assert "tests/test_gate_preflight_no_mock.py" not in coverage_workflow
     assert "tests/test_gate_preflight_no_mock.py" not in backend_workflow
 

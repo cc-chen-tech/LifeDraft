@@ -408,10 +408,10 @@ class TestDegradationSafety:
     """降级安全"""
 
     def test_validation_pipeline_exception(self, mock_story_text, basic_validation_context):
-        """ValidationPipeline抛异常→优雅降级返回原始故事"""
+        """验证器实现异常必须阻止未经检查的故事交付。"""
 
         # ValidationPipeline 的 _run_single_check 内部有异常保护
-        # 当验证器抛异常时，默认返回 passed=True
+        # 实现异常与正常的内容拒绝不同，必须明确失败。
         def broken_validator(story_text, context):
             raise RuntimeError("Validator crashed!")
 
@@ -429,13 +429,11 @@ class TestDegradationSafety:
         )
 
         pipeline = ValidationPipeline(broken_registry)
-        result = pipeline.validate(mock_story_text, basic_validation_context)
+        from src.ai.story_exceptions import StoryGenerationFailure, GenerationFailureCode
+        with pytest.raises(StoryGenerationFailure) as caught:
+            pipeline.validate(mock_story_text, basic_validation_context)
+        assert caught.value.failure_code is GenerationFailureCode.VALIDATION_SERVICE_ERROR
 
-        # 异常时默认通过（不阻塞生成流程）
-        assert result.passed is True
-        # 详细结果中应有 skipped 标记
-        detail = result.detailed_checks.get("available_people", {})
-        assert detail.get("details", {}).get("skipped") is True
 
     def test_retry_controller_exception(self):
         """RetryController抛异常→优雅降级不重试"""

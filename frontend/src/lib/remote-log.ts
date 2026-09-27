@@ -128,7 +128,7 @@ export function installGlobalErrorReporter(options: GlobalErrorReporterOptions =
     }
 
     console.error('[Global Error]', event.error);
-    // Could send to remote logging service here
+    reportDiagnostic('global_error', { phase: 'global' });
   };
 
   const rejectionHandler = (event: PromiseRejectionEvent) => {
@@ -137,7 +137,7 @@ export function installGlobalErrorReporter(options: GlobalErrorReporterOptions =
     }
 
     console.error('[Unhandled Rejection]', event.reason);
-    // Could send to remote logging service here
+    reportDiagnostic('unhandled_rejection', { phase: 'global' });
   };
 
   window.addEventListener('error', errorHandler);
@@ -148,5 +148,50 @@ export function installGlobalErrorReporter(options: GlobalErrorReporterOptions =
 
 export function reportError(error: Error, context?: Record<string, unknown>): void {
   console.error('[Reported Error]', error, context);
-  // Could send to remote logging service here
+  reportDiagnostic('reported_error', { phase: typeof context?.context === 'string' ? context.context : 'client' });
+}
+
+
+type DiagnosticContext = {
+  outcome?: 'failed' | 'recovered' | 'retry' | 'cancelled';
+  phase?: string; gameId?: number; jobId?: number; assetId?: number;
+  operationId?: string; requestId?: string; httpStatus?: number; attempt?: number;
+};
+const recentDiagnostics = new Map<string, number>();
+const safeDiagnosticToken = /^[A-Za-z0-9_.:-]{1,128}$/;
+
+/** Send metadata only. Failure of logging never interrupts gameplay or recurses. */
+export function reportDiagnostic(errorCode: string, context: DiagnosticContext = {}): void {
+  if (typeof window === 'undefined' || typeof fetch !== 'function') return;
+  const payload: Record<string, string | number> = {
+    error_code: safeDiagnosticToken.test(errorCode) ? errorCode.slice(0, 96) : 'client_error',
+  };
+  for (const [key, value] of Object.entries(context)) {
+    const names: Record<string, string> = { outcome: 'outcome', phase: 'phase', gameId: 'game_id', jobId: 'job_id',
+      assetId: 'asset_id', operationId: 'operation_id', requestId: 'request_id',
+      httpStatus: 'http_status', attempt: 'attempt' };
+    if (!names[key]) continue;
+    if (typeof value === 'number' && Number.isSafeInteger(value)) {
+      const valid = key === 'httpStatus' ? value >= 100 && value <= 599
+        : key === 'attempt' ? value >= 0 && value <= 10000 : value >= 1;
+      if (valid) payload[names[key]] = value;
+    }
+    if (typeof value === 'string' && safeDiagnosticToken.test(value)) {
+      if (key === 'phase' && value.length > 64) continue;
+      if (key === 'outcome' && !['failed', 'recovered', 'retry', 'cancelled'].includes(value)) continue;
+      payload[names[key]] = value;
+    }
+  }
+  const now = Date.now();
+  for (const [key, at] of recentDiagnostics) if (now - at >= 60_000) recentDiagnostics.delete(key);
+  const key = JSON.stringify(payload);
+  if (recentDiagnostics.has(key) || recentDiagnostics.size >= 30) return;
+  recentDiagnostics.set(key, now);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (payload.operation_id) headers['X-Operation-ID'] = String(payload.operation_id);
+  if (payload.request_id) headers['X-Request-ID'] = String(payload.request_id);
+  try {
+    void Promise.resolve(fetch('/api/client-log', { method: 'POST', credentials: 'include', keepalive: true,
+      headers, body: JSON.stringify(payload) })).catch(() => undefined);
+  } catch { /* Offline/teardown must not create a second error. */ }
 }

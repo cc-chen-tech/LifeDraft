@@ -7,6 +7,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
@@ -21,6 +22,7 @@ from src.services.daily_recommended_prefetch_repository import (
     DailyRecommendedPrefetchRepository,
 )
 from src.observability.request_context import bind_current_context
+from src.observability.diagnostics import diagnostic_context, emit_diagnostic
 
 logger = logging.getLogger(__name__)
 _executor: Optional[ThreadPoolExecutor] = None
@@ -587,7 +589,48 @@ def _validate_prefetch_event_date(state: Any, event: GameEvent) -> None:
         )
 
 
-def _run_prefetch_worker(
+def _run_prefetch_task(worker: Callable[..., None], **kwargs: Any) -> None:
+    task_id = kwargs["task_id"]
+    with diagnostic_context(game_id=kwargs["game_id"], user_id=kwargs.get("user_id"),
+                            job_id=task_id, job_type="daily_recommended_prefetch",
+                            operation_id=f"daily-prefetch:{task_id}", attempt_id=uuid.uuid4().hex):
+        emit_diagnostic("prefetch_operation", phase="claim", outcome="started")
+        try:
+            worker(**kwargs)
+        except Exception as error:
+            # Includes session creation/rollback/close failures: no silent Future exception.
+            emit_diagnostic("prefetch_operation", phase="worker", outcome="failed", error=error)
+
+
+def _persist_prefetch_failure(task_id: int, token: str, error: Exception, phase: str) -> None:
+    from src.database.models import SessionLocal
+    emit_diagnostic("prefetch_operation", phase=phase, outcome="failed", error=error)
+    failed_db = None
+    try:
+        failed_db = SessionLocal()
+        stored = DailyRecommendedPrefetchRepository(failed_db).mark_failed(task_id, token, error)
+        failed_db.commit()
+        emit_diagnostic("prefetch_failure_persistence", phase="save_failure",
+                        outcome="passed" if stored else "stale", persisted=bool(stored))
+    except Exception as persistence_error:
+        emit_diagnostic("prefetch_failure_persistence", phase="save_failure", outcome="failed",
+                        error=persistence_error, persisted=False)
+        if failed_db is not None:
+            failed_db.rollback()
+    finally:
+        if failed_db is not None:
+            failed_db.close()
+
+
+def _run_prefetch_worker(**kwargs: Any) -> None:
+    _run_prefetch_task(_run_prefetch_worker_impl, **kwargs)
+
+
+def _run_demanded_prefetch_worker(**kwargs: Any) -> None:
+    _run_prefetch_task(_run_demanded_prefetch_worker_impl, **kwargs)
+
+
+def _run_prefetch_worker_impl(
     *,
     task_id: int,
     source_loop: Any,
@@ -606,7 +649,8 @@ def _run_prefetch_worker(
     try:
         token = DailyRecommendedPrefetchRepository(claim_db).claim(task_id)
         claim_db.commit()
-    except Exception:
+    except Exception as error:
+        emit_diagnostic("prefetch_operation", phase="claim", outcome="failed", error=error)
         claim_db.rollback()
         logger.exception("Failed to claim daily recommended prefetch %s", task_id)
         return
@@ -616,6 +660,8 @@ def _run_prefetch_worker(
         return
 
     generation_started = time.monotonic()
+    phase = "generation"
+    emit_diagnostic("prefetch_operation", phase=phase, outcome="started", user_id=user_id)
     try:
         projection = project_daily_choice(
             snapshot_state,
@@ -624,7 +670,10 @@ def _run_prefetch_worker(
             language=language,
         )
         next_event = _generate_with_isolated_game_loop(source_loop, projection.state)
+        phase = "validation"
         _validate_prefetch_event_date(projection.state, next_event)
+        emit_diagnostic("prefetch_operation", phase=phase, outcome="passed", user_id=user_id)
+        phase = "save"
         ready_db = SessionLocal()
         try:
             stored = DailyRecommendedPrefetchRepository(ready_db).mark_story_ready(
@@ -637,7 +686,9 @@ def _run_prefetch_worker(
         finally:
             ready_db.close()
         if not stored:
+            emit_diagnostic("prefetch_operation", phase="save", outcome="stale", persisted=False, user_id=user_id)
             return
+        emit_diagnostic("prefetch_operation", phase="save", outcome="completed", persisted=True, user_id=user_id)
         logger.info(
             "daily_recommended_prefetch_metric action=story_ready task_id=%s "
             "game_id=%s duration_ms=%s model_calls=1",
@@ -646,12 +697,14 @@ def _run_prefetch_worker(
             int((time.monotonic() - generation_started) * 1000),
         )
 
+        phase = "promotion"
         _promote_demanded_prefetch(
             task_id=task_id,
             game_id=game_id,
             game_loop=source_loop,
         )
         if user_id is not None and voice_id is not None and voice_speed is not None:
+            phase = "voice_enqueue"
             _prefetch_story_voice(
                 task_id=task_id,
                 user_id=user_id,
@@ -662,21 +715,13 @@ def _run_prefetch_worker(
                 speed=voice_speed,
             )
     except Exception as error:
-        failed_db = SessionLocal()
-        try:
-            DailyRecommendedPrefetchRepository(failed_db).mark_failed(
-                task_id, token, error
-            )
-            failed_db.commit()
-        except Exception:
-            failed_db.rollback()
-            logger.exception("Failed to persist recommended prefetch failure")
-        finally:
-            failed_db.close()
-        logger.exception("Daily recommended prefetch failed: task=%s", task_id)
+        if phase in {"promotion", "voice_enqueue"}:
+            emit_diagnostic("prefetch_postprocess", phase=phase, outcome="failed", error=error, persisted=True)
+        else:
+            _persist_prefetch_failure(task_id, token, error, phase)
 
 
-def _run_demanded_prefetch_worker(
+def _run_demanded_prefetch_worker_impl(
     *,
     task_id: int,
     source_loop: Any,
@@ -702,7 +747,8 @@ def _run_demanded_prefetch_worker(
             else None
         )
         claim_db.commit()
-    except Exception:
+    except Exception as error:
+        emit_diagnostic("prefetch_operation", phase="claim", outcome="failed", error=error)
         claim_db.rollback()
         logger.exception("Failed to recover demanded recommended prefetch %s", task_id)
         return
@@ -711,60 +757,60 @@ def _run_demanded_prefetch_worker(
     if token is None:
         return
 
-    generation_started = time.monotonic()
-    try:
-        next_event = _generate_with_isolated_game_loop(source_loop, projected_state)
-        _validate_prefetch_event_date(projected_state, next_event)
-        ready_db = SessionLocal()
+    with diagnostic_context(user_id=user_id):
+        generation_started = time.monotonic()
+        phase = "generation"
+        emit_diagnostic("prefetch_operation", phase=phase, outcome="started", user_id=user_id)
         try:
-            stored = DailyRecommendedPrefetchRepository(ready_db).mark_story_ready(
-                task_id, token, next_event.model_dump(mode="json")
+            next_event = _generate_with_isolated_game_loop(source_loop, projected_state)
+            phase = "validation"
+            _validate_prefetch_event_date(projected_state, next_event)
+            emit_diagnostic("prefetch_operation", phase=phase, outcome="passed", user_id=user_id)
+            phase = "save"
+            ready_db = SessionLocal()
+            try:
+                stored = DailyRecommendedPrefetchRepository(ready_db).mark_story_ready(
+                    task_id, token, next_event.model_dump(mode="json")
+                )
+                ready_db.commit()
+            except Exception:
+                ready_db.rollback()
+                raise
+            finally:
+                ready_db.close()
+            if not stored:
+                emit_diagnostic("prefetch_operation", phase="save", outcome="stale", persisted=False, user_id=user_id)
+                return
+            emit_diagnostic("prefetch_operation", phase="save", outcome="completed", persisted=True, user_id=user_id)
+            logger.info(
+                "daily_recommended_prefetch_metric action=story_ready task_id=%s "
+                "game_id=%s duration_ms=%s model_calls=1 recovered=true",
+                task_id,
+                game_id,
+                int((time.monotonic() - generation_started) * 1000),
             )
-            ready_db.commit()
-        except Exception:
-            ready_db.rollback()
-            raise
-        finally:
-            ready_db.close()
-        if not stored:
-            return
-        logger.info(
-            "daily_recommended_prefetch_metric action=story_ready task_id=%s "
-            "game_id=%s duration_ms=%s model_calls=1 recovered=true",
-            task_id,
-            game_id,
-            int((time.monotonic() - generation_started) * 1000),
-        )
-        _promote_demanded_prefetch(
-            task_id=task_id,
-            game_id=game_id,
-            game_loop=source_loop,
-        )
-        if user_id is not None and voice_id is not None and voice_speed is not None:
-            _prefetch_story_voice(
+            phase = "promotion"
+            _promote_demanded_prefetch(
                 task_id=task_id,
-                user_id=user_id,
                 game_id=game_id,
-                projected_state=projected_state,
-                event=next_event,
-                voice_id=voice_id,
-                speed=voice_speed,
+                game_loop=source_loop,
             )
-    except Exception as error:
-        failed_db = SessionLocal()
-        try:
-            DailyRecommendedPrefetchRepository(failed_db).mark_failed(
-                task_id, token, error
-            )
-            failed_db.commit()
-        except Exception:
-            failed_db.rollback()
-            logger.exception("Failed to persist recovered prefetch failure")
-        finally:
-            failed_db.close()
-        logger.exception(
-            "Demanded recommended prefetch recovery failed: task=%s", task_id
-        )
+            if user_id is not None and voice_id is not None and voice_speed is not None:
+                phase = "voice_enqueue"
+                _prefetch_story_voice(
+                    task_id=task_id,
+                    user_id=user_id,
+                    game_id=game_id,
+                    projected_state=projected_state,
+                    event=next_event,
+                    voice_id=voice_id,
+                    speed=voice_speed,
+                )
+        except Exception as error:
+            if phase in {"promotion", "voice_enqueue"}:
+                emit_diagnostic("prefetch_postprocess", phase=phase, outcome="failed", error=error, persisted=True)
+            else:
+                _persist_prefetch_failure(task_id, token, error, phase)
 
 
 def probe_demanded_prefetch(
@@ -971,7 +1017,9 @@ def _prefetch_story_voice(
             voice_id,
             speed,
         )
-    except Exception:
+    except Exception as error:
+        emit_diagnostic("prefetch_postprocess", phase="voice_enqueue", outcome="failed", error=error,
+                        job_id=task_id, user_id=user_id, game_id=game_id)
         db.rollback()
         logger.exception("Recommended narration prefetch failed: task=%s", task_id)
     finally:

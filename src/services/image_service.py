@@ -24,6 +24,8 @@ from src.services.image_storage import ImageStorageService
 from src.services.portrait_selection import selected_portrait
 from src.game.story_origin import canonical_story_settings
 
+from src.observability.diagnostics import emit_diagnostic
+
 logger = logging.getLogger(__name__)
 
 # C-05: 模块级线程池，替代裸线程使用
@@ -761,8 +763,14 @@ class ImageService:
                 return f"data:image/jpeg;base64,{base64_data}", player_image.image_id
             except (OSError, IOError) as e:
                 logger.warning(f"IO error getting player image: {e}")
+                emit_diagnostic("image_reference_fallback", phase="reference", outcome="fallback",
+                                error=e, game_id=game_id, asset_id=player_image.image_id,
+                                used_fallback=True, reason="reference_unavailable")
             except Exception as e:
                 logger.exception(f"Unexpected error getting player image: {e}")
+                emit_diagnostic("image_reference_fallback", phase="reference", outcome="fallback",
+                                error=e, game_id=game_id, asset_id=player_image.image_id,
+                                used_fallback=True, reason="reference_unavailable")
 
         return None, None
 

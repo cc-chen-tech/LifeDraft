@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Generator, Optional
+from typing import Generator, Optional, cast
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -17,7 +17,7 @@ from src.database.singletons import get_game_db, get_user_manager  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-def require_session(game_id: int, user_id: Optional[int]):
+def require_session(game_id: int, user_id: Optional[int]) -> GameLoopSession:
     """Get a session, restoring it from persistent state when needed.
 
     P4-去重：此前 events/choices/summary/story 四个路由各自复制了一份
@@ -82,6 +82,16 @@ def decode_token(token: str) -> Optional[int]:
         return None
 
 
+def verified_request_user(request: Request, token: str) -> Optional[int]:
+    """Share one token verification between audit context and auth dependencies."""
+    cached = request.scope.get("story2_verified_auth")
+    if isinstance(cached, tuple) and len(cached) == 2 and cached[0] == token:
+        return cast(Optional[int], cached[1])
+    user_id = decode_token(token)
+    request.scope["story2_verified_auth"] = (token, user_id)
+    return user_id
+
+
 # ---- FastAPI dependencies ----
 
 
@@ -120,7 +130,7 @@ async def get_current_user_optional(
     token = _extract_token(request, credentials)
     if token is None:
         return None
-    user_id = decode_token(token)
+    user_id = verified_request_user(request, token)
     return user_id
 
 
@@ -142,7 +152,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user_id = decode_token(token)
+    user_id = verified_request_user(request, token)
     if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

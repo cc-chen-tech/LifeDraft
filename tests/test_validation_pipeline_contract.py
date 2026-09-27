@@ -198,7 +198,7 @@ class TestValidationPipelineContract:
         assert len(result.high_warnings) == 0
 
     def test_run_single_check_exception_handled(self):
-        """Validator exception should be caught and return passed=True."""
+        """Validator exceptions must fail closed with a typed service error."""
         registry = ConstraintRegistry()
         registry.register(
             ConstraintDefinition(
@@ -210,9 +210,11 @@ class TestValidationPipelineContract:
             )
         )
         pipeline = ValidationPipeline(registry)
-        result = pipeline.validate("story", {})
-        assert result.passed is True  # exception = pass
-        assert result.detailed_checks["available_people"]["details"]["skipped"] is True
+        from src.ai.story_exceptions import StoryGenerationFailure, GenerationFailureCode
+        with pytest.raises(StoryGenerationFailure) as caught:
+            pipeline.validate("story", {})
+        assert caught.value.failure_code is GenerationFailureCode.VALIDATION_SERVICE_ERROR
+
 
     def test_validate_sets_timing(self):
         """validation_time_ms should be set."""

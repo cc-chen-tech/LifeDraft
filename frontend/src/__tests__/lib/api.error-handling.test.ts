@@ -1,3 +1,4 @@
+jest.mock('@/lib/remote-log', () => ({ reportDiagnostic: jest.fn() }));
 /**
  * API Error Handling Path Tests
  * Tests special error code handling, retry logic, and timeout handling

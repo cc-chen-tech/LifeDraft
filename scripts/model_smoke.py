@@ -8,6 +8,7 @@ responses are never written to the report or to the smoke log.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import logging
 import os
@@ -262,7 +263,94 @@ def _run_story_origin_check(generator: Any, collector: ModelEventCollector) -> D
     return {"provider_calls": 1, "constraints_matched": True}
 
 
-def _create_owned_fixture() -> tuple[int, int]:
+def _run_daily_opening_check(generator: Any, artifact_dir: Path, base_url: Optional[str]) -> Dict[str, Any]:
+    """Exercise the real daily generator and durable save/reload used by play."""
+    from src.ai.story_generator import StoryGenerator
+    from src.ai.harness.quality_level import QualityLevel
+    from src.api.deps import create_token
+    from src.database.db import GameDatabase
+    from src.game.daily_timeline import build_daily_timeline
+    from src.game.game_loop import GameLoop
+    from src.game.state import PlayerState
+    from src.observability.diagnostics import diagnostic_context
+
+    # Isolate MASTER tier settings while sharing the configured real provider.
+    generator = copy.copy(generator)
+    generator.quality_level = "master"
+    generator.story_gen = StoryGenerator(generator.ai_client, quality_level=QualityLevel.MASTER)
+    if not generator.story_gen._harness_enabled:
+        raise RuntimeError("daily_opening_harness_disabled")
+    user_id, game_id = _create_owned_fixture(language="zh", constraint_level="master")
+    database = GameDatabase()
+    state = PlayerState(
+        player_name="于谦", life_vision="占领蒙古", age=23,
+        character_settings={
+            "name": "于谦", "life_vision": "占领蒙古",
+            "era": {"era_description": "明永乐十九年"},
+            "relationships": {"key_people": []},
+        },
+        timeline=build_daily_timeline(start_date="1421-04-15", day_index=0), timeline_version=2,
+    )
+    loop = GameLoop(language="zh", ai_generator=generator, quality_level="master")
+    loop.load_game(state.to_dict())
+    loop.game_id = game_id
+    calls = 0
+    deadline = time.monotonic() + 180
+    original_call = generator.ai_client.call
+
+    def bounded_call(**kwargs: Any) -> Any:
+        nonlocal calls
+        remaining = deadline - time.monotonic()
+        if calls >= 8 or remaining <= 0:
+            raise TimeoutError("daily opening smoke budget exhausted")
+        calls += 1
+        kwargs["request_timeout"] = min(float(kwargs.get("request_timeout") or 45), remaining)
+        kwargs["request_deadline"] = min(float(kwargs.get("request_deadline") or deadline), deadline)
+        return original_call(**kwargs)
+
+    generator.ai_client.call = bounded_call
+    try:
+        with diagnostic_context(user_id=user_id, game_id=game_id, feature="release_model_smoke",
+                                operation_id=f"{FIXTURE_PREFIX}:daily:{uuid.uuid4().hex}"):
+            event = loop.generate_round_event(force_regenerate=True)
+            if event is None or event.delivery_notice is not None:
+                raise ValueError("daily_opening_missing_or_fallback")
+            if not event.event_id or event.story_date != "1421-04-15" or len(event.options) != 3:
+                raise ValueError("daily_opening_contract_invalid")
+            if not all(option.text.strip() for option in event.options):
+                raise ValueError("daily_opening_options_empty")
+            paragraphs = [p for p in event.event_description.split("\n\n") if p.strip()]
+            if len(paragraphs) < 2:
+                raise ValueError("daily_opening_paragraphs_missing")
+            if not database.save_game_progress(game_id, loop.player_state):
+                raise RuntimeError("daily_opening_save_failed")
+            reloaded = database.load_saved_game(game_id, user_id)
+            if not reloaded or reloaded.get("current_event_data") != event.model_dump():
+                raise RuntimeError("daily_opening_readback_mismatch")
+            if database.load_saved_game(game_id, user_id + 1000000) is not None:
+                raise RuntimeError("daily_opening_ownership_failed")
+            if base_url:
+                request = Request(f"{base_url.rstrip('/')}/api/games/{game_id}",
+                                  headers={"Authorization": f"Bearer {create_token(user_id)}"})
+                with urlopen(request, timeout=30) as response:  # nosec B310 - isolated smoke API
+                    loaded = json.loads(response.read())
+                if loaded.get("current_event") != event.model_dump():
+                    raise RuntimeError("daily_opening_api_readback_mismatch")
+            # Isolated test-account credential: private local handoff only, never evidence/logs.
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            session_path = artifact_dir / "smoke-browser-session.json"
+            descriptor = os.open(session_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump({"game_id": game_id, "auth_token": create_token(user_id)}, handle)
+            return {"game_id": game_id, "event_id": event.event_id, "persisted": True,
+                    "options": len(event.options), "paragraphs": len(paragraphs), "provider_calls": calls,
+                    "quality_level": generator.story_gen.quality_level.value, "story_date": event.story_date}
+    finally:
+        generator.ai_client.call = original_call
+        loop.shutdown()
+
+
+def _create_owned_fixture(*, language: str = "en", constraint_level: str = "expert") -> tuple[int, int]:
     from src.database.models import Game, SessionLocal, User
 
     with SessionLocal() as session:
@@ -270,7 +358,7 @@ def _create_owned_fixture() -> tuple[int, int]:
                     display_name="Release Smoke Traveler")
         session.add(user)
         session.flush()
-        game = Game(user_id=user.user_id, language="en", initial_state={})
+        game = Game(user_id=user.user_id, language=language, constraint_level=constraint_level, initial_state={})
         session.add(game)
         session.commit()
         return int(user.user_id), int(game.game_id)
@@ -523,6 +611,7 @@ def run(
     tts_provider = MiniMaxTTSProvider()
 
     _check(checks, "text_generation_and_constraints", "openai-compatible", generator.ai_client.model, lambda: _run_text_checks(generator))
+    _check(checks, "daily_opening_delivery", "openai-compatible", generator.ai_client.model, lambda: _run_daily_opening_check(generator, artifact_dir, base_url))
     _check(checks, "story_origin_generation", "openai-compatible", generator.ai_client.model, lambda: _run_story_origin_check(generator, collector))
     _check(checks, "image_generation_persistence_and_resource", "minimax", image_generator.model, lambda: _run_image_check(image_generator, artifact_dir / "images", base_url))
     _check(checks, "tts_generation_persistence_and_playability", "minimax", tts_provider.model, lambda: _run_tts_check(tts_provider, base_url))

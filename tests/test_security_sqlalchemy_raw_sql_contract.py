@@ -88,15 +88,22 @@ class TestSQLAlchemyRawSQLContract:
 
         for py_file in src_dir.rglob("*.py"):
             content = py_file.read_text(encoding="utf-8")
-            lines = content.split("\n")
-            for i, line in enumerate(lines, 1):
-                # 检查是否有 .filter() 中使用字符串拼接
-                if ".filter(" in line and ("+" in line or "%" in line or ".format(" in line):
-                    # 排除注释和日志
-                    stripped = line.strip()
-                    if stripped.startswith("#") or "logger" in stripped:
-                        continue
-                    violations.append(f"{py_file.relative_to(src_dir.parent)}:{i}: {stripped}")
+            for node in ast.walk(ast.parse(content)):
+                if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "filter"):
+                    continue
+                # SQLAlchemy column.ilike(f"%{search}%") binds the value safely.
+                # Reject interpolated SQL passed directly to filter/text instead.
+                for arg in node.args:
+                    candidates = [arg]
+                    if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Name) and arg.func.id == "text":
+                        candidates = list(arg.args)
+                    for value in candidates:
+                        if isinstance(value, (ast.JoinedStr, ast.BinOp)) or (
+                            isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute)
+                            and value.func.attr == "format"
+                        ):
+                            violations.append(f"{py_file.relative_to(src_dir.parent)}:{node.lineno}")
 
         assert not violations, f"发现 {len(violations)} 处可疑的 filter 字符串拼接:\n" + "\n".join(
             violations[:10]

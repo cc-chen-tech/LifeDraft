@@ -27,6 +27,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { pollStoryVoiceJob } from "@/lib/storyVoicePolling";
+import { reportDiagnostic } from "@/lib/remote-log";
 import { createStoryVoiceProgressSession } from "@/lib/storyVoiceProgress";
 import { storyVoiceTextToHash } from "@/lib/storyVoiceTextHash";
 import type {
@@ -288,6 +289,14 @@ export function StoryListeningExperience({
   };
 
   const recordAudioDiagnostic = (mediaState: string) => {
+    if (["error", "stalled", "recovery_required", "automatic_recovery", "manual_recovery"].includes(mediaState)) {
+      reportDiagnostic(`voice_media_${mediaState}`, {
+        outcome: mediaState === "automatic_recovery" || mediaState === "manual_recovery" ? "retry" : "failed",
+        phase: "playback", gameId: context.game_id, jobId: jobId ?? undefined,
+        operationId: jobId === null ? undefined : `voice:${jobId}`,
+        assetId: providerSegmentsRef.current.find(segment => segment.paragraph_index === activeParagraphRef.current)?.asset_id ?? undefined,
+      });
+    }
     const audio = audioRef.current;
     console.info("[StoryListeningExperience] audio", {
       paragraphIndex: activeParagraphRef.current,
@@ -543,9 +552,10 @@ export function StoryListeningExperience({
           if (active && generation === generationRef.current) applyJob(job);
         }, (retrying) => {
           if (active && generation === generationRef.current) setConnectionRetrying(retrying);
-        }, () => browserFallbackRef.current);
+        }, () => browserFallbackRef.current, { gameId: context.game_id });
       } catch (error) {
         if (!active || generation !== generationRef.current) return;
+        reportDiagnostic("voice_request_failed", { phase: "request", gameId: context.game_id });
         setProviderFailed(true);
         setStatus((current) => providerSegmentsRef.current.some((segment) => segment.audio_url) ? current : "failed");
         setErrorMessage(error instanceof Error ? error.message : "高质量语音生成失败");

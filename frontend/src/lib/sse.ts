@@ -2,6 +2,8 @@
  * Server-Sent Events (SSE) streaming utilities
  */
 
+import { reportDiagnostic } from './remote-log';
+
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "error" | null;
 export type StreamActivityKind = "status" | "story" | "complete" | "error";
 
@@ -42,7 +44,7 @@ export interface StreamCallbacks {
   onActivity?: (kind: StreamActivityKind) => void;
 }
 
-function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbacks: StreamCallbacks): Promise<void> {
+function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbacks: StreamCallbacks, diagnostic: { gameId?: number; operationId?: string; requestId?: string } = {}): Promise<void> {
   const decoder = new TextDecoder();
   let buffer = '';
   let currentEventType: string | null = null;
@@ -84,6 +86,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
           } else if (isCompleteReceived && completeData) {
             callbacks.onComplete?.(completeData);
           } else if (!isCompleteReceived) {
+            reportDiagnostic('sse_incomplete', { ...diagnostic, phase: 'stream' });
             const error = new Error('Stream ended without complete event');
             callbacks.onError?.(error);
             reject(error);
@@ -180,6 +183,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
               ) {
                 const rawError = parsedRecord?.summary ?? parsedRecord?.error ?? parsedRecord?.message;
                 const errorMsg = typeof rawError === 'string' ? rawError : 'Unknown server error';
+                reportDiagnostic(typeof parsedRecord?.code === 'string' ? parsedRecord.code : 'sse_generation_failed', { ...diagnostic, phase: 'generation', operationId: typeof parsedRecord?.operation_id === 'string' ? parsedRecord.operation_id : diagnostic.operationId });
                 console.error('[SSE] Error event received:', errorMsg);
                 isErrorReceived = true;
                 emitErrorActivity();
@@ -237,6 +241,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
 
         return pump();
       }).catch((error) => {
+        if (error?.name !== 'AbortError') reportDiagnostic('sse_read_failed', { ...diagnostic, phase: 'stream' });
         callbacks.onError?.(error);
         reject(error);
       });
@@ -275,6 +280,10 @@ async function fetchSSEWithRetry(
   maxRetries = 3
 ): Promise<Response> {
   let lastError: Error | null = null;
+  const operationId = globalThis.crypto?.randomUUID?.() ?? `sse-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  init = { ...init, headers: { ...init.headers, 'X-Operation-ID': operationId } };
+  const match = String(input).match(/\/games\/(\d+)/);
+  const gameId = match ? Number(match[1]) : undefined;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     if (init.signal?.aborted) {
@@ -284,6 +293,7 @@ async function fetchSSEWithRetry(
     try {
       const response = await fetch(input, init);
       if (response.ok || !shouldRetrySSEResponse(response.status) || attempt === maxRetries - 1) {
+        if (!response.ok) reportDiagnostic('sse_http_failed', { operationId, gameId, phase: 'transport', httpStatus: response.status, attempt: attempt + 1 });
         return response;
       }
 
@@ -297,6 +307,7 @@ async function fetchSSEWithRetry(
 
       lastError = error instanceof Error ? error : new Error(String(error));
       if (attempt === maxRetries - 1) {
+        reportDiagnostic('sse_network_failed', { operationId, gameId, phase: 'transport', attempt: attempt + 1 });
         throw lastError;
       }
 
@@ -337,7 +348,7 @@ export async function streamChoice(
     throw new Error('No response body');
   }
 
-  return parseSSEStream(reader, callbacks);
+  return parseSSEStream(reader, callbacks, { gameId, operationId: response.headers?.get('X-Operation-ID') ?? undefined, requestId: response.headers?.get('X-Request-ID') ?? undefined });
 }
 
 export async function streamCustomChoice(
@@ -363,7 +374,7 @@ export async function streamCustomChoice(
     throw new Error('No response body');
   }
 
-  return parseSSEStream(reader, callbacks);
+  return parseSSEStream(reader, callbacks, { gameId, operationId: response.headers?.get('X-Operation-ID') ?? undefined, requestId: response.headers?.get('X-Request-ID') ?? undefined });
 }
 
 export async function streamGameEvent(
@@ -390,7 +401,7 @@ export async function streamGameEvent(
     throw new Error('No response body');
   }
 
-  return parseSSEStream(reader, callbacks);
+  return parseSSEStream(reader, callbacks, { gameId, operationId: response.headers?.get('X-Operation-ID') ?? undefined, requestId: response.headers?.get('X-Request-ID') ?? undefined });
 }
 
 export async function streamRegenerate(
@@ -422,7 +433,7 @@ export async function streamRegenerate(
     throw new Error('No response body');
   }
 
-  return parseSSEStream(reader, callbacks);
+  return parseSSEStream(reader, callbacks, { gameId, operationId: response.headers?.get('X-Operation-ID') ?? undefined, requestId: response.headers?.get('X-Request-ID') ?? undefined });
 }
 
 interface RewriteCallbacks {

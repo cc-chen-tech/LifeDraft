@@ -208,7 +208,7 @@ def test_model_smoke_run_includes_story_origin_in_release_report(monkeypatch, tm
     monkeypatch.setattr(
         model_smoke, "_configure_safe_logging", lambda _path: SimpleNamespace(events=[])
     )
-    for name in ("_run_text_checks", "_run_image_check", "_run_tts_check", "_run_projection_check"):
+    for name in ("_run_text_checks", "_run_image_check", "_run_tts_check", "_run_projection_check", "_run_daily_opening_check"):
         monkeypatch.setattr(model_smoke, name, lambda *_args: {})
     origin_checks = []
 
@@ -227,6 +227,7 @@ def test_model_smoke_run_includes_story_origin_in_release_report(monkeypatch, tm
     assert origin["outcome"] == "passed"
     assert origin["details"] == {"provider_calls": 1, "constraints_matched": True}
     assert origin_checks == [fake_text_generator]
+    assert any(check["name"] == "daily_opening_delivery" and check["outcome"] == "passed" for check in report["checks"])
 
 
 def test_model_smoke_writes_provider_events_as_jsonl(tmp_path):
@@ -307,3 +308,17 @@ def test_successful_dispatched_model_smoke_explicitly_starts_candidate_deploy():
     assert "candidate_sha: process.env.CANDIDATE_SHA" in workflow
     assert "candidate_sha:" in deploy
     assert "${{ inputs.candidate_sha }}" in deploy
+
+
+def test_daily_release_smoke_uses_production_flags_without_credential_traces():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / '.github/workflows/model-smoke.yml').read_text()
+    runner = (root / 'test.sh').read_text()
+    browser = (root / 'frontend/e2e/model-smoke.spec.ts').read_text()
+    assert 'ENABLE_CONSTRAINT_HARNESS: "true"' in workflow
+    assert 'ENABLE_SOFT_NARRATIVE_LENGTHS: "true"' in workflow
+    assert 'ENABLE_UNIFIED_NARRATIVE_BUDGETS: "false"' in workflow
+    assert 'e2e/model-smoke.spec.ts --project=core --workers=1 --trace=off' in runner
+    assert 'trace.zip' not in workflow
+    assert 'await expect(expand).toBeVisible()' in browser

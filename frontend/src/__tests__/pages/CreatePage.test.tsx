@@ -1,3 +1,4 @@
+jest.mock('@/lib/remote-log', () => ({ reportDiagnostic: jest.fn() }));
 /**
  * Tests for CreatePage component
  * Uses real Zustand stores with setState() + spyOnStoreMethods
