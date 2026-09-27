@@ -13,24 +13,13 @@ test.describe('protected real-provider release smoke evidence', () => {
     const report = JSON.parse(fs.readFileSync(reportPath as string, 'utf8')) as {
       schema_version: number;
       status: string;
-      checks: Array<{ name: string; outcome: string }>;
+      checks: Array<{ name: string; outcome: string; details?: { delivery_mode?: string } }>;
       model_events: { count: number; fallback_count: number; unknown_error_count: number };
     };
     expect(report.schema_version).toBe(1);
-    expect(report.status).toBe('passed');
-    expect(report.checks).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: 'text_generation_and_constraints', outcome: 'passed' }),
-        expect.objectContaining({ name: 'daily_opening_delivery', outcome: 'passed' }),
-        expect.objectContaining({ name: 'story_origin_generation', outcome: 'passed' }),
-        expect.objectContaining({ name: 'image_generation_persistence_and_resource', outcome: 'passed' }),
-        expect.objectContaining({ name: 'tts_generation_persistence_and_playability', outcome: 'passed' }),
-        expect.objectContaining({ name: 'daily_world_projection_persistence', outcome: 'passed' }),
-      ]),
-    );
-    expect(report.model_events.count).toBeGreaterThan(0);
-    expect(report.model_events.fallback_count).toBe(0);
-    expect(report.model_events.unknown_error_count).toBe(0);
+    expect(report.checks).toContainEqual(expect.objectContaining({
+      name: 'daily_opening_delivery', outcome: 'passed',
+    }));
     const sessionPath = path.join(path.dirname(reportPath as string), 'data/model-smoke/smoke-browser-session.json');
     const session = JSON.parse(fs.readFileSync(sessionPath, 'utf8')) as { game_id: number; auth_token: string };
     const origin = `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
@@ -41,7 +30,13 @@ test.describe('protected real-provider release smoke evidence', () => {
     const saved = await context.request.get(`${origin}/api/games/${session.game_id}`);
     expect(saved.ok()).toBeTruthy();
     const body = await saved.json();
-    const event = body.current_event as { event_id: string; story_date: string; event_description: string; options: Array<{ text: string }> };
+    const event = body.current_event as { event_id: string; revision: number; delivery_notice?: { code: string }; story_date: string; event_description: string; options: Array<{ text: string }> };
+    const delivery = report.checks.find((check) => check.name === 'daily_opening_delivery');
+    if (delivery?.details?.delivery_mode === 'safe_first_day') {
+      expect(event.delivery_notice?.code).toBe('SAFE_FIRST_DAY_FALLBACK');
+    } else {
+      expect(event.delivery_notice).toBeFalsy();
+    }
     expect(event.options).toHaveLength(3);
     expect(event.story_date).toBe("1421-04-15");
     expect(event.event_description).toContain("于谦");
@@ -56,10 +51,47 @@ test.describe('protected real-provider release smoke evidence', () => {
       await expand.click();
       const storyRegion = page.getByRole('region', { name: '故事正文' });
       await expect(storyRegion).toContainText(paragraphs[0]);
-      for (const option of event.options) {
-        await expect(page.getByRole('button', { name: option.text, exact: true })).toBeVisible();
+      for (const [index, option] of event.options.entries()) {
+        const choice = page.getByRole('button', { name: `选择 ${index + 1}：${option.text}` });
+        await expect(choice).toBeVisible();
+        await expect(choice).toBeEnabled();
+      }
+      if (event.delivery_notice?.code === 'SAFE_FIRST_DAY_FALLBACK') {
+        await expect(page.getByText('已使用简短开场继续游戏', { exact: true })).toBeVisible();
       }
     }
     if (screenshotPath) await page.screenshot({ path: screenshotPath, fullPage: true });
+    // Choice settlement is model-free for daily games. Verify it after both
+    // browser visits, without starting an unbounded next-story provider call.
+    const choice = await context.request.post(`${origin}/api/games/${session.game_id}/choice-sync`, {
+      data: { option_index: 0, event_id: event.event_id, revision: event.revision },
+    });
+    expect(choice.ok()).toBeTruthy();
+    expect((await choice.json()).next_timeline.day_index).toBe(1);
+    const resumed = await context.request.get(`${origin}/api/games/${session.game_id}`);
+    expect(resumed.ok()).toBeTruthy();
+    const resumedBody = await resumed.json();
+    expect(resumedBody.player_state.timeline.day_index).toBe(1);
+    expect(resumedBody.player_state.day_history.at(-1).event_id).toBe(event.event_id);
+  });
+
+  test('requires model quality acceptance before release', async () => {
+    const reportPath = process.env.MODEL_SMOKE_REPORT;
+    test.skip(!reportPath, 'MODEL_SMOKE_REPORT is only set by the protected model-smoke flow');
+    const report = JSON.parse(fs.readFileSync(reportPath as string, 'utf8'));
+    expect(report.status).toBe('passed');
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'text_generation_and_constraints', outcome: 'passed' }),
+        expect.objectContaining({ name: 'daily_opening_delivery', outcome: 'passed' }),
+        expect.objectContaining({ name: 'story_origin_generation', outcome: 'passed' }),
+        expect.objectContaining({ name: 'image_generation_persistence_and_resource', outcome: 'passed' }),
+        expect.objectContaining({ name: 'tts_generation_persistence_and_playability', outcome: 'passed' }),
+        expect.objectContaining({ name: 'daily_world_projection_persistence', outcome: 'passed' }),
+      ]),
+    );
+    expect(report.model_events.count).toBeGreaterThan(0);
+    expect(report.model_events.fallback_count).toBe(0);
+    expect(report.model_events.unknown_error_count).toBe(0);
   });
 });

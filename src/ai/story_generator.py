@@ -1057,6 +1057,36 @@ class StoryGenerator:
         ) -> list[ValidationFinding]:
             return [finding for finding in findings if finding.severity.value == "hard"]
 
+        def _can_use_safe_first_day_opening() -> bool:
+            timeline = player_state.get("timeline")
+            return bool(
+                self._soft_narrative_lengths
+                and provider_requests_used > 0
+                and _hard_findings(last_findings)
+                and isinstance(timeline, dict)
+                and timeline.get("version") == 2
+                and int(timeline.get("day_index") or 0) == 0
+            )
+
+        def _record_consistency_check(result: Any, phase: str) -> None:
+            # Provider-authored explanations may quote private stories. Only
+            # fixed categories and deterministic ledger codes enter diagnostics.
+            dimensions = {"geographic", "career", "personality", "temporal", "commitment",
+                          "causal", "fabrication", "identity", "timeline", "validation_response"}
+            ledger_codes = {"date_mismatch", "age_mismatch", "deceased_active",
+                            "identity_role_conflict", "canonical_name_conflict", "completed_event_rollback"}
+            codes = []
+            for issue in result.issues:
+                rule = getattr(issue, "rule_code", "")
+                dimension = issue.dimension if issue.dimension in dimensions else "unknown"
+                codes.append(rule if rule in ledger_codes else f"consistency_{dimension}")
+            emit_diagnostic("story_consistency_check", phase=phase,
+                            outcome="rejected" if result.has_critical_issues else "passed",
+                            game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                            attempt=provider_requests_used,
+                            attempt_id=f"{generation_operation_id}:{provider_requests_used}",
+                            finding_codes=codes, count=len(result.critical_issues))
+
         def _set_best_story(candidate: Optional[str]) -> None:
             if not candidate:
                 return
@@ -1606,6 +1636,7 @@ class StoryGenerator:
                         narrative_budget=narrative_budget,
                         generation_tracker=generation_tracker,
                         story_call=_call_candidate_story,
+                        validation_observer=_record_consistency_check,
                     )
                     post_validation_quick_result = _quick_validate_round_story(
                         story_text
@@ -1918,6 +1949,12 @@ class StoryGenerator:
                 )
                 if e.circuit_break:
                     if len(best_soft_story_text) <= 20:
+                        if _can_use_safe_first_day_opening():
+                            emit_diagnostic("story_retry", phase="consistency", outcome="stopped",
+                                            game_id=player_state.get("game_id"), operation_id=generation_operation_id,
+                                            attempt=provider_requests_used, finding_codes=[f.code for f in last_findings],
+                                            reason="consistency_circuit_break", disposition="safe_opening_selection")
+                            break
                         raise
                     previous_hard_fingerprints = set()
                     if (
@@ -2050,15 +2087,7 @@ class StoryGenerator:
             _emit_selected_story(best_valid_story_text)
             return event
 
-        timeline = player_state.get("timeline")
-        if (
-            self._soft_narrative_lengths
-            and provider_requests_used > 0
-            and _hard_findings(last_findings)
-            and isinstance(timeline, dict)
-            and timeline.get("version") == 2
-            and int(timeline.get("day_index") or 0) == 0
-        ):
+        if _can_use_safe_first_day_opening():
             from src.ai.daily_opening import build_first_day_fallback_candidate
             from src.game.daily_transition import prepare_daily_option_transitions
 
@@ -2313,6 +2342,7 @@ class StoryGenerator:
         narrative_budget: Optional[NarrativeBudget] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
         story_call: Optional[Callable[..., str]] = None,
+        validation_observer: Optional[Callable[[Any, str], None]] = None,
     ) -> str:
         """
         Validate story consistency and retry once if CRITICAL issues found.
@@ -2353,6 +2383,8 @@ class StoryGenerator:
                 ),
             )
 
+            if validation_observer is not None:
+                validation_observer(validation, "initial")
             if validation.passed:
                 return story_text
 
@@ -2469,6 +2501,8 @@ class StoryGenerator:
                         else get_generation_budget(self.quality_level.value).max_tokens
                     ),
                 )
+                if validation_observer is not None:
+                    validation_observer(repaired_validation, "repair")
                 if (
                     repaired_validation.passed
                     or not repaired_validation.has_critical_issues

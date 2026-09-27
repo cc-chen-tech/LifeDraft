@@ -173,6 +173,7 @@ def test_consistency_validator_rejects_ledger_conflict_without_ai_call() -> None
     assert not result.passed
     assert result.has_critical_issues
     assert {issue.dimension for issue in result.issues} >= {"timeline", "identity"}
+    assert {issue.rule_code for issue in result.issues} >= {"date_mismatch", "identity_role_conflict"}
     assert "权威事实账本冲突" in result.fix_instructions
     conflict_codes = {
         conflict["code"] for conflict in state.continuity_ledger["conflicts"]
