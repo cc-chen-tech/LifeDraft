@@ -46,6 +46,7 @@ maintained_tests=(
   tests/test_ai_retry_failure_contract_no_mock.py
   tests/test_daily_opening_delivery.py
   tests/test_narrative_keyword_advisories.py
+  tests/test_quick_validator_curly_quotes_contract.py
   tests/test_era_context_regnal_dates.py
   tests/test_continuity_ledger.py
   tests/test_collection_field_db_contract_no_mock.py

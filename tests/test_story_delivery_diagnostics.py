@@ -146,7 +146,7 @@ def test_safe_first_day_reloads_from_file_database_and_owned_api(file_story_data
         loop.shutdown()
 
 
-@pytest.mark.parametrize('rejection', ['none', 'judge', 'ledger', 'keyword_variance', 'past_age', 'delayed_opening', 'single_paragraph'])
+@pytest.mark.parametrize('rejection', ['none', 'judge', 'ledger', 'keyword_variance', 'past_age', 'delayed_opening', 'single_paragraph', 'cross_sentence_age', 'historical_document', 'attributed_speech'])
 def test_model_smoke_daily_opening_uses_production_generation_and_file_readback(file_story_database, monkeypatch, tmp_path, rejection, caplog):
     caplog.set_level('INFO', logger='diagnostic')
     from scripts import model_smoke
@@ -170,6 +170,12 @@ def test_model_smoke_daily_opening_uses_production_generation_and_file_readback(
                               '窗外传来车轮碾过石板的声音，案上的卷册铺开了。')
     if rejection == 'single_paragraph':
         prose = prose.replace('\n\n', '')
+    if rejection == 'cross_sentence_age':
+        prose = prose.replace('于谦重新理清案头文书', '于谦想起了从前。十九岁的于谦刚结束学业。如今于谦二十三岁，重新理清案头文书')
+    if rejection == 'historical_document':
+        prose = prose.replace('于谦重新理清案头文书', '卷宗上写着：“永乐十九年二月，北巡归途所见。”于谦重新理清案头文书')
+    if rejection == 'attributed_speech':
+        prose = prose.replace('于谦重新理清案头文书', '他心想，我得先查清粮道。于谦重新理清案头文书')
     def provider(**kwargs):
         calls.append(kwargs)
         if kwargs['system_prompt'].startswith(STORY_NOVELIST_ZH):
@@ -185,14 +191,14 @@ def test_model_smoke_daily_opening_uses_production_generation_and_file_readback(
             {'text': '走访熟悉边地的人，询问行程', 'effects': {}}]}, ensure_ascii=False)
     monkeypatch.setattr(ai.ai_client, 'call', provider)
     result = model_smoke._run_daily_opening_check(ai, tmp_path, None)
-    assert result['delivery_mode'] == ('model' if rejection in {'none', 'keyword_variance', 'past_age', 'delayed_opening', 'single_paragraph'} else 'safe_first_day')
+    assert result['delivery_mode'] == ('model' if rejection in {'none', 'keyword_variance', 'past_age', 'delayed_opening', 'single_paragraph', 'cross_sentence_age', 'historical_document', 'attributed_speech'} else 'safe_first_day')
     if rejection in {'judge', 'ledger'}:
         checks = [r.event_data for r in caplog.records if hasattr(r, 'event_data')
                   and r.event_data.get('event') == 'story_consistency_check']
         expected = 'age_mismatch' if rejection == 'ledger' else 'consistency_identity'
         assert [r['phase'] for r in checks] == ['initial', 'repair']
         assert all(expected in r['finding_codes'] for r in checks)
-    if rejection in {'keyword_variance', 'past_age', 'delayed_opening', 'single_paragraph'}:
+    if rejection in {'keyword_variance', 'past_age', 'delayed_opening', 'single_paragraph', 'cross_sentence_age', 'historical_document', 'attributed_speech'}:
         assert sum(c['system_prompt'].startswith(STORY_NOVELIST_ZH) for c in calls) == 1
     if rejection == 'keyword_variance':
         diagnostics = [r.event_data for r in caplog.records if hasattr(r, 'event_data')]
@@ -229,7 +235,7 @@ def test_model_smoke_daily_opening_uses_production_generation_and_file_readback(
         before = client.get(f"/api/games/{result['game_id']}", headers=headers)
         assert before.status_code == 200
         event = before.json()['current_event']
-        if rejection in {'keyword_variance', 'past_age', 'delayed_opening', 'single_paragraph'}:
+        if rejection in {'keyword_variance', 'past_age', 'delayed_opening', 'single_paragraph', 'cross_sentence_age', 'historical_document', 'attributed_speech'}:
             assert event['event_description'] == prose
         chosen = client.post(f"/api/games/{result['game_id']}/choice-sync", headers=headers, json={
             'option_index': 0, 'event_id': event['event_id'], 'revision': event['revision'],

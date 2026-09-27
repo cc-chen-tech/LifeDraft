@@ -418,3 +418,58 @@ def test_nonfactual_or_npc_age_does_not_hide_real_current_age_conflict(prefix):
     ledger = ContinuityLedger.from_player_state(_state())
     issues = ledger._validate_ages(prefix + '林见微现在三十岁。', {'age': 28})
     assert [(i.subject, i.observed) for i in issues] == [('林见微', '30')]
+
+
+@pytest.mark.parametrize('story', [
+    '林见微想起了从前。十九岁的林见微刚结束学业。',
+    '林见微陷入回忆。窗外下着雨。十九岁的林见微刚结束学业。',
+    '林见微想起了从前。\n\n十九岁的林见微刚结束学业。',
+    '林见微想起了从前。她说：“如今我过得很好。”十九岁的林见微刚结束学业。',
+])
+def test_flashback_age_context_survives_sentence_and_paragraph_boundaries(story):
+    ledger = ContinuityLedger.from_player_state(_state())
+    assert ledger._validate_ages(story, {'age': 28}) == []
+
+
+@pytest.mark.parametrize('transition', ['如今', '此刻', '回到现实。', '她收回思绪。'])
+def test_flashback_context_ends_before_wrong_current_age(transition):
+    ledger = ContinuityLedger.from_player_state(_state())
+    story = '林见微想起了从前。十九岁的林见微刚结束学业。' + transition + '林见微三十岁。'
+    assert [(i.subject, i.observed) for i in ledger._validate_ages(story, {'age': 28})] == [('林见微', '30')]
+
+
+@pytest.mark.parametrize('story', [
+    '封皮上有一行小字，是父亲的笔迹——“宣德元年六月，北巡归途所见”。',
+    '最后一页上写着：“宣德元年七月，过野狐岭。”',
+    '卷宗上写着：“今天是六月初。城门已经打开。”',
+    '旧信的落款是2025年6月。',
+    '林见微想起了从前。六月的雨下了整夜。',
+    '她准备在六月出发。',
+])
+def test_document_memory_and_planned_dates_are_not_current_date_claims(story):
+    ledger = ContinuityLedger.from_player_state(_state())
+    assert ledger._validate_dates(story, {'year': 1426, 'month': 8}) == []
+
+
+@pytest.mark.parametrize('prefix', [
+    '卷宗上写着：“今天是六月初。”',
+    '林见微想起了从前。六月的雨下了整夜。回到现实。',
+    '她准备在明年六月出发，但',
+    '',
+])
+def test_reference_dates_cannot_hide_a_wrong_current_date(prefix):
+    ledger = ContinuityLedger.from_player_state(_state())
+    issues = ledger._validate_dates(prefix + '今天是七月，街市已经开门。', {'year': 1426, 'month': 8})
+    assert [i.observed for i in issues] == ['七月']
+
+
+def test_direct_dialogue_about_current_date_still_checked():
+    ledger = ContinuityLedger.from_player_state(_state())
+    issues = ledger._validate_dates('林见微说：“今天是七月。”', {'year': 1426, 'month': 8})
+    assert [i.observed for i in issues] == ['七月']
+
+
+def test_quoted_memory_marker_does_not_hide_current_age_conflict():
+    ledger = ContinuityLedger.from_player_state(_state())
+    issues = ledger._validate_ages('她读旧信：“想起了从前。”林见微三十岁。', {'age': 28})
+    assert [i.observed for i in issues] == ['30']

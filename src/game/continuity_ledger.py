@@ -40,11 +40,57 @@ _MEMORY_WORDS = (
     "遗像",
 )
 # The nearest explicit temporal marker wins (e.g. 当年十九岁，如今三十岁).
-_CURRENT_AGE_MARKERS = frozenset({"此刻", "现在", "如今", "今年", "眼下", "现年"})
+_CURRENT_AGE_MARKERS = frozenset({
+    "此刻", "现在", "如今", "今年", "眼下", "现年", "今天",
+    "回到现实", "回过神", "收回思绪", "从回忆中醒来", "从回忆中回过神",
+})
 _AGE_TIME_MARKERS = re.compile("|".join(re.escape(marker) for marker in (
     *_MEMORY_WORDS, "那时", "当时", "当年", "那年", "彼时", "从前", "昔日", "小时候",
     *sorted(_CURRENT_AGE_MARKERS),
 )))
+
+# Quoted documents have their own time frame, including words such as 今天.
+# Quotes are bounded separately so their temporal markers cannot leak into
+# the enclosing narration after the closing quote.
+_QUOTED_TEXT = re.compile(r'“[^”]*”|「[^」]*」|『[^』]*』|"[^"\n]*"')
+_DOCUMENT_ATTRIBUTION = re.compile(
+    r"(?:卷宗|封皮|纸上|页上|日记|旧信|书信|信上|档案|碑文|账册|笔记)"
+    r"[^。！？\n]*(?:写|记|字|笔迹|落款|标|刻)"
+)
+
+
+def _inside_document_quote(text: str, position: int) -> bool:
+    for quote in _QUOTED_TEXT.finditer(text):
+        if quote.start() < position < quote.end():
+            introduction = re.split(r"[。！？.!?\n]", text[:quote.start()])[-1]
+            return bool(_DOCUMENT_ATTRIBUTION.search(introduction))
+    return False
+
+
+def _narrative_is_current(text: str, end: int) -> bool:
+    # Carry flashbacks across sentences and paragraphs until an explicit
+    # current-time or return-to-present marker. Inspect only preceding text:
+    # a later memory marker must not hide an earlier real conflict.
+    prefix = _QUOTED_TEXT.sub("", text[:end])
+    markers = list(_AGE_TIME_MARKERS.finditer(prefix))
+    return not markers or markers[-1].group() in _CURRENT_AGE_MARKERS
+
+
+def _is_current_date_claim(text: str, start: int, end: int) -> bool:
+    if _inside_document_quote(text, start):
+        return False
+    prefix = text[:start]
+    if _OTHER_YEAR_PREFIX.search(prefix):
+        return False
+    if not _narrative_is_current(text, end):
+        return False
+    clause = re.split(r"[。！？.!?\n；;，,]", prefix)[-1]
+    if re.search(r"假如|假设|如果|倘若|要是|也许|可能|计划|准备|打算|预计", clause):
+        return False
+    # Hard rejection requires a current-date assertion or an opening scene
+    # date. A month merely mentioned in prose is not evidence about today.
+    return bool(re.search(r"(?:今天|现在|此刻|如今|眼下)(?:已经|已是|正是|是|到了|仍是)?\s*$", clause)) or not clause.strip(' “「『"')
+
 
 _ACTIVE_VERBS = (
     "走",
@@ -506,12 +552,7 @@ class ContinuityLedger:
         expected_month = _int_or_none(date_info.get("month"))
         claims: List[tuple[Optional[int], int, str]] = []
         for match in re.finditer(r"(?:(\d{4})年)?(\d{1,2})月", story_text):
-            if _OTHER_YEAR_PREFIX.search(story_text[max(0, match.start() - 8):match.start()]):
-                continue
-            context = story_text[
-                max(0, match.start() - 24) : min(len(story_text), match.end() + 12)
-            ]
-            if any(word in context for word in _MEMORY_WORDS):
+            if not _is_current_date_claim(story_text, match.start(), match.end()):
                 continue
             claims.append(
                 (_int_or_none(match.group(1)), int(match.group(2)), match.group(0))
@@ -519,12 +560,7 @@ class ContinuityLedger:
         for match in re.finditer(
             r"([一二两三四五六七八九十]{1,3})月(?:初|中|底|末)?", story_text
         ):
-            if _OTHER_YEAR_PREFIX.search(story_text[max(0, match.start() - 8):match.start()]):
-                continue
-            context = story_text[
-                max(0, match.start() - 24) : min(len(story_text), match.end() + 12)
-            ]
-            if any(word in context for word in _MEMORY_WORDS):
+            if not _is_current_date_claim(story_text, match.start(), match.end()):
                 continue
             month = _chinese_number(match.group(1))
             if month is not None:
@@ -570,7 +606,7 @@ class ContinuityLedger:
                 key=lambda match: match.start(),
             )
             for match in matches:
-                # Scope tense to this assertion, never to a later sentence.
+                # Check local modality before the carried narrative time frame.
                 # A recalled age must not stop us checking subsequent current
                 # claims, nor may an earlier correct age hide a later drift.
                 clause = re.split(
@@ -584,8 +620,9 @@ class ContinuityLedger:
                     continue
                 if re.match(r"(?:时|以后|之后|之前)", story_text[match.end():]):
                     continue
-                temporal_markers = list(_AGE_TIME_MARKERS.finditer(clause))
-                if temporal_markers and temporal_markers[-1].group() not in _CURRENT_AGE_MARKERS:
+                if _inside_document_quote(story_text, match.start()):
+                    continue
+                if not _narrative_is_current(story_text, match.end()):
                     continue
                 observed_age = (
                     int(match.group(1))

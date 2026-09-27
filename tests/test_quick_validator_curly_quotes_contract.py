@@ -85,3 +85,25 @@ class TestQuickValidatorCurlyQuotesEdgeCases:
         # "我"在弯引号外（空格后），应被检测到
         assert result.passed is False
         assert any("第一人称" in issue for issue in result.issues)
+
+
+@pytest.mark.parametrize('story', [
+    '他说，我要做岳飞那样的人。祖母笑了。',
+    '他在梦里对自己说，我要去那里。然后他醒了。',
+    '她心想，我得先核对账册。她拿起了笔。',
+])
+def test_attributed_unquoted_speech_is_not_first_person_narration(story):
+    from src.ai.harness.validators import validate_third_person
+    assert QuickValidator()._check_perspective_consistency(story, 'zh') == []
+    assert validate_third_person(story, {})[0]
+
+
+@pytest.mark.parametrize('story', [
+    '他说，我要做岳飞那样的人。我走出了房间。',
+    '我心想，我得先核对账册。我走进房间。',
+    '我突然说，我得离开。我走出了房间。',
+])
+def test_attributed_speech_does_not_hide_first_person_narration(story):
+    from src.ai.harness.validators import validate_third_person
+    assert QuickValidator()._check_perspective_consistency(story, 'zh')
+    assert not validate_third_person(story, {})[0]
