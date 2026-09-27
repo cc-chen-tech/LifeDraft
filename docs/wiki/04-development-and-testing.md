@@ -1,6 +1,6 @@
 # 04 - Development And Testing
 
-> 最后核对：2026-04-26
+> 最后核对：2026-09-28
 
 ## 日常开发命令
 
@@ -26,6 +26,7 @@ npm run test:e2e
 - `./start.sh`：一键启停前后端 + 音乐服务
 - `./test.sh`：五层测试架构统一入口
 - `./scripts/test-run-isolated.sh`：测试隔离运行入口（测试产物默认写入 `/tmp/story2-test-runs`，避免污染仓库）
+- `./test.sh quick`：PR 快速门禁（静态检查、维护中的后端测试、TypeScript 和 Jest）
 
 ## 五层测试架构（`test.sh`）
 
@@ -43,6 +44,12 @@ npm run test:e2e
 ./test.sh db
 ./test.sh frontend
 ```
+
+真实供应商 `./test.sh model-smoke` 不属于这五层本地验收，需要受保护环境中的真实密钥；
+主干 CI 全绿后由 `.github/workflows/model-smoke.yml` 执行。它分别验证首日模型正文质量和安全开场的可玩性：
+若交付方式为 `safe_first_day`，即使保存、授权读回、选项结算等功能检查通过，
+`daily_opening_used_safe_fallback` 仍使发布验收失败。只在交付 `model` 且其他检查通过时自动发布。
+参见 [生产部署指南](../../DEPLOYMENT.md) 和 [生成诊断手册](../generation-diagnostics-runbook.md)。
 
 环境噪音治理（推荐）：
 

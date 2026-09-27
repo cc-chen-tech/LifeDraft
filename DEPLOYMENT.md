@@ -1,138 +1,42 @@
-# 生产部署指南（当前代码版本）
+# 生产部署指南
 
-> 最后更新：2026-04-26  
-> 说明：本文件以当前仓库实现为准（FastAPI + Next.js + 可选 music-api）。
+> 最后核对：2026-09-28。以 `.github/workflows/deploy-production.yml`、`.github/workflows/model-smoke.yml` 和 `scripts/deploy.sh` 的当前实现为准。
 
-## 架构概览
+## 当前部署方式
 
-- `backend`：FastAPI（端口 8000）
-- `frontend`：Next.js（端口 3000）
-- `music-api`：网易云 API（端口 3001，可选但推荐）
-- `nginx`：反向代理 + TLS（80/443）
+生产站点为 [story101.live](https://story101.live)，唯一部署目录为 ECS 上的 `/opt/story2`。生产发布由 GitHub Actions 的 `Deploy Production` 工作流执行；不要直接登录服务器拉代码、运行 Compose 或建立第二套部署目录。
 
-当前仓库提供的 Compose 文件为：
+工作流在 ECS 上把代码切到待发布的精确提交，配置 MiniMax 音频和图片相关环境变量，再调用 `scripts/deploy.sh`。部署后检查公开的 `/health`、`/api/health` 及后端能力标记。生产运行 FastAPI、Next.js 和 Nginx；当前发布检查要求 `music_runtime_enabled=false`，MiniMax TTS 可用。
 
-- `docker-compose.ecs.yml`
+## 正常发布链
 
-## 1. 部署前准备
+1. PR 的检查与评审通过后合并到 `main`。
+2. 当前 `main` 提交的九项工作流全部通过：Backend Tests、Python Code Quality、Frontend Build、Frontend Code Quality、Frontend Tests、Coverage Report、CI、Wiki Check、E2E Tests。
+3. 主干 E2E 完成后，发布链在受保护环境运行真实供应商 `Model Smoke`。它检查模型正文和选项、首日交付与授权读回、故事起源、图片、TTS、世界投影。首日交付必须是 `delivery_mode=model`；安全开场可玩，但会以 `daily_opening_used_safe_fallback` 阻止自动发布。
+4. Model Smoke 成功后自动请求 `Deploy Production`。工作流只接受当时仍是 `main` 顶端的精确 SHA，并在 ECS 部署后执行公开健康检查。
 
-### 1.1 基础环境
+主干 CI 通过、Model Smoke 通过、部署作业通过和线上功能可用是不同状态。不要把触发 Model Smoke 的 `Deploy Production` 准备作业当成已经部署；以带有 `Deploy to ECS host` 成功作业的运行记录为准。
 
-- Docker Engine 24+
-- Docker Compose v2（`docker compose`）
-- Linux 服务器（建议 2C4G 起步）
+## 需要的配置
 
-### 1.2 环境变量
+- GitHub `model-smoke` 受保护环境：真实 `OPENAI_API_KEY`、`MINIMAX_API_KEY`；图片密钥可用 `IMAGE_API_KEY` 或 MiniMax 密钥。模型、图片与 TTS 地址/型号由工作流变量或默认值指定。
+- GitHub `production` 环境：`ECS_HOST`、`ECS_SSH_KEY`、`MINIMAX_API_KEY`；`ECS_USER` 可选。生产 URL 可由 `PRODUCTION_URL` 指定，默认 `https://story101.live`。
+- ECS 唯一部署目录 `/opt/story2` 中保留服务所需的 `.env`。`JWT_SECRET_KEY` 等生产密钥使用独立值，不能提交到仓库。工作流会更新受管的 MiniMax、图片和每日时间线变量。
 
-```bash
-cp .env.example .env
-```
+本地开发的变量示例见 [`.env.example`](.env.example)；不要把本地 `.env` 当作生产密钥来源。
 
-至少确认这些变量：
+## 手动重试和例外发布
 
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL`
-- `DATABASE_URL`（可选，不填使用本地 SQLite）
-- `JWT_SECRET_KEY`（生产环境必须设置独立密钥，已移除硬编码 fallback）
-- `COOKIE_SECURE=true`（生产环境建议）
-- `COOKIE_SAMESITE=lax`（按域名策略调整）
+正常链路会自动部署，无需手动触发。若自动部署步骤因临时问题失败，先核对当前 `main` SHA 与全部门禁，再从 GitHub Actions 的 `Deploy Production` 手动重试，填写完整的 40 位 `candidate_sha`。提交已被新合并覆盖时，旧 SHA 不会被部署。
 
-如使用图像与 OSS，补齐 `IMAGE_*` 与 `OSS_*` 配置。
+`allow_without_model_smoke=true` 是明确的人工例外：其余九项主干工作流必须在同一提交上全部通过。使用前查看 Model Smoke 的 `smoke-summary.json`，记录失败原因；例如只有 `daily_opening_used_safe_fallback` 时，功能可用但模型正文质量门禁未通过。此开关不会让 Model Smoke 变绿，也不会替代对真实失败的修复。
 
-## 2. 使用 Docker Compose（推荐）
+`force_after_local_preflight=true` 仅供 GitHub CI 不可用且已经完成本地预检的特殊情况；它与 `allow_without_model_smoke` 不能同时使用。两种例外都必须通过受保护工作流执行，不能绕过它直接操作 ECS。
 
-### 2.1 启动
+## 验证与回滚
 
-```bash
-docker compose -f docker-compose.ecs.yml up -d --build
-```
+部署完成后，在运行日志中核对 `DEPLOY_SHA`、ECS 的 `HEAD is now at ...`、后端健康状态，以及 `/health`、`/api/health` 的 smoke 结果。线上健康接口正常只证明服务可达；首日模型正文质量仍以对应 SHA 的 Model Smoke 报告为准。
 
-### 2.2 查看状态与日志
+发布版本只能是当前 `main` 顶端。需要回滚时，在仓库中撤销有问题的变更并形成新的 `main` 提交，让同一套 CI、Model Smoke 和部署门禁验证该提交；不要直接在 ECS 上 `git checkout` 旧版本。
 
-```bash
-docker compose -f docker-compose.ecs.yml ps
-docker compose -f docker-compose.ecs.yml logs -f backend
-docker compose -f docker-compose.ecs.yml logs -f frontend
-docker compose -f docker-compose.ecs.yml logs -f nginx
-```
-
-### 2.3 停止
-
-```bash
-docker compose -f docker-compose.ecs.yml down
-```
-
-## 3. 健康检查
-
-- 后端健康检查：`GET /api/health`
-- 前端首页：`/`
-- 音乐服务：`music-api` 容器健康状态
-
-示例：
-
-```bash
-curl http://127.0.0.1:8000/api/health
-```
-
-## 4. HTTPS 与 Nginx
-
-`docker-compose.ecs.yml` 默认挂载：
-
-- `nginx/ecs-nginx.conf`
-- `nginx/ssl/`
-
-请将证书放入 `nginx/ssl/` 并按配置文件约定命名。  
-若使用 ACME/Certbot，建议将证书续期脚本和 reload 流程加入 crontab 或 CI/CD。
-
-## 5. 升级流程（无停机最小化）
-
-1. 拉取代码
-2. 更新 `.env`（如有新增变量）
-3. 重新构建并滚动重启
-
-```bash
-git pull
-docker compose -f docker-compose.ecs.yml up -d --build
-```
-
-4. 验证：
-
-- `/api/health` 返回 `ok`
-- 前端可正常加载
-- 关键玩法链路（事件生成 + 选择 + 保存）可用
-
-## 6. 回滚流程
-
-1. 切回上一版本代码（tag/commit）
-2. 重启同一套 compose
-
-```bash
-git checkout <previous_tag_or_commit>
-docker compose -f docker-compose.ecs.yml up -d --build
-```
-
-## 7. 常见问题
-
-### 7.1 前端 401 或登录态丢失
-
-- 检查 Nginx 是否透传 Cookie
-- 检查 `COOKIE_SECURE`/`COOKIE_SAMESITE` 与协议/域名是否匹配
-- 检查前端是否走同域代理路径 `/api/*`
-
-### 7.2 SSE 长连接经常断开或返回 502/504
-
-- 检查 Nginx 对 `text/event-stream` 的超时与缓冲设置
-- 确认代理没有提前切断长连接
-- 前端已实现 `fetchSSEWithRetry`，对 502/504 自动指数退避重试（最多 3 次）
-- 若频繁出现 502/504，检查后端健康状态与服务器资源
-
-### 7.3 音乐播放 403
-
-- 这是 CDN URL 过期常见现象，优先走后端代理流接口
-- 检查 `music-api` 容器与网络连通性
-
-## 8. 文档入口
-
-- 项目总览：`README.md`
-- 详细 wiki：`docs/wiki/README.md`
-- 发布检查清单：`docs/wiki/10-release-and-change-checklist.md`
+相关入口：[README](README.md)、[发布检查清单](docs/wiki/10-release-and-change-checklist.md)、[生成诊断手册](docs/generation-diagnostics-runbook.md)。

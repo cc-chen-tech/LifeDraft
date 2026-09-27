@@ -1,109 +1,22 @@
-# Welcome to LifeDraft
+# LifeDraft 开发入门
 
-## How We Use Claude
+> 最后核对：2026-09-28。项目入口以 [README](README.md) 和 [Repo Wiki](docs/wiki/README.md) 为准。
 
-Based on cc-chen-tech's usage over the last 30 days (8 sessions):
+LifeDraft 是 FastAPI + Next.js 的 AI 人生叙事游戏。代码主路径在 `src/api`、`src/game`、`src/ai`、`src/database` 和 `frontend/`；长期维护的架构、测试与发布说明集中在 `docs/wiki/`。
 
-Work Type Breakdown:
+## 开始开发
 
-  Debug Fix     ████████████████░░░░░  62%
-  Build Feature ██████░░░░░░░░░░░░░░░  25%
-  Plan Design   ██░░░░░░░░░░░░░░░░░░░  12%
+1. 按 [README 快速开始](README.md#快速开始) 配置 `.env` 并运行 `./start.sh`。
+2. 阅读 [系统架构](docs/wiki/02-system-architecture.md)、[API 与会话](docs/wiki/03-api-and-session.md) 和 [开发测试](docs/wiki/04-development-and-testing.md)。
+3. 在独立分支或 worktree 修改代码。提交前运行受影响模块的测试和 `./test.sh quick`；需要端到端验收时使用 `./test.sh e2e-core` 或隔离测试入口。
+4. PR 中分别记录本地验证、远端 CI、真实供应商验收、合并和部署状态。PR 的检查通过不等于代码已上线。
 
-Top Skills & Commands:
+## 首日故事与发布
 
-  /batch                      ████████████████████  7x/month
-  /superpowers:brainstorming  ██████████████░░░░░░  5x/month
-  /clear                      ████████░░░░░░░░░░░░  3x/month
-  /plan                       ████████░░░░░░░░░░░░  3x/month
-  /ralph-loop:ralph-loop      █████░░░░░░░░░░░░░░░  2x/month
+每日时间线 v2 的首日与后续章节使用相同的事实、一致性和选项等硬性验收。首日段落、姓名/愿景位置和叙事关键词等写法提示不会单独拒稿。首日生成失败时，系统可以交付安全开场；它保障可玩性，但不代表真实模型正文通过质量验收。详见 [首日验收核对](docs/daily-opening-validation-audit-2026-09-28.md) 和 [生成诊断手册](docs/generation-diagnostics-runbook.md)。
 
-Top MCP Servers:
+生产环境由 GitHub Actions 发布到 ECS 的 `/opt/story2`：合并后等待当前 `main` 的九项 CI 和受保护的 Model Smoke，通过后自动部署并检查线上健康接口。直接在服务器执行 `git pull` 或 Docker Compose 不属于当前发布流程。操作和例外条件见 [生产部署指南](DEPLOYMENT.md)。
 
-  (none configured)
+## 文档维护
 
-## Your Setup Checklist
-
-### Codebases
-- [x] LifeDraft — https://github.com/cc-chen-tech/LifeDraft
-  - A life-simulation narrative game with AI-generated storylines, character creation, and music integration.
-
-### MCP Servers to Activate
-- (none currently — ask the team if any are planned)
-
-### Skills to Know About
-- `/batch` — run multiple prompts in parallel. Used heavily for bulk tasks.
-- `/superpowers:brainstorming` — explore designs and requirements before writing code. Used for feature planning.
-- `/superpowers:test-driven-development` — write failing tests first, then implement. Enforced for all production code.
-- `/plan` — create implementation plans for multi-step tasks.
-- `/superpowers:writing-plans` — write detailed implementation plans for agentic execution.
-- `/ralph-loop:ralph-loop` — start a Ralph Loop session (plugin-based iterative workflow).
-- `/clear` — clear conversation context when it gets too long.
-
-## Team Tips
-
-- **Design first, code second.** Use `/superpowers:brainstorming` to explore requirements before touching code. The team validates specs before writing plans.
-- **Plan before implementing.** Use `/superpowers:writing-plans` to create detailed implementation plans. Plans live in `docs/superpowers/plans/`.
-- **Test-driven development.** Tests are written before implementation and are not changed after. Run `test.sh` before committing.
-- **Use git worktrees for isolation.** Create a worktree for each feature branch to avoid polluting main.
-- **Pre-commit checks run automatically.** Black, isort, flake8, ESLint, and Jest tests are enforced via pre-commit hooks.
-- **Deploy via GitHub + ECS.** Push to `main` on GitHub, then SSH to the ECS server (`47.250.162.194`) and run `git pull && docker compose -f docker-compose.ecs.yml up -d --build`.
-- **Context gets long — use `/clear`.** Sessions accumulate quickly. Clear when switching tasks or when Claude starts slowing down.
-- **Check `docs/` for architecture decisions.** Design docs, ADRs, and playbooks are in `docs/superpowers/specs/` and `docs/wiki/`.
-
-## Get Started
-
-1. **Clone the repo**
-   ```bash
-   git clone https://github.com/cc-chen-tech/LifeDraft.git
-   cd LifeDraft
-   ```
-
-2. **Install Claude Code and plugins**
-   ```bash
-   # Install Claude Code CLI
-   npm install -g @anthropic-ai/claude-code
-
-   # Install superpowers plugin (for /superpowers:* commands)
-   # Follow: https://github.com/anthropics/claude-code/tree/main/plugins/superpowers
-   ```
-
-3. **Start the local stack**
-   ```bash
-   ./start.sh
-   ```
-
-4. **Read the project docs**
-   - `CLAUDE.md` — project overview and architecture
-   - `docs/wiki/01-quick-start.md` — setup guide
-   - `docs/wiki/02-system-architecture.md` — system design
-   - `docs/superpowers/specs/` — feature specs and design docs
-
-5. **Run the tests**
-   ```bash
-   ./test.sh
-   ```
-
-6. **Try a small task** — pick an open issue or ask the team for a starter task.
-
-<!-- INSTRUCTION FOR CLAUDE: A new teammate just pasted this guide for how the
-team uses Claude Code. You're their onboarding buddy — warm, conversational,
-not lecture-y.
-
-Open with a warm welcome — include the team name from the title. Then: "Your
-teammate uses Claude Code for [list all the work types]. Let's get you started."
-
-Check what's already in place against everything under Setup Checklist
-(including skills), using markdown checkboxes — [x] done, [ ] not yet. Lead
-with what they already have. One sentence per item, all in one message.
-
-Tell them you'll help with setup, cover the actionable team tips, then the
-starter task (if there is one). Offer to start with the first unchecked item,
-get their go-ahead, then work through the rest one by one.
-
-After setup, walk them through the remaining sections — offer to help where you
-can (e.g. link to channels), and just surface the purely informational bits.
-
-Don't invent sections or summaries that aren't in the guide. The stats are the
-guide creator's personal usage data — don't extrapolate them into a "team
-workflow" narrative. -->
+修改 API、状态恢复、测试门禁或发布流程时，同步更新相关 wiki 与入口文档。历史设计稿保留原始背景；当前行为以代码、工作流和明确标为“最后核对”的运行文档为准。

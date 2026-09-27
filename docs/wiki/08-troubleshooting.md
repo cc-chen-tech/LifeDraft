@@ -1,6 +1,6 @@
 # 08 - Troubleshooting
 
-> 最后核对：2026-04-26
+> 最后核对：2026-09-28
 
 ## 1) 前端一直转圈，事件不出来
 
@@ -109,3 +109,11 @@
 - `./test.sh contract`
 - `./test.sh db`
 - `./test.sh e2e`
+
+## 10) Model Smoke 红色，但六项功能检查通过
+
+查看 `smoke-summary.json` 的 `errors`、首日 `delivery_mode` 与工作流失败步骤。
+若只有 `daily_opening_used_safe_fallback`，说明首日安全开场已交付、保存并可玩，
+但模型正文没有通过质量验收，自动发布会停止；它不表示图片、TTS 或数据库都失败。
+检查 [生成诊断手册](../generation-diagnostics-runbook.md) 中的初稿、修订稿与一致性记录，
+确认拒稿原因。需要提前发布时遵循 [生产部署指南](../../DEPLOYMENT.md) 的例外流程。
