@@ -14,6 +14,7 @@ from src.api.schemas import PortraitCandidateBatchResponse, PortraitCandidateSlo
 from src.database.models import (Game, GameState, Image, PortraitCandidateBatch,
                                  PortraitCandidateSlot, PortraitImageGenerationJob,
                                  PortraitSelection, SessionLocal)
+from src.observability.request_context import bind_current_context
 from src.services.image_service import ImageService
 from src.services.portrait_image_jobs import _origin_is_current, _safe_failure
 from src.services.portrait_selection import selected_portrait, set_default_portrait
@@ -322,11 +323,13 @@ def run_candidate_batch(
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="portrait-slot") as pool:
             futures = [
                 pool.submit(
-                    _run_candidate_slot,
-                    job_id,
-                    index,
-                    session_factory=session_factory,
-                    image_service_factory=image_service_factory,
+                    bind_current_context(
+                        _run_candidate_slot,
+                        job_id,
+                        index,
+                        session_factory=session_factory,
+                        image_service_factory=image_service_factory,
+                    )
                 )
                 for index in range(3)
             ]
