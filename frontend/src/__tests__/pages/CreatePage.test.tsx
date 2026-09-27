@@ -57,6 +57,9 @@ function setupDefaultState() {
   useImageStore.setState({
     playerImages: [] as Array<{ image_id: number; image_url: string }>,
     selectedImageIndex: 0,
+    selectedImageId: null,
+    portraitCandidates: null,
+    portraitImageJob: null,
     isGeneratingImage: false,
     imageFeedback: '',
     openingIllustration: null as unknown | null,
@@ -458,6 +461,7 @@ describe('CreatePage', () => {
           { image_id: 2, image_url: 'http://test.url/2.png' },
         ],
         selectedImageIndex: 0,
+        selectedImageId: 1,
       });
 
       render(<CreatePage />);
@@ -853,6 +857,7 @@ describe('CreatePage', () => {
           { image_id: 2, image_url: 'http://test.url/2.png' },
         ],
         selectedImageIndex: 0,
+        selectedImageId: 1,
         isGeneratingImage: false,
       });
 
@@ -939,6 +944,18 @@ describe('CreatePage', () => {
       }, { timeout: 5000 });
     });
 
+    it('returns from completion to portrait choices without enqueueing a new batch', async () => {
+      useGameStore.setState({ creationStep: 3, gameId: 1, playerName: 'TestPlayer', characterSettings: {
+        story_origin: testOrigin, world: {}, family: {}, relationships: {}, traits: {},
+      } });
+      await act(async () => { render(<CreatePage />); });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '选择人物形象' })); });
+      expect(gameSpy.spies.setCreationStep).toHaveBeenCalledWith(3);
+      expect(screen.queryByRole('button', { name: '选择人物形象' })).not.toBeInTheDocument();
+      expect(fetchCalled('/api/images/character/candidates', 'POST')).toBe(false);
+      expect(imageSpy.spies.generatePlayerImage).not.toHaveBeenCalled();
+    });
+
     it('shows success toast when preset is saved', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ preset_id: 1 }));
 
@@ -979,7 +996,7 @@ describe('CreatePage', () => {
       await waitFor(() => {
         expect(fetchCalled('/api/presets')).toBe(true);
       });
-      expect(await screen.findByRole('status')).toHaveTextContent('预设保存成功');
+      expect(await screen.findByText('预设保存成功')).toBeVisible();
     });
 
     it('shows an image regeneration error in the completed creation branch', async () => {

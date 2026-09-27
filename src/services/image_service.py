@@ -21,6 +21,7 @@ from src.services.image import ImageServiceError as ImageServiceError
 from src.services.image.character_service import CharacterImageService
 from src.services.image.scene_service import SceneImageService
 from src.services.image_storage import ImageStorageService
+from src.services.portrait_selection import selected_portrait
 from src.game.story_origin import canonical_story_settings
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,18 @@ class ImageService:
 
     # ==================== 人物图片方法 ====================
 
+    def generate_character_candidate(
+        self, *, game_id: int, name: str, description: str, era: str,
+        character_settings: Dict[str, Any], direction: str, batch_id: int,
+        slot_index: int,
+    ) -> ImageModel:
+        """Generate one inactive protagonist candidate for the batch worker."""
+        return self._character_service.generate_character_candidate(
+            game_id=game_id, name=name, description=description, era=era,
+            character_settings=character_settings, direction=direction,
+            batch_id=batch_id, slot_index=slot_index,
+        )
+
     def generate_character_image(
         self,
         game_id: int,
@@ -119,12 +132,14 @@ class ImageService:
         image_id: int,
         feedback: Optional[str] = None,
         new_description: Optional[str] = None,
+        defer_activation: bool = False,
     ) -> List[ImageModel]:
         """重新生成图片（保持人物一致性）"""
         return self._character_service.regenerate_image(
             image_id=image_id,
             feedback=feedback,
             new_description=new_description,
+            defer_activation=defer_activation,
             build_description_func=self._build_description_from_settings,
             extract_era_func=self._extract_era_from_settings,
         )
@@ -133,14 +148,20 @@ class ImageService:
         self,
         image_id: int,
         use_deepseek_prompt: bool = True,
+        defer_activation: bool = False,
     ) -> List[ImageModel]:
         """完全重新生成图片（抛弃历史修改）"""
         return self._character_service.regenerate_fresh_image(
             image_id=image_id,
             use_deepseek_prompt=use_deepseek_prompt,
+            defer_activation=defer_activation,
             build_description_func=self._build_description_from_settings,
             extract_era_func=self._extract_era_from_settings,
         )
+
+    def delete_image_files(self, images: List[ImageModel]) -> None:
+        """Remove files only after their database images have been deactivated."""
+        self._character_service._delete_image_files(images)
 
     # ==================== 场景插画方法 ====================
 
@@ -714,6 +735,9 @@ class ImageService:
                 .filter(
                     ImageModel.image_id == player_image_id,
                     ImageModel.game_id == game_id,
+                    ImageModel.image_type == "character",
+                    ImageModel.entity_key == "player_main",
+                    ImageModel.is_active.is_(True),
                 )
                 .first()
             )
@@ -723,18 +747,9 @@ class ImageService:
                 )
 
         if not player_image:
-            player_image = (
-                self.db.query(ImageModel)
-                .filter(
-                    ImageModel.game_id == game_id,
-                    ImageModel.image_type == "character",
-                    ImageModel.is_primary == True,  # noqa: E712
-                )
-                .order_by(ImageModel.image_id.desc())
-                .first()
-            )
+            player_image = selected_portrait(self.db, game_id)
             if player_image:
-                logger.info(f"Auto-selected primary player image: {player_image.image_id}")
+                logger.info(f"Using selected player image: {player_image.image_id}")
 
         if player_image:
             try:

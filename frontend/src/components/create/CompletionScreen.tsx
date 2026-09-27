@@ -57,6 +57,7 @@ interface CompletionScreenProps {
   toast: ToastType;
   // Image regeneration
   isGeneratingImage: boolean;
+  imageGenerationError: string | null;
   imageFeedback: string;
   onImageFeedbackChange: (feedback: string) => void;
   onRegenerateImage: () => Promise<void>;
@@ -88,6 +89,7 @@ export function CompletionScreen({
   presetSaveMessage,
   toast,
   isGeneratingImage,
+  imageGenerationError,
   imageFeedback,
   onImageFeedbackChange,
   onRegenerateImage,
@@ -140,7 +142,6 @@ export function CompletionScreen({
     setIsRegeneratingImage(true);
     try {
       await onRegenerateImage();
-      onImageFeedbackChange("");
     } catch (err) {
       showToast("error", String(err) || "重新生成失败");
     } finally {
@@ -194,11 +195,7 @@ export function CompletionScreen({
             {playerImages.length > 0 && (
               <div className="flex min-w-0 flex-col items-center">
                 <>
-                  {isGeneratingImage ? (
-                    <div className="flex h-48 w-32 items-center justify-center rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)]">
-                      <Loader2 className="animate-spin text-[var(--text-secondary)]" />
-                    </div>
-                  ) : !imageError ? (
+                  {!imageError ? (
                     <img
                       src={playerImages[selectedImageIndex]?.image_url || playerImages[0]?.image_url}
                       alt={playerName || "主角"}
@@ -214,6 +211,12 @@ export function CompletionScreen({
                   <span className="mt-3 break-words text-center text-sm font-medium text-[var(--text-primary)]">
                     {playerName}
                   </span>
+                  {isGeneratingImage && (
+                    <div className="mt-3 flex items-center gap-2 text-center text-xs text-[var(--text-secondary)]" role="status">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      正在后台重新生成人物形象，完成后会自动更新。
+                    </div>
+                  )}
                 </>
               </div>
             )}
@@ -223,6 +226,12 @@ export function CompletionScreen({
                 <Loader2 className="h-4 w-4 animate-spin" />
                 人物形象正在后台生成，完成后会自动显示。
               </div>
+            )}
+
+            {imageGenerationError && !isGeneratingImage && (
+              <p className="mt-3 text-sm text-destructive" role="alert">
+                {imageGenerationError}
+              </p>
             )}
 
             <div className="min-w-0">
@@ -295,13 +304,18 @@ export function CompletionScreen({
                       ) : (
                         <RotateCcw />
                       )}
-                      完全重生成
+                      完全重生成（三张新形象）
                     </Button>
                   </div>
                 </div>
               )}
             </div>
           </section>
+
+          <div className="mt-4 space-y-2">
+            <Button variant="narrative" size="touch" onClick={onBack}>选择人物形象</Button>
+            <p className="text-xs text-[var(--text-secondary)]">完全重生成会生成三张新形象，约进行三次图片生成。可返回选择，选中新图后才切换当前形象。</p>
+          </div>
 
           <section className="mt-8 border-t border-[var(--border-default)] pt-6">
             {characterSettings.story_origin != null && (

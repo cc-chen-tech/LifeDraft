@@ -1039,6 +1039,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/images/character/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Candidates */
+        get: operations["get_candidates_api_images_character_candidates_get"];
+        put?: never;
+        /** Create Candidates */
+        post: operations["create_candidates_api_images_character_candidates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images/character/selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Portrait Selection */
+        get: operations["get_portrait_selection_api_images_character_selection_get"];
+        /** Put Portrait Selection */
+        put: operations["put_portrait_selection_api_images_character_selection_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images/character/candidates/{batch_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Candidates */
+        post: operations["retry_candidates_api_images_character_candidates__batch_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/images/character/generate-async": {
         parameters: {
             query?: never;
@@ -1053,6 +1106,40 @@ export interface paths {
          * @description Queue a durable main-character portrait without holding the browser request open.
          */
         post: operations["enqueue_character_portrait_api_images_character_generate_async_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images/character/regenerate-async": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue Character Regeneration */
+        post: operations["enqueue_character_regeneration_api_images_character_regenerate_async_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images/character/regenerate-fresh-async": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue Character Fresh Regeneration */
+        post: operations["enqueue_character_fresh_regeneration_api_images_character_regenerate_fresh_async_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2079,6 +2166,17 @@ export interface components {
              */
             generate_description: boolean;
         };
+        /** CreatePortraitCandidatesRequest */
+        CreatePortraitCandidatesRequest: {
+            /** Game Id */
+            game_id: number;
+            /**
+             * Mode
+             * @default initial
+             * @enum {string}
+             */
+            mode: "initial" | "fresh";
+        };
         /** CreatePresetRequest */
         CreatePresetRequest: {
             /** Preset Name */
@@ -2632,6 +2730,42 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
         };
+        /** PortraitCandidateBatchResponse */
+        PortraitCandidateBatchResponse: {
+            /** Batch Id */
+            batch_id: number;
+            /** Job Id */
+            job_id: number;
+            /** Game Id */
+            game_id: number;
+            /** Mode */
+            mode: string;
+            /** Origin Revision */
+            origin_revision?: number | null;
+            /** Status */
+            status: string;
+            /** Slots */
+            slots: components["schemas"]["PortraitCandidateSlotResponse"][];
+            /** Completed Count */
+            completed_count: number;
+            /** Selected Image Id */
+            selected_image_id?: number | null;
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+        };
+        /** PortraitCandidateSlotResponse */
+        PortraitCandidateSlotResponse: {
+            /** Slot Index */
+            slot_index: number;
+            /** Status */
+            status: string;
+            /** Image Id */
+            image_id?: number | null;
+            /** Error Code */
+            error_code?: string | null;
+        };
         /**
          * PortraitImageGenerationJobResponse
          * @description Safe public state for a durable main-character portrait job.
@@ -2655,6 +2789,13 @@ export interface components {
             created_at?: string | null;
             /** Updated At */
             updated_at?: string | null;
+        };
+        /** PortraitSelectionResponse */
+        PortraitSelectionResponse: {
+            /** Game Id */
+            game_id: number;
+            /** Image Id */
+            image_id: number;
         };
         /** PresetInfo */
         PresetInfo: {
@@ -3101,6 +3242,13 @@ export interface components {
             save_points: components["schemas"]["SavePointItem"][];
             /** Total */
             total: number;
+        };
+        /** SelectPortraitRequest */
+        SelectPortraitRequest: {
+            /** Game Id */
+            game_id: number;
+            /** Image Id */
+            image_id: number;
         };
         /**
          * StateSnapshotItem
@@ -5251,6 +5399,165 @@ export interface operations {
             };
         };
     };
+    get_candidates_api_images_character_candidates_get: {
+        parameters: {
+            query: {
+                game_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitCandidateBatchResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_candidates_api_images_character_candidates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePortraitCandidatesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitCandidateBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_portrait_selection_api_images_character_selection_get: {
+        parameters: {
+            query: {
+                game_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitSelectionResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_portrait_selection_api_images_character_selection_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectPortraitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitSelectionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_candidates_api_images_character_candidates__batch_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitCandidateBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     enqueue_character_portrait_api_images_character_generate_async_post: {
         parameters: {
             query?: never;
@@ -5261,6 +5568,72 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["GenerateImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitImageGenerationJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enqueue_character_regeneration_api_images_character_regenerate_async_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegenerateImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitImageGenerationJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enqueue_character_fresh_regeneration_api_images_character_regenerate_fresh_async_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegenerateFreshImageRequest"];
             };
         };
         responses: {

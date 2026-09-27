@@ -8,8 +8,8 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from src.database.models import (Game, GameState, Image,
-                                 PortraitImageGenerationJob, SessionLocal)
-from src.services.image import ImageContentError, ImageProviderServiceError, ImageServiceError
+                                 PortraitImageGenerationJob, PortraitCandidateSlot, PortraitSelection, SessionLocal)
+from src.services.image import ImageContentError, ImageProviderServiceError, ImageServiceError, PortraitReferenceUnavailable
 from src.services.image_service import ImageService, get_image_thread_pool
 from src.observability.request_context import bind_current_context
 
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 ACTIVE_JOB_STATUSES = ("queued", "running")
 _job_lock = threading.Lock()
 _scheduled_job_ids: set[int] = set()
+_reschedule_requested_ids: set[int] = set()
 
 
 def _current_origin_revision(db: Session, game_id: int) -> Optional[int]:
@@ -47,7 +48,10 @@ def _job_origin_revision(request: dict[str, Any]) -> Optional[int]:
 
 
 def _origin_is_current(db: Session, job: PortraitImageGenerationJob) -> bool:
-    requested = _job_origin_revision(job.request_json or {})
+    request = job.request_json or {}
+    requested = _job_origin_revision(request)
+    if "origin_revision" in request:
+        return requested == _current_origin_revision(db, int(job.game_id))
     return requested is None or requested == _current_origin_revision(db, int(job.game_id))
 
 
@@ -70,12 +74,28 @@ class PortraitImageJobService:
         request_json = dict(request_json)
         game_id = int(request_json["game_id"])
         current_revision = _current_origin_revision(self.db, game_id)
-        if current_revision is not None:
+        if current_revision is not None or request_json.get("operation") in (
+            "regenerate", "regenerate_fresh"
+        ):
             request_json["origin_revision"] = current_revision
         entity_key = str(request_json.get("entity_key") or "player_main")
 
         with _job_lock:
-            existing = (
+            # Capture the identity of the edited slot before calling a provider.
+            # An absent slot is deliberately legacy single-image behavior.
+            source_id = request_json.get("source_image_id")
+            if source_id is not None:
+                slot = self.db.query(PortraitCandidateSlot).filter_by(
+                    image_id=source_id, status="ready").first()
+                if slot is not None:
+                    from src.services.portrait_selection import selected_portrait, is_selectable_candidate
+                    selected = selected_portrait(self.db, game_id)
+                    if (selected is None or selected.image_id != source_id
+                            or not is_selectable_candidate(self.db, game_id, source_id)):
+                        raise ValueError("只能从当前选中的形象开始")
+                    request_json["source_batch_id"] = slot.batch_id
+                    request_json["source_slot_index"] = slot.slot_index
+            existing_jobs = (
                 self.db.query(PortraitImageGenerationJob)
                 .filter(
                     PortraitImageGenerationJob.game_id == game_id,
@@ -84,8 +104,11 @@ class PortraitImageJobService:
                     PortraitImageGenerationJob.status.in_(ACTIVE_JOB_STATUSES),
                 )
                 .order_by(PortraitImageGenerationJob.created_at.desc())
-                .first()
+                .all()
             )
+            existing = next((item for item in existing_jobs
+                if (item.request_json or {}).get("operation", "generate") == request_json.get("operation", "generate")
+                and (item.request_json or {}).get("source_image_id") == source_id), None)
             if existing:
                 if _origin_is_current(self.db, existing):
                     return existing, True
@@ -136,6 +159,8 @@ def requeue_interrupted_portrait_jobs(db: Session) -> list[int]:
 def _safe_failure(error: Exception) -> tuple[str, str]:
     if isinstance(error, ImageProviderServiceError):
         return error.code, error.public_message
+    if isinstance(error, PortraitReferenceUnavailable):
+        return "portrait_reference_unavailable", str(error)
     if isinstance(error, ImageContentError):
         return "image_content_rejected", "人物形象生成未通过内容检查，请修改设定后重试"
     return "image_generation_failed", "人物形象生成失败，请稍后重试"
@@ -154,6 +179,13 @@ def run_portrait_image_job(
         if job is None or job.status not in ACTIVE_JOB_STATUSES:
             return
 
+        if (job.request_json or {}).get("operation") == "candidate_batch":
+            from src.services.portrait_candidate_jobs import run_candidate_batch
+            db.close()
+            run_candidate_batch(job_id, session_factory=session_factory,
+                                image_service_factory=image_service_factory)
+            return
+
         if not _origin_is_current(db, job):
             _mark_superseded(db, job)
             return
@@ -165,29 +197,113 @@ def run_portrait_image_job(
         db.commit()
 
         request = job.request_json
-        images = image_service_factory(db).generate_character_image(
-            game_id=int(request["game_id"]),
-            name=str(request["entity_name"]),
-            description=str(request["description"]),
-            era=str(request.get("era") or "现代"),
-            entity_key="player_main",
-            metadata=request.get("extra_context"),
-            num_images=1,
-            feedback=request.get("feedback"),
-        )
+        image_service = image_service_factory(db)
+        operation = request.get("operation", "generate")
+        if operation == "regenerate":
+            images = image_service.regenerate_image(
+                image_id=int(request["source_image_id"]),
+                feedback=request.get("feedback"),
+                new_description=request.get("new_description"),
+                defer_activation=True,
+            )
+        elif operation == "regenerate_fresh":
+            images = image_service.regenerate_fresh_image(
+                image_id=int(request["source_image_id"]),
+                use_deepseek_prompt=bool(request.get("use_deepseek_prompt", True)),
+                defer_activation=True,
+            )
+        elif operation == "generate":
+            images = image_service.generate_character_image(
+                game_id=int(request["game_id"]),
+                name=str(request["entity_name"]),
+                description=str(request["description"]),
+                era=str(request.get("era") or "现代"),
+                entity_key="player_main",
+                metadata=request.get("extra_context"),
+                num_images=1,
+                feedback=request.get("feedback"),
+            )
+        else:
+            raise ImageServiceError("unsupported portrait job operation")
         if not images or images[0].image_id is None:
             raise ImageServiceError("no image was persisted")
 
-        if not _origin_is_current(db, job):
+        # Serialize the final fence and slot swap with batch writes. Refresh
+        # objects after provider execution, which may have taken minutes.
+        from src.services.portrait_candidate_jobs import _lock_game
+        _lock_game(db, int(job.game_id))
+        db.expire_all()
+        db.refresh(job)
+        if job.status != "running" or not _origin_is_current(db, job):
             db.query(Image).filter(Image.image_id == int(images[0].image_id)).update(
                 {"is_active": False}
             )
-            _mark_superseded(db, job)
+            if job.status == "running":
+                _mark_superseded(db, job)
+            else:
+                db.commit()
+            if operation != "generate":
+                image_service.delete_image_files(images)
             return
+
+        old_images: list[Image] = []
+        if operation != "generate":
+            candidate = db.get(Image, int(images[0].image_id))
+            if (
+                candidate is None
+                or int(candidate.game_id) != int(job.game_id)
+                or candidate.entity_key != "player_main"
+            ):
+                raise ImageServiceError("regeneration candidate is missing or invalid")
+            source_slot = None
+            if "source_batch_id" in request:
+                from src.services.portrait_selection import is_selectable_candidate
+                source_slot = db.get(PortraitCandidateSlot,
+                    (request["source_batch_id"], request["source_slot_index"]))
+                source_id = int(request["source_image_id"])
+                if (source_slot is None or source_slot.status != "ready"
+                        or source_slot.image_id != source_id
+                        or not is_selectable_candidate(db, int(job.game_id), source_id)):
+                    candidate.is_active = False
+                    job.status, job.error_code = "failed", "portrait_source_superseded"
+                    job.error_message = "原人物形象已更新，请从当前形象重新开始"
+                    db.commit()
+                    image_service.delete_image_files(images)
+                    return
+                source_slot.image_id = candidate.image_id
+                db.get(Image, source_id).is_active = False
+                # Compare-and-swap preserves a selection made during generation.
+                db.query(PortraitSelection).filter_by(
+                    game_id=job.game_id, image_id=source_id).update(
+                        {"image_id": candidate.image_id}, synchronize_session=False)
+                # Retain source files: durable batch/job history still references
+                # them. Unrelated candidates must never be deleted.
+            else:
+                old_images = (
+                    db.query(Image)
+                    .filter(
+                        Image.game_id == job.game_id,
+                        Image.entity_key == "player_main",
+                        Image.is_active.is_(True),
+                        Image.image_id != candidate.image_id,
+                        ~Image.image_id.in_(db.query(PortraitCandidateSlot.image_id).filter(
+                            PortraitCandidateSlot.image_id.isnot(None))),
+                    )
+                    .all()
+                )
+            for old_image in old_images:
+                old_image.is_active = False
+            if source_slot is None:
+                db.query(PortraitSelection).filter_by(
+                    game_id=job.game_id, image_id=int(request["source_image_id"])).update(
+                        {"image_id": candidate.image_id}, synchronize_session=False)
+            candidate.is_active = True
 
         job.image_id = int(images[0].image_id)
         job.status = "succeeded"
         db.commit()
+        if old_images:
+            image_service.delete_image_files(old_images)
         logger.info("portrait image job completed job_id=%s status=succeeded", job_id)
     except Exception as error:
         db.rollback()
@@ -208,9 +324,12 @@ def run_portrait_image_job(
 
 
 def schedule_portrait_image_job(job_id: int) -> None:
-    """Submit a job once; persistence keeps it recoverable if submission is interrupted."""
+    """Coalesce deliveries without dropping a retry during worker cleanup."""
     with _job_lock:
         if job_id in _scheduled_job_ids:
+            # A terminal job may already have been committed back to queued
+            # while the previous callback still owns its scheduling marker.
+            _reschedule_requested_ids.add(job_id)
             return
         _scheduled_job_ids.add(job_id)
 
@@ -220,8 +339,21 @@ def schedule_portrait_image_job(job_id: int) -> None:
         finally:
             with _job_lock:
                 _scheduled_job_ids.discard(job_id)
+                reschedule = job_id in _reschedule_requested_ids
+                _reschedule_requested_ids.discard(job_id)
+            if reschedule:
+                # Submit outside the lock. If another caller wins this handoff,
+                # it receives the marker and our request is coalesced again.
+                # The persisted job claim prevents extra provider execution.
+                schedule_portrait_image_job(job_id)
 
-    get_image_thread_pool().submit(bind_current_context(_run))
+    try:
+        get_image_thread_pool().submit(bind_current_context(_run))
+    except Exception:
+        with _job_lock:
+            _scheduled_job_ids.discard(job_id)
+            _reschedule_requested_ids.discard(job_id)
+        raise
 
 
 def recover_pending_portrait_image_jobs() -> list[int]:

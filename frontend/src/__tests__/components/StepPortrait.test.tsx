@@ -29,6 +29,32 @@ describe("StepPortrait", () => {
     jest.clearAllMocks();
   });
 
+  it('shows three fixed slots, partial progress, retry and current old portrait', async () => {
+    const retry = jest.fn().mockResolvedValue(undefined);
+    const select = jest.fn().mockResolvedValue(undefined);
+    render(<StepPortrait {...baseProps} selectedImageId={99}
+      playerImages={[{ image_id: 99, image_url: 'old' }, { image_id: 22, image_url: 'new2' }, { image_id: 11, image_url: 'new1' }]}
+      portraitCandidates={{ batch_id: 9, job_id: 8, game_id: 1, mode: 'fresh', status: 'failed', selected_image_id: 99, completed_count: 2,
+        slots: [{ slot_index: 0, image_id: 11, status: 'ready' }, { slot_index: 1, image_id: null, status: 'failed' }, { slot_index: 2, image_id: 22, status: 'ready' }] }}
+      onRetryMissing={retry} onSelectImage={select} />);
+    expect(screen.getByText('已完成 2/3')).toBeVisible();
+    expect(screen.getByText('当前使用')).toBeVisible();
+    expect(screen.getByRole('img', { name: 'TestPlayer' })).toHaveAttribute('src', 'old');
+    const slots = screen.getAllByRole('button', { name: /选择人物形象/ });
+    expect(slots).toHaveLength(3); expect(slots[1]).toBeDisabled();
+    fireEvent.click(slots[2]); await waitFor(() => expect(select).toHaveBeenCalledWith(22));
+    expect(slots[2]).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: '重试未完成的形象' }));
+    await waitFor(() => expect(retry).toHaveBeenCalledWith(9));
+  });
+
+  it('offers an explicit initial request for an empty restored game', () => {
+    const retry = jest.fn().mockResolvedValue(undefined);
+    render(<StepPortrait {...baseProps} onRetryGeneration={retry} />);
+    fireEvent.click(screen.getByRole('button', { name: '生成三张人物形象' }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
   describe("Generating state", () => {
     it("shows loading when generating image", () => {
       render(<StepPortrait {...baseProps} isGeneratingImage={true} />);
@@ -117,6 +143,20 @@ describe("StepPortrait", () => {
       const img = document.querySelector("img");
       expect(img).toBeInTheDocument();
       expect(img?.getAttribute("src")).toBe("https://example.com/portrait1.jpg");
+    });
+
+    it("keeps the old image visible during background regeneration", () => {
+      render(<StepPortrait {...baseProps} playerImages={images} isGeneratingImage />);
+
+      expect(screen.getByRole("img", { name: "TestPlayer" })).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("正在后台重新生成人物形象");
+    });
+
+    it("shows the error while retaining the old image after regeneration fails", () => {
+      render(<StepPortrait {...baseProps} playerImages={images} imageGenerationError="生成失败" />);
+
+      expect(screen.getByRole("img", { name: "TestPlayer" })).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent("生成失败");
     });
 
     it("shows thumbnail selectors when multiple images", () => {
@@ -262,12 +302,13 @@ describe("StepPortrait", () => {
     it("renders fresh regenerate button", () => {
       render(<StepPortrait {...baseProps} playerImages={images} />);
       expect(
-        screen.getByText("完全重新生成（抛弃历史修改）")
+        screen.getByText("完全重新生成（三张新形象）")
       ).toBeInTheDocument();
     });
 
     it("calls onRegenerate when clicking regenerate button with feedback", async () => {
       const onRegenerate = jest.fn().mockResolvedValue(undefined);
+      const onFeedbackChange = jest.fn();
       const user = userEvent.setup();
       render(
         <StepPortrait
@@ -275,6 +316,7 @@ describe("StepPortrait", () => {
           playerImages={images}
           imageFeedback="Test feedback"
           onRegenerate={onRegenerate}
+          onFeedbackChange={onFeedbackChange}
         />
       );
 
@@ -282,6 +324,7 @@ describe("StepPortrait", () => {
       await waitFor(() => {
         expect(onRegenerate).toHaveBeenCalled();
       });
+      expect(onFeedbackChange).not.toHaveBeenCalledWith("");
     });
 
     it("calls onRegenerateFresh when clicking fresh regenerate", async () => {
@@ -295,7 +338,7 @@ describe("StepPortrait", () => {
         />
       );
 
-      await user.click(screen.getByText("完全重新生成（抛弃历史修改）"));
+      await user.click(screen.getByText("完全重新生成（三张新形象）"));
       await waitFor(() => {
         expect(onRegenerateFresh).toHaveBeenCalled();
       });
@@ -380,7 +423,7 @@ describe("StepPortrait", () => {
       );
 
       await user.click(
-        screen.getByText("完全重新生成（抛弃历史修改）")
+        screen.getByText("完全重新生成（三张新形象）")
       );
 
       await waitFor(() => {

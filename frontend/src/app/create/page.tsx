@@ -60,7 +60,11 @@ export default function CreatePage() {
     imageFeedback,
     
     // Image store actions
-    setSelectedImageIndex,
+    selectPlayerImage,
+    selectedImageId,
+    portraitCandidates,
+    retryMissingPortraitSlots,
+    enqueuePortraitCandidates,
     setImageFeedback,
     generatePlayerImage,
     refreshPortraitImageJob,
@@ -171,6 +175,7 @@ export default function CreatePage() {
         presetSaveMessage={presetSaveMessage}
         toast={toast}
         isGeneratingImage={isGeneratingImage}
+        imageGenerationError={imageGenerationError}
         imageFeedback={imageFeedback}
         onImageFeedbackChange={setImageFeedback}
         onRegenerateImage={() => regeneratePlayerImage(imageFeedback)}
@@ -301,20 +306,22 @@ export default function CreatePage() {
             {isPortraitStep && (
               <StepPortrait
                 playerImages={playerImages}
-                selectedImageIndex={selectedImageIndex}
+                selectedImageId={selectedImageId}
+                portraitCandidates={portraitCandidates}
+                onRetryMissing={retryMissingPortraitSlots}
                 isGeneratingImage={isGeneratingImage}
                 imageGenerationError={imageGenerationError}
                 playerName={playerName}
                 imageFeedback={imageFeedback}
                 gameId={gameId}
                 isBackgroundGenerating={isBackgroundGenerating}
-                onSelectImage={setSelectedImageIndex}
+                onSelectImage={selectPlayerImage}
                 onFeedbackChange={setImageFeedback}
                 onRegenerate={() => regeneratePlayerImage(imageFeedback)}
                 onRegenerateFresh={regenerateFreshPlayerImage}
                 onRetryGeneration={() => {
                   if (!gameId) return Promise.resolve();
-                  return generatePlayerImage(gameId, playerName, characterSettings);
+                  return enqueuePortraitCandidates(gameId, 'initial');
                 }}
                 onRecover={() => {
                   if (gameId) void refreshPortraitImageJob(gameId);

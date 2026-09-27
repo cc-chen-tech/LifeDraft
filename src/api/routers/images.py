@@ -28,6 +28,13 @@ from src.api.schemas import (BatchGenerateCharactersRequest,
                              RegenerateImageRequest,
                              RegenerateOpeningIllustrationRequest,
                              RegenerateRoundSceneRequest, RoundSceneResponse)
+from src.api.schemas import (CreatePortraitCandidatesRequest, PortraitCandidateBatchResponse,
+                             PortraitSelectionResponse, SelectPortraitRequest)
+from src.services.portrait_selection import select_portrait, selected_portrait
+from src.services.portrait_candidate_jobs import (
+    enqueue_candidate_batch, candidate_batch_state, retry_candidate_batch, _batch_state,
+)
+from src.database.models import PortraitCandidateBatch
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import PortraitImageGenerationJob, User
@@ -350,6 +357,53 @@ async def generate_image(
         raise HTTPException(status_code=500, detail=f"图片生成失败: {e}")
 
 
+@router.post("/character/candidates", status_code=202, response_model=PortraitCandidateBatchResponse)
+def create_candidates(req: CreatePortraitCandidatesRequest,
+                      db: Session = Depends(get_session), user: int = Depends(get_current_user)):
+    verify_game_ownership(db, req.game_id, user)
+    job = enqueue_candidate_batch(db, user, req.game_id, req.mode)
+    schedule_portrait_image_job(int(job.job_id))
+    batch = db.query(PortraitCandidateBatch).filter_by(job_id=job.job_id).one()
+    return _batch_state(db, batch)
+
+
+@router.get("/character/selection", response_model=Optional[PortraitSelectionResponse])
+def get_portrait_selection(game_id: int,
+                           db: Session = Depends(get_session), user: int = Depends(get_current_user)):
+    verify_game_ownership(db, game_id, user)
+    image = selected_portrait(db, game_id)
+    return PortraitSelectionResponse(game_id=game_id, image_id=int(image.image_id)) if image else None
+
+
+@router.put("/character/selection", response_model=PortraitSelectionResponse)
+def put_portrait_selection(req: SelectPortraitRequest,
+                           db: Session = Depends(get_session), user: int = Depends(get_current_user)):
+    verify_game_ownership(db, req.game_id, user)
+    try:
+        image = select_portrait(db, req.game_id, req.image_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return PortraitSelectionResponse(game_id=req.game_id, image_id=int(image.image_id))
+
+
+@router.get("/character/candidates", response_model=Optional[PortraitCandidateBatchResponse])
+def get_candidates(game_id: int, db: Session = Depends(get_session), user: int = Depends(get_current_user)):
+    verify_game_ownership(db, game_id, user)
+    return candidate_batch_state(db, game_id, user)
+
+
+@router.post("/character/candidates/{batch_id}/retry", status_code=202,
+             response_model=PortraitCandidateBatchResponse)
+def retry_candidates(batch_id: int, db: Session = Depends(get_session), user: int = Depends(get_current_user)):
+    batch = db.get(PortraitCandidateBatch, batch_id)
+    if batch is None or batch.user_id != user:
+        raise HTTPException(status_code=404, detail="候选批次不存在")
+    verify_game_ownership(db, batch.game_id, user)
+    job = retry_candidate_batch(db, batch_id, user)
+    schedule_portrait_image_job(int(job.job_id))
+    return _batch_state(db, batch)
+
+
 def _portrait_job_response(job: PortraitImageGenerationJob) -> PortraitImageGenerationJobResponse:
     return PortraitImageGenerationJobResponse(
         job_id=int(job.job_id),
@@ -386,6 +440,68 @@ async def enqueue_character_portrait(
     job, _ = PortraitImageJobService(db).enqueue(user, request_json)
     schedule_portrait_image_job(int(job.job_id))
     return _portrait_job_response(job)
+
+
+def _enqueue_main_portrait_regeneration(
+    db: Session,
+    user: int,
+    image_id: int,
+    operation: str,
+    feedback: Optional[str] = None,
+    new_description: Optional[str] = None,
+    use_deepseek_prompt: bool = True,
+) -> PortraitImageGenerationJobResponse:
+    source = verify_image_ownership(db, image_id, user)
+    if source.image_type != "character" or source.entity_key != "player_main" or not source.is_active:
+        raise HTTPException(status_code=422, detail="只能重新生成当前主角形象")
+    try:
+        job, _ = PortraitImageJobService(db).enqueue(user, {
+            "game_id": int(source.game_id),
+            "entity_key": "player_main",
+            "operation": operation,
+            "source_image_id": int(source.image_id),
+            "feedback": feedback,
+            "new_description": new_description,
+            "use_deepseek_prompt": use_deepseek_prompt,
+        })
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    schedule_portrait_image_job(int(job.job_id))
+    return _portrait_job_response(job)
+
+
+@router.post(
+    "/character/regenerate-async",
+    response_model=PortraitImageGenerationJobResponse,
+    status_code=202,
+)
+async def enqueue_character_regeneration(
+    req: RegenerateImageRequest,
+    db: Session = Depends(get_session),
+    user: Optional[int] = Depends(get_current_user_optional),
+) -> PortraitImageGenerationJobResponse:
+    if user is None:
+        raise HTTPException(status_code=401, detail="未登录")
+    return _enqueue_main_portrait_regeneration(
+        db, user, req.image_id, "regenerate", req.feedback, req.new_description
+    )
+
+
+@router.post(
+    "/character/regenerate-fresh-async",
+    response_model=PortraitImageGenerationJobResponse,
+    status_code=202,
+)
+async def enqueue_character_fresh_regeneration(
+    req: RegenerateFreshImageRequest,
+    db: Session = Depends(get_session),
+    user: Optional[int] = Depends(get_current_user_optional),
+) -> PortraitImageGenerationJobResponse:
+    if user is None:
+        raise HTTPException(status_code=401, detail="未登录")
+    return _enqueue_main_portrait_regeneration(
+        db, user, req.image_id, "regenerate_fresh", use_deepseek_prompt=req.use_deepseek_prompt
+    )
 
 
 @router.get(

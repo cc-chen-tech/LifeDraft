@@ -42,6 +42,20 @@ export interface PortraitImageGenerationJob {
   updated_at?: string | null;
 }
 
+export interface PortraitCandidateState {
+  batch_id: number;
+  job_id: number;
+  game_id: number;
+  mode: string;
+  origin_revision?: number | null;
+  status: string;
+  completed_count: number;
+  selected_image_id: number | null;
+  slots: Array<{ slot_index: number; image_id: number | null; status: string; error_code?: string | null }>;
+  error_code?: string | null;
+  error_message?: string | null;
+}
+
 /**
  * 401 重定向防抖：防止并发请求竞态导致多次重定向
  * 一旦触发登出，后续 401 不再重复处理
@@ -109,7 +123,11 @@ function isImageGenerationMutation(url: string): boolean {
 
   return [
     '/images/generate',
+    '/images/character/candidates',
+    '/images/character/selection',
     '/images/character/generate-async',
+    '/images/character/regenerate-async',
+    '/images/character/regenerate-fresh-async',
     '/images/player',
     '/images/regenerate',
     '/images/regenerate-fresh',
@@ -662,6 +680,20 @@ export const api = {
 
   // Images
   images: {
+    enqueuePortraitCandidates: (gameId: number, mode: 'initial' | 'fresh') =>
+      fetchJson<PortraitCandidateState>('/images/character/candidates', {
+        method: 'POST', body: JSON.stringify({ game_id: gameId, mode }),
+      }),
+    getPortraitCandidates: (gameId: number) =>
+      fetchJson<PortraitCandidateState | null>(`/images/character/candidates?game_id=${gameId}`),
+    retryMissingPortraitSlots: (batchId: number) =>
+      fetchJson<PortraitCandidateState>(`/images/character/candidates/${batchId}/retry`, { method: 'POST' }),
+    getSelectedPortrait: (gameId: number) =>
+      fetchJson<{ game_id: number; image_id: number } | null>(`/images/character/selection?game_id=${gameId}`),
+    selectPortrait: (gameId: number, imageId: number) =>
+      fetchJson<{ game_id: number; image_id: number }>('/images/character/selection', {
+        method: 'PUT', body: JSON.stringify({ game_id: gameId, image_id: imageId }),
+      }),
     listByGame: (gameId: number, imageType?: string) =>
       fetchJson<{ images: Array<{ image_id: number; image_url: string; image_type: string; entity_key?: string; entity_name?: string }>; total: number }>(
         `/images/game/${gameId}${imageType ? `?image_type=${imageType}` : ''}`
@@ -704,10 +736,20 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ image_id: imageId, ...data }),
       }),
+    enqueueCharacterRegeneration: (imageId: number, feedback: string) =>
+      fetchJson<PortraitImageGenerationJob>('/images/character/regenerate-async', {
+        method: 'POST',
+        body: JSON.stringify({ image_id: imageId, feedback }),
+      }),
     regenerateFresh: (imageId: number, data?: { prompt?: string }) =>
       fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>(`/images/regenerate-fresh`, {
         method: 'POST',
         body: JSON.stringify({ image_id: imageId, ...data }),
+      }),
+    enqueueCharacterFreshRegeneration: (imageId: number) =>
+      fetchJson<PortraitImageGenerationJob>('/images/character/regenerate-fresh-async', {
+        method: 'POST',
+        body: JSON.stringify({ image_id: imageId }),
       }),
     get: (imageId: number) =>
       fetchJson<{ image_id: number; image_url: string; image_type: string }>(`/images/${imageId}`),
