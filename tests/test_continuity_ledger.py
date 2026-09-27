@@ -366,3 +366,29 @@ def test_twelve_round_ledger_keeps_monotonic_dates_and_canonical_identity() -> N
     assert ledger.timeline[-1]["week"] == 3
     assert ledger.immutable_identities["苏晚晴"]["roles"] == ["摄影师"]
     assert ledger.conflicts == []
+
+
+@pytest.mark.parametrize('story', [
+    '林见微那时十九岁，刚结束学业。此刻林见微二十八岁，正在整理卷册。',
+    '当年十九岁的林见微还在求学，如今林见微二十八岁。',
+    '林见微想起十九岁时的往事，此刻林见微二十八岁。',
+])
+def test_recalled_age_is_not_compared_to_current_age(story):
+    ledger = ContinuityLedger.from_player_state(_state())
+    issues = ledger.validate_story(story, date_info={'age': 28}, week=0, round_number=0).issues
+    assert not any(issue.code == 'age_mismatch' for issue in issues)
+
+
+@pytest.mark.parametrize('story', [
+    '林见微那时十九岁，刚结束学业。此刻林见微三十岁。',
+    '当年十九岁的林见微还在求学，如今林见微三十岁。',
+    '林见微二十八岁。随后文书又写道，林见微三十岁。',
+    '林见微想起十九岁时的往事，此刻林见微三十岁。',
+    '林见微三十岁。她想起了童年的旧事。',
+])
+def test_memory_or_correct_age_cannot_hide_a_wrong_current_age(story):
+    ledger = ContinuityLedger.from_player_state(_state())
+    issues = ledger.validate_story(story, date_info={'age': 28}, week=0, round_number=0).issues
+    ages = [issue for issue in issues if issue.code == 'age_mismatch']
+    assert len(ages) == 1
+    assert ages[0].observed == '30'

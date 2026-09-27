@@ -87,7 +87,7 @@ def test_daily_scheduled_prompt_uses_daily_opening_and_transition_contract() -> 
     )
 
     assert "首日人物开场" in prompt
-    assert "第一段只能有一句" in prompt
+    assert "首段优先用一句" in prompt
     assert '"transition_text"' in prompt
     assert "第1周·周一" not in prompt
     assert "时间线标题约束" not in prompt

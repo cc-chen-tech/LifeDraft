@@ -175,11 +175,14 @@ default_registry.register(
 default_registry.register(
     ConstraintDefinition(
         type=ConstraintType.DECISION_POINT_ENDING,
-        priority=Priority.CRITICAL,
-        description="故事结尾必须停在一个具体的决策点",
+        # Keyword absence cannot establish that an implicit decision is absent.
+        # Keep the prompt guidance and diagnostic without rejecting or lowering
+        # scores (which can independently trigger MASTER retries).
+        priority=Priority.LOW,
+        description="建议故事结尾停在具体决策点；关键词未命中仅供诊断",
         validator=validate_decision_point_ending,
-        prompt_marker="[MUST] **故事结尾要求**",
-        weight=3.0,
+        prompt_marker="[SHOULD] **故事结尾要求**",
+        weight=0.0,
     )
 )
 

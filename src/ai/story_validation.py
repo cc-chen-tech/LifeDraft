@@ -44,6 +44,10 @@ class ValidationFinding:
 
 
 def _legacy_code(message: str, severity: FindingSeverity) -> tuple[str, float]:
+    if message == "daily_opening_missing_core_conflict":
+        # Preserve this bounded rule code in retained logs; missing keywords
+        # are weak evidence about the narrative's actual conflict.
+        return message, 0.35
     lowered = message.lower()
     if "empty_story_output" in lowered:
         return "EMPTY_OUTPUT", 1.0

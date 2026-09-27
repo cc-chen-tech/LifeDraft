@@ -127,6 +127,16 @@ def test_harness_rejection_then_judge_budget_exhaustion_keeps_first_day_playable
         else '{"issues": [], "should_retry": false}'
     )
     generator = StoryGenerator(client, quality_level=QualityLevel.MASTER)
+    # Decision keyword absence is now advisory. Inject a genuine hard gate
+    # here so this independent budget-exhaustion/fallback regression survives.
+    from src.ai.harness.constraint_registry import ConstraintDefinition, ConstraintRegistry, ConstraintType, Priority
+    from src.ai.harness.validation_pipeline import ValidationPipeline
+    registry = ConstraintRegistry()
+    registry.register(ConstraintDefinition(
+        ConstraintType.ESTABLISHED_FACTS, Priority.CRITICAL, "fixture fact conflict",
+        lambda story, context: (False, "fixture fact conflict", {}),
+    ))
+    generator._validation_pipeline = ValidationPipeline(registry)
     emitted = []
     event = generator.generate_round_event(
         player_state=_first_day_state(), character_settings={"name": "林岚"}, language="zh",

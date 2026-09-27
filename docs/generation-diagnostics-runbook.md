@@ -66,3 +66,11 @@ python -m scripts.read_validation_evidence \
 日志证据回归覆盖加解密往返、两用户并发归属、篡改身份、错误密钥、缺失密钥、凭据脱敏、大小上限、轮转文件重复读取，以及真实生成流程中初稿/修订稿的独立证据。CI maintained coverage 注册 `test_validation_evidence.py`。
 
 本地通过、远端 CI 通过、真实模型验收、合并、上线是不同状态。PR 中分别记录本次证据；此文档不宣称改动已经部署。
+
+## 叙事关键词提示
+
+首段“核心冲突”与结尾“决策点”的关键词未命中不再作为拒稿证据：首段产生 warning，结尾产生 LOW 诊断且不扣分，均不能单独触发重写、熔断或安全开场。提示词仍要求呈现冲突与可供选择的局面；选项生成、事实一致性和持久化检查继续执行。日志保留 `daily_opening_missing_core_conflict` 与 `decision_point_ending`，后者以 `outcome=warning` 标明未拒稿。
+
+`test_narrative_keyword_advisories.py` 覆盖中英文隐含冲突、隐含决策、三个质量档位和零扣分/零重试；`test_story_delivery_diagnostics.py` 的 `keyword_variance` 用例执行真实生成编排、文件 SQLite、授权接口读取与选择结算，验证原文交付且仅一次正文调用。供应商回复由固定夹具提供，这不等同于真实模型验收。
+
+年龄一致性按陈述区分回忆与当前：例如“那时十九岁……此刻二十八岁”不以回忆年龄触发当前年龄拒稿。扫描不会在首个正确年龄或回忆年龄处终止；后面的错误当前年龄仍会被拒。相关回归在 `test_continuity_ledger.py`，实际调用证据在首日真实模型复现报告的 2026-09-28 追加部分。

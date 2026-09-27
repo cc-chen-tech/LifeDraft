@@ -39,6 +39,13 @@ _MEMORY_WORDS = (
     "照片",
     "遗像",
 )
+# The nearest explicit temporal marker wins (e.g. 当年十九岁，如今三十岁).
+_CURRENT_AGE_MARKERS = frozenset({"此刻", "现在", "如今", "今年", "眼下", "现年"})
+_AGE_TIME_MARKERS = re.compile("|".join(re.escape(marker) for marker in (
+    *_MEMORY_WORDS, "那时", "当时", "当年", "那年", "彼时", "从前", "昔日", "小时候",
+    *sorted(_CURRENT_AGE_MARKERS),
+)))
+
 _ACTIVE_VERBS = (
     "走",
     "跑",
@@ -552,15 +559,18 @@ class ContinuityLedger:
                 rf"([0-9]{{1,3}}|[一二两三四五六七八九十]{{1,4}})岁的{re.escape(name)}",
                 rf"{re.escape(name)}.{{0,6}}?([0-9]{{1,3}}|[一二两三四五六七八九十]{{1,4}})岁",
             ]
-            for pattern in patterns:
-                match = re.search(pattern, story_text)
-                if not match:
+            matches = sorted(
+                (match for pattern in patterns for match in re.finditer(pattern, story_text)),
+                key=lambda match: match.start(),
+            )
+            for match in matches:
+                # Scope tense to this assertion, never to a later sentence.
+                # A recalled age must not stop us checking subsequent current
+                # claims, nor may an earlier correct age hide a later drift.
+                clause = re.split(r"[。！？.!?\n；;]", story_text[:match.end()])[-1]
+                temporal_markers = list(_AGE_TIME_MARKERS.finditer(clause))
+                if temporal_markers and temporal_markers[-1].group() not in _CURRENT_AGE_MARKERS:
                     continue
-                context = story_text[
-                    max(0, match.start() - 24) : min(len(story_text), match.end() + 12)
-                ]
-                if any(word in context for word in _MEMORY_WORDS):
-                    break
                 observed_age = (
                     int(match.group(1))
                     if match.group(1).isdigit()
@@ -577,7 +587,7 @@ class ContinuityLedger:
                             message=f"权威年龄为{expected_age}岁，正文写成{observed_age}岁",
                         )
                     )
-                break
+                    break
         return issues
 
     def _validate_identities(self, story_text: str) -> List[ContinuityIssue]:

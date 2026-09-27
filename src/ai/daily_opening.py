@@ -115,12 +115,13 @@ _EN_NARRATIVE_VERBS = {
 }
 
 _STYLE_ONLY_ISSUES = frozenset(
-    {"daily_opening_not_single_sentence", "daily_opening_second_paragraph_not_scene"}
+    {"daily_opening_not_single_sentence", "daily_opening_second_paragraph_not_scene",
+     "daily_opening_missing_core_conflict"}
 )
 
 
 def split_daily_opening_issues(issues: List[str]) -> tuple[List[str], List[str]]:
-    """Keep personalization and completeness hard while treating paragraph style as advisory."""
+    """Keep personalization and completeness hard; keyword-based narrative signals are advisory."""
     hard = [issue for issue in issues if issue not in _STYLE_ONLY_ISSUES]
     warnings = [issue for issue in issues if issue in _STYLE_ONLY_ISSUES]
     return hard, warnings
@@ -207,7 +208,7 @@ def validate_daily_first_opening(
     character_settings: Optional[Dict[str, Any]],
     language: str,
 ) -> List[str]:
-    """Return retry-worthy first-day opening violations for daily timeline v2."""
+    """Return first-day findings; split_daily_opening_issues determines blocking severity."""
     timeline = player_state.get("timeline")
     if not isinstance(timeline, dict) or timeline.get("version") != 2:
         return []

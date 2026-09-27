@@ -105,10 +105,10 @@ def test_first_day_constraint_is_personalized_and_only_applies_once() -> None:
 
     assert "林岚" in first
     assert "社区书店" in first
-    assert "第一段只能有一句" in first
+    assert "首段优先用一句" in first
     assert "第二段" in first
     assert "命运的齿轮" in first
-    assert "第一段只能有一句" not in second
+    assert "首段优先用一句" not in second
 
 
 def test_first_day_constraint_sanitizes_persisted_life_vision() -> None:
