@@ -2,6 +2,7 @@
 
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
+import time
 import pytest
 
 from src.database.models import (
@@ -427,6 +428,173 @@ def test_retry_only_missing_slot_after_worker_restart(batch_with_two_ready_slots
         assert enqueue_candidate_batch(db, ids[0], ids[1], "initial").job_id == ids[2]
 
 
+def test_three_candidate_provider_calls_overlap_and_all_slots_finish(batch_setup, fake_provider):
+    """One slow provider call must not keep the other two slots queued."""
+    from threading import Barrier, BrokenBarrierError
+
+    Session, ids = batch_setup
+    entered = Barrier(3, timeout=3)
+
+    class OverlappingProvider(fake_provider):
+        def generate_character_candidate(self, **kwargs):
+            try:
+                entered.wait()
+            except BrokenBarrierError as exc:
+                raise AssertionError("three slots did not reach the provider together") from exc
+            return super().generate_character_candidate(**kwargs)
+
+    run_candidate_batch(ids[2], session_factory=Session, image_service_factory=OverlappingProvider)
+
+    with Session() as db:
+        state = candidate_batch_state(db, ids[1], ids[0])
+        assert state.status == "succeeded"
+        assert state.completed_count == 3
+        assert [slot.status for slot in state.slots] == ["ready", "ready", "ready"]
+        assert len({slot.image_id for slot in state.slots}) == 3
+
+
+def test_parallel_batches_limit_total_provider_calls(batch_setup, fake_provider):
+    """Several games cannot multiply provider concurrency without a bound."""
+    from copy import deepcopy
+    from threading import Event, Lock
+
+    Session, ids = batch_setup
+    with Session() as db:
+        second_game = Game(user_id=ids[0], initial_state=deepcopy(db.get(Game, ids[1]).initial_state))
+        db.add(second_game)
+        db.commit()
+        second_job_id = enqueue_candidate_batch(db, ids[0], second_game.game_id, "initial").job_id
+    entered_three, release = Event(), Event()
+    lock = Lock()
+    active = peak = 0
+
+    class CountedProvider(fake_provider):
+        def generate_character_candidate(self, **kwargs):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+                if active == 3:
+                    entered_three.set()
+            try:
+                assert release.wait(timeout=5)
+                return super().generate_character_candidate(**kwargs)
+            finally:
+                with lock:
+                    active -= 1
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = [pool.submit(run_candidate_batch, job_id, session_factory=Session,
+                            image_service_factory=CountedProvider)
+                for job_id in (ids[2], second_job_id)]
+        assert entered_three.wait(timeout=5)
+        time.sleep(0.1)
+        release.set()
+        for job in jobs:
+            job.result(timeout=10)
+
+    assert peak == 3
+    with Session() as db:
+        assert db.get(PortraitImageGenerationJob, ids[2]).status == "succeeded"
+        assert db.get(PortraitImageGenerationJob, second_job_id).status == "succeeded"
+
+
+def test_manual_choice_survives_a_slower_parallel_slot(batch_setup, fake_provider, monkeypatch):
+    from threading import Event
+
+    Session, ids = batch_setup
+    slow_entered, release_slow = Event(), Event()
+
+    class SlowFirstProvider(fake_provider):
+        def generate_character_candidate(self, **kwargs):
+            if kwargs["slot_index"] == 0:
+                slow_entered.set()
+                assert release_slow.wait(timeout=5)
+            return super().generate_character_candidate(**kwargs)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(run_candidate_batch, ids[2], session_factory=Session,
+                             image_service_factory=SlowFirstProvider)
+        assert slow_entered.wait(timeout=5)
+        try:
+            with Session() as db:
+                batch = db.query(PortraitCandidateBatch).filter_by(job_id=ids[2]).one()
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    db.expire_all()
+                    slot = db.get(PortraitCandidateSlot, (batch.batch_id, 1))
+                    if slot.status == "ready":
+                        break
+                    time.sleep(0.02)
+                else:
+                    pytest.fail("a later slot did not finish while slot 0 was blocked")
+                chosen_id = slot.image_id
+                monkeypatch.setattr(
+                    "src.services.portrait_selection.ImageStorageService.get_image_data",
+                    lambda *_args: b"image",
+                )
+                select_portrait(db, ids[1], chosen_id)
+        finally:
+            release_slow.set()
+        future.result(timeout=5)
+
+    with Session() as db:
+        assert candidate_batch_state(db, ids[1], ids[0]).status == "succeeded"
+        assert selected_portrait(db, ids[1]).image_id == chosen_id
+        assert db.get(PortraitSelection, ids[1]).is_user_selected is True
+
+
+def test_batch_finalization_cannot_resurrect_a_superseded_job(batch_setup, fake_provider):
+    """A newer story origin must win even when it arrives during batch finalization."""
+    from threading import current_thread
+    from sqlalchemy import event, text
+    from sqlalchemy.exc import OperationalError
+
+    Session, ids = batch_setup
+    coordinator_thread = current_thread()
+    superseded = False
+    supersession_waited_for_finalization = False
+
+    def replace_origin():
+        with Session() as concurrent:
+            concurrent.execute(text("PRAGMA busy_timeout=100"))
+            concurrent.add(GameState(game_id=ids[1], week=0, age=28, state_json={
+                "character_settings": {"story_origin": {"revision": 2}}}))
+            concurrent.commit()
+            enqueue_candidate_batch(concurrent, ids[0], ids[1], "initial")
+
+    def supersede_before_slot_count(execute_state):
+        nonlocal superseded, supersession_waited_for_finalization
+        if (superseded or current_thread() is not coordinator_thread
+                or "portrait_candidate_slots" not in str(execute_state.statement)):
+            return
+        superseded = True
+        try:
+            replace_origin()
+        except OperationalError:
+            # The coordinator's game-row write lock correctly makes this
+            # update wait until after its terminal commit.
+            supersession_waited_for_finalization = True
+
+    event.listen(Session.class_, "do_orm_execute", supersede_before_slot_count)
+    try:
+        run_candidate_batch(ids[2], session_factory=Session, image_service_factory=fake_provider)
+    finally:
+        event.remove(Session.class_, "do_orm_execute", supersede_before_slot_count)
+
+    assert superseded
+    if supersession_waited_for_finalization:
+        replace_origin()
+    with Session() as db:
+        old = db.get(PortraitImageGenerationJob, ids[2])
+        if supersession_waited_for_finalization:
+            assert old.status == "succeeded"
+            assert candidate_batch_state(db, ids[1], ids[0]).origin_revision == 2
+        else:
+            assert old.status == "failed"
+            assert old.error_code == "story_origin_superseded"
+
+
 def test_partial_failure_retry_and_frozen_snapshot(batch_setup, fake_provider):
     Session, ids = batch_setup
     with Session() as db:
@@ -444,7 +612,7 @@ def test_partial_failure_retry_and_frozen_snapshot(batch_setup, fake_provider):
         retry_candidate_batch(db, state.batch_id, ids[0])
     fake_provider.fail = set()
     run_candidate_batch(ids[2], session_factory=Session, image_service_factory=fake_provider)
-    assert fake_provider.generated_slot_indices == [0, 1, 2, 1]
+    assert sorted(fake_provider.generated_slot_indices) == [0, 1, 1, 2]
     assert all(call["name"] == "林见微" and call["era"] == "宋代" for call in fake_provider.calls)
     assert all(call["character_settings"]["age"] == 28 for call in fake_provider.calls)
     assert len({call["direction"] for call in fake_provider.calls}) == 3
@@ -460,26 +628,80 @@ def test_saved_inactive_image_reconciled_without_provider_call(batch_setup, fake
         image_id = image.image_id
     fake_provider.generated_slot_indices.clear()
     run_candidate_batch(ids[2], session_factory=Session, image_service_factory=fake_provider)
-    assert fake_provider.generated_slot_indices == [1, 2]
+    assert sorted(fake_provider.generated_slot_indices) == [1, 2]
     with Session() as db:
         assert db.get(Image, image_id).is_active
 
 
 def test_stale_origin_during_provider_does_not_activate(batch_setup, fake_provider):
     Session, ids = batch_setup
+    from threading import Event
+    all_images_saved = Barrier(3, timeout=5)
+    origin_updated = Event()
+    deleted_paths = []
+
     class StaleProvider(fake_provider):
         def generate_character_candidate(self, **kwargs):
             image = super().generate_character_candidate(**kwargs)
-            self.db.add(GameState(game_id=ids[1], week=0, age=28,
-                state_json={"character_settings": {"story_origin": {"revision": 2}}}))
-            self.db.commit()
+            all_images_saved.wait()
+            if kwargs["slot_index"] == 0:
+                self.db.add(GameState(game_id=ids[1], week=0, age=28,
+                    state_json={"character_settings": {"story_origin": {"revision": 2}}}))
+                self.db.commit()
+                origin_updated.set()
+            else:
+                assert origin_updated.wait(timeout=5)
             return image
+
+        def delete_image_files(self, images):
+            deleted_paths.extend(image.storage_path for image in images)
+
     run_candidate_batch(ids[2], session_factory=Session, image_service_factory=StaleProvider)
     with Session() as db:
         assert db.query(Image).filter_by(is_active=True).count() == 0
+        assert db.query(Image).count() == 0
         assert db.get(PortraitSelection, ids[1]) is None
         assert db.get(PortraitImageGenerationJob, ids[2]).error_code == "story_origin_superseded"
-    assert fake_provider.generated_slot_indices == [0]
+    assert sorted(fake_provider.generated_slot_indices) == [0, 1, 2]
+    assert sorted(deleted_paths) == ["candidate-0.png", "candidate-1.png", "candidate-2.png"]
+
+
+def test_stale_cleanup_preserves_a_deactivated_but_selected_ready_slot(batch_setup, fake_provider):
+    from src.services.portrait_candidate_jobs import _discard_stale_candidate_images
+
+    Session, ids = batch_setup
+    deleted_paths = []
+
+    class StorageAwareProvider(fake_provider):
+        def delete_image_files(self, images):
+            deleted_paths.extend(image.storage_path for image in images)
+
+    with Session() as db:
+        batch = db.query(PortraitCandidateBatch).filter_by(job_id=ids[2]).one()
+        ready = Image(game_id=ids[1], image_type="character", entity_key="player_main",
+                      entity_name="林见微", prompt_text="ready", storage_path="ready.png",
+                      is_active=False, metadata_json={"batch_id": batch.batch_id, "slot_index": 0})
+        unused = Image(game_id=ids[1], image_type="character", entity_key="player_main",
+                       entity_name="林见微", prompt_text="unused", storage_path="unused.png",
+                       is_active=False, metadata_json={"batch_id": batch.batch_id, "slot_index": 1})
+        db.add_all([ready, unused])
+        db.flush()
+        slot = db.get(PortraitCandidateSlot, (batch.batch_id, 0))
+        slot.status, slot.image_id = "ready", ready.image_id
+        db.get(PortraitImageGenerationJob, ids[2]).image_id = ready.image_id
+        db.add(PortraitSelection(game_id=ids[1], image_id=ready.image_id,
+                                 is_user_selected=True))
+        db.commit()
+        ready_id, unused_id = ready.image_id, unused.image_id
+
+    with Session() as db:
+        batch = db.query(PortraitCandidateBatch).filter_by(job_id=ids[2]).one()
+        _discard_stale_candidate_images(db, batch, StorageAwareProvider)
+        assert db.get(Image, ready_id) is not None
+        assert db.get(Image, unused_id) is None
+        assert db.get(PortraitCandidateSlot, (batch.batch_id, 0)).image_id == ready_id
+        assert db.get(PortraitSelection, ids[1]).image_id == ready_id
+    assert deleted_paths == ["unused.png"]
 
 
 def test_simultaneous_enqueue_uses_database_uniqueness(temp_db_file):
@@ -540,7 +762,7 @@ def test_duplicate_worker_delivery_does_not_repeat_provider(batch_setup, fake_pr
         finally:
             release.set()
         first.result(timeout=5)
-    assert fake_provider.generated_slot_indices == [0, 1, 2]
+    assert sorted(fake_provider.generated_slot_indices) == [0, 1, 2]
 
 
 def test_dispatch_and_startup_recovery_resume_candidate_slots(batch_with_two_ready_slots, fake_provider, monkeypatch):
@@ -596,7 +818,7 @@ def test_retry_after_terminal_commit_before_scheduler_cleanup_is_dispatched(
             allow_cleanup.set()
         assert retry_finished.wait(timeout=5), "accepted retry was stranded in queued state"
     assert calls == [ids[2], ids[2]]
-    assert fake_provider.generated_slot_indices == [0, 1, 2, 1]
+    assert sorted(fake_provider.generated_slot_indices) == [0, 1, 1, 2]
     with Session() as db:
         assert candidate_batch_state(db, ids[1], ids[0]).status == "succeeded"
 
@@ -730,7 +952,7 @@ def test_fresh_batch_keeps_choice_and_retries_only_missing(ready_three_slot_batc
         retry_candidate_batch(db, state.batch_id, ids[0])
     fake_provider.fail = set()
     run_candidate_batch(fresh_id, session_factory=Session, image_service_factory=fake_provider)
-    assert fake_provider.generated_slot_indices == [0, 1, 2] + sorted(failures)
+    assert sorted(fake_provider.generated_slot_indices) == sorted([0, 1, 2] + list(failures))
 
 
 def test_source_slot_changed_during_edit_is_not_overwritten(ready_three_slot_batch):
