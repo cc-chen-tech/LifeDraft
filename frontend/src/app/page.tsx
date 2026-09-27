@@ -147,6 +147,9 @@ export default function WelcomePage() {
 
       <Surface variant="reading" className="w-full p-4 sm:p-6">
         <div className="grid gap-3">
+          <Button variant="narrative" size="touch" className="w-full text-base" asChild>
+            <Link href="/plaza"><BookOpen className="size-5" /> 浏览故事广场</Link>
+          </Button>
           {hasActiveGame && (
             <Button
               size="touch"

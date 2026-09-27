@@ -13,6 +13,7 @@ maintained_tests=(
   tests/test_model_smoke_contract.py
   tests/test_gate_imports_no_mock.py
   tests/test_api_contract.py
+  tests/test_public_story_plaza.py
   tests/test_ai_retry_failure_contract_no_mock.py
   tests/test_daily_opening_delivery.py
   tests/test_collection_field_db_contract_no_mock.py

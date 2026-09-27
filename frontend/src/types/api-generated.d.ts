@@ -416,6 +416,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plaza/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Owned Stories */
+        get: operations["list_owned_stories_api_plaza_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plaza/mine/{game_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Story Publication */
+        put: operations["set_story_publication_api_plaza_mine__game_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plaza": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Public Stories */
+        get: operations["list_public_stories_api_plaza_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plaza/{public_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Public Story */
+        get: operations["get_public_story_api_plaza__public_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/character/setting": {
         parameters: {
             query?: never;
@@ -2645,6 +2713,23 @@ export interface components {
              */
             language: string;
         };
+        /** OwnedStory */
+        OwnedStory: {
+            /** Game Id */
+            game_id: number;
+            /** Title */
+            title: string;
+            /** Chapter Count */
+            chapter_count: number;
+            /** Can Publish */
+            can_publish: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Public Id */
+            public_id?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** PortraitCandidateBatchResponse */
         PortraitCandidateBatchResponse: {
             /** Batch Id */
@@ -2728,6 +2813,61 @@ export interface components {
             };
             /** Created At */
             created_at?: string | null;
+        };
+        /** PublicChapter */
+        PublicChapter: {
+            /** Number */
+            number: number;
+            /** Date */
+            date?: string | null;
+            /** Text */
+            text: string;
+        };
+        /** PublicStory */
+        PublicStory: {
+            /** Public Id */
+            public_id: string;
+            /** Title */
+            title: string;
+            /** Author Name */
+            author_name: string;
+            /** Chapter Count */
+            chapter_count: number;
+            /** Excerpt */
+            excerpt: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Chapters */
+            chapters: components["schemas"]["PublicChapter"][];
+        };
+        /** PublicStoryCard */
+        PublicStoryCard: {
+            /** Public Id */
+            public_id: string;
+            /** Title */
+            title: string;
+            /** Author Name */
+            author_name: string;
+            /** Chapter Count */
+            chapter_count: number;
+            /** Excerpt */
+            excerpt: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** PublicStoryList */
+        PublicStoryList: {
+            /** Items */
+            items: components["schemas"]["PublicStoryCard"][];
+            /** Has More */
+            has_more: boolean;
+            /** Next Offset */
+            next_offset: number;
+        };
+        /** PublicationUpdate */
+        PublicationUpdate: {
+            /** Enabled */
+            enabled: boolean;
         };
         /** ReadingContext */
         ReadingContext: {
@@ -4204,6 +4344,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_owned_stories_api_plaza_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnedStory"][];
+                };
+            };
+        };
+    };
+    set_story_publication_api_plaza_mine__game_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnedStory"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_public_stories_api_plaza_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStoryList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_public_story_api_plaza__public_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStory"];
                 };
             };
             /** @description Validation Error */
