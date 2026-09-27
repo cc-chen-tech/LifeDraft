@@ -392,3 +392,29 @@ def test_memory_or_correct_age_cannot_hide_a_wrong_current_age(story):
     ages = [issue for issue in issues if issue.code == 'age_mismatch']
     assert len(ages) == 1
     assert ages[0].observed == '30'
+
+
+@pytest.mark.parametrize('story', [
+    '林见微如今二十八岁。苏晚晴如今四十岁。',
+    '林见微的母亲六十岁。',
+    '林见微心想：假如林见微现在四十岁，事情会怎样？',
+    '如果四十岁的林见微重回这里，她会如何看待此事？',
+    '林见微不是四十岁，而是二十八岁。',
+    '林见微还不到四十岁。',
+    '也许林见微四十岁时会再来这里。',
+])
+def test_other_people_and_nonfactual_ages_are_not_current_protagonist_claims(story):
+    ledger = ContinuityLedger.from_player_state(_state())
+    assert ledger._validate_ages(story, {'age': 28}) == []
+
+
+@pytest.mark.parametrize('prefix', [
+    '假如林见微四十岁，事情会怎样？',
+    '林见微不是四十岁。',
+    '苏晚晴四十岁。',
+    '如果林见微四十岁就好了，但事实上',
+])
+def test_nonfactual_or_npc_age_does_not_hide_real_current_age_conflict(prefix):
+    ledger = ContinuityLedger.from_player_state(_state())
+    issues = ledger._validate_ages(prefix + '林见微现在三十岁。', {'age': 28})
+    assert [(i.subject, i.observed) for i in issues] == [('林见微', '30')]

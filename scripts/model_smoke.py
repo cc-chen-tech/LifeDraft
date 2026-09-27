@@ -325,8 +325,8 @@ def _run_daily_opening_check(generator: Any, artifact_dir: Path, base_url: Optio
             if not all(option.text.strip() for option in event.options):
                 raise ValueError("daily_opening_options_empty")
             paragraphs = [p for p in event.event_description.split("\n\n") if p.strip()]
-            if len(paragraphs) < 2:
-                raise ValueError("daily_opening_paragraphs_missing")
+            if not paragraphs:
+                raise ValueError("daily_opening_body_missing")
             if not database.save_game_progress(game_id, loop.player_state):
                 raise RuntimeError("daily_opening_save_failed")
             reloaded = database.load_saved_game(game_id, user_id)

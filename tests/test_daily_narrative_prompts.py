@@ -106,7 +106,7 @@ def test_first_day_constraint_is_personalized_and_only_applies_once() -> None:
     assert "林岚" in first
     assert "社区书店" in first
     assert "首段优先用一句" in first
-    assert "第二段" in first
+    assert "不限定在第几段" in first
     assert "命运的齿轮" in first
     assert "首段优先用一句" not in second
 
@@ -160,7 +160,7 @@ def test_first_day_constraint_safely_handles_oversized_legacy_life_vision() -> N
     assert len(prompt) < 5000
 
 
-def test_first_day_opening_validator_enforces_name_sentence_paragraph_and_cliches() -> (
+def test_first_day_opening_validator_reports_name_sentence_paragraph_and_cliche_advice() -> (
     None
 ):
     state = _daily_state()

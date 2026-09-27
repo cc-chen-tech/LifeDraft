@@ -38,10 +38,10 @@ def _first_day_state() -> dict:
     }
 
 
-def _generate_first_day(story: str) -> tuple[GameEvent, MagicMock, MagicMock]:
+def _generate_first_day(story: str, quality: QualityLevel = QualityLevel.EXPERT) -> tuple[GameEvent, MagicMock, MagicMock]:
     client = MagicMock()
     client.call.return_value = story
-    generator = StoryGenerator(client, quality_level=QualityLevel.EXPERT)
+    generator = StoryGenerator(client, quality_level=quality)
     generator._harness_enabled = False
     generator._soft_narrative_lengths = True
     options = MagicMock()
@@ -100,17 +100,24 @@ def test_first_day_style_variance_is_safe_to_resume() -> None:
     )
 
 
-def test_missing_vision_retry_explains_the_required_opening_edit() -> None:
-    story = STYLE_VARIANT_STORY.replace(
-        "林岚想开一间社区书店，却还凑不齐租金。她决定先把账目理清。",
-        "林岚心里装着远方的梦想，却还被眼前的困境绊住。",
-    )
-    _, client, _ = _generate_first_day(story)
-    repair = client.call.call_args_list[1].kwargs["user_prompt"]
-    feedback = repair.split("上一稿存在以下确定性问题：", 1)[1].split("【上一稿全文】", 1)[0]
-    assert "首段" in feedback
-    assert "开一间社区书店" in feedback
-    assert "明确写出" in feedback
+@pytest.mark.parametrize('story', [
+    STYLE_VARIANT_STORY.replace('林岚想开一间社区书店，却还凑不齐租金。她决定先把账目理清。',
+                                '清晨的门扉轻响，来客把租约放在桌上。') + '林岚拿起了笔。',
+    STYLE_VARIANT_STORY.replace('\n\n', ''),
+])
+@pytest.mark.parametrize('quality', list(QualityLevel))
+def test_first_day_placement_and_paragraph_variants_generate_once_and_resume(story, quality):
+    event, client, options = _generate_first_day(story, quality)
+    assert event.event_description == story
+    assert client.call.call_count == 1
+    options.generate_options_only.assert_called_once()
+    generator = RoundEventGenerator(lambda: None, MagicMock(), lambda: 'zh', MagicMock(), MagicMock(), MagicMock())
+    for day in (0, 1):
+        state = _first_day_state()
+        state['timeline']['day_index'] = day
+        assert generator._existing_story_satisfies_quick_constraints(
+            existing_story=story, player_state=state, character_settings={'name': '林岚'},
+            language='zh', resume_source='test')
 
 
 def test_harness_rejection_then_judge_budget_exhaustion_keeps_first_day_playable(monkeypatch):
@@ -258,18 +265,17 @@ def test_failed_first_day_retry_commits_playable_event_with_real_validators(
     assert ai.ai_client.call.call_count == 2  # prose plus the real consistency judge
 
 
-def test_first_day_missing_protagonist_draft_is_never_delivered() -> None:
+def test_first_day_pronoun_opening_is_accepted_like_later_days() -> None:
     story = (
         "她想开一间社区书店，却还凑不齐租金。她决定先把账目理清。\n\n"
         "父亲的承诺与积蓄都悬在心头，她反复盘算手中能用的筹码。\n\n"
         "清晨她来到旧街的店面，翻看租约上的期限和押金条款。"
     )
 
-    event, _, _ = _generate_first_day(story)
+    event, client, _ = _generate_first_day(story)
 
-    assert event.event_description != story
-    assert "林岚" in event.event_description
-    assert event.delivery_notice is not None
+    assert event.event_description == story
+    assert client.call.call_count == 1
 
 
 def test_first_day_hard_rejections_deliver_only_a_valid_safe_opening(
@@ -425,9 +431,9 @@ def test_fallback_treats_free_form_vision_as_standalone_words(language, name, vi
 
 @pytest.mark.parametrize(('language', 'name', 'vision', 'draft', 'anchors'), [
     ('zh', '林岚', '我想开一间书店。\n\n也想让家人安心。',
-     '陌生人没有任何目标。\n\n清晨，他停在门边。', ('我想开一间书店', '也想让家人安心')),
+     '# 第一章\n\n清晨，他停在门边。', ('我想开一间书店', '也想让家人安心')),
     ('en', 'Alice', 'I want to open a shop.\n\nI also want to support my family.',
-     'A stranger has no goal, but the future is uncertain.\n\nIn the morning, he stood by the door.',
+     '# Chapter One\n\nIn the morning, he stood by the door.',
      ('I want to open a shop', 'I also want to support my family')),
 ])
 def test_full_sentence_vision_survives_actual_retry_exhaustion(monkeypatch, language, name, vision, draft, anchors):
@@ -518,3 +524,30 @@ def test_consistency_circuit_cannot_enable_fallback_outside_first_day_policy(mon
     with pytest.raises(StoryGenerationFailure, match='repeated consistency'):
         generator.generate_round_event(player_state=state, character_settings={'name': '林岚'}, language='zh',
             round_number=0, round_context='', option_generator=MagicMock(), world_model=MagicMock(continuity_ledger=None))
+
+
+@pytest.mark.parametrize('day', [0, 1])
+@pytest.mark.parametrize('story', [
+    '清晨的门扉轻响，来客把租约放在桌上。\n\n林岚拿起了笔，决定先核对押金。',
+    '林岚拿起了笔，决定先核对租约上的押金条款。',
+])
+def test_scheduled_story_uses_same_acceptance_on_first_and_later_days(day, story):
+    import json
+    from types import SimpleNamespace
+    state = PlayerState(player_name='林岚', age=28, character_settings={'name': '林岚'},
+                        life_vision='开一间社区书店',
+                        timeline=build_daily_timeline(start_date='2026-08-13', day_index=day))
+    state.timeline['day_index'] = day
+    client = MagicMock()
+    client.call.return_value = json.dumps({'event_description': story, 'options': [
+        {'text': '核对租约条款', 'effects': {}},
+        {'text': '整理押金账目', 'effects': {}},
+        {'text': '询问交付期限', 'effects': {}},
+    ]}, ensure_ascii=False)
+    generator = RoundEventGenerator(lambda: state, SimpleNamespace(ai_client=client, quality_level='expert'),
+                                    lambda: 'zh', MagicMock(), MagicMock(), MagicMock())
+    event = generator._generate_scheduled_event(
+        scheduled_events=[{'description': '核对租约', 'parties': ['林岚']}], player_state=state)
+    assert event.event_description == story
+    assert client.call.call_count == 1
+    assert len(event.options) == 3

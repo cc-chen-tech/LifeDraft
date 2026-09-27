@@ -554,10 +554,16 @@ class ContinuityLedger:
         if expected_age is None:
             return []
         issues = []
-        for name in self.immutable_identities:
+        for name, identity in self.immutable_identities.items():
+            # date_info.age belongs to the player, not every named NPC. An
+            # NPC baseline is not an authoritative age for the current day.
+            if "主角" not in identity.get("relationships", []):
+                continue
             patterns = [
                 rf"([0-9]{{1,3}}|[一二两三四五六七八九十]{{1,4}})岁的{re.escape(name)}",
-                rf"{re.escape(name)}.{{0,6}}?([0-9]{{1,3}}|[一二两三四五六七八九十]{{1,4}})岁",
+                # Only direct assertions; arbitrary intervening text also
+                # matches a relative's age, negation, or speculation.
+                rf"{re.escape(name)}(?:\s|如今|今年|现在|此刻|现年|眼下|年方|年仅|已经|只有|才|刚满|已满|已是|是|刚|已|那时|当时|当年|曾经)*([0-9]{{1,3}}|[一二两三四五六七八九十]{{1,4}})岁",
             ]
             matches = sorted(
                 (match for pattern in patterns for match in re.finditer(pattern, story_text)),
@@ -567,7 +573,17 @@ class ContinuityLedger:
                 # Scope tense to this assertion, never to a later sentence.
                 # A recalled age must not stop us checking subsequent current
                 # claims, nor may an earlier correct age hide a later drift.
-                clause = re.split(r"[。！？.!?\n；;]", story_text[:match.end()])[-1]
+                clause = re.split(
+                    r"[。！？.!?\n；;]|但事实上|但实际上|事实上|实际上",
+                    story_text[:match.end()],
+                )[-1]
+                # A current-time word inside an if-clause is still hypothetical.
+                # Ambiguous language is not sufficient for a deterministic
+                # hard rejection; the semantic consistency pass remains shared.
+                if re.search(r"假如|假设|如果|倘若|要是|若是|也许|可能|仿佛|好像|似乎|听说|据说|并非|不是|未满|不到", clause):
+                    continue
+                if re.match(r"(?:时|以后|之后|之前)", story_text[match.end():]):
+                    continue
                 temporal_markers = list(_AGE_TIME_MARKERS.finditer(clause))
                 if temporal_markers and temporal_markers[-1].group() not in _CURRENT_AGE_MARKERS:
                     continue
