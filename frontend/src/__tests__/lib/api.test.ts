@@ -1,3 +1,5 @@
+import { reportDiagnostic } from '@/lib/remote-log';
+jest.mock('@/lib/remote-log', () => ({ reportDiagnostic: jest.fn() }));
 /**
  * API client tests
  */
@@ -201,6 +203,7 @@ describe('character', () => {
     await expect(api.character.generateStoryOrigin({ player_name: '林舟' })).rejects.toThrow();
 
     expect((global.fetch as jest.Mock).mock.calls).toHaveLength(1);
+    expect(reportDiagnostic).toHaveBeenCalledWith('api_http_failed', expect.objectContaining({ httpStatus: status }));
   }, 15000);
 
   it('stops waiting when story-origin generation exceeds its deadline', async () => {

@@ -16,7 +16,9 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from logging import Handler, LogRecord
-from typing import Any, Dict, Mapping, Optional, TextIO
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from typing import Any, Dict, Mapping, Optional, TextIO, Union
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,16 @@ class ModelCallEvent:
     output_size: Optional[int]
     error_message: Optional[str]
 
+    user_id: Optional[int] = None
+    game_id: Optional[int] = None
+    job_id: Optional[int] = None
+    job_type: Optional[str] = None
+    segment_index: Optional[int] = None
+    attempt_id: Optional[str] = None
+    provider_code: Optional[str] = None
+    provider_trace_id: Optional[str] = None
+    retryable: Optional[bool] = None
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
@@ -77,17 +89,19 @@ def _status_code(error: BaseException) -> Optional[int]:
     return int(value) if isinstance(value, (int, float)) else None
 
 
-def classify_model_error(error: BaseException) -> str:
+def _classify_single_model_error(error: BaseException) -> str:
     """Map provider and application errors to a stable low-cardinality kind."""
 
     if isinstance(error, (asyncio.CancelledError, GeneratorExit)):
         return "cancelled"
 
+    budget_error_type: Any = ()
     try:
         from src.ai.budgets import GenerationBudgetError
+        budget_error_type = GenerationBudgetError
     except ImportError:  # pragma: no cover - keeps the helper importable in isolation
-        GenerationBudgetError = ()  # type: ignore[assignment]
-    if GenerationBudgetError and isinstance(error, GenerationBudgetError):
+        pass
+    if budget_error_type and isinstance(error, budget_error_type):
         return "budget_exceeded"
 
     status_code = _status_code(error)
@@ -135,6 +149,19 @@ def classify_model_error(error: BaseException) -> str:
         return "cancelled"
     if "ratelimit" in error_name or "rate_limit" in error_name:
         return "rate_limit"
+    return "unknown"
+
+
+def classify_model_error(error: BaseException) -> str:
+    """Keep the first actionable classification across a bounded cause chain."""
+    seen: set[int] = set()
+    current: Optional[BaseException] = error
+    while current is not None and id(current) not in seen and len(seen) < 8:
+        seen.add(id(current))
+        kind = _classify_single_model_error(current)
+        if kind != "unknown":
+            return kind
+        current = current.__cause__ or current.__context__
     return "unknown"
 
 
@@ -249,6 +276,14 @@ def emit_model_call(
         error_message=sanitize_error_message(error) if error is not None else None,
     )
     payload = _json_safe_event(event)
+    from .diagnostics import context_metadata, exception_metadata
+    identity = context_metadata()
+    for key in ("user_id", "game_id", "job_id", "job_type", "segment_index", "attempt_id"):
+        payload[key] = identity.get(key)
+    details = exception_metadata(error)
+    for key in ("provider_code", "provider_trace_id", "retryable", "http_status"):
+        if key in details:
+            payload[key] = details[key]
     (logger or logging.getLogger("model")).info(
         "model_call",
         extra={"model_event": payload},
@@ -264,7 +299,7 @@ class _JsonLineFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
-def configure_model_logging(stream: Optional[TextIO] = None) -> logging.Logger:
+def configure_model_logging(stream: Optional[TextIO] = None, *, log_file: Optional[Union[str, Path]] = None) -> logging.Logger:
     """Configure the dedicated model logger exactly once for JSONL output."""
 
     logger = logging.getLogger("model")
@@ -285,4 +320,11 @@ def configure_model_logging(stream: Optional[TextIO] = None) -> logging.Logger:
     elif stream is not None and getattr(handler, "stream", None) is not stream:
         handler.setStream(stream)  # type: ignore[attr-defined]
     handler.setFormatter(_JsonLineFormatter())
+    if log_file is not None:
+        path = Path(log_file).resolve()
+        if not any(isinstance(item, RotatingFileHandler) and item.baseFilename == str(path) for item in logger.handlers):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            file_handler = RotatingFileHandler(path, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8")
+            file_handler.setFormatter(_JsonLineFormatter())
+            logger.addHandler(file_handler)
     return logger

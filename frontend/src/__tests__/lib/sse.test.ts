@@ -6,6 +6,7 @@
 // Polyfill for Jest environment
 import { ReadableStream } from 'stream/web';
 import { TextEncoder, TextDecoder } from 'util';
+import { reportDiagnostic } from '@/lib/remote-log';
 global.ReadableStream = ReadableStream as unknown as typeof globalThis.ReadableStream;
 global.TextEncoder = TextEncoder as unknown as typeof globalThis.TextEncoder;
 global.TextDecoder = TextDecoder as unknown as typeof globalThis.TextDecoder;
@@ -25,6 +26,7 @@ Object.defineProperty(window, 'navigator', {
 // Mock remote-log
 jest.mock('@/lib/remote-log', () => ({
   reportError: jest.fn(),
+  reportDiagnostic: jest.fn(),
 }));
 
 import {
@@ -172,7 +174,7 @@ describe('SSE Streaming', () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         '/api/games/3/event',
-        expect.objectContaining({ headers: { 'Last-Event-ID': '7' } })
+        expect.objectContaining({ headers: expect.objectContaining({ 'Last-Event-ID': '7', 'X-Operation-ID': expect.any(String) }) })
       );
     });
 
@@ -227,6 +229,7 @@ describe('SSE Streaming', () => {
       const onError = jest.fn();
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        headers: new Headers({ 'X-Request-ID': 'req-sse-failure', 'X-Operation-ID': 'op-response' }),
         body: createMockStream([
           'event: error\ndata: {"error":"故事角色一致性检查连续未通过","code":"REQUIRED_CAST_MISSING","summary":"故事角色一致性检查连续未通过","detail":"当天需要登场的人物没有出现。","retryable":true,"attempts_used":3,"quality_level":"expert","operation_id":"op-123"}\n\n',
         ]),
@@ -245,6 +248,10 @@ describe('SSE Streaming', () => {
         quality_level: 'expert',
         operation_id: 'op-123',
       });
+      expect(reportDiagnostic).toHaveBeenCalledWith('REQUIRED_CAST_MISSING', {
+        gameId: 123, phase: 'generation', operationId: 'op-123', requestId: 'req-sse-failure',
+      });
+      expect(JSON.stringify(jest.mocked(reportDiagnostic).mock.calls)).not.toContain('当天需要登场的人物');
     });
 
     it('does not emit empty complete when an error event is followed by DONE', async () => {
@@ -385,6 +392,8 @@ describe('SSE Streaming', () => {
         message: 'Stream ended without complete event',
       }));
       expect(onComplete).not.toHaveBeenCalled();
+      expect(reportDiagnostic).toHaveBeenCalledWith('sse_incomplete', expect.objectContaining({ gameId: 123, phase: 'stream' }));
+      expect(JSON.stringify(jest.mocked(reportDiagnostic).mock.calls)).not.toContain('这是部分故事');
     });
 
     it('throws on client HTTP errors without retrying', async () => {
@@ -398,6 +407,10 @@ describe('SSE Streaming', () => {
 
       await expect(streamGameEvent(123, callbacks)).rejects.toThrow('HTTP error! status: 400');
       expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(reportDiagnostic).toHaveBeenCalledWith('sse_http_failed', {
+        gameId: 123, phase: 'transport', httpStatus: 400, attempt: 1,
+        operationId: mockFetch.mock.calls[0][1].headers['X-Operation-ID'],
+      });
     });
 
     it('throws on network errors after retrying transient failures', async () => {
@@ -417,6 +430,11 @@ describe('SSE Streaming', () => {
 
       await rejection;
       expect(mockFetch).toHaveBeenCalledTimes(3);
+      const operationIds = mockFetch.mock.calls.map((call) => call[1].headers['X-Operation-ID']);
+      expect(new Set(operationIds).size).toBe(1);
+      expect(reportDiagnostic).toHaveBeenCalledWith('sse_network_failed', {
+        gameId: 123, phase: 'transport', attempt: 3, operationId: operationIds[0],
+      });
     });
 
     it('retries transient 5xx responses before parsing event stream', async () => {
@@ -477,7 +495,7 @@ describe('SSE Streaming', () => {
         expect.stringContaining('/api/games/123/choice'),
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: expect.objectContaining({ 'Content-Type': 'application/json', 'X-Operation-ID': expect.any(String) }),
           body: expect.stringContaining('option_index'),
           credentials: 'include',
         })
@@ -514,7 +532,7 @@ describe('SSE Streaming', () => {
         expect.stringContaining('/api/games/123/custom-choice'),
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: expect.objectContaining({ 'Content-Type': 'application/json', 'X-Operation-ID': expect.any(String) }),
           credentials: 'include',
         })
       );
@@ -555,7 +573,7 @@ describe('SSE Streaming', () => {
         expect.stringContaining('/api/character/opening-story'),
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: expect.objectContaining({ 'Content-Type': 'application/json', 'X-Operation-ID': expect.any(String) }),
           credentials: 'include',
         })
       );
@@ -640,7 +658,7 @@ describe('SSE Streaming', () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         '/api/games/9/regenerate-stream',
-        expect.objectContaining({ headers: { 'Last-Event-ID': '12' } })
+        expect.objectContaining({ headers: expect.objectContaining({ 'Last-Event-ID': '12', 'X-Operation-ID': expect.any(String) }) })
       );
     });
 
@@ -724,7 +742,7 @@ describe('SSE Streaming', () => {
         expect.stringContaining('/api/games/123/rewrite-stream'),
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: expect.objectContaining({ 'Content-Type': 'application/json', 'X-Operation-ID': expect.any(String) }),
           credentials: 'include',
         })
       );

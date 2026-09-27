@@ -990,7 +990,7 @@ class TestStreamRegenerateRegression:
     """Regression tests for stream_regenerate to prevent breaking fixes."""
 
     @pytest.mark.asyncio
-    async def test_last_round_full_story_cleared_to_empty_string_not_none(self):
+    async def test_last_round_full_story_cleared_to_empty_string_not_none(self, monkeypatch):
         """
         Regression test: Ensure last_round_full_story is cleared to empty string, not None.
 
@@ -1016,10 +1016,17 @@ class TestStreamRegenerateRegression:
         # Mock game_loop with real player_state
         mock_game_loop = MagicMock()
         mock_game_loop.player_state = player_state
+        monkeypatch.setattr(
+            'src.api.routers.gameplay.sse_helpers._persist_generated_event_state',
+            lambda *args: True,
+        )
 
         # Mock generate_round_event to return a valid event
-        mock_event = MagicMock()
-        mock_event.options = [MagicMock()]
+        from src.ai.models import GameEvent, EventOption
+        mock_event = GameEvent(event_description="Regenerated story", options=[
+            EventOption(text="Continue", effects={}),
+            EventOption(text="Wait", effects={}),
+        ])
         mock_game_loop.generate_round_event = MagicMock(return_value=mock_event)
 
         # Verify initial state
@@ -1028,13 +1035,9 @@ class TestStreamRegenerateRegression:
         # Call stream_regenerate
         generator = stream_regenerate(mock_game_loop, game_id=296)
 
-        # Consume the generator (it yields status events)
-        try:
-            async for _ in generator:
-                pass
-        except Exception:
-            # We expect this to fail due to mocking, but we just want to verify
-            # the last_round_full_story was set correctly
+        # This is the successful persistence path; save failures deliberately
+        # restore the old state and have separate failure-injection coverage.
+        async for _ in generator:
             pass
 
         # Verify the fix: last_round_full_story should be "" (empty string), not None

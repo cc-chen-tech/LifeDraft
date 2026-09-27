@@ -23,6 +23,12 @@ class RequestContext:
     operation_id: Optional[str] = None
     feature: Optional[str] = None
     operation: Optional[str] = None
+    user_id: Optional[int] = None
+    game_id: Optional[int] = None
+    job_id: Optional[int] = None
+    job_type: Optional[str] = None
+    segment_index: Optional[int] = None
+    attempt_id: Optional[str] = None
 
 
 def resolve_request_id(value: Optional[str]) -> str:
@@ -47,11 +53,11 @@ def current_request_context() -> Optional[RequestContext]:
     return _CURRENT_CONTEXT.get()
 
 
-def set_request_context(context: RequestContext) -> Token:
+def set_request_context(context: RequestContext) -> Token[Optional[RequestContext]]:
     return _CURRENT_CONTEXT.set(context)
 
 
-def reset_request_context(token: Token) -> None:
+def reset_request_context(token: Token[Optional[RequestContext]]) -> None:
     _CURRENT_CONTEXT.reset(token)
 
 

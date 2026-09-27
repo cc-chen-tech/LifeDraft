@@ -83,3 +83,27 @@ def test_production_formatter_suppresses_gameplay_story_payloads():
     payload = json.loads(stream.getvalue())
     assert payload["message"] == "model_subsystem_log_suppressed"
     assert "private user story" not in stream.getvalue()
+
+
+def test_client_diagnostic_uses_authenticated_identity_not_payload(client, caplog):
+    from src.api.deps import create_token
+    caplog.set_level(logging.INFO, logger="diagnostic")
+    for user_id in (101, 202):
+        response = client.post('/api/client-log', headers={
+            'Authorization': f'Bearer {create_token(user_id)}', 'X-Operation-ID': f'voice-{user_id}',
+        }, json={'error_code': 'audio_play_failed', 'phase': 'playback', 'job_id': user_id * 10,
+                 'user_id': 999, 'message': 'private story sk-secret', 'url': 'https://x/?token=SECRET'})
+        assert response.status_code == 200
+    records = [r for r in caplog.records if getattr(r, 'event', None) == 'client_diagnostic']
+    assert [(r.user_id, r.job_id, r.operation_id) for r in records] == [(101, 1010, 'voice-101'), (202, 2020, 'voice-202')]
+    assert 'private story' not in str([r.__dict__ for r in records])
+    assert 'SECRET' not in str([r.__dict__ for r in records])
+
+
+def test_client_recovery_is_not_reported_as_failure(client, caplog):
+    caplog.set_level(logging.INFO, logger='diagnostic')
+    response = client.post('/api/client-log', json={'error_code': 'voice_poll_recovered', 'outcome': 'recovered'})
+    assert response.status_code == 200
+    event = next(r for r in caplog.records if getattr(r, 'event', None) == 'client_diagnostic')
+    assert event.outcome == 'recovered'
+    assert event.levelno == logging.INFO

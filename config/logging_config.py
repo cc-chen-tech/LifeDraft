@@ -22,6 +22,7 @@ _MODEL_LOGGER_PREFIXES = (
     "src.api.routers",
     "src.api.services",
     "src.game",
+    "src.database",
 )
 _SENSITIVE_LOG_FIELD_NAMES = {
     "prompt",
@@ -57,6 +58,9 @@ class JsonLogFormatter(logging.Formatter):
                 else record.getMessage()
             ),
         }
+        from src.observability.diagnostics import context_metadata, exception_metadata
+        payload.update(context_metadata())
+        payload.update(source_file=Path(record.pathname).name, source_function=record.funcName, source_line=record.lineno)
         for key, value in record.__dict__.items():
             if key in _BUILTIN_LOG_RECORD_FIELDS or key.startswith("_"):
                 continue
@@ -76,7 +80,7 @@ class JsonLogFormatter(logging.Formatter):
             # allowing those free-form messages to cross the persistence boundary.
             payload["message_suppressed"] = True
         if record.exc_info:
-            payload["exception_type"] = type(record.exc_info[1]).__name__
+            payload.update(exception_metadata(record.exc_info[1]))
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -87,7 +91,7 @@ def setup_logging(
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
     json_output: bool = False,
-):
+) -> logging.Logger:
     """
     配置应用日志
 

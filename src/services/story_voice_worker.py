@@ -7,6 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from threading import BoundedSemaphore, Event, Lock, Thread
 from typing import Callable, Optional
+from uuid import uuid4
+
+from src.observability.diagnostics import diagnostic_context, emit_diagnostic
 
 from sqlalchemy import create_engine, or_
 from sqlalchemy.orm import Session, sessionmaker
@@ -83,17 +86,22 @@ class StoryVoiceWorker:
 
     def _run(self, user_id: int, job_id: int) -> None:
         try:
-            with self._sessions() as db:
-                repository = StoryVoiceReadingRepository(db)
-                repository.recover_abandoned_job(user_id, job_id)
-                provider = self._providers() if self._providers is not None else None
-                StoryVoiceReadingService(repository, provider=provider).process_job(
-                    user_id, job_id, should_stop=self._stopped.is_set
-                )
-        except Exception:
-            # No failed Session is reused here. A committed processing lease
-            # eventually expires, and a queued job remains discoverable.
-            logger.exception("Voice worker failed job_id=%s", job_id)
+            with diagnostic_context(user_id=user_id, job_id=job_id, job_type="voice",
+                                    operation_id=f"voice:{job_id}", attempt_id=uuid4().hex,
+                                    request_id=f"voice:{job_id}", feature="tts", operation="voice_worker"):
+                try:
+                    with self._sessions() as db:
+                        repository = StoryVoiceReadingRepository(db)
+                        recovered = repository.recover_abandoned_job(user_id, job_id)
+                        if recovered:
+                            emit_diagnostic("voice_worker", phase="recovery", outcome="success", retryable=True)
+                        provider = self._providers() if self._providers is not None else None
+                        StoryVoiceReadingService(repository, provider=provider).process_job(
+                            user_id, job_id, should_stop=self._stopped.is_set
+                        )
+                except Exception as error:
+                    emit_diagnostic("voice_worker", phase="execution", outcome="failure", error=error,
+                                    persisted=False, retryable=True)
         finally:
             with self._lock:
                 self._active.discard((user_id, job_id))
@@ -127,8 +135,8 @@ class StoryVoiceWorker:
         while not self._stopped.is_set():
             try:
                 self.scan_once()
-            except Exception:
-                logger.exception("Voice recovery scan failed")
+            except Exception as error:
+                emit_diagnostic("voice_worker", phase="recovery_scan", outcome="failure", error=error)
             self._stopped.wait(self._poll_interval)
 
     def stop(self, *, wait: bool = False) -> None:

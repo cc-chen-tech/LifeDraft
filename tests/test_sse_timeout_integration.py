@@ -64,8 +64,11 @@ class TestSSEStreamTimeout:
         assert len(heartbeat_events) >= 1, "SSE 流应发送 heartbeat 事件保持连接"
 
     @pytest.mark.asyncio
-    async def test_sse_stream_sends_heartbeat_during_generation(self):
+    async def test_sse_stream_sends_heartbeat_during_generation(self, monkeypatch):
         """生成过程中 SSE 流应定期发送 heartbeat。"""
+        monkeypatch.setattr(sse_helpers, "_persist_generated_event_state", lambda *args: True)
+        monkeypatch.setattr(sse_helpers, "_enqueue_accepted_daily_projection", lambda *args: None)
+        monkeypatch.setattr(sse_helpers, "_trigger_round_illustration_generation", lambda *args, **kwargs: None)
         game_loop = MagicMock()
 
         # 模拟一个慢速生成：通过线程池执行，所以用同步函数
@@ -103,8 +106,11 @@ class TestSSEStreamTimeout:
         assert len(complete_events) >= 1, "应收到 complete 事件"
 
     @pytest.mark.asyncio
-    async def test_sse_stream_returns_complete_event_on_success(self):
+    async def test_sse_stream_returns_complete_event_on_success(self, monkeypatch):
         """生成成功时 SSE 流应返回 complete 事件。"""
+        monkeypatch.setattr(sse_helpers, "_persist_generated_event_state", lambda *args: True)
+        monkeypatch.setattr(sse_helpers, "_enqueue_accepted_daily_projection", lambda *args: None)
+        monkeypatch.setattr(sse_helpers, "_trigger_round_illustration_generation", lambda *args, **kwargs: None)
         game_loop = MagicMock()
 
         def fast_generation(**kwargs):

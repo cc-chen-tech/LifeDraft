@@ -5151,6 +5151,11 @@
         ],
         "summary": "Get Voice Reading Audio",
         "operationId": "get_voice_reading_audio_api_voice_reading_audio__file_name__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "file_name",
@@ -5250,7 +5255,7 @@
     "/api/client-log": {
       "post": {
         "summary": "Client Log",
-        "description": "Receive and log client-side errors — useful for debugging mobile issues.",
+        "description": "Persist bounded metadata; authenticated identity comes only from middleware.",
         "operationId": "client_log_api_client_log_post",
         "requestBody": {
           "content": {
@@ -5459,17 +5464,21 @@
         "properties": {
           "level": {
             "type": "string",
+            "maxLength": 16,
             "title": "Level",
             "default": "error"
           },
           "message": {
             "type": "string",
-            "title": "Message"
+            "maxLength": 4096,
+            "title": "Message",
+            "default": ""
           },
           "context": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 64
               },
               {
                 "type": "null"
@@ -5480,7 +5489,8 @@
           "url": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2048
               },
               {
                 "type": "null"
@@ -5491,19 +5501,126 @@
           "ua": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 512
               },
               {
                 "type": "null"
               }
             ],
             "title": "Ua"
+          },
+          "error_code": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,96}$",
+            "title": "Error Code",
+            "default": "client_error"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "failed",
+              "recovered",
+              "retry",
+              "cancelled"
+            ],
+            "title": "Outcome",
+            "default": "failed"
+          },
+          "phase": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.:-]{1,64}$",
+            "title": "Phase",
+            "default": "client"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "asset_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id"
+          },
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "http_status": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 599.0,
+                "minimum": 100.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status"
+          },
+          "attempt": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt"
           }
         },
         "type": "object",
-        "required": [
-          "message"
-        ],
         "title": "ClientLogEntry"
       },
       "CollectionResponse": {

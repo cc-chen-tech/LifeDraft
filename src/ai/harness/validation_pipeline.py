@@ -13,6 +13,9 @@ from .constraint_registry import (ConstraintDefinition, ConstraintRegistry,
                                   Priority)
 from .quality_level import HarnessProfile
 
+from src.ai.story_exceptions import GenerationFailureCode, StoryGenerationFailure
+from src.observability.diagnostics import emit_diagnostic
+
 logger = logging.getLogger(__name__)
 
 
@@ -213,6 +216,10 @@ class ValidationPipeline:
         """
         try:
             passed, evidence, details = defn.validator(story_text, context)
+            emit_diagnostic("story_validation", phase="harness",
+                            outcome="passed" if passed else "rejected",
+                            finding_codes=[] if passed else [defn.type.value],
+                            severity=defn.priority.name.lower(), attempt=context.get("diagnostic_attempt"))
             return ConstraintCheckResult(
                 constraint_type=defn.type.value,
                 priority=defn.priority.name,
@@ -221,12 +228,11 @@ class ValidationPipeline:
                 details=details,
             )
         except Exception as e:
-            logger.error(f"Validator error for {defn.type.value}: {e}")
-            # 验证器异常时默认通过（不阻塞生成流程）
-            return ConstraintCheckResult(
-                constraint_type=defn.type.value,
-                priority=defn.priority.name,
-                passed=True,
-                evidence="",
-                details={"error": str(e), "skipped": True},
-            )
+            emit_diagnostic("story_validation", phase="harness", outcome="failed",
+                            error=e, finding_codes=[defn.type.value],
+                            error_code="VALIDATION_SERVICE_ERROR", attempt=context.get("diagnostic_attempt"))
+            raise StoryGenerationFailure(
+                "Story validator implementation failed",
+                failure_code=GenerationFailureCode.VALIDATION_SERVICE_ERROR,
+                circuit_break=True,
+            ) from e

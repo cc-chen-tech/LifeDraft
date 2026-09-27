@@ -709,6 +709,9 @@ class TestRegenerateStreamSSE:
                 EventOption(text="停下观察", effects={}),
             ],
         )
+        from src.game.state import PlayerState
+        mock_session.game_loop.player_state = PlayerState(player_name="测试人物")
+        mock_session.user_id = 1
         mock_session.game_loop.current_event = None
         mock_session.game_loop.player_state.timeline = build_daily_timeline(
             start_date="2026-08-16",
@@ -721,7 +724,7 @@ class TestRegenerateStreamSSE:
 
         with (
             patch(
-                "src.api.routers.gameplay.sse_helpers._set_generation_resume_view"
+                "src.api.routers.gameplay.sse_helpers._set_generation_resume_view", return_value=True
             ),
             patch(
                 "src.api.routers.gameplay.sse_helpers._trigger_round_illustration_generation"

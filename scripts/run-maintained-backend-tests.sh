@@ -5,6 +5,34 @@ mode="${1:-test}"
 coverage_xml_path="${COVERAGE_XML_PATH:-coverage.xml}"
 
 maintained_tests=(
+  tests/test_story_origin_generation.py
+  tests/test_ai_client_thinking_contract.py
+  tests/test_daily_recommended_prefetch.py
+  tests/test_entity_collection_reliability_no_mock.py
+  tests/test_entity_collection_reliability_db_no_mock.py
+  tests/test_collection_entity_lifecycle_db_contracts.py
+  tests/test_narration_plan_contract.py
+  tests/test_story_voice_recovery.py
+  tests/test_story_voice_shutdown.py
+  tests/test_minimax_tts_shutdown.py
+  tests/test_story_voice_io_isolation.py
+  tests/test_minimax_tts_receive_deadlines.py
+  tests/test_portrait_image_jobs.py
+  tests/test_portrait_image_jobs_api.py
+  tests/test_api_portrait_candidates.py
+  tests/test_portrait_candidates.py
+  tests/test_portrait_origin_fence.py
+  tests/test_round_illustration_contracts.py
+  tests/test_image_service_persistence_contracts.py
+  tests/test_diagnostic_lifecycle.py
+  tests/test_request_observability.py
+  tests/test_model_telemetry.py
+  tests/test_model_provider_telemetry.py
+  tests/test_image_diagnostics.py
+  tests/test_voice_diagnostics.py
+  tests/test_voice_enqueue_trace.py
+  tests/test_voice_audio_ownership.py
+  tests/test_story_delivery_diagnostics.py
   tests/test_gate_preflight_no_mock.py
   tests/test_gate_gameplay_behavior_no_mock.py
   tests/test_gate_static_no_mock.py

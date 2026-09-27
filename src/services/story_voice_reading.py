@@ -6,6 +6,7 @@ import hashlib
 import logging
 import os
 import re
+from uuid import uuid4
 from typing import Any, Callable, Dict, Optional
 
 from fastapi import HTTPException, status
@@ -20,6 +21,7 @@ from src.api.schemas import (
     VoiceReadingSegmentResponse,
     VoiceReadingSettingsResponse,
 )
+from src.observability.diagnostics import diagnostic_context, emit_diagnostic
 from src.database.models import VOICE_ASSET_VERSION
 from src.services.minimax_config import build_minimax_config
 from src.ai.narration_plan import (
@@ -379,6 +381,19 @@ class StoryVoiceReadingService:
     def process_job(
         self, user_id: int, job_id: int, *, should_stop: Optional[Callable[[], bool]] = None
     ) -> VoiceReadingJobResponse:
+        """Rebuild durable identity even when invoked outside an HTTP request."""
+        attempt_id = uuid4().hex
+        with diagnostic_context(user_id=user_id, job_id=job_id, job_type="voice",
+                                operation_id=f"voice:{job_id}", request_id=f"voice:{job_id}:{attempt_id}",
+                                attempt_id=attempt_id, feature="tts", operation="voice_generation"):
+            job = self.repository.get_job(job_id, user_id)
+            context = dict(job.context_json) if job is not None else {}
+            with diagnostic_context(game_id=context.get("game_id")):
+                return self._process_job(user_id, job_id, should_stop=should_stop)
+
+    def _process_job(
+        self, user_id: int, job_id: int, *, should_stop: Optional[Callable[[], bool]] = None
+    ) -> VoiceReadingJobResponse:
         """Synthesize from committed snapshots, fencing every database write."""
         job = self.repository.get_job(job_id, user_id)
         if job is None:
@@ -391,14 +406,19 @@ class StoryVoiceReadingService:
         lease_token = claimed_token
         metadata = self.provider.metadata()
         active_index: Optional[int] = None
-        phase = "narration_plan_failed"
+        phase = "narration_plan"
+        emit_diagnostic("voice_job", phase="execution", outcome="started")
 
         def commit(**changes: Any) -> None:
-            nonlocal lease_token
+            nonlocal lease_token, phase
             checkpoint()
-            token = self.repository.commit_processing_changes(
-                user_id, job_id, lease_token, **changes
-            )
+            try:
+                token = self.repository.commit_processing_changes(
+                    user_id, job_id, lease_token, **changes
+                )
+            except Exception:
+                phase = "persistence"
+                raise
             if token is None:
                 raise RuntimeError("voice reading processing lease was replaced")
             lease_token = token
@@ -432,7 +452,7 @@ class StoryVoiceReadingService:
             # JSON and heartbeat update share the exact lease comparison. Never
             # flush a job mutation that changes updated_at before this check.
             commit(context_json=chapter_context)
-            phase = "tts_generation_failed"
+            phase = "synthesis"
 
             cached_asset, cached_cues = self._find_reusable_asset_with_cues(
                 user_id=user_id,
@@ -449,6 +469,7 @@ class StoryVoiceReadingService:
                     raise RuntimeError("voice reading job disappeared during processing")
                 self._attach_ready_asset(job, cached_asset, cached_cues)
                 commit(primary_asset_id=int(cached_asset.asset_id), terminal_status="ready")
+                emit_diagnostic("voice_job", phase="delivery", outcome="success", asset_id=int(cached_asset.asset_id), persisted=True, reason="cache_hit")
                 return self.get_job(user_id, job_id)
             # Asset invalidation, if any, must commit with the lease before I/O.
             commit()
@@ -488,6 +509,7 @@ class StoryVoiceReadingService:
                         and self._is_valid_cached_asset(asset)
                     ):
                         self.repository.db.rollback()
+                        emit_diagnostic("voice_stage", phase="synthesis", outcome="success", segment_index=index, reason="cache_hit")
                         continue
                     active_index = index
                     segment.asset = None
@@ -499,9 +521,11 @@ class StoryVoiceReadingService:
                     commit()
                     # Only plain values cross network boundaries; no ORM lazy
                     # load or open transaction is needed while MiniMax responds.
-                    speech = synthesize_scene(
-                        scene_context, voice_id, scene_speed, on_progress=commit
-                    )
+                    with diagnostic_context(segment_index=index):
+                        emit_diagnostic("voice_stage", phase="synthesis", outcome="started")
+                        speech = synthesize_scene(
+                            scene_context, voice_id, scene_speed, on_progress=commit
+                        )
                     if (
                         speech.playback_mode != "audio"
                         or speech.storage_path is None
@@ -512,6 +536,7 @@ class StoryVoiceReadingService:
                     asset_context["paragraph_cues"] = [
                         {"paragraph_index": 0, "start_ms": 0, "end_ms": int(speech.duration_ms)}
                     ]
+                    phase = "persistence"
                     asset = self.repository.create_asset(
                         user_id=user_id,
                         context=asset_context,
@@ -532,7 +557,9 @@ class StoryVoiceReadingService:
                     segment.status = "ready"
                     segment.error_code = segment.error_message = None
                     commit()
+                    emit_diagnostic("voice_stage", phase="synthesis", outcome="success", segment_index=index, asset_id=int(asset.asset_id), persisted=True)
                     active_index = None
+                    phase = "synthesis"
             else:
                 job = self.repository.get_job(job_id, user_id)
                 if job is None:
@@ -554,6 +581,8 @@ class StoryVoiceReadingService:
             checkpoint()
             assemble_scenes = getattr(self.provider, "assemble_scenes", None)
             if callable(assemble_scenes) and len(paths) == len(paragraphs):
+                phase = "assembly"
+                emit_diagnostic("voice_stage", phase=phase, outcome="started", count=len(paths))
                 speech = assemble_scenes(
                     paths, chapter_context, voice_id, speed, on_progress=commit
                 )
@@ -578,6 +607,7 @@ class StoryVoiceReadingService:
                 }
                 for cue in speech.paragraph_cues
             ]
+            phase = "persistence"
             asset = self.repository.create_asset(
                 user_id=user_id,
                 context=asset_context,
@@ -594,7 +624,9 @@ class StoryVoiceReadingService:
                 raise RuntimeError("voice reading job disappeared during processing")
             self._attach_ready_asset(job, asset, speech.paragraph_cues)
             commit(primary_asset_id=int(asset.asset_id), terminal_status="ready")
+            emit_diagnostic("voice_job", phase="delivery", outcome="success", asset_id=int(asset.asset_id), persisted=True)
         except TTSSynthesisCancelled:
+            emit_diagnostic("voice_job", phase="shutdown", outcome="cancelled", segment_index=active_index, retryable=True)
             # Cancellation is recoverable, not a generation failure. Roll back
             # uncommitted assets and use the same lease fence as normal writes.
             self.repository.db.rollback()
@@ -609,21 +641,25 @@ class StoryVoiceReadingService:
             )
             return self.get_job(user_id, job_id)
         except Exception as error:
-            logger.exception(
-                "Voice generation failed job_id=%s segment=%s phase=%s", job_id, active_index, phase
-            )
+            emit_diagnostic("voice_job", phase=phase, outcome="failure", error=error,
+                            segment_index=active_index, persisted=False)
+            error_code = {"narration_plan": "narration_plan_failed", "assembly": "tts_assembly_failed",
+                          "persistence": "tts_persistence_failed"}.get(phase, "tts_generation_failed")
             # Flush/commit failures invalidate the Session. Roll back before any
             # recovery query, and keep already committed segments untouched.
             self.repository.db.rollback()
-            return self._mark_processing_job_failed(
-                user_id=user_id,
-                job_id=job_id,
-                lease_token=lease_token,
-                error_code=phase,
-                error=error,
-                public_message="High-quality narration could not be generated",
-                active_index=active_index,
-            )
+            try:
+                return self._mark_processing_job_failed(
+                    user_id=user_id, job_id=job_id, lease_token=lease_token,
+                    error_code=error_code, error=error,
+                    public_message="High-quality narration could not be generated",
+                    active_index=active_index,
+                )
+            except Exception as persistence_error:
+                self.repository.db.rollback()
+                emit_diagnostic("voice_job", phase="failure_persistence", outcome="failure",
+                                error=persistence_error, error_code=error_code, persisted=False)
+                raise
         return self.get_job(user_id, job_id)
 
     @staticmethod
@@ -767,16 +803,10 @@ class StoryVoiceReadingService:
 
     @staticmethod
     def _log_narration_plan_decision(job_id: int, metrics: Dict[str, Any]) -> None:
-        logger.info(
-            "narration_plan_decision job_id=%s source=%s fallback_reason=%s "
-            "ai_attempts=%s output_token_budgets=%s duration_ms=%s",
-            job_id,
-            metrics.get("source"),
-            metrics.get("fallback_reason"),
-            metrics.get("ai_attempts"),
-            metrics.get("output_token_budgets"),
-            metrics.get("duration_ms"),
-        )
+        emit_diagnostic("voice_narration_plan", phase="narration_plan", outcome="success",
+                        job_id=job_id, reason=metrics.get("fallback_reason"),
+                        used_fallback=metrics.get("source") == "deterministic-fallback",
+                        attempt=metrics.get("ai_attempts"), duration_ms=metrics.get("duration_ms"))
 
     def _mark_processing_job_failed(
         self,

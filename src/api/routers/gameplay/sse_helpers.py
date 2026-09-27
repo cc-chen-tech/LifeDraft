@@ -18,7 +18,8 @@ from typing import Any, Callable, Dict, List, Optional
 from weakref import WeakValueDictionary
 
 from config.settings import settings
-from src.ai.story_exceptions import build_generation_failure
+from src.ai.story_exceptions import (build_generation_failure, GenerationFailureCode, StoryGenerationFailure)
+from src.observability.diagnostics import diagnostic_context, emit_diagnostic
 from src.api.deps import get_db
 from src.api.services.event_generation_operation import (
     EventGenerationConflict,
@@ -567,26 +568,18 @@ def clear_sse_cache_if_retry(status: dict, session) -> None:
 
 
 def _persist_generated_event_state(game_loop, game_id: int) -> bool:
-    """Persist generated event state immediately after worker generation returns."""
+    """Report the durable result without exposing database exception messages."""
     try:
-        db = get_db()
         state = game_loop.get_state()
-        if state:
-            persisted = bool(db.save_game_progress(game_id, state))
-            if persisted:
-                logger.info(
-                    f"Auto-saved game state after event generation: game_id={game_id}"
-                )
-            else:
-                logger.warning(
-                    "Auto-save declined after event generation: game_id=%s", game_id
-                )
-            return persisted
-    except (OSError, IOError) as e:
-        logger.warning(f"Auto-save IO error after event generation: {e}")
-    except Exception as e:
-        logger.exception(f"Auto-save unexpected error after event generation: {e}")
-    return False
+        persisted = bool(state and get_db().save_game_progress(game_id, state))
+        emit_diagnostic("story_persistence", phase="save", game_id=game_id,
+                        outcome="passed" if persisted else "failed", persisted=persisted,
+                        error_code=None if persisted else "PERSISTENCE_FAILED")
+        return persisted
+    except Exception as exc:
+        emit_diagnostic("story_persistence", phase="save", outcome="failed", error=exc,
+                        game_id=game_id, persisted=False, error_code="PERSISTENCE_FAILED")
+        return False
 
 
 def _set_generation_resume_view(
@@ -685,61 +678,82 @@ def build_event_generation_key(game_id: int, game_loop) -> EventGenerationKey:
     )
 
 
-def _run_event_generation_operation(
-    operation, game_loop, game_id: int, session
-) -> None:
-    """Run one event generation job independently of all SSE subscribers."""
-    try:
+def _run_event_generation_operation(operation, game_loop, game_id: int, session) -> None:
+    """Publish success only after the accepted state is durably saved."""
+    with diagnostic_context(game_id=game_id, user_id=getattr(session, "user_id", None),
+                            operation_id=operation.operation_id, job_type="story_generation",
+                            attempt_id=operation.operation_id):
         with _get_game_state_lock(game_id):
-            event = game_loop.generate_round_event(
-                stream_callback=operation.publish_story,
-                status_callback=operation.publish_phase,
-                session=session,
-                force_regenerate=(operation.key.resolved_mode == "generate_missing"),
-                operation_id=operation.operation_id,
-            )
-            if event is None:
-                raise RuntimeError("No event returned from event generation")
-            persisted = _set_generation_resume_view(game_loop, game_id, "options")
-            if persisted:
-                _enqueue_accepted_daily_projection(
-                    game_id, event, game_loop.player_state
-                )
-            operation.complete(event)
+            prior_state = None
+            prior_event = None
+            committed = False
             try:
-                from src.services.daily_recommended_prefetch import (
-                    ensure_daily_recommended_prefetch,
+                prior_state = copy.deepcopy(getattr(game_loop, "player_state", None))
+                prior_event = copy.deepcopy(getattr(game_loop, "current_event", None))
+                emit_diagnostic("story_operation", phase="generation", outcome="started")
+                # Buffer delivery until save commits, including reconnect replay.
+                chunks: list[str] = []
+                event = game_loop.generate_round_event(
+                    stream_callback=chunks.append,
+                    status_callback=operation.publish_phase,
+                    session=session,
+                    force_regenerate=(operation.key.resolved_mode == "generate_missing"),
+                    operation_id=operation.operation_id,
                 )
-
+                if event is None:
+                    raise RuntimeError("No event returned from event generation")
+                if not _set_generation_resume_view(game_loop, game_id, "options"):
+                    raise StoryGenerationFailure(
+                        "Generated story could not be persisted",
+                        failure_code=GenerationFailureCode.PERSISTENCE_FAILED,
+                    )
+                committed = True
+                _enqueue_accepted_daily_projection(game_id, event, game_loop.player_state)
+                for chunk in chunks:
+                    operation.publish_story(chunk)
+                operation.complete(event)
+                emit_diagnostic("story_operation", phase="delivery", outcome="completed", persisted=True)
+            except Exception as exc:
+                if not committed:
+                    if prior_state is not None:
+                        live_state = getattr(game_loop, "player_state", None)
+                        fields = getattr(type(prior_state), "model_fields", None)
+                        if fields and live_state is not None:
+                            for field_name in fields:
+                                setattr(live_state, field_name, copy.deepcopy(getattr(prior_state, field_name)))
+                        else:
+                            game_loop.player_state = prior_state
+                    game_loop.current_event = prior_event
+                quality_level = getattr(game_loop, "quality_level", None) or "expert"
+                failure = build_generation_failure(
+                    exc, quality_level=getattr(quality_level, "value", quality_level),
+                    operation_id=operation.operation_id,
+                ).to_dict()
+                emit_diagnostic("story_operation", phase="delivery", outcome="failed",
+                                error=exc, error_code=failure["code"], persisted=committed)
+                try:
+                    saved = _set_generation_resume_view(
+                        game_loop, game_id, "failed", failure["summary"], failure=failure,
+                    )
+                    if not saved:
+                        emit_diagnostic("story_failure_persistence", phase="save_failure", outcome="failed",
+                                        error_code="PERSISTENCE_FAILED", persisted=False)
+                except Exception as save_error:
+                    emit_diagnostic("story_failure_persistence", phase="save_failure", outcome="failed",
+                                    error=save_error, error_code="PERSISTENCE_FAILED", persisted=False)
+                operation.fail(failure["summary"], failure=failure)
+                return
+            try:
+                from src.services.daily_recommended_prefetch import ensure_daily_recommended_prefetch
                 ensure_daily_recommended_prefetch(
-                    game_id=game_id,
-                    user_id=getattr(session, "user_id", None),
-                    game_loop=game_loop,
-                )
-            except Exception:
-                logger.exception("Failed to start daily recommended prefetch")
-            try:
-                _trigger_round_illustration_generation(
-                    game_loop, game_id, event, stage="event"
+                    game_id=game_id, user_id=getattr(session, "user_id", None), game_loop=game_loop,
                 )
             except Exception as exc:
-                logger.exception("Failed to trigger round illustration: %s", exc)
-    except Exception as exc:
-        logger.exception("Event generation operation failed: %s", exc)
-        quality_level = getattr(game_loop, "quality_level", None) or "expert"
-        failure = build_generation_failure(
-            exc,
-            quality_level=getattr(quality_level, "value", quality_level),
-            operation_id=operation.operation_id,
-        ).to_dict()
-        _set_generation_resume_view(
-            game_loop,
-            game_id,
-            "failed",
-            failure["summary"],
-            failure=failure,
-        )
-        operation.fail(failure["summary"], failure=failure)
+                emit_diagnostic("story_postprocess", phase="prefetch", outcome="failed", error=exc)
+            try:
+                _trigger_round_illustration_generation(game_loop, game_id, event, stage="event")
+            except Exception as exc:
+                emit_diagnostic("story_postprocess", phase="illustration", outcome="failed", error=exc)
 
 
 def get_or_start_round_event_generation(
@@ -1137,7 +1151,14 @@ def _build_daily_operation_key(
     )
 
 
-def _run_daily_regeneration_operation(
+def _run_daily_regeneration_operation(operation, game_loop, game_id: int, session) -> None:
+    with diagnostic_context(game_id=game_id, user_id=getattr(session, "user_id", None),
+                            operation_id=operation.operation_id, job_type="story_regeneration",
+                            attempt_id=operation.operation_id):
+        _run_daily_regeneration_operation_impl(operation, game_loop, game_id, session)
+
+
+def _run_daily_regeneration_operation_impl(
     operation, game_loop, game_id: int, session
 ) -> None:
     """Run one atomic daily replacement independently of its SSE subscriber."""
@@ -1163,6 +1184,8 @@ def _run_daily_regeneration_operation(
                 status_callback=operation.publish_phase,
                 session=session,
             )
+            operation.complete(event)
+            emit_diagnostic("story_operation", phase="delivery", outcome="completed", persisted=True)
             try:
                 invalidate_daily_media_after_event_replacement(game_loop, game_id)
             except Exception:
@@ -1172,14 +1195,14 @@ def _run_daily_regeneration_operation(
             _enqueue_accepted_daily_projection(
                 game_id, event, game_loop.player_state, replacement=True
             )
-            ensure_daily_recommended_prefetch(
-                game_id=game_id,
-                user_id=getattr(session, "user_id", None),
-                game_loop=game_loop,
-            )
-            operation.complete(event)
+            try:
+                ensure_daily_recommended_prefetch(
+                    game_id=game_id, user_id=getattr(session, "user_id", None), game_loop=game_loop,
+                )
+            except Exception as error:
+                emit_diagnostic("story_postprocess", phase="prefetch", outcome="failed", error=error)
     except Exception as exc:
-        logger.exception("Daily regeneration operation failed: %s", exc)
+        emit_diagnostic("story_operation", phase="replacement", outcome="failed", error=exc)
         quality_level = getattr(game_loop, "quality_level", None) or "expert"
         failure = build_generation_failure(
             exc,
@@ -1187,15 +1210,17 @@ def _run_daily_regeneration_operation(
             operation_id=operation.operation_id,
         ).to_dict()
         try:
-            _set_generation_resume_view(
+            persisted = _set_generation_resume_view(
                 game_loop,
                 game_id,
                 "failed",
                 failure["summary"],
                 failure=failure,
             )
-        except Exception:
-            logger.exception("Failed to persist safe daily regeneration failure")
+            if not persisted:
+                emit_diagnostic("story_failure_persistence", phase="save_failure", outcome="failed", persisted=False)
+        except Exception as error:
+            emit_diagnostic("story_failure_persistence", phase="save_failure", outcome="failed", error=error, persisted=False)
         operation.fail(failure["summary"], failure=failure)
 
 
@@ -1417,7 +1442,13 @@ async def stream_regenerate(
     operation_id = uuid.uuid4().hex
 
     def _run_locked():
+        prior_state = None
+        prior_event = None
+        buffered: list[str] = []
+        persisted = False
         try:
+            prior_state = copy.deepcopy(game_loop.player_state)
+            prior_event = copy.deepcopy(game_loop.current_event)
             if daily_mode:
                 from src.game.daily_event_revision import (
                     regenerate_daily_event_atomically,
@@ -1561,12 +1592,18 @@ async def stream_regenerate(
 
             # 调用 game_loop 的完整生成流程
             new_event = game_loop.generate_round_event(
-                stream_callback=stream_cb,
+                stream_callback=buffered.append,
                 status_callback=status_cb,
                 session=session,  # ★ 传递 session 以支持选项缓存
             )
 
             if new_event and new_event.options:
+                if not _persist_generated_event_state(game_loop, game_id):
+                    raise StoryGenerationFailure("Generated story could not be persisted",
+                        failure_code=GenerationFailureCode.PERSISTENCE_FAILED)
+                persisted = True
+                for chunk in buffered:
+                    stream_cb(chunk)
                 result_holder[0] = new_event
                 logger.info(
                     f"Regeneration complete: {len(new_event.event_description)} chars, {len(new_event.options)} options"
@@ -1583,6 +1620,14 @@ async def stream_regenerate(
             logger.exception(f"[stream_regenerate] Unexpected error: {e}")
             error_holder[0] = e
         finally:
+            if not daily_mode and not persisted and prior_state is not None:
+                fields = getattr(type(prior_state), "model_fields", None)
+                if fields:
+                    for field_name in fields:
+                        setattr(game_loop.player_state, field_name, copy.deepcopy(getattr(prior_state, field_name)))
+                else:
+                    game_loop.player_state = prior_state
+                game_loop.current_event = prior_event
             logger.info(
                 f"[stream_regenerate] run() finally block, closed={closed[0]}, loop_closed={loop.is_closed()}"
             )
@@ -1672,19 +1717,6 @@ async def stream_regenerate(
         )
         yield make_sse_event("complete", event_data)
 
-        # Auto-save game state
-        try:
-            db = get_db()
-            state = game_loop.get_state()
-            if state:
-                db.save_game_progress(game_id, state)
-                logger.info(
-                    f"Auto-saved game state after regeneration: game_id={game_id}"
-                )
-        except (OSError, IOError) as e:
-            logger.warning(f"Auto-save IO error after regeneration: {e}")
-        except Exception as e:
-            logger.exception(f"Auto-save unexpected error after regeneration: {e}")
     else:
         logger.info("[stream_regenerate] Sending empty complete event (event is None)")
         yield make_sse_event("complete", {"event_description": "", "options": []})

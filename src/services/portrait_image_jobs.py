@@ -2,6 +2,7 @@
 
 import logging
 import threading
+from contextlib import ExitStack
 from collections.abc import Callable
 from typing import Any, Optional
 
@@ -12,6 +13,7 @@ from src.database.models import (Game, GameState, Image,
 from src.services.image import ImageContentError, ImageProviderServiceError, ImageServiceError, PortraitReferenceUnavailable
 from src.services.image_service import ImageService, get_image_thread_pool
 from src.observability.request_context import bind_current_context
+from src.observability.diagnostics import diagnostic_context, emit_diagnostic
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,36 @@ ACTIVE_JOB_STATUSES = ("queued", "running")
 _job_lock = threading.Lock()
 _scheduled_job_ids: set[int] = set()
 _reschedule_requested_ids: set[int] = set()
+
+
+def _job_diagnostic_fields(job, *, next_attempt=False):
+    """Reconstruct identity from durable data, including after process restart."""
+    job_id = int(job.job_id)
+    attempt = int(job.attempt_count or 0) + int(next_attempt)
+    return dict(user_id=int(job.user_id), game_id=int(job.game_id), job_id=job_id,
+                job_type="portrait_image", operation_id=f"portrait-job-{job_id}",
+                request_id=f"portrait-job-{job_id}", feature="image_generation",
+                operation=(job.request_json or {}).get("operation", "generate"),
+                attempt_id=f"portrait-job-{job_id}-attempt-{attempt}")
+
+
+def _record_job_failure(db, job_id, error, *, phase="generation"):
+    # Log before touching the database: reporting must survive a second DB fault.
+    error_code, error_message = _safe_failure(error)
+    emit_diagnostic("portrait_job_finished", phase=phase, outcome="failed",
+                    error=error, job_id=job_id, error_code=error_code, persisted=False)
+    try:
+        db.rollback()
+        job = db.get(PortraitImageGenerationJob, job_id)
+        if job is not None:
+            job.status, job.error_code, job.error_message = "failed", error_code, error_message
+            db.commit()
+        emit_diagnostic("portrait_job_failure_persistence", phase="persistence",
+                        outcome="succeeded", job_id=job_id, persisted=job is not None)
+    except Exception as persistence_error:
+        emit_diagnostic("portrait_job_failure_persistence", phase="persistence", outcome="failed",
+                        error=persistence_error, job_id=job_id, error_code=error_code, persisted=False)
+        raise
 
 
 def _current_origin_revision(db: Session, game_id: int) -> Optional[int]:
@@ -56,10 +88,13 @@ def _origin_is_current(db: Session, job: PortraitImageGenerationJob) -> bool:
 
 
 def _mark_superseded(db: Session, job: PortraitImageGenerationJob) -> None:
+    fields = _job_diagnostic_fields(job)
     job.status = "failed"
     job.error_code = "story_origin_superseded"
     job.error_message = "故事起点已更新，旧人物形象任务已作废"
     db.commit()
+    emit_diagnostic("portrait_job_finished", phase="origin_fence", outcome="superseded",
+                    **fields, error_code="story_origin_superseded", persisted=True)
 
 
 class PortraitImageJobService:
@@ -111,6 +146,8 @@ class PortraitImageJobService:
                 and (item.request_json or {}).get("source_image_id") == source_id), None)
             if existing:
                 if _origin_is_current(self.db, existing):
+                    emit_diagnostic("portrait_job_queued", phase="enqueue", outcome="reused",
+                                    job_id=existing.job_id, game_id=game_id, user_id=user_id, persisted=True)
                     return existing, True
                 _mark_superseded(self.db, existing)
 
@@ -124,6 +161,8 @@ class PortraitImageJobService:
             self.db.add(job)
             self.db.commit()
             self.db.refresh(job)
+            emit_diagnostic("portrait_job_queued", phase="enqueue", outcome="queued",
+                            job_id=job.job_id, game_id=game_id, user_id=user_id, persisted=True)
             return job, False
 
     def latest_for_game(
@@ -153,6 +192,9 @@ def requeue_interrupted_portrait_jobs(db: Session) -> list[int]:
         for job in jobs:
             job.status = "queued"
         db.commit()
+        for job in jobs:
+            emit_diagnostic("portrait_job_recovered", phase="recovery", outcome="queued",
+                            **_job_diagnostic_fields(job), persisted=True)
     return job_ids
 
 
@@ -174,14 +216,19 @@ def run_portrait_image_job(
 ) -> None:
     """Run one persisted job using a session owned by the worker thread."""
     db = session_factory()
+    contexts = ExitStack()
+    delegated = False
+    diagnostic_phase = "persistence"
     try:
         job = db.get(PortraitImageGenerationJob, job_id)
         if job is None or job.status not in ACTIVE_JOB_STATUSES:
             return
+        contexts.enter_context(diagnostic_context(**_job_diagnostic_fields(job, next_attempt=True)))
 
         if (job.request_json or {}).get("operation") == "candidate_batch":
             from src.services.portrait_candidate_jobs import run_candidate_batch
             db.close()
+            delegated = True
             run_candidate_batch(job_id, session_factory=session_factory,
                                 image_service_factory=image_service_factory)
             return
@@ -195,8 +242,11 @@ def run_portrait_image_job(
         job.error_code = None
         job.error_message = None
         db.commit()
+        emit_diagnostic("portrait_job_started", phase="generation", outcome="running",
+                        attempt=job.attempt_count)
 
         request = job.request_json
+        diagnostic_phase = "generation"
         image_service = image_service_factory(db)
         operation = request.get("operation", "generate")
         if operation == "regenerate":
@@ -228,6 +278,8 @@ def run_portrait_image_job(
         if not images or images[0].image_id is None:
             raise ImageServiceError("no image was persisted")
 
+        diagnostic_phase = "persistence"
+
         # Serialize the final fence and slot swap with batch writes. Refresh
         # objects after provider execution, which may have taken minutes.
         from src.services.portrait_candidate_jobs import _lock_game
@@ -242,6 +294,8 @@ def run_portrait_image_job(
                 _mark_superseded(db, job)
             else:
                 db.commit()
+                emit_diagnostic("portrait_job_finished", phase="origin_fence", outcome="superseded",
+                                reason="job_no_longer_running", persisted=True)
             if operation != "generate":
                 image_service.delete_image_files(images)
             return
@@ -268,6 +322,8 @@ def run_portrait_image_job(
                     job.status, job.error_code = "failed", "portrait_source_superseded"
                     job.error_message = "原人物形象已更新，请从当前形象重新开始"
                     db.commit()
+                    emit_diagnostic("portrait_job_finished", phase="origin_fence", outcome="superseded",
+                                    error_code="portrait_source_superseded", persisted=True)
                     image_service.delete_image_files(images)
                     return
                 source_slot.image_id = candidate.image_id
@@ -299,28 +355,24 @@ def run_portrait_image_job(
                         {"image_id": candidate.image_id}, synchronize_session=False)
             candidate.is_active = True
 
-        job.image_id = int(images[0].image_id)
+        completed_image_id = int(images[0].image_id)
+        job.image_id = completed_image_id
         job.status = "succeeded"
         db.commit()
         if old_images:
             image_service.delete_image_files(old_images)
         logger.info("portrait image job completed job_id=%s status=succeeded", job_id)
+        emit_diagnostic("portrait_job_finished", phase="persistence", outcome="succeeded",
+                        asset_id=completed_image_id, persisted=True)
     except Exception as error:
-        db.rollback()
-        job = db.get(PortraitImageGenerationJob, job_id)
-        if job is not None:
-            error_code, error_message = _safe_failure(error)
-            job.status = "failed"
-            job.error_code = error_code
-            job.error_message = error_message
-            db.commit()
-            logger.warning(
-                "portrait image job completed job_id=%s status=failed error_code=%s",
-                job_id,
-                error_code,
-            )
+        if delegated:
+            raise
+        _record_job_failure(db, job_id, error, phase=diagnostic_phase)
     finally:
-        db.close()
+        try:
+            db.close()
+        finally:
+            contexts.close()
 
 
 def schedule_portrait_image_job(job_id: int) -> None:
@@ -348,11 +400,22 @@ def schedule_portrait_image_job(job_id: int) -> None:
                 schedule_portrait_image_job(job_id)
 
     try:
-        get_image_thread_pool().submit(bind_current_context(_run))
-    except Exception:
+        future = get_image_thread_pool().submit(bind_current_context(_run))
+        def observe(completed):
+            try:
+                completed.result()
+            except BaseException as error:
+                emit_diagnostic("portrait_worker_crashed", phase="worker", outcome="failed",
+                                error=error, job_id=job_id, job_type="portrait_image",
+                                operation_id=f"portrait-job-{job_id}")
+        future.add_done_callback(observe)
+    except Exception as error:
         with _job_lock:
             _scheduled_job_ids.discard(job_id)
             _reschedule_requested_ids.discard(job_id)
+        emit_diagnostic("portrait_worker_crashed", phase="scheduling", outcome="failed",
+                        error=error, job_id=job_id, job_type="portrait_image",
+                        operation_id=f"portrait-job-{job_id}")
         raise
 
 

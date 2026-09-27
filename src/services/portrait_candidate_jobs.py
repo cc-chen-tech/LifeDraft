@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from contextlib import ExitStack
 import json
 import logging
 from threading import BoundedSemaphore
@@ -14,10 +15,12 @@ from src.api.schemas import PortraitCandidateBatchResponse, PortraitCandidateSlo
 from src.database.models import (Game, GameState, Image, PortraitCandidateBatch,
                                  PortraitCandidateSlot, PortraitImageGenerationJob,
                                  PortraitSelection, SessionLocal)
-from src.observability.request_context import bind_current_context
+from src.observability.request_context import bind_current_context, current_request_context
 from src.services.image_service import ImageService
-from src.services.portrait_image_jobs import _origin_is_current, _safe_failure
+from src.services.portrait_image_jobs import (_origin_is_current, _safe_failure,
+                                             _job_diagnostic_fields, _record_job_failure)
 from src.services.portrait_selection import selected_portrait, set_default_portrait
+from src.observability.diagnostics import diagnostic_context, emit_diagnostic
 
 logger = logging.getLogger(__name__)
 _candidate_slot_capacity = BoundedSemaphore(3)
@@ -71,6 +74,8 @@ def _active_batch(db, game_id):
 
 
 def _supersede(db, job, batch):
+    fields = _job_diagnostic_fields(job)
+    batch_id = batch.batch_id
     job.status = "failed"
     job.error_code = "story_origin_superseded"
     job.error_message = "故事起点已更新，旧人物形象任务已作废"
@@ -79,6 +84,8 @@ def _supersede(db, job, batch):
         if slot.status != "ready":
             slot.status, slot.error_code = "failed", "story_origin_superseded"
     db.commit()
+    emit_diagnostic("portrait_job_finished", phase="origin_fence", outcome="superseded",
+                    **fields, batch_id=batch_id, error_code="story_origin_superseded", persisted=True)
 
 
 def enqueue_candidate_batch(db: Session, user_id: int, game_id: int, mode: str):
@@ -118,6 +125,8 @@ def enqueue_candidate_batch(db: Session, user_id: int, game_id: int, mode: str):
         db.flush()
         db.add_all([PortraitCandidateSlot(batch_id=batch.batch_id, slot_index=i) for i in range(3)])
         db.commit()
+        emit_diagnostic("portrait_job_queued", phase="enqueue", outcome="queued",
+                        job_id=job.job_id, batch_id=batch.batch_id, game_id=game_id, user_id=user_id, persisted=True)
         return job
     except IntegrityError:
         db.rollback()
@@ -153,6 +162,8 @@ def retry_candidate_batch(db, batch_id, user_id):
             slot.status, slot.error_code = "queued", None
     job.status, job.error_code, job.error_message = "queued", None, None
     db.commit()
+    emit_diagnostic("portrait_job_queued", phase="retry", outcome="queued",
+                    job_id=job.job_id, batch_id=batch_id, game_id=batch.game_id, user_id=user_id, persisted=True)
     return job
 
 
@@ -225,8 +236,15 @@ def _run_candidate_slot(job_id, index, *, session_factory, image_service_factory
 
 def _process_candidate_slot(job_id, index, *, session_factory, image_service_factory):
     db = session_factory()
+    contexts = ExitStack()
+    diagnostic_phase = "persistence"
     try:
         job = db.get(PortraitImageGenerationJob, job_id)
+        fields = _job_diagnostic_fields(job)
+        if current_request_context() is not None:
+            fields.pop("request_id")
+        fields.update(segment_index=index, attempt_id=f"{fields['attempt_id']}-slot-{index}")
+        contexts.enter_context(diagnostic_context(**fields))
         batch = db.query(PortraitCandidateBatch).filter_by(job_id=job_id).one()
         request = deepcopy(job.request_json)
         db.expire_all()
@@ -241,7 +259,10 @@ def _process_candidate_slot(job_id, index, *, session_factory, image_service_fac
         image = _saved_image(db, batch, slot)
         slot.status, slot.error_code = "running", None
         db.commit()
+        emit_diagnostic("portrait_slot_started", phase="generation", outcome="running",
+                        batch_id=batch.batch_id, slot_index=index)
         try:
+            diagnostic_phase = "generation"
             if image is None:
                 image = image_service_factory(db).generate_character_candidate(
                     game_id=job.game_id,
@@ -254,6 +275,7 @@ def _process_candidate_slot(job_id, index, *, session_factory, image_service_fac
                     slot_index=index,
                 )
             image_id = image.image_id
+            diagnostic_phase = "persistence"
             _lock_game(db, job.game_id)
             db.refresh(job)
             if job.status != "running":
@@ -278,7 +300,12 @@ def _process_candidate_slot(job_id, index, *, session_factory, image_service_fac
             if job.image_id is None:
                 job.image_id = image_id
             db.commit()
+            emit_diagnostic("portrait_slot_finished", phase="persistence", outcome="succeeded",
+                            batch_id=batch.batch_id, slot_index=index, asset_id=image_id, persisted=True)
         except Exception as error:
+            emit_diagnostic("portrait_slot_finished", phase=diagnostic_phase, outcome="failed",
+                            error=error, batch_id=batch.batch_id, slot_index=index,
+                            error_code=_safe_failure(error)[0], persisted=False)
             db.rollback()
             db.refresh(job)
             if job.status != "running":
@@ -289,15 +316,31 @@ def _process_candidate_slot(job_id, index, *, session_factory, image_service_fac
             logger.warning(
                 "candidate slot failed job_id=%s slot=%s code=%s", job_id, index, slot.error_code
             )
+    except Exception as error:
+        emit_diagnostic("portrait_slot_crashed", phase=diagnostic_phase, outcome="failed",
+                        error=error, job_id=job_id, slot_index=index, persisted=False)
+        raise
     finally:
-        db.close()
+        try:
+            db.close()
+        finally:
+            contexts.close()
 
 
 def run_candidate_batch(
     job_id, *, session_factory=SessionLocal, image_service_factory=ImageService
 ):
     db = session_factory()
+    contexts = ExitStack()
+    diagnostic_phase = "persistence"
     try:
+        job = db.get(PortraitImageGenerationJob, job_id)
+        if job is None:
+            return
+        fields = _job_diagnostic_fields(job, next_attempt=True)
+        if current_request_context() is not None:
+            fields["request_id"] = current_request_context().request_id
+        contexts.enter_context(diagnostic_context(**fields))
         # Atomic claim prevents duplicate scheduler deliveries from generating
         # the same paid slots. Startup recovery resets interrupted running jobs.
         claimed = (
@@ -316,10 +359,15 @@ def run_candidate_batch(
         db.commit()
         if not claimed:
             return
+        db.refresh(job)
+        batch = db.query(PortraitCandidateBatch).filter_by(job_id=job_id).one()
+        emit_diagnostic("portrait_job_started", phase="generation", outcome="running",
+                        batch_id=batch.batch_id, attempt=job.attempt_count)
         # Release the coordinator's transaction before slot writers start.
         db.rollback()
         # This dedicated pool avoids waiting inside the shared image pool for
         # child work queued behind other waiting batches.
+        diagnostic_phase = "generation"
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="portrait-slot") as pool:
             futures = [
                 pool.submit(
@@ -335,6 +383,7 @@ def run_candidate_batch(
             ]
             for future in futures:
                 future.result()
+        diagnostic_phase = "persistence"
         db.expire_all()
         job = db.get(PortraitImageGenerationJob, job_id)
         _lock_game(db, job.game_id)
@@ -359,6 +408,15 @@ def run_candidate_batch(
                 "部分候选形象未完成，请重试未完成的图片",
             )
         batch.active_key = None
+        outcome = job.status
+        batch_id = batch.batch_id
         db.commit()
+        emit_diagnostic("portrait_job_finished", phase="persistence", outcome=outcome,
+                        batch_id=batch_id, count=completed, persisted=True)
+    except Exception as error:
+        _record_job_failure(db, job_id, error, phase=diagnostic_phase)
     finally:
-        db.close()
+        try:
+            db.close()
+        finally:
+            contexts.close()

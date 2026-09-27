@@ -8,6 +8,8 @@ from src.ai.story_validation import FindingSeverity, ValidationFinding
 
 
 class GenerationFailureCode(str, Enum):
+    VALIDATION_SERVICE_ERROR = "VALIDATION_SERVICE_ERROR"
+    PERSISTENCE_FAILED = "PERSISTENCE_FAILED"
     PROVIDER_TIMEOUT = "PROVIDER_TIMEOUT"
     EMPTY_OUTPUT = "EMPTY_OUTPUT"
     INVALID_STORY_STRUCTURE = "INVALID_STORY_STRUCTURE"
@@ -67,6 +69,12 @@ class StoryContinuationFailure(RuntimeError):
 
 
 _FAILURE_COPY = {
+    GenerationFailureCode.VALIDATION_SERVICE_ERROR: (
+        "故事检查暂时不可用", "故事未通过完整检查，没有保存。请稍后再次生成。",
+    ),
+    GenerationFailureCode.PERSISTENCE_FAILED: (
+        "故事保存未完成", "本次故事未能保存，请稍后再次生成。",
+    ),
     GenerationFailureCode.PROVIDER_TIMEOUT: (
         "模型服务响应超时",
         "模型服务没有在单次请求时限内返回结果。失败稿没有保存，你可以再次生成。",
@@ -120,6 +128,8 @@ def _failure_code_from_exception(exc: BaseException) -> GenerationFailureCode:
             return code
 
     message = str(exc).lower()
+    if "persistence_failed" in message:
+        return GenerationFailureCode.PERSISTENCE_FAILED
     if isinstance(exc, TimeoutError) or "timeout" in message or "timed out" in message:
         return GenerationFailureCode.PROVIDER_TIMEOUT
     if "empty" in message or "no round event" in message:

@@ -1,3 +1,4 @@
+jest.mock('@/lib/remote-log', () => ({ reportDiagnostic: jest.fn() }));
 /**
  * stores/useSceneImageStore.ts Tests
  * Tests for scene image state management

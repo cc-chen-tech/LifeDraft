@@ -4,6 +4,8 @@ import {
   StoryListeningExperience,
 } from "@/components/game/StoryListeningExperience";
 import { api } from "@/lib/api";
+import { reportDiagnostic } from "@/lib/remote-log";
+jest.mock("@/lib/remote-log", () => ({ reportDiagnostic: jest.fn() }));
 
 jest.mock("@/lib/api", () => ({
   api: {
@@ -339,6 +341,8 @@ describe("StoryListeningExperience", () => {
     expect(screen.queryByText("这一章暂时无法朗读")).not.toBeInTheDocument();
     await act(async () => { await jest.advanceTimersByTimeAsync(2_000); });
     expect(voiceApi.getJob).toHaveBeenCalledTimes(2);
+    expect(reportDiagnostic).toHaveBeenCalledWith("voice_poll_retry", expect.objectContaining({ jobId: 19, phase: "polling" }));
+    expect(reportDiagnostic).toHaveBeenCalledWith("voice_poll_recovered", expect.objectContaining({ jobId: 19 }));
     expect(document.querySelector("audio")).toHaveAttribute("src", "/first.mp3");
   });
 
@@ -1333,6 +1337,7 @@ describe("StoryListeningExperience", () => {
       jest.advanceTimersByTime(1);
     });
     expect(load).toHaveBeenCalledTimes(1);
+    expect(reportDiagnostic).toHaveBeenCalledWith("voice_media_automatic_recovery", expect.objectContaining({ gameId: 42, jobId: 19, phase: "playback" }));
     expect(play).not.toHaveBeenCalled();
     fireEvent.loadedMetadata(audio);
     expect(audio.currentTime).toBe(1.75);

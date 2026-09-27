@@ -26,6 +26,8 @@ from src.game.story_origin import (
 if TYPE_CHECKING:
     from src.game.state import PlayerState
 
+from src.observability.diagnostics import emit_diagnostic
+
 logger = logging.getLogger(__name__)
 
 
@@ -164,6 +166,8 @@ class StateRepository:
 
             return True
         except Exception as e:
+            emit_diagnostic("game_state_persistence", phase="save", outcome="failed", error=e,
+                            game_id=game_id, persisted=False, error_code="PERSISTENCE_FAILED")
             logger.error(
                 f"save_game_progress: Failed to save game_id={game_id}, error={e}"
             )

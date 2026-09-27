@@ -54,10 +54,9 @@ from src.services.daily_world_projection_observability import (
     emit_projection_health,
     summarize_projection_health,
 )
+from src.observability.diagnostics import diagnostic_context
 from src.observability.request_context import (
-    RequestContext,
     current_request_context,
-    request_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -1114,7 +1113,9 @@ class DailyWorldProjectionService:
             row = session.get(DailyWorldProjection, projection_id)
             if row is None or row.lease_owner != owner or row.status != "running":
                 return None
+            game = session.get(Game, row.game_id)
             return SimpleNamespace(
+                user_id=getattr(game, "user_id", None),
                 projection_id=row.projection_id,
                 game_id=row.game_id,
                 event_id=row.event_id,
@@ -1561,16 +1562,12 @@ class DailyWorldProjectionService:
                 if parent_context is not None
                 else f"projection-{row.projection_id}-{attempt_id}"
             )
-            with request_context(
-                RequestContext(
-                    request_id=projection_request_id,
-                    operation_id=(
-                        f"daily-world-projection:{row.game_id}:"
-                        f"{row.projection_id}:{attempt_id}"
-                    ),
-                    feature="daily_world_projection",
-                    operation="extract",
-                )
+            with diagnostic_context(
+                request_id=projection_request_id,
+                operation_id=f"daily-world-projection:{row.game_id}:{row.projection_id}:{attempt_id}",
+                feature="daily_world_projection", operation="extract",
+                user_id=row.user_id, game_id=row.game_id,
+                job_id=row.projection_id, job_type="world_projection", attempt_id=str(attempt_id),
             ):
                 payload = self._extract(story, options, source.get("tracked_state"))
             done.set()

@@ -1981,7 +1981,7 @@ export interface paths {
         put?: never;
         /**
          * Client Log
-         * @description Receive and log client-side errors — useful for debugging mobile issues.
+         * @description Persist bounded metadata; authenticated identity comes only from middleware.
          */
         post: operations["client_log_api_client_log_post"];
         delete?: never;
@@ -2088,7 +2088,10 @@ export interface components {
              * @default error
              */
             level: string;
-            /** Message */
+            /**
+             * Message
+             * @default
+             */
             message: string;
             /** Context */
             context?: string | null;
@@ -2096,6 +2099,36 @@ export interface components {
             url?: string | null;
             /** Ua */
             ua?: string | null;
+            /**
+             * Error Code
+             * @default client_error
+             */
+            error_code: string;
+            /**
+             * Outcome
+             * @default failed
+             * @enum {string}
+             */
+            outcome: "failed" | "recovered" | "retry" | "cancelled";
+            /**
+             * Phase
+             * @default client
+             */
+            phase: string;
+            /** Game Id */
+            game_id?: number | null;
+            /** Job Id */
+            job_id?: number | null;
+            /** Asset Id */
+            asset_id?: number | null;
+            /** Operation Id */
+            operation_id?: string | null;
+            /** Request Id */
+            request_id?: string | null;
+            /** Http Status */
+            http_status?: number | null;
+            /** Attempt */
+            attempt?: number | null;
         };
         /**
          * CollectionResponse

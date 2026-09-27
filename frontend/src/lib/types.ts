@@ -460,7 +460,7 @@ export interface PresetInfo {
 }
 
 export interface StoryDeliveryNotice {
-  code: "SOFT_VALIDATION_FALLBACK";
+  code: "SOFT_VALIDATION_FALLBACK" | "SAFE_FIRST_DAY_FALLBACK";
   summary: string;
   reason: string;
   retryable: boolean;

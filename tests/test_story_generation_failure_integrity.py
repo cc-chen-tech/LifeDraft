@@ -226,6 +226,7 @@ def test_round_generation_retries_when_provider_repeats_committed_story(
     client = Mock()
     client.call.side_effect = [repeated_story, distinct_story]
     option_generator = Mock()
+    option_generator.validate_options_consistency.return_value = []
     option_generator.generate_options_only.return_value = GameEvent(
         event_description=distinct_story,
         options=[
@@ -269,6 +270,7 @@ def test_round_generation_retries_when_provider_repeats_persisted_opening(
     client = Mock()
     client.call.side_effect = [opening_story, distinct_story]
     option_generator = Mock()
+    option_generator.validate_options_consistency.return_value = []
     option_generator.generate_options_only.return_value = GameEvent(
         event_description=distinct_story,
         options=[
@@ -361,6 +363,7 @@ def test_round_generation_rejects_provider_output_repeated_after_retry(
     client = Mock()
     client.call.side_effect = [repeated_story, repeated_story]
     option_generator = Mock()
+    option_generator.validate_options_consistency.return_value = []
 
     monkeypatch.setattr(
         "src.ai.quick_validator.quick_validate_story",
@@ -551,6 +554,7 @@ def test_round_generation_uses_a_bounded_provider_timeout(
     client = Mock()
     client.call.return_value = story
     option_generator = Mock()
+    option_generator.validate_options_consistency.return_value = []
     option_generator.generate_options_only.return_value = GameEvent(
         event_description=story,
         options=[
@@ -589,6 +593,7 @@ def test_round_generation_rejects_an_overlong_story_after_shape_retry(
     client = Mock()
     client.call.side_effect = [overlong_story, overlong_story, overlong_story]
     option_generator = Mock()
+    option_generator.validate_options_consistency.return_value = []
 
     monkeypatch.setattr(
         "src.ai.quick_validator.quick_validate_story",
@@ -700,6 +705,7 @@ def test_round_generation_rejects_an_overlong_consistency_retry(
     client = Mock()
     client.call.return_value = valid_story
     option_generator = Mock()
+    option_generator.validate_options_consistency.return_value = []
     generator = StoryGenerator(client)
 
     monkeypatch.setattr(

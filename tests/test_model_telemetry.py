@@ -140,7 +140,7 @@ def test_configure_model_logging_emits_one_json_line_without_duplicate_handlers(
     )
 
     assert same_logger is logger
-    assert len(logger.handlers) == 1
+    assert len([h for h in logger.handlers if getattr(h, "_model_json_handler", False)]) == 1
     lines = [line for line in stream.getvalue().splitlines() if line]
     assert len(lines) == 1
     assert json.loads(lines[0]) == {

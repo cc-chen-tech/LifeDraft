@@ -426,13 +426,17 @@ class TestGenerateRoundIllustrationAsync:
 
     def test_async_generation_starts_thread(self):
         """Async callers submit exactly one job to the shared image worker pool."""
+        from src.observability.request_context import RequestContext, current_request_context, request_context
         service = RoundIllustrationService(
             image_client=MagicMock(),
             image_storage=MagicMock(),
             db_session=MagicMock(),
         )
 
-        with patch("src.game.round.illustration_service.get_image_thread_pool") as get_pool:
+        captured = []
+        service._generate_round_illustration_sync = lambda *args: captured.append((current_request_context(), args))
+        context = RequestContext(request_id="image-async-request", user_id=11, game_id=1)
+        with patch("src.game.round.illustration_service.get_image_thread_pool") as get_pool, request_context(context):
             service.generate_round_illustration_async(
                 game_id=1,
                 round_number=1,
@@ -444,7 +448,11 @@ class TestGenerateRoundIllustrationAsync:
 
         get_pool.assert_called_once()
         get_pool.return_value.submit.assert_called_once()
-        assert get_pool.return_value.submit.call_args.args[0] == service._generate_round_illustration_sync
+        submitted = get_pool.return_value.submit.call_args.args[0]
+        submitted()
+        assert captured[0][0] == context
+        assert captured[0][1][:3] == (1, 1, "Test story")
+        get_pool.return_value.submit.return_value.add_done_callback.assert_called_once()
 
     def test_sync_generation_stays_on_the_callers_worker(self):
         """The bounded gameplay media worker must not fan out into image-gen workers."""

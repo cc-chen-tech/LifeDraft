@@ -8,6 +8,11 @@ import { useGameStore } from '@/stores/useGameStore';
 import type { Phase, ConnectionStatus } from '@/hooks/game/usePhaseManager';
 import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 
+jest.mock('@/lib/remote-log', () => ({
+  reportError: jest.fn(),
+  reportDiagnostic: jest.fn(),
+}));
+
 function setupDefaultState() {
   useGameStore.setState({
     storyText: '',
@@ -185,7 +190,7 @@ describe('useEventGenerator', () => {
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/games/1/event',
         expect.objectContaining({
-          headers: { 'Last-Event-ID': '4' },
+          headers: expect.objectContaining({ 'Last-Event-ID': '4', 'X-Operation-ID': expect.stringMatching(/^[A-Za-z0-9._:-]+$/) }),
           signal: expect.any(AbortSignal),
         })
       );
@@ -208,7 +213,7 @@ describe('useEventGenerator', () => {
 
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/games/1/event',
-        expect.objectContaining({ headers: { 'Last-Event-ID': '-1' } })
+        expect.objectContaining({ headers: expect.objectContaining({ 'Last-Event-ID': '-1', 'X-Operation-ID': expect.stringMatching(/^[A-Za-z0-9._:-]+$/) }) })
       );
       expect(window.sessionStorage.getItem('story101:event-cursor:1')).toBeNull();
     });

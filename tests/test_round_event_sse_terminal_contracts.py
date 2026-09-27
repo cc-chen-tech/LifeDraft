@@ -394,6 +394,7 @@ def test_missing_daily_generation_forces_incomplete_event_out_of_resume_path(
     received_kwargs = {}
 
     class _GameLoop:
+        player_state = SimpleNamespace()
         quality_level = "expert"
 
         def generate_round_event(self, **kwargs):
@@ -412,7 +413,7 @@ def test_missing_daily_generation_forces_incomplete_event_out_of_resume_path(
     monkeypatch.setattr(
         sse_helpers,
         "_set_generation_resume_view",
-        lambda *args, **kwargs: None,
+        lambda *args, **kwargs: True,
     )
     monkeypatch.setattr(
         sse_helpers,

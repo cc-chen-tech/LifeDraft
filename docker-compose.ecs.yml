@@ -1,5 +1,11 @@
 version: '3.8'
 
+x-bounded-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   nginx:
     image: nginx:alpine
@@ -14,6 +20,7 @@ services:
     depends_on:
       - backend
       - frontend
+    logging: *bounded-logging
     restart: unless-stopped
     networks:
       - story2-network
@@ -32,6 +39,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+    logging: *bounded-logging
     restart: unless-stopped
     networks:
       - story2-network
@@ -48,6 +56,7 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
+    logging: *bounded-logging
     restart: unless-stopped
     networks:
       - story2-network

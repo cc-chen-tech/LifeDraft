@@ -134,6 +134,42 @@ def _life_vision(state: Dict[str, Any], settings: Optional[Dict[str, Any]]) -> s
     )
 
 
+def build_first_day_fallback_candidate(
+    player_state: Dict[str, Any],
+    character_settings: Optional[Dict[str, Any]],
+    language: str,
+) -> str:
+    """Construct a minimal opening without reusing a rejected model draft."""
+    protagonist = resolve_protagonist_name(player_state, character_settings, None)
+    if not protagonist:
+        return ""
+    # A textarea may contain a complete first-person sentence or several
+    # paragraphs. Keep its meaning, but make it one quoted thought rather than
+    # assuming it is a bare verb phrase suitable after "wants to".
+    vision = " ".join(_life_vision(player_state, character_settings).split()).strip("。！？.!? ")
+    # Keep quoted names inside the thought from closing its outer quotation.
+    vision = vision.replace('"', "'").replace("“", "‘").replace("”", "’")
+    if language == "zh":
+        opening = (
+            f"{protagonist}始终记着自己的心愿——“{vision}”，但眼前的局势仍有许多未知。"
+            if vision else f"{protagonist}希望走出眼前的困局，却明白局势仍有许多未知。"
+        )
+        return (
+            f"{opening}\n\n"
+            f"清晨，{protagonist}停下脚步，把已经知道的事实重新理清。"
+            "下一步必须由自己决定：先查明情况，找人核实，还是暂缓行动。"
+        )
+    opening = (
+        f'{protagonist} keeps this hope in mind: "{vision}"; yet the situation is still uncertain.'
+        if vision else f"{protagonist} hopes to find a way forward, but the situation is still uncertain."
+    )
+    return (
+        f"{opening}\n\n"
+        f"In the morning, {protagonist} pauses to review what is already known. "
+        "The next step is a choice: investigate, seek advice, or wait for more evidence."
+    )
+
+
 def _has_vision_anchor(first: str, vision: str, language: str) -> bool:
     if not vision.strip():
         return True

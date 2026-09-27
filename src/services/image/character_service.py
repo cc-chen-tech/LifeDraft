@@ -18,6 +18,7 @@ from src.services.image import (ImageContentError, PortraitReferenceUnavailable,
                                 ImageProviderServiceError,
                                 ImageServiceError)
 from src.services.image_storage import ImageStorageService
+from src.observability.diagnostics import emit_diagnostic
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,7 @@ class CharacterImageService:
             line for line in era_constraints.splitlines()
             if not any(cue in line for cue in same_face_lines)
         )
+        diagnostic_phase = "generation"
         try:
             images, _ = self.image_client.generate_character_images(
                 name=name, description=f"{description}。{direction}", era=era,
@@ -90,6 +92,7 @@ class CharacterImageService:
             )
             if not images:
                 raise ImageServiceError("没有成功生成任何图片")
+            diagnostic_phase = "storage"
             image = self._save_character_image(
                 game_id=game_id, name=name, image_data=images[0][0],
                 prompt=images[0][1], storage_name=f"{name}_{slot_index + 1}",
@@ -101,8 +104,12 @@ class CharacterImageService:
                     "characterSettings": deepcopy(character_settings),
                 },
             )
+            diagnostic_phase = "persistence"
             self.db.commit()
             self.db.refresh(image)
+            emit_diagnostic("image_delivery_finished", phase="persistence", outcome="succeeded",
+                            game_id=game_id, asset_id=image.image_id, batch_id=batch_id,
+                            slot_index=slot_index, persisted=True)
             return image
         except ContentInspectionError as e:
             self.db.rollback()
@@ -114,6 +121,8 @@ class CharacterImageService:
             self.db.rollback()
             raise ImageServiceError(f"图像生成失败: {e}") from e
         except Exception as e:
+            emit_diagnostic("image_delivery_finished", phase=diagnostic_phase, outcome="failed",
+                            error=e, game_id=game_id, batch_id=batch_id, slot_index=slot_index, persisted=False)
             self.db.rollback()
             if isinstance(e, ImageServiceError):
                 raise
@@ -185,6 +194,7 @@ class CharacterImageService:
             ).update({"is_active": False})
             self.db.commit()
 
+        diagnostic_phase = "generation"
         try:
             # ★ 生成外貌特征锚点（文本层面的一致性机制）
             character_settings = metadata.get("characterSettings", {}) if metadata else {}
@@ -245,6 +255,7 @@ class CharacterImageService:
                     "appearance_anchor": anchor_data,  # ★ 保存外貌锚点
                 }
 
+                diagnostic_phase = "storage"
                 image_model = self._save_character_image(
                     game_id=game_id, name=name, image_data=image_data,
                     prompt=prompt, storage_name=f"{name}_{idx + 1}",
@@ -257,6 +268,7 @@ class CharacterImageService:
                 if is_primary:
                     primary_image_model = image_model
 
+            diagnostic_phase = "persistence"
             self.db.commit()
 
             if primary_image_model:
@@ -268,6 +280,8 @@ class CharacterImageService:
                 self.db.refresh(model)
 
             logger.info(f"Character images saved: {len(image_models)} images for {name}")
+            emit_diagnostic("image_delivery_finished", phase="persistence", outcome="succeeded",
+                            game_id=game_id, count=len(image_models), persisted=True)
             return image_models
 
         except ContentInspectionError as e:
@@ -281,6 +295,8 @@ class CharacterImageService:
             raise ImageServiceError(f"图像生成失败: {e}")
         except Exception as e:
             logger.error(f"Unexpected error in generate_character_image: {e}")
+            emit_diagnostic("image_delivery_finished", phase=diagnostic_phase, outcome="failed",
+                            error=e, game_id=game_id, persisted=False)
             self.db.rollback()
             raise ImageServiceError(f"生成人物形象失败: {e}")
 

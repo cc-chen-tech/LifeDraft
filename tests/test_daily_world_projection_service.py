@@ -2521,3 +2521,20 @@ def test_compact_tracked_state_reserves_budget_for_each_projection_category() ->
 
     assert signals.requires_nonempty_patch is True
     assert "causal_updates" in signals.categories
+
+
+def test_recovered_projection_rebuilds_owner_context_for_provider():
+    from src.observability.request_context import current_request_context
+    now = datetime(2026, 8, 17, 10, 0, 0)
+    state = WorkerState(_row(now))
+    state.rows[9] = SimpleNamespace(user_id=71)
+    contexts = []
+    def extractor(*_args):
+        contexts.append(current_request_context())
+        return SimpleNamespace(no_change=True)
+    _service(state, now, extractor)._process_claim(7, now)
+    assert len(contexts) == 1
+    assert (contexts[0].user_id, contexts[0].game_id, contexts[0].job_id) == (71, 9, 7)
+    assert contexts[0].job_type == 'world_projection'
+    assert contexts[0].attempt_id
+    assert current_request_context() is None

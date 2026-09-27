@@ -17,7 +17,7 @@ def test_backend_workflow_owns_backend_quick_gates():
     workflow = (PROJECT_ROOT / ".github/workflows/backend-tests.yml").read_text()
 
     assert "./test.sh mypy" in workflow
-    assert "./scripts/run-maintained-backend-tests.sh test" in workflow
+    assert "./test.sh full-backend" in workflow
 
 
 def test_runner_exposes_accurate_scope_commands():

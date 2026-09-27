@@ -33,6 +33,7 @@ class ImageProviderError(ImageGenerationError):
         retryable: bool,
         public_message: str,
         provider_trace_id: Optional[str] = None,
+        status_code: Optional[int] = None,
     ) -> None:
         super().__init__(public_message)
         self.code = code
@@ -40,6 +41,7 @@ class ImageProviderError(ImageGenerationError):
         self.retryable = retryable
         self.public_message = public_message
         self.provider_trace_id = provider_trace_id
+        self.status_code = status_code
 
 
 class ContentInspectionError(ImageGenerationError):

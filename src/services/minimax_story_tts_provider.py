@@ -919,14 +919,21 @@ def _is_final_audio_message(payload: Mapping[str, Any]) -> bool:
     return isinstance(data, Mapping) and data.get("is_final") is True
 
 
+class MiniMaxBusinessError(RuntimeError):
+    """Provider business codes survive wrapping without retaining private text."""
+
+    def __init__(self, code: int) -> None:
+        self.provider_code = str(code)
+        super().__init__(f"MiniMax TTS provider rejected request (code={code})")
+
+
 def _raise_for_base_resp(payload: Mapping[str, Any]) -> None:
     base_resp = payload.get("base_resp")
     if not isinstance(base_resp, Mapping):
         return
     status_code = int(base_resp.get("status_code") or 0)
     if status_code != 0:
-        status_msg = str(base_resp.get("status_msg") or "unknown")
-        raise RuntimeError(f"MiniMax async TTS request failed: {status_code} {status_msg}")
+        raise MiniMaxBusinessError(status_code)
 
 
 def _extract_file_download_url(response: httpx.Response) -> Optional[str]:

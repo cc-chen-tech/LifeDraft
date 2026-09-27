@@ -4,7 +4,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Optional, Literal
 
 import sentry_sdk
 from dotenv import load_dotenv
@@ -14,12 +14,12 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
 from config.feature_flags import get_feature
-from config.logging_config import setup_logging
+from config.logging_config import setup_logging, LOG_DIR
 from config.settings import SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_TRACES_SAMPLE_RATE
 from src.api.routers import (
     auth,
@@ -63,7 +63,7 @@ if os.getenv("ENVIRONMENT", "development").lower() == "production":
         log_to_file=True,
         json_output=True,
     )
-    configure_model_logging()
+    configure_model_logging(log_file=LOG_DIR / "model.jsonl")
 else:
     logging.basicConfig(
         level=logging.INFO,
@@ -218,15 +218,28 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         request_id = resolve_request_id(request.headers.get("X-Request-ID"))
         operation_id = resolve_operation_id(request.headers.get("X-Operation-ID"))
+        from src.api.deps import verified_request_user
+        authorization = request.headers.get("Authorization", "")
+        token = request.cookies.get("auth_token") or (
+            authorization[7:] if authorization.lower().startswith("bearer ") else None
+        )
+        user_id = verified_request_user(request, token) if token else None
         with request_context(
             RequestContext(
                 request_id=request_id,
                 operation_id=operation_id,
                 operation=request.method.lower(),
+                user_id=user_id,
             )
         ):
             start_time = time.monotonic()
-            response = await call_next(request)
+            try:
+                response = await call_next(request)
+            except Exception as error:
+                from src.observability.diagnostics import emit_diagnostic
+                emit_diagnostic("api_request", phase="handler", outcome="failed", error=error,
+                                duration_ms=round((time.monotonic() - start_time) * 1000, 2))
+                raise
             duration = time.monotonic() - start_time
 
             # 跳过健康检查和静态资源的日志
@@ -236,6 +249,8 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
                     "API Request",
                     extra={
                         "request_id": request_id,
+                        "operation_id": operation_id,
+                        "user_id": user_id,
                         "method": request.method,
                         "path": path,
                         "status": response.status_code,
@@ -360,37 +375,30 @@ client_logger = logging.getLogger("client")
 
 
 class ClientLogEntry(BaseModel):
-    level: str = "error"  # error / warn / info
-    message: str
-    context: Optional[str] = None  # e.g. "sse", "api", "global"
-    url: Optional[str] = None  # page URL on client
-    ua: Optional[str] = None  # User-Agent (auto-filled from header)
+    # Compatibility inputs remain accepted but free text/URLs are never logged.
+    level: str = Field(default="error", max_length=16)
+    message: str = Field(default="", max_length=4096)
+    context: Optional[str] = Field(default=None, max_length=64)
+    url: Optional[str] = Field(default=None, max_length=2048)
+    ua: Optional[str] = Field(default=None, max_length=512)
+    error_code: str = Field(default="client_error", pattern=r"^[a-zA-Z0-9_.:-]{1,96}$")
+    outcome: Literal["failed", "recovered", "retry", "cancelled"] = "failed"
+    phase: str = Field(default="client", pattern=r"^[a-zA-Z0-9_.:-]{1,64}$")
+    game_id: Optional[int] = Field(default=None, ge=1)
+    job_id: Optional[int] = Field(default=None, ge=1)
+    asset_id: Optional[int] = Field(default=None, ge=1)
+    operation_id: Optional[str] = Field(default=None, max_length=128)
+    request_id: Optional[str] = Field(default=None, max_length=128)
+    http_status: Optional[int] = Field(default=None, ge=100, le=599)
+    attempt: Optional[int] = Field(default=None, ge=0, le=10000)
 
 
 @app.post("/api/client-log")
 async def client_log(entry: ClientLogEntry, request: Request):
-    """Receive and log client-side errors — useful for debugging mobile issues."""
-    ua = entry.ua or request.headers.get("user-agent", "unknown")
-    ip = request.client.host if request.client else "unknown"
+    """Persist bounded metadata; authenticated identity comes only from middleware."""
+    from src.observability.diagnostics import emit_diagnostic
     context = current_request_context()
-    request_id = context.request_id if context is not None else resolve_request_id(
-        request.headers.get("X-Request-ID")
-    )
-    log_fields = {
-        "request_id": request_id,
-        "client_context": entry.context or "client",
-        "client_message_length": len(entry.message),
-        "page": entry.url,
-        "client_ip": ip,
-        "user_agent": ua,
-    }
-
-    lvl = entry.level.lower()
-    if lvl == "warn":
-        client_logger.warning("Client log", extra=log_fields)
-    elif lvl == "info":
-        client_logger.info("Client log", extra=log_fields)
-    else:
-        client_logger.error("Client log", extra=log_fields)
-
-    return {"ok": True, "request_id": request_id}
+    emit_diagnostic("client_diagnostic", phase=entry.phase, outcome=entry.outcome,
+                    error_code=entry.error_code, game_id=entry.game_id, job_id=entry.job_id,
+                    asset_id=entry.asset_id, http_status=entry.http_status, attempt=entry.attempt)
+    return {"ok": True, "request_id": context.request_id if context else None}

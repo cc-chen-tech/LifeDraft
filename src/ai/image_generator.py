@@ -347,6 +347,7 @@ class ImageGenerator:
 
         return ImageProviderError(
             code=f"image_provider_http_{status_code}_{operation}",
+            status_code=status_code,
             category=category,
             retryable=retryable,
             public_message=public_message,

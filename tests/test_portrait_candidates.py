@@ -458,19 +458,31 @@ def test_candidate_slot_workers_keep_request_correlation(batch_setup, fake_provi
                                                    current_request_context,
                                                    request_context)
 
+    from threading import Barrier
+
     Session, ids = batch_setup
     seen = {}
+    overlap = Barrier(3)
 
     class ContextProvider(fake_provider):
         def generate_character_candidate(self, **kwargs):
             seen[kwargs["slot_index"]] = current_request_context()
+            overlap.wait(timeout=5)
             return super().generate_character_candidate(**kwargs)
 
     context = RequestContext(request_id="portrait-request-1", operation_id="portrait-operation-1")
     with request_context(context):
         run_candidate_batch(ids[2], session_factory=Session, image_service_factory=ContextProvider)
 
-    assert seen == {0: context, 1: context, 2: context}
+        assert current_request_context() == context
+
+    assert set(seen) == {0, 1, 2}
+    for index, worker in seen.items():
+        assert worker.request_id == context.request_id
+        assert (worker.user_id, worker.game_id, worker.job_id) == ids
+        assert worker.operation_id == f"portrait-job-{ids[2]}"
+        assert worker.segment_index == index
+        assert worker.attempt_id == f"portrait-job-{ids[2]}-attempt-1-slot-{index}"
 
 
 def test_parallel_batches_limit_total_provider_calls(batch_setup, fake_provider):
