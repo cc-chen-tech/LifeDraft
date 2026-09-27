@@ -341,3 +341,58 @@ def test_safe_first_day_fallback_is_saved_with_three_playable_options(
     assert state.current_event_data == event.model_dump()
     assert committed == [event]
     assert streamed == [event.event_description]
+
+
+@pytest.mark.parametrize(('language', 'name', 'vision'), [
+    ('zh', '林岚', '开一间书店'),
+    ('zh', '林岚', '我想开一间书店'),
+    ('zh', '林岚', '我想开一间书店。也想让家人安心。'),
+    ('zh', '林岚', '我想开一间书店。\n\n也想让家人安心。'),
+    ('en', 'Alice', 'open a shop'),
+    ('en', 'Alice', 'I want a shop called "Home". I want to help my family.'),
+    ('zh', '林岚', '我想开一间叫“归家”的书店。也想让家人安心。'),
+    ('en', 'Alice', 'I want to open a shop'),
+    ('en', 'Alice', 'I want to open a shop. I also want to support my family.'),
+    ('en', 'Alice', 'I want to open a shop.\n\nI also want to support my family.'),
+])
+def test_fallback_treats_free_form_vision_as_standalone_words(language, name, vision):
+    from src.ai.daily_opening import build_first_day_fallback_candidate, split_daily_opening_issues
+    state = {**_first_day_state(), 'player_name': name, 'life_vision': vision}
+    candidate = build_first_day_fallback_candidate(state, {'name': name}, language)
+    paragraphs = candidate.split('\n\n')
+    assert len(paragraphs) == 2
+    assert '\n' not in paragraphs[0]
+    assert '想要我想' not in candidate
+    assert 'wants to I want' not in candidate
+    # Retain all supplied intent, as a quotation rather than a verb complement.
+    normalized = ' '.join(vision.split()).strip('。！？.!? ')
+    normalized = normalized.replace('"', "'").replace("“", "‘").replace("”", "’")
+    quoted = f'“{normalized}”' if language == 'zh' else f'"{normalized}"'
+    assert quoted in paragraphs[0]
+    hard, _ = split_daily_opening_issues(validate_daily_first_opening(candidate, state, {'name': name}, language))
+    assert hard == []
+
+
+@pytest.mark.parametrize(('language', 'name', 'vision', 'draft', 'anchors'), [
+    ('zh', '林岚', '我想开一间书店。\n\n也想让家人安心。',
+     '陌生人没有任何目标。\n\n清晨，他停在门边。', ('我想开一间书店', '也想让家人安心')),
+    ('en', 'Alice', 'I want to open a shop.\n\nI also want to support my family.',
+     'A stranger has no goal, but the future is uncertain.\n\nIn the morning, he stood by the door.',
+     ('I want to open a shop', 'I also want to support my family')),
+])
+def test_full_sentence_vision_survives_actual_retry_exhaustion(monkeypatch, language, name, vision, draft, anchors):
+    monkeypatch.setenv('ENABLE_CONSTRAINT_HARNESS', 'true')
+    monkeypatch.setenv('ENABLE_SOFT_NARRATIVE_LENGTHS', 'true')
+    monkeypatch.setenv('ENABLE_UNIFIED_NARRATIVE_BUDGETS', 'false')
+    state = {**_first_day_state(), 'player_name': name, 'life_vision': vision}
+    client = MagicMock()
+    client.call.return_value = draft
+    generator = StoryGenerator(client, quality_level=QualityLevel.MASTER)
+    event = generator.generate_round_event(player_state=state, character_settings={'name': name},
+        language=language, round_number=0, round_context='', option_generator=MagicMock())
+    assert event.delivery_notice.code == 'SAFE_FIRST_DAY_FALLBACK'
+    assert len(event.options) == 3
+    assert len(event.event_description.split('\n\n')) == 2
+    assert '想要我想' not in event.event_description
+    assert 'wants to I want' not in event.event_description
+    assert all(anchor in event.event_description for anchor in anchors)
