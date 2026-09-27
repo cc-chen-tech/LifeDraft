@@ -1268,6 +1268,9 @@ class QuickValidator:
             text_without_quotes = re.sub(r"\u201c[^\u201d]*\u201d", " ", text_without_quotes)
             text_without_quotes = re.sub(r"\u2018[^\u2019]*\u2019", " ", text_without_quotes)
 
+            from src.ai.narrative_perspective import without_attributed_speech
+
+            text_without_quotes = without_attributed_speech(text_without_quotes)
             # 在文本前后添加空格，简化边界检测
             padded_text = " " + text_without_quotes + " "
 

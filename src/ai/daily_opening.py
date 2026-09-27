@@ -114,15 +114,26 @@ _EN_NARRATIVE_VERBS = {
     "went",
 }
 
-_STYLE_ONLY_ISSUES = frozenset(
-    {"daily_opening_not_single_sentence", "daily_opening_second_paragraph_not_scene"}
+# Every first-day-only observation is editorial guidance. The hard contract
+# (nonempty prose and no heading) is identical on every day. Never feed these
+# preferences into repair budgets, rejection, or fallback eligibility.
+FIRST_DAY_ADVISORY_CODES = frozenset(
+    {
+        "daily_opening_missing_protagonist",
+        "daily_opening_not_single_sentence",
+        "daily_opening_cliche",
+        "daily_opening_missing_vision_anchor",
+        "daily_opening_missing_core_conflict",
+        "daily_opening_missing_second_paragraph",
+        "daily_opening_second_paragraph_not_scene",
+    }
 )
 
 
 def split_daily_opening_issues(issues: List[str]) -> tuple[List[str], List[str]]:
-    """Keep personalization and completeness hard while treating paragraph style as advisory."""
-    hard = [issue for issue in issues if issue not in _STYLE_ONLY_ISSUES]
-    warnings = [issue for issue in issues if issue in _STYLE_ONLY_ISSUES]
+    """Apply the shared daily contract; first-day writing preferences only warn."""
+    hard = [issue for issue in issues if issue not in FIRST_DAY_ADVISORY_CODES]
+    warnings = [issue for issue in issues if issue in FIRST_DAY_ADVISORY_CODES]
     return hard, warnings
 
 
@@ -207,7 +218,7 @@ def validate_daily_first_opening(
     character_settings: Optional[Dict[str, Any]],
     language: str,
 ) -> List[str]:
-    """Return retry-worthy first-day opening violations for daily timeline v2."""
+    """Return first-day findings; split_daily_opening_issues determines blocking severity."""
     timeline = player_state.get("timeline")
     if not isinstance(timeline, dict) or timeline.get("version") != 2:
         return []

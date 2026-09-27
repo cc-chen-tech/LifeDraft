@@ -44,6 +44,11 @@ class ValidationFinding:
 
 
 def _legacy_code(message: str, severity: FindingSeverity) -> tuple[str, float]:
+    from src.ai.daily_opening import FIRST_DAY_ADVISORY_CODES
+
+    if message in FIRST_DAY_ADVISORY_CODES:
+        # Preserve bounded advisory codes without logging raw story text.
+        return message, 0.35
     lowered = message.lower()
     if "empty_story_output" in lowered:
         return "EMPTY_OUTPUT", 1.0

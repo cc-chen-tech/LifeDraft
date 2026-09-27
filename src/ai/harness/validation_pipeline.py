@@ -217,7 +217,7 @@ class ValidationPipeline:
         try:
             passed, evidence, details = defn.validator(story_text, context)
             emit_diagnostic("story_validation", phase="harness",
-                            outcome="passed" if passed else "rejected",
+                            outcome="passed" if passed else ("rejected" if defn.priority == Priority.CRITICAL else "warning"),
                             finding_codes=[] if passed else [defn.type.value],
                             severity=defn.priority.name.lower(), attempt=context.get("diagnostic_attempt"))
             return ConstraintCheckResult(

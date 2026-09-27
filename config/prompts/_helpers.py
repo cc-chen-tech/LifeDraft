@@ -1643,7 +1643,7 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
 【核心叙事约束 - 快速模式】
 1. {CONSTRAINT_MUST} **人称要求**：必须使用第三人称叙事（"他/她"而非"我/你"）
 2. {CONSTRAINT_MUST} **禁止跳脱叙事**：禁止提及"游戏""系统""属性值"等元信息
-3. {CONSTRAINT_MUST} **故事结尾要求**：故事结尾必须停在一个具体决策点
+3. {CONSTRAINT_SHOULD} **故事结尾要求**：建议以可回应的具体局面收尾，无需固定的选择关键词
 4. {CONSTRAINT_MUST} **正确使用标点**：对话必须用""包裹，句末使用句号/问号/感叹号，句内用逗号/顿号合理断句。禁止出现没有标点的大段连续文字
 """
         if level == "master":
@@ -1656,11 +1656,11 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
    - 出现对故事本身的评论或总结性元叙述
    故事应完全沉浸在角色的世界中，杜绝一切元叙事
 3. {CONSTRAINT_MUST} **禁止编造过往事件**：故事中提到的任何过去发生的事情，必须来自提供的上下文（上周故事、近期总结、年度回顾、剧情线等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及
-4. {CONSTRAINT_MUST} **故事结尾要求**：故事结尾必须停在一个具体、明确的决策点！
+4. {CONSTRAINT_SHOULD} **故事结尾要求**：建议在结尾形成一个可回应的具体局面，允许含蓄呈现抉择。
    - 正确示例：「她说："明天一早跟我走，怎么样？"」「他递来一把钥匙："这是你自己的选择了。"」「父亲沉声道："你自己拿主意吧。"」
    - 错误示例：「他们相视而笑。」（无决策点）、「一切都已经不一样了。」（纯情感结尾）
-   - 故事结尾必须是：某人说出一句话需要主角回应、面临两个选择、需要做出承诺、需要表态等
-   - **绝对禁止**以纯情感描写或感慨收尾，必须有具体的"下一步怎么办"的悬念
+   - 故事结尾可以是：某人说出一句话需要主角回应、面临两个选择、需要做出承诺、需要表态等
+   - 尽量避免只作情感总结；可以通过动作和处境留下悬念，不必出现“选择”“决定”等固定词语
 5. {CONSTRAINT_MUST} **文学编辑标准**：
    - 每个场景必须有清晰的环境描写和感官细节
    - 对话必须自然推动情节，避免功能性说明
@@ -1684,11 +1684,11 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
    - 出现对故事本身的评论或总结性元叙述
    故事应完全沉浸在角色的世界中
 3. {CONSTRAINT_MUST} **禁止编造过往事件**：故事中提到的任何过去发生的事情，必须来自提供的上下文（上周故事、近期总结、年度回顾、剧情线等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及
-4. {CONSTRAINT_MUST} **故事结尾要求**：故事结尾必须停在一个具体、明确的决策点！
+4. {CONSTRAINT_SHOULD} **故事结尾要求**：建议在结尾形成一个可回应的具体局面，允许含蓄呈现抉择。
    - 正确示例：「她说："明天一早跟我走，怎么样？"」「他递来一把钥匙："这是你自己的选择了。"」「父亲沉声道："你自己拿主意吧。"」
    - 错误示例：「他们相视而笑。」（无决策点）、「一切都已经不一样了。」（纯情感结尾）
-   - 故事结尾必须是：某人说出一句话需要主角回应、面临两个选择、需要做出承诺、需要表态等
-   - **绝对禁止**以纯情感描写或感慨收尾，必须有具体的"下一步怎么办"的悬念
+   - 故事结尾可以是：某人说出一句话需要主角回应、面临两个选择、需要做出承诺、需要表态等
+   - 尽量避免只作情感总结；可以通过动作和处境留下悬念，不必出现“选择”“决定”等固定词语
 5. {CONSTRAINT_MUST} **正确使用标点符号**：
    - 对话必须用中文引号 "" 包裹
    - 每句话末尾必须使用句号、问号或感叹号
@@ -1703,7 +1703,7 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
 [Core Narrative Constraints - Fast Mode]
 1. {CONSTRAINT_MUST} **Perspective**: MUST use third-person narration ("he/she" not "I/you")
 2. {CONSTRAINT_MUST} **NO FOURTH-WALL BREAKING**: Never mention 'game', 'system', 'stats', etc.
-3. {CONSTRAINT_MUST} **STORY ENDING REQUIREMENT**: Story MUST end at a concrete decision point
+3. {CONSTRAINT_SHOULD} **STORY ENDING REQUIREMENT**: Prefer an actionable ending without requiring fixed decision keywords
 4. {CONSTRAINT_MUST} **Proper Punctuation**: Dialogue MUST be in quotation marks. Every sentence MUST end with a period, question mark, or exclamation. Use commas and semicolons for clause breaks. No run-on paragraphs without punctuation
 """
         if level == "master":
@@ -1716,11 +1716,11 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
    - Commentary or meta-narrative about the story itself
    The story must remain fully immersed in the character's world; eliminate all meta-narrative
 3. {CONSTRAINT_MUST} **DO NOT FABRICATE PAST EVENTS**: Any past events mentioned in the story MUST come from the provided context (previous story, recent summary, annual review, storylines, etc.). ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events
-4. {CONSTRAINT_MUST} **STORY ENDING REQUIREMENT**: Story MUST end at a concrete, specific decision point!
+4. {CONSTRAINT_SHOULD} **STORY ENDING REQUIREMENT**: Prefer an actionable ending; an implicit decision is acceptable.
    - Good: 'She said, "Come with me tomorrow morning, what do you say?"' 'He handed over a key: "This is your choice now."' 'Father said gravely: "Make your own decision."'
    - Bad: 'They looked at each other and smiled.' (no decision point) 'Everything has changed.' (pure emotional ending)
-   - Ending MUST be: someone asks a question requiring response, facing two paths, needing to make a promise, needing to take a stance, etc.
-   - **ABSOLUTELY FORBIDDEN** to end with pure emotional reflection or sentiment - there must be a concrete "what happens next" tension
+   - The ending can be: someone asks a question requiring response, facing two paths, needing to make a promise, needing to take a stance, etc.
+   - Prefer concrete actions or circumstances over pure emotional summary; fixed words such as "choice" or "decide" are not required
 5. {CONSTRAINT_MUST} **Literary Editor Standard**:
    - Every scene must have clear environmental description and sensory details
    - Dialogue must naturally advance the plot, avoid functional exposition
@@ -1744,11 +1744,11 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
    - Commentary or meta-narrative about the story itself
    The story must remain fully immersed in the character's world
 3. {CONSTRAINT_MUST} **DO NOT FABRICATE PAST EVENTS**: Any past events mentioned in the story MUST come from the provided context (previous story, recent summary, annual review, storylines, etc.). ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events
-4. {CONSTRAINT_MUST} **STORY ENDING REQUIREMENT**: Story MUST end at a concrete, specific decision point!
+4. {CONSTRAINT_SHOULD} **STORY ENDING REQUIREMENT**: Prefer an actionable ending; an implicit decision is acceptable.
    - Good: 'She said, "Come with me tomorrow morning, what do you say?"' 'He handed over a key: "This is your choice now."' 'Father said gravely: "Make your own decision."'
    - Bad: 'They looked at each other and smiled.' (no decision point) 'Everything has changed.' (pure emotional ending)
-   - Ending MUST be: someone asks a question requiring response, facing two paths, needing to make a promise, needing to take a stance, etc.
-   - **ABSOLUTELY FORBIDDEN** to end with pure emotional reflection or sentiment - there must be a concrete "what happens next" tension
+   - The ending can be: someone asks a question requiring response, facing two paths, needing to make a promise, needing to take a stance, etc.
+   - Prefer concrete actions or circumstances over pure emotional summary; fixed words such as "choice" or "decide" are not required
 5. {CONSTRAINT_MUST} **Proper Punctuation**:
    - Dialogue MUST be wrapped in quotation marks
    - Every sentence MUST end with a period, question mark, or exclamation mark

@@ -1275,11 +1275,12 @@ def build_daily_story_mode_constraint(
         if day_index == 0:
             first_day = f"""
 
-【首日人物开场 - 必须严格遵守】
-- 第一段只能有一句话，独立成段；句中必须出现主角姓名“{protagonist or '主角'}”
-- 这句话必须从人物自身落笔，将其人生愿景“{life_vision or '尚待实现的人生方向'}”与此刻最关键的内在或现实矛盾相扣，形成只属于这个人物的开场
-- 不得写“命运的齿轮”“人生十字路口”“全新旅程”等通用套话，不得使用标题，不得剧透后续情节
-- 第二段再进入今天的具体地点、动作和现场情境
+【首日人物开场】
+- [SHOULD] 自然介绍主角“{protagonist or '主角'}”和人生愿景“{life_vision or '尚待实现的人生方向'}”；可以先写场景再引出人物与目标，段落数量由叙事需要决定
+- [SHOULD] 首段优先用一句话，把人物愿景与此刻的内在或现实矛盾相扣；允许自然的多句表达
+- [SHOULD] 避免“命运的齿轮”“人生十字路口”“全新旅程”等通用套话，通过具体行动展现人物，不剧透后续情节
+- [SHOULD] 尽早进入今天的具体地点、动作和现场情境，不限定在第几段
+- [SHOULD] 冲突与抉择可以通过行动和处境自然呈现，不必使用“却、但、选择、决定”等固定词语
 """
         return f"""
 
@@ -1292,11 +1293,12 @@ def build_daily_story_mode_constraint(
     if day_index == 0:
         first_day_en = f"""
 
-[First-Day Character Opening - Mandatory]
-- The first paragraph must be exactly one sentence and must name the protagonist, "{protagonist or 'the protagonist'}"
-- Tie that sentence to the character's life vision, "{life_vision or 'their unrealized direction'}", and the central inner or practical conflict of this moment
-- Do not use generic fate/crossroads/new-journey clichés, headings, dates, or plot spoilers
-- Enter today's concrete location, action, and scene in the second paragraph
+[First-Day Character Opening]
+- [SHOULD] Naturally introduce the protagonist, "{protagonist or 'the protagonist'}", and their life vision, "{life_vision or 'their unrealized direction'}"; the scene may come first, and paragraph count follows narrative needs
+- [SHOULD] Prefer one concise opening sentence connecting that vision to the present conflict; natural multi-sentence openings are acceptable
+- [SHOULD] Avoid generic fate/crossroads/new-journey clichés; show character through concrete actions without plot spoilers
+- [SHOULD] Establish today's concrete location, action, and scene early, without a required paragraph position
+- [SHOULD] Conflict and decisions may emerge through actions and circumstances without fixed words such as 'but', 'choice', or 'decide'
 """
     return f"""
 

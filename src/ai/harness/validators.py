@@ -47,8 +47,10 @@ def validate_third_person(story_text: str, context: dict) -> Tuple[bool, str, di
 
     策略：统计不在引号/对话内的第一人称句子占比，超过阈值则判定失败。
     """
+    from src.ai.narrative_perspective import without_attributed_speech
+
     first_person_count = 0
-    sentences = re.split(r"[。！？\n]", story_text)
+    sentences = re.split(r"[。！？\n]", without_attributed_speech(story_text))
     total_sentences = len([s for s in sentences if s.strip()])
 
     for sentence in sentences:

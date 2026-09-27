@@ -1250,20 +1250,6 @@ class StoryGenerator:
             issues: list[str],
         ) -> str:
             issue_lines = "\n".join(f"- {issue}" for issue in issues[:8])
-            if "daily_opening_missing_vision_anchor" in issues:
-                from src.ai.prompt_sanitizer import sanitize_persisted_life_vision
-
-                vision = sanitize_persisted_life_vision(str(
-                    player_state.get("life_vision")
-                    or (character_settings or {}).get("life_vision") or ""
-                ))
-                issue_lines += (
-                    f"\n- 首段没有明确体现人生愿景，请在首段明确写出“{vision}”，"
-                    "并说明眼前阻碍；仅在后文暗示这个愿景不能修复此问题。"
-                    if language == "zh" else
-                    f'\n- The first paragraph must explicitly state the life vision "{vision}" '
-                    'and its immediate obstacle; hinting at it later does not fix the opening.'
-                )
             if language == "zh":
                 return (
                     base_prompt
