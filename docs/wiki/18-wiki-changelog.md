@@ -1,5 +1,12 @@
 # 18 - Wiki Changelog
 
+## 2026-09-28
+
+- **开发与测试页 (04)**：区分本地五层验收和受保护的真实供应商 Model Smoke，说明安全开场可玩但不满足自动发布质量门禁。
+- **排障页 (08)**：补充 `daily_opening_used_safe_fallback` 的定位入口。
+- **发布清单页 (10)**：同步当前 `main` 九项 CI、Model Smoke、精确 SHA 部署与健康检查。
+- 同步根 `README.md`、`ONBOARDING.md` 与 `DEPLOYMENT.md` 的首日验收和 GitHub Actions 发布路径。
+
 ## 2026-04-26
 
 - 全量更新所有 wiki 页面”最后核对”日期至 2026-04-26。

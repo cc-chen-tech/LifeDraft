@@ -16,6 +16,7 @@ AI 叙事人生模拟游戏：通过多轮事件生成、选择推进、关系�
 ## 主要能力
 
 - 多轮事件生成与选择推进（SSE 流式 + 同步回退 + 502/504 自动重试）
+- 每日时间线 v2：首日与后续章节共用事实、一致性和选项等硬性验收；首日段落、关键词等写法提示不单独拒稿。首日生成失败时可交付明确标记的安全开场
 - 会话恢复（内存 session + 数据库自动恢复）
 - 时间回溯存档（save points + timeline）
 - 叙事质量档位（`fast / expert / master`）
@@ -87,16 +88,19 @@ npm run dev
 
 ### 方式三：生产部署（ECS）
 
-生产环境只允许通过 GitHub Actions 部署到 `/opt/story2`。请提交并合并 PR，
-由 `Deploy Production` workflow 统一执行构建、Compose 启动和公开健康检查；
-不要在服务器上手动执行 Docker Compose，也不要启动第二套部署目录。
+生产环境只允许通过 GitHub Actions 部署到 `/opt/story2`。合并 PR 后，
+主干的 9 项 CI 全部通过才会启动受保护的真实供应商 `Model Smoke`；
+它通过后自动触发 `Deploy Production`，部署精确的当前 `main` 提交并检查
+`/health`、`/api/health`。安全开场可验证可玩性，但若首日没有交付模型正文，
+Model Smoke 会以 `daily_opening_used_safe_fallback` 拒绝自动发布。
+人工例外发布的条件和操作见 [生产部署指南](DEPLOYMENT.md)。
 
 ## 环境变量（核心）
 
 请以 [`.env.example`](.env.example) 为准。最常用字段：
 
 - `OPENAI_API_KEY`（必填）
-- `OPENAI_MODEL`（默认 `gpt-4`，支持 DeepSeek V4 flash 等）
+- `OPENAI_MODEL`（`.env.example` 使用 `deepseek-v4-flash`；未设置时代码默认 `gpt-4`）
 - `DATABASE_URL`（可选，不填则使用本地 SQLite）
 - `DEFAULT_LANGUAGE`（`zh` / `en`）
 - `MINIMAX_API_KEY`（生产音频必填；不要提交真实 key）
@@ -121,14 +125,19 @@ npm test
 npm run test:e2e
 ```
 
-### 五层测试入口（推荐）
+### 本地测试入口（推荐）
 
 ```bash
 ./test.sh all
+./test.sh quick
 ./test.sh contract
 ./test.sh db
-./test.sh e2e
+./test.sh e2e-core
 ```
+
+`all` 是 preflight + 五层验收的兼容入口；真实供应商 `Model Smoke` 是单独的受保护发布门禁，
+不会由普通本地 `all` 或 PR CI 代替。它检查模型正文、图片、TTS、保存与授权读回。
+诊断细节见 [生成诊断手册](docs/generation-diagnostics-runbook.md)。
 
 多 worktree/并行验证建议使用隔离入口（默认写入 `/tmp/story2-test-runs`）：
 
@@ -194,7 +203,8 @@ story2/
 | 查 API 与会话机制 | [03-api-and-session](docs/wiki/03-api-and-session.md) |
 | 前后端接口对齐 | [06-api-call-matrix](docs/wiki/06-api-call-matrix.md) |
 | 新功能设计与落地 | [05-upgrade-and-feature-design](docs/wiki/05-upgrade-and-feature-design.md), [09-feature-playbooks](docs/wiki/09-feature-playbooks.md) |
-| 上线前检查 | [10-release-and-change-checklist](docs/wiki/10-release-and-change-checklist.md) |
+| 上线前检查 | [10-release-and-change-checklist](docs/wiki/10-release-and-change-checklist.md), [生产部署指南](DEPLOYMENT.md) |
+| 首日生成误判与安全开场 | [首日验收核对](docs/daily-opening-validation-audit-2026-09-28.md), [生成诊断手册](docs/generation-diagnostics-runbook.md) |
 | 故障排查 | [08-troubleshooting](docs/wiki/08-troubleshooting.md) |
 | PR/ADR/复盘模板 | [14-pr-template](docs/wiki/14-pr-template.md), [15-adr-template](docs/wiki/15-adr-template.md), [16-incident-retro-template](docs/wiki/16-incident-retro-template.md) |
 
@@ -205,7 +215,7 @@ story2/
 
 ## 最近更新
 
-- **2026-04-26**：成就系统 + 人生回顾卡片、叙事风格引擎、音乐混合缓存池、安全加固（JWT/SSE/auth/图片/SQL/序列化/prompt injection）、时代一致性验证器、4D 资源状态、角色创建 AI 反馈、人物面部一致性、反科幻写实约束、SSE 502/504 自动重试
+- **2026-09-28**：同步每日首日/后续章节验收、Model Smoke 质量门禁及 GitHub Actions 生产发布流程。
 
 ## License
 
