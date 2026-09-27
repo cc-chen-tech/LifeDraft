@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { PortraitCandidateState } from '../src/lib/api';
 
 const ancientOrigin = {
   revision: 1,
@@ -23,6 +24,8 @@ async function installCreationRoutes(page: Page) {
   let worldCalls = 0;
   const patchBodies: Array<Record<string, unknown>> = [];
   const portraitRevisions: Array<number | undefined> = [];
+  let portraitOriginRevision: number | undefined;
+  let portraitBatch: PortraitCandidateState | null = null;
   const worldPreviousSettings: Array<Record<string, unknown>> = [];
 
   await page.route('**/api/character/story-origin', async (route) => {
@@ -80,6 +83,7 @@ async function installCreationRoutes(page: Page) {
   );
   await page.route('**/api/games', (route) => {
     if (route.request().method() !== 'POST') return route.continue();
+    portraitOriginRevision = route.request().postDataJSON().character_settings.story_origin.revision;
     return route.fulfill({
       status: 201,
       contentType: 'application/json',
@@ -95,6 +99,7 @@ async function installCreationRoutes(page: Page) {
   });
   await page.route('**/api/games/701/story-origin', async (route) => {
     patchBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+    portraitOriginRevision = modernOrigin.revision;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -130,25 +135,27 @@ async function installCreationRoutes(page: Page) {
       }),
     });
   });
-  await page.route('**/api/images/character/generate-async', async (route) => {
-    const body = route.request().postDataJSON() as {
-      extra_context?: { origin_revision?: number };
-    };
-    portraitRevisions.push(body.extra_context?.origin_revision);
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        job_id: portraitRevisions.length,
-        game_id: 701,
-        status: 'failed',
-        image_id: null,
-        attempt_count: 1,
-        error_code: 'fixture',
-        error_message: '测试夹具不生成图片',
-      }),
-    });
+  await page.route('**/api/games/701/character-settings', (route) => {
+    const settings = route.request().postDataJSON().character_settings;
+    portraitOriginRevision = settings.story_origin.revision;
+    return route.fulfill({ json: { success: true, message: 'saved' } });
   });
+  await page.route('**/api/images/character/candidates*', (route) => {
+    if (route.request().method() === 'POST') {
+      expect(route.request().postDataJSON()).toEqual({ game_id: 701, mode: 'initial' });
+      portraitRevisions.push(portraitOriginRevision);
+      portraitBatch = {
+        batch_id: portraitRevisions.length, job_id: portraitRevisions.length, game_id: 701,
+        mode: 'initial', origin_revision: portraitOriginRevision, status: 'failed',
+        selected_image_id: null, completed_count: 0,
+        slots: [0, 1, 2].map(slot_index => ({ slot_index, status: 'failed', image_id: null })),
+      };
+    }
+    return route.fulfill({ json: portraitBatch });
+  });
+  await page.route('**/api/images/game/701*', route => route.fulfill({ json: { images: [], total: 0 } }));
+  await page.route('**/api/images/character/selection?*', route => route.fulfill({ json: null }));
+  await page.route('**/api/images/character/jobs/latest?*', route => route.fulfill({ json: null }));
 
   return { patchBodies, portraitRevisions, worldPreviousSettings };
 }

@@ -21,6 +21,7 @@ from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
 from src.services.image_service import get_image_thread_pool  # C-05: 使用共享线程池
 from src.services.image_storage import ImageStorageService
+from src.services.portrait_selection import selected_portrait
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,25 @@ class RoundIllustrationService:
             # Step 2: 检查并获取参考图片
             reference_urls = []
             referenced_image_ids = []
+
+            # Several active player_main rows may be portrait candidates. Use
+            # the persisted choice for both the first reference and any later
+            # protagonist-name lookup; keep unrelated entity images intact.
+            if any(img.get("entity_key") == "player_main" for img in existing_images):
+                selected = selected_portrait(self.db, game_id)
+                if selected is not None:
+                    existing_images = [
+                        {
+                            "image_id": selected.image_id,
+                            "entity_name": selected.entity_name,
+                            "image_type": selected.image_type,
+                            "entity_key": selected.entity_key,
+                        },
+                        *(
+                            img for img in existing_images
+                            if img.get("entity_key") != "player_main"
+                        ),
+                    ]
 
             # 优先使用玩家主形象作为参考
             player_image = self._get_player_image(existing_images)

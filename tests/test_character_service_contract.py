@@ -6,12 +6,25 @@ to verify request/response contract, error handling, and required fields.
 
 import pytest
 
-from src.database.models import Image as ImageModel
+from src.database.models import (
+    Game,
+    Image as ImageModel,
+    PortraitCandidateBatch,
+    PortraitImageGenerationJob,
+    User,
+)
 from src.services.image import ImageContentError, ImageServiceError
 from src.services.image.character_service import CharacterImageService
+from src.services.image_service import ImageService
 from src.services.image_storage import ImageStorageService
 
 pytestmark = [pytest.mark.unit]
+
+TEST_DIRECTIONS = (
+    "外貌方向一：方脸、浓眉、利落的发型；穿符合身份和时代的简洁日常服装",
+    "外貌方向二：清瘦长脸、细眉、柔和的发型；穿符合身份和时代的另一种层次搭配",
+    "外貌方向三：圆脸、短眉、蓬松的发型；穿符合身份和时代的不同剪裁服装",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +56,7 @@ class StubImageClient:
             else None
         )
         self.last_generate_call = None
+        self.generate_calls = []
         self.last_anchor_call = None
 
     def generate_appearance_anchor(self, name, description, era="现代", character_settings=None):
@@ -65,6 +79,7 @@ class StubImageClient:
         reference_image_url=None,
         feedback=None,
         extra_params=None,
+        candidate_mode=False,
     ):
         self.last_generate_call = {
             "name": name,
@@ -75,8 +90,160 @@ class StubImageClient:
             "reference_image_url": reference_image_url,
             "feedback": feedback,
             "extra_params": extra_params,
+            "candidate_mode": candidate_mode,
         }
+        self.generate_calls.append(self.last_generate_call)
         return self.images_data, self.primary_url
+
+
+def candidate_batch(db_session):
+    user = User(private_id="candidate-service-owner", public_id="CANDSERV")
+    db_session.add(user)
+    db_session.flush()
+    game = Game(user_id=user.user_id, initial_state={})
+    db_session.add(game)
+    db_session.flush()
+    job = PortraitImageGenerationJob(
+        game_id=game.game_id, user_id=user.user_id, request_json={"game_id": game.game_id}
+    )
+    db_session.add(job)
+    db_session.flush()
+    batch = PortraitCandidateBatch(
+        game_id=game.game_id, user_id=user.user_id, job_id=job.job_id,
+        origin_revision=4, mode="initial",
+    )
+    db_session.add(batch)
+    db_session.commit()
+    return game.game_id, batch.batch_id
+
+
+class TestGenerateCharacterCandidate:
+    @pytest.mark.parametrize("slot_index", [0, 1, 2])
+    def test_independent_era_bound_candidate_persists_frozen_revision(self, db_session, slot_index):
+        game_id, batch_id = candidate_batch(db_session)
+        client, storage = StubImageClient(), StubImageStorage()
+        service = CharacterImageService(db_session, image_client=client, storage_service=storage)
+        image = service.generate_character_candidate(
+            game_id=game_id, name="于谦", description="明代书生，28岁", era="明代",
+            character_settings={"era": {"era_name": "明代", "era_description": "明朝古代"}},
+            direction=TEST_DIRECTIONS[slot_index], batch_id=batch_id,
+            slot_index=slot_index,
+        )
+
+        assert len(client.generate_calls) == 1
+        call = client.generate_calls[0]
+        assert call["num_images"] == 1
+        assert call["reference_image_url"] is None
+        assert "明代" in call["description"] + str(call["style_hint"])
+        assert "现代服饰" in call["style_hint"]
+        assert "相同脸型" not in call["style_hint"]
+        assert client.last_anchor_call is None
+        assert storage.last_save_call["entity_name"] == f"于谦_{slot_index + 1}"
+        assert image.image_id == db_session.get(ImageModel, image.image_id).image_id
+        assert image.entity_key == "player_main"
+        assert image.is_active is False and image.is_primary is False
+        assert image.metadata_json == {
+            "batch_id": batch_id, "slot_index": slot_index,
+            "appearance_direction": TEST_DIRECTIONS[slot_index],
+            "origin_revision": 4,
+            "characterSettings": {"era": {"era_name": "明代", "era_description": "明朝古代"}},
+        }
+
+    def test_three_calls_share_role_facts_but_vary_face_hair_and_clothing(self, db_session):
+        game_id, batch_id = candidate_batch(db_session)
+        client = StubImageClient()
+        service = ImageService(db_session, image_client=client, storage_service=StubImageStorage())
+        for slot_index, direction in enumerate(TEST_DIRECTIONS):
+            service.generate_character_candidate(
+                game_id=game_id, name="于谦", description="明代书生，28岁", era="明代",
+                character_settings={"era": {"era_description": "明朝古代"}},
+                direction=direction, batch_id=batch_id, slot_index=slot_index,
+            )
+        assert len(client.generate_calls) == 3
+        for call in client.generate_calls:
+            assert call["name"] == "于谦"
+            assert call["era"] == "明代"
+            assert "明代书生，28岁" in call["description"]
+            assert call["reference_image_url"] is None
+            assert call["num_images"] == 1
+        descriptions = [call["description"] for call in client.generate_calls]
+        assert len(set(descriptions)) == 3
+        assert all(word in descriptions[0] for word in ("方脸", "浓眉", "发型", "服装"))
+        assert all(word in descriptions[1] for word in ("长脸", "细眉", "发型", "搭配"))
+        assert all(word in descriptions[2] for word in ("圆脸", "短眉", "发型", "服装"))
+        assert client.last_anchor_call is None
+
+    def test_modern_candidate_keeps_realism_without_same_face_instruction(self, db_session):
+        game_id, batch_id = candidate_batch(db_session)
+        client = StubImageClient()
+        service = CharacterImageService(db_session, image_client=client, storage_service=StubImageStorage())
+        service.generate_character_candidate(
+            game_id=game_id, name="小岚", description="现代护士，27岁", era="现代",
+            character_settings={"era": {"era_description": "现代城市"}},
+            direction=TEST_DIRECTIONS[0], batch_id=batch_id, slot_index=0,
+        )
+        style = client.last_generate_call["style_hint"]
+        assert "禁止赛博朋克" in style
+        assert "同一个人" not in style
+        assert "面部特征必须绝对保持一致" not in style
+
+    def test_historical_candidate_final_provider_prompt_keeps_era_and_distinct_look(self, db_session):
+        from src.ai.image_client import ImageClient
+
+        game_id, batch_id = candidate_batch(db_session)
+        client = ImageClient(api_key="test-key")
+        sent_prompts = []
+
+        def capture_provider_prompt(prompt, size, extra_params=None):
+            sent_prompts.append(prompt)
+            return b"portrait", prompt, "https://example.com/portrait.png"
+
+        client._generator.generate_image_with_url = capture_provider_prompt
+        service = CharacterImageService(db_session, image_client=client, storage_service=StubImageStorage())
+        service.generate_character_candidate(
+            game_id=game_id, name="于谦", description="明代书生，28岁", era="明代",
+            character_settings={"era": {"era_description": "明朝古代"}},
+            direction=TEST_DIRECTIONS[0], batch_id=batch_id, slot_index=0,
+        )
+        assert len(sent_prompts) == 1
+        prompt = sent_prompts[0]
+        assert "明代" in prompt and "明代书生，28岁" in prompt
+        assert "方脸" in prompt and "浓眉" in prompt and "简洁日常服装" in prompt
+        assert "现代服饰" in prompt  # historical prohibition is retained
+        assert "同一个人" not in prompt
+        assert "相同的脸型" not in prompt
+        assert "保持人物的外貌特征不变" not in prompt
+        assert "2024" not in prompt
+        assert "棉质衬衫、T恤" not in prompt
+        assert "街道、公园、室内、办公室、咖啡厅" not in prompt
+
+    def test_candidate_final_provider_prompt_sanitizes_scifi_era_description(self, db_session):
+        from src.ai.image_client import ImageClient
+
+        game_id, batch_id = candidate_batch(db_session)
+        client = ImageClient(api_key="test-key")
+        sent_prompts = []
+
+        def capture_provider_prompt(prompt, size, extra_params=None):
+            sent_prompts.append(prompt)
+            return b"portrait", prompt, "https://example.com/portrait.png"
+
+        client._generator.generate_image_with_url = capture_provider_prompt
+        service = CharacterImageService(db_session, image_client=client, storage_service=StubImageStorage())
+        service.generate_character_candidate(
+            game_id=game_id, name="小岚", description="现代护士，27岁",
+            era="2026年中国，人工智能与全息投影融入日常生活",
+            character_settings={"era": {"era_description": "现代城市"}},
+            direction=TEST_DIRECTIONS[1], batch_id=batch_id, slot_index=1,
+        )
+        assert len(sent_prompts) == 1
+        prompt = sent_prompts[0]
+        era_section = prompt[prompt.index("【时代背景】"):prompt.index("【外貌特征】")]
+        assert "2026" in era_section
+        assert "人工智能" not in era_section
+        assert "全息投影" not in era_section
+        assert "清瘦长脸" in prompt
+        assert "同一个人" not in prompt
 
 
 class FailingImageClient(StubImageClient):
@@ -638,3 +805,29 @@ class TestRegenerateDeletesDeactivatedFiles:
         assert db_session.get(ImageModel, source_id).is_active is True
         assert db_session.get(ImageModel, candidates[0].image_id).is_active is False
         assert storage.deleted_paths == []
+
+
+@pytest.mark.parametrize("failure", ["error", "empty"])
+def test_candidate_feedback_requires_readable_reference(db_session, monkeypatch, failure):
+    from src.database.models import PortraitSelection
+    game_id, batch_id = candidate_batch(db_session)
+    client, storage = StubImageClient(), StubImageStorage()
+    service = CharacterImageService(db_session, image_client=client, storage_service=storage)
+    image = service.generate_character_candidate(
+        game_id=game_id, name="于谦", description="明代书生", era="明代",
+        character_settings={"era": {"era_name": "明代"}}, direction=TEST_DIRECTIONS[0],
+        batch_id=batch_id, slot_index=0)
+    image.is_active = True
+    db_session.add(PortraitSelection(game_id=game_id, image_id=image.image_id, is_user_selected=True))
+    db_session.commit()
+    def read(_):
+        if failure == "error":
+            raise OSError("storage unavailable")
+        return b""
+    monkeypatch.setattr(service, "_get_image_data", read)
+    with pytest.raises(ImageServiceError, match="参考图片.*重试"):
+        service.regenerate_image(image.image_id, feedback="换件衣服", defer_activation=True)
+    assert len(client.generate_calls) == 1
+    assert client.last_anchor_call is None
+    assert db_session.get(ImageModel, image.image_id).is_active
+    assert db_session.get(PortraitSelection, game_id).image_id == image.image_id

@@ -2417,6 +2417,251 @@
         ]
       }
     },
+    "/api/images/character/candidates": {
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Create Candidates",
+        "operationId": "create_candidates_api_images_character_candidates_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePortraitCandidatesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortraitCandidateBatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Get Candidates",
+        "operationId": "get_candidates_api_images_character_candidates_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PortraitCandidateBatchResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Candidates Api Images Character Candidates Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/character/selection": {
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Get Portrait Selection",
+        "operationId": "get_portrait_selection_api_images_character_selection_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PortraitSelectionResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Portrait Selection Api Images Character Selection Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Put Portrait Selection",
+        "operationId": "put_portrait_selection_api_images_character_selection_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectPortraitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortraitSelectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/character/candidates/{batch_id}/retry": {
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Retry Candidates",
+        "operationId": "retry_candidates_api_images_character_candidates__batch_id__retry_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Batch Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortraitCandidateBatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/images/character/generate-async": {
       "post": {
         "tags": [
@@ -5195,6 +5440,28 @@
         "title": "CreateItemRequest",
         "description": "手动创建物品请求"
       },
+      "CreatePortraitCandidatesRequest": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "initial",
+              "fresh"
+            ],
+            "title": "Mode",
+            "default": "initial"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id"
+        ],
+        "title": "CreatePortraitCandidatesRequest"
+      },
       "CreatePresetRequest": {
         "properties": {
           "preset_name": {
@@ -6237,6 +6504,136 @@
         ],
         "title": "OpeningStoryRequest"
       },
+      "PortraitCandidateBatchResponse": {
+        "properties": {
+          "batch_id": {
+            "type": "integer",
+            "title": "Batch Id"
+          },
+          "job_id": {
+            "type": "integer",
+            "title": "Job Id"
+          },
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "origin_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Revision"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/PortraitCandidateSlotResponse"
+            },
+            "type": "array",
+            "title": "Slots"
+          },
+          "completed_count": {
+            "type": "integer",
+            "title": "Completed Count"
+          },
+          "selected_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Image Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "batch_id",
+          "job_id",
+          "game_id",
+          "mode",
+          "status",
+          "slots",
+          "completed_count"
+        ],
+        "title": "PortraitCandidateBatchResponse"
+      },
+      "PortraitCandidateSlotResponse": {
+        "properties": {
+          "slot_index": {
+            "type": "integer",
+            "title": "Slot Index"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slot_index",
+          "status"
+        ],
+        "title": "PortraitCandidateSlotResponse"
+      },
       "PortraitImageGenerationJobResponse": {
         "properties": {
           "job_id": {
@@ -6320,6 +6717,24 @@
         ],
         "title": "PortraitImageGenerationJobResponse",
         "description": "Safe public state for a durable main-character portrait job."
+      },
+      "PortraitSelectionResponse": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "image_id"
+        ],
+        "title": "PortraitSelectionResponse"
       },
       "PresetInfo": {
         "properties": {
@@ -7118,6 +7533,24 @@
         ],
         "title": "SavePointListResponse",
         "description": "存档点列表响应"
+      },
+      "SelectPortraitRequest": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "image_id"
+        ],
+        "title": "SelectPortraitRequest"
       },
       "StateSnapshotItem": {
         "properties": {

@@ -6,7 +6,7 @@ import { useGameStore, CREATION_STEPS, MANUAL_STEPS, AUTO_ADVANCE_STEPS } from "
 import { useUIStore } from "@/stores/useUIStore";
 import { useImageStore } from "@/stores/useImageStore";
 import type { CharacterSettings, StoryOrigin } from "@/lib/types";
-import api from "@/lib/api";
+import api, { type PortraitCandidateState } from "@/lib/api";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import { isWithinInputLimit, unicodeCharacterLength } from "@/lib/inputLimits";
 
@@ -134,6 +134,8 @@ export interface UseCharacterCreationReturn {
   // Image store values
   playerImages: Array<{ image_id: number; image_url: string }>;
   selectedImageIndex: number;
+  selectedImageId: number | null;
+  portraitCandidates: PortraitCandidateState | null;
   isGeneratingImage: boolean;
   imageGenerationError: string | null;
   imageFeedback: string;
@@ -141,6 +143,9 @@ export interface UseCharacterCreationReturn {
   
   // Image store actions
   setSelectedImageIndex: (index: number) => void;
+  selectPlayerImage: (imageId: number) => Promise<void>;
+  enqueuePortraitCandidates: (gameId: number, mode: 'initial' | 'fresh') => Promise<void>;
+  retryMissingPortraitSlots: (batchId: number) => Promise<void>;
   setImageFeedback: (feedback: string) => void;
   generatePlayerImage: (
     gameId: number,
@@ -236,10 +241,15 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   const {
     playerImages,
     selectedImageIndex,
+    selectedImageId,
+    portraitCandidates,
     isGeneratingImage,
     imageGenerationError,
     imageFeedback,
     setSelectedImageIndex,
+    selectPlayerImage,
+    enqueuePortraitCandidates,
+    retryMissingPortraitSlots,
     generatePlayerImage,
     refreshPortraitImageJob,
     regeneratePlayerImage,
@@ -475,43 +485,42 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     }
   }, [currentStepKey, hasBasicInfo, isGenerating, generatedContent, characterSettings, isPortraitStep, handleGenerate]);
 
-  // Portrait step auto-generate
-  const hasGeneratedImage = useRef(false);
-  
+  // A reload retains only the game ID locally. Recover an accepted portrait batch
+  // and its character facts from the server without creating another generation.
   useEffect(() => {
-    hasGeneratedImage.current = false;
-    // ★ 不再重置 backgroundGenStartedRef，因为后台生成可能在 world 步骤已提前启动
-    // backgroundGenStartedRef.current = false;
-    // setIsBackgroundGenerating(false);
-  }, [gameId]);
-  
+    if (!gameId || playerName || Object.keys(characterSettings).length) return;
+    let cancelled = false;
+    const restore = async () => {
+      const batch = await api.images.getPortraitCandidates(gameId);
+      if (!batch || cancelled) return;
+      const saved = await api.games.load(gameId);
+      const current = useGameStore.getState();
+      if (cancelled || current.gameId !== gameId || current.playerName ||
+          Object.keys(current.characterSettings).length) return;
+      const settings = saved.player_state.character_settings;
+      if (!settings?.story_origin || !settings.world) return;
+      current.replaceCharacterSettings(settings);
+      current.setPlayerName(saved.player_state.player_name || "");
+      current.setLifeVision(saved.player_state.life_vision || "");
+      current.setCreationStep(CREATION_STEPS.indexOf("portrait"));
+    };
+    void restore().catch(() => {
+      // Leave local creation inputs untouched when recovery is unavailable.
+    });
+    return () => { cancelled = true; };
+  }, [gameId, playerName, characterSettings]);
+
+  const portraitOriginNeedsEnqueue = useRef(false);
+
+  // Restoring this step only reads persisted state; creation enqueues at world acceptance.
   useEffect(() => {
-    if (
-      isPortraitStep &&
-      gameId &&
-      hasBasicInfo &&
-      playerImages.length === 0 &&
-      !isGeneratingImage &&
-      !imageGenerationError &&
-      !hasGeneratedImage.current
-    ) {
-      console.log("[portrait] Auto-generating player image...");
-      hasGeneratedImage.current = true;
-      generatePlayerImage(gameId, playerName, characterSettings).catch((err) => {
-        console.error("[portrait] Auto-generate failed:", err);
-      });
-    }
-  }, [
-    isPortraitStep,
-    gameId,
-    playerImages.length,
-    isGeneratingImage,
-    imageGenerationError,
-    generatePlayerImage,
-    playerName,
-    characterSettings,
-    hasBasicInfo,
-  ]);
+    if (!isPortraitStep || !gameId) return;
+    let cancelled = false;
+    void useImageStore.getState().loadPlayerImages(gameId).then(() => {
+      if (!cancelled) void useImageStore.getState().refreshPortraitImageJob(gameId);
+    });
+    return () => { cancelled = true; };
+  }, [isPortraitStep, gameId]);
 
   // Background generation for auto-advance steps
   const runAutoGeneration = useCallback(async (completePhase = true) => {
@@ -683,7 +692,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         });
         replaceCharacterSettings(replacement.character_settings);
         clearImageCache();
-        hasGeneratedImage.current = false;
+        portraitOriginNeedsEnqueue.current = true;
         backgroundGenStartedRef.current = false;
         setIsBackgroundGenerating(false);
         setAutoGenPhase("idle");
@@ -701,6 +710,19 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       replaceCharacterSettings(acceptedCharacterSettings);
     }
 
+    if (currentStepKey === "world" && gameId && portraitOriginNeedsEnqueue.current) {
+      try {
+        await api.games.patchCharacterSettings(gameId, acceptedCharacterSettings);
+      } catch (error) {
+        showToast("error", "世界观保存失败，请重试");
+        return;
+      }
+      portraitOriginNeedsEnqueue.current = false;
+      void enqueuePortraitCandidates(gameId, 'initial').catch((error) => {
+        console.error("[portrait] Failed to enqueue replacement-origin candidates", error);
+      });
+    }
+
     if (currentStepKey === "world" && !gameId) {
       try {
         setIsGenerating(true);
@@ -712,6 +734,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         });
         console.log("[create] Game created for portrait step:", result.game_id);
         setGameSession(result.game_id, result.game_id.toString());
+        void enqueuePortraitCandidates(result.game_id, 'initial').catch((error) => {
+          console.error("[portrait] Failed to enqueue candidates", error);
+        });
 
         // ★ 提前启动后台生成，与图片生成并行
         const allDone = AUTO_ADVANCE_STEPS.every((step) => acceptedCharacterSettings[step] != null);
@@ -791,7 +816,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     isPortraitStep, generatedContent, currentStepKey, gameId, characterSettings,
     playerName, lifeVision, language, isLastStep, isBackgroundGenerating,
     replaceCharacterSettings, clearImageCache, setCreationStep,
-    setGameSession, nextCreationStep, showToast, runAutoGeneration,
+    setGameSession, nextCreationStep, showToast, runAutoGeneration, enqueuePortraitCandidates,
     hasBasicInfo
   ]);
 
@@ -1052,6 +1077,8 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     // Image store values
     playerImages,
     selectedImageIndex,
+    selectedImageId,
+    portraitCandidates,
     isGeneratingImage,
     imageGenerationError,
     imageFeedback,
@@ -1059,6 +1086,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     
     // Image store actions
     setSelectedImageIndex,
+    selectPlayerImage,
+    enqueuePortraitCandidates,
+    retryMissingPortraitSlots,
     setImageFeedback,
     generatePlayerImage,
     refreshPortraitImageJob,

@@ -8,7 +8,9 @@ from pathlib import Path
 
 from PIL import Image as PillowImage
 
-from src.database.models import Game, GameState
+from src.database.models import (Game, GameState, PortraitCandidateBatch,
+                                 PortraitCandidateSlot, PortraitImageGenerationJob,
+                                 PortraitSelection, User)
 from src.database.models import Image as ImageModel
 from src.services.image_service import ImageService
 from src.services.image_storage import ImageStorageService
@@ -46,7 +48,7 @@ def _image(
         game_id=game.game_id,
         image_type="character",
         entity_name=entity_name,
-        entity_key=f"character-{entity_name}",
+        entity_key="player_main",
         prompt_text="character image",
         storage_path=storage_path,
         storage_type="local",
@@ -116,6 +118,74 @@ def test_foreign_player_image_id_falls_back_to_local_primary_and_compresses_refe
         assert decoded.size == (512, 341)
     assert service.get_image_data(primary) == full_path.read_bytes()
     assert service.get_image_url(primary) == "/api/images/file/owner/character/primary.png"
+
+
+def test_scene_and_opening_reference_persisted_choice_in_fresh_session(db_session, tmp_path: Path) -> None:
+    from sqlalchemy.orm import Session
+    from src.services.image import ImageService as ModularImageService
+    game = _game(db_session)
+    images = []
+    for index in (1, 2):
+        path = f"portrait/{index}.png"
+        full = tmp_path / path
+        full.parent.mkdir(parents=True, exist_ok=True)
+        PillowImage.new("RGB", (32, 32), color=(index * 30, 20, 20)).save(full)
+        images.append(_image(db_session, game, path, is_primary=index == 1))
+    db_session.add(PortraitSelection(game_id=game.game_id, image_id=images[1].image_id, is_user_selected=True))
+    db_session.commit()
+    with Session(db_session.get_bind()) as fresh:
+        for service_class in (ImageService, ModularImageService):
+            service = service_class.__new__(service_class)
+            service.db = fresh
+            service.storage_service = ImageStorageService(storage_type="local", local_path=tmp_path)
+            data_url, image_id = service._get_player_image_base64(game.game_id, None)
+            assert image_id == images[1].image_id
+            assert data_url.startswith("data:image/")
+
+
+def test_staged_candidate_does_not_change_scene_reference(db_session, tmp_path: Path) -> None:
+    service = _service(db_session, tmp_path)
+    game = _game(db_session)
+    user = User(private_id="staged-reference-owner", public_id="STAGED01")
+    db_session.add(user)
+    db_session.flush()
+    game.user_id = user.user_id
+    images = []
+    for index in (1, 2):
+        path = f"portrait/{index}.png"
+        full = tmp_path / path
+        full.parent.mkdir(parents=True, exist_ok=True)
+        PillowImage.new("RGB", (32, 32)).save(full)
+        images.append(_image(db_session, game, path, is_primary=index == 1))
+    db_session.add(PortraitSelection(game_id=game.game_id, image_id=images[0].image_id, is_user_selected=True))
+    job = PortraitImageGenerationJob(game_id=game.game_id, user_id=game.user_id,
+                                     request_json={"game_id": game.game_id})
+    db_session.add(job)
+    db_session.flush()
+    batch = PortraitCandidateBatch(game_id=game.game_id, user_id=game.user_id,
+                                   job_id=job.job_id, mode="fresh")
+    db_session.add(batch)
+    db_session.flush()
+    db_session.add(PortraitCandidateSlot(batch_id=batch.batch_id, slot_index=0,
+                                         status="ready", image_id=images[1].image_id))
+    db_session.commit()
+    assert service._get_player_image_base64(game.game_id, None)[1] == images[0].image_id
+
+
+def test_explicit_inactive_or_npc_portrait_falls_back_to_selected(db_session, tmp_path: Path) -> None:
+    service = _service(db_session, tmp_path)
+    game = _game(db_session)
+    path = "portrait/valid.png"
+    full = tmp_path / path
+    full.parent.mkdir(parents=True, exist_ok=True)
+    PillowImage.new("RGB", (32, 32)).save(full)
+    selected = _image(db_session, game, path, is_primary=True)
+    inactive = _image(db_session, game, "portrait/inactive.png", is_active=False)
+    npc = _image(db_session, game, "portrait/npc.png")
+    npc.entity_key = "npc_1"
+    db_session.commit()
+    for invalid in (inactive, npc):
+        assert service._get_player_image_base64(game.game_id, invalid.image_id)[1] == selected.image_id
 
 
 def test_saved_character_context_prefers_latest_state_then_initial_state(db_session, tmp_path: Path) -> None:

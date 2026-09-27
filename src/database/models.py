@@ -323,6 +323,47 @@ class PortraitImageGenerationJob(Base):
     )
 
 
+class PortraitCandidateBatch(Base):
+    """A durable set of protagonist portrait candidates."""
+
+    __tablename__ = "portrait_candidate_batches"
+
+    batch_id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    job_id = Column(
+        Integer, ForeignKey("portrait_image_generation_jobs.job_id"), nullable=False, unique=True
+    )
+    origin_revision = Column(Integer, nullable=True)
+    mode = Column(String(20), nullable=False)
+    active_key = Column(String(160), nullable=True, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PortraitCandidateSlot(Base):
+    """One independently generated candidate in a batch."""
+
+    __tablename__ = "portrait_candidate_slots"
+
+    batch_id = Column(
+        Integer, ForeignKey("portrait_candidate_batches.batch_id"), primary_key=True
+    )
+    slot_index = Column(Integer, primary_key=True)
+    image_id = Column(Integer, ForeignKey("images.image_id"), nullable=True)
+    status = Column(String(20), nullable=False, default="queued")
+    error_code = Column(String(80), nullable=True)
+
+
+class PortraitSelection(Base):
+    """The portrait currently chosen for a game."""
+
+    __tablename__ = "portrait_selections"
+
+    game_id = Column(Integer, ForeignKey("games.game_id"), primary_key=True)
+    image_id = Column(Integer, ForeignKey("images.image_id"), nullable=False)
+    is_user_selected = Column(Boolean, nullable=False, default=False)
+
+
 class SceneImage(Base):
     """Scene image model - 场景插图"""
 

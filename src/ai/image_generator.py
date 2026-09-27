@@ -1028,6 +1028,7 @@ class ImageGenerator:
         feedback: Optional[str] = None,
         prompt_builder: Any = None,  # 注入 prompt builder
         extra_params: Optional[Dict[str, Any]] = None,
+        candidate_mode: bool = False,
     ) -> Tuple[List[Tuple[bytes, str]], Optional[str]]:
         """
         生成人物全身像（保证人物一致性）
@@ -1110,6 +1111,7 @@ class ImageGenerator:
                 style_hint,
                 "站立姿态，正面朝向，自然光线",
                 feedback,
+                candidate_mode=candidate_mode,
             )
             try:
                 main_image_bytes, main_prompt_used, primary_image_url = (
