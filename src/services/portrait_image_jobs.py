@@ -47,7 +47,10 @@ def _job_origin_revision(request: dict[str, Any]) -> Optional[int]:
 
 
 def _origin_is_current(db: Session, job: PortraitImageGenerationJob) -> bool:
-    requested = _job_origin_revision(job.request_json or {})
+    request = job.request_json or {}
+    requested = _job_origin_revision(request)
+    if "origin_revision" in request:
+        return requested == _current_origin_revision(db, int(job.game_id))
     return requested is None or requested == _current_origin_revision(db, int(job.game_id))
 
 
@@ -70,7 +73,9 @@ class PortraitImageJobService:
         request_json = dict(request_json)
         game_id = int(request_json["game_id"])
         current_revision = _current_origin_revision(self.db, game_id)
-        if current_revision is not None:
+        if current_revision is not None or request_json.get("operation") in (
+            "regenerate", "regenerate_fresh"
+        ):
             request_json["origin_revision"] = current_revision
         entity_key = str(request_json.get("entity_key") or "player_main")
 
@@ -165,29 +170,78 @@ def run_portrait_image_job(
         db.commit()
 
         request = job.request_json
-        images = image_service_factory(db).generate_character_image(
-            game_id=int(request["game_id"]),
-            name=str(request["entity_name"]),
-            description=str(request["description"]),
-            era=str(request.get("era") or "现代"),
-            entity_key="player_main",
-            metadata=request.get("extra_context"),
-            num_images=1,
-            feedback=request.get("feedback"),
-        )
+        image_service = image_service_factory(db)
+        operation = request.get("operation", "generate")
+        if operation == "regenerate":
+            images = image_service.regenerate_image(
+                image_id=int(request["source_image_id"]),
+                feedback=request.get("feedback"),
+                new_description=request.get("new_description"),
+                defer_activation=True,
+            )
+        elif operation == "regenerate_fresh":
+            images = image_service.regenerate_fresh_image(
+                image_id=int(request["source_image_id"]),
+                use_deepseek_prompt=bool(request.get("use_deepseek_prompt", True)),
+                defer_activation=True,
+            )
+        elif operation == "generate":
+            images = image_service.generate_character_image(
+                game_id=int(request["game_id"]),
+                name=str(request["entity_name"]),
+                description=str(request["description"]),
+                era=str(request.get("era") or "现代"),
+                entity_key="player_main",
+                metadata=request.get("extra_context"),
+                num_images=1,
+                feedback=request.get("feedback"),
+            )
+        else:
+            raise ImageServiceError("unsupported portrait job operation")
         if not images or images[0].image_id is None:
             raise ImageServiceError("no image was persisted")
 
-        if not _origin_is_current(db, job):
+        db.refresh(job)
+        if job.status != "running" or not _origin_is_current(db, job):
             db.query(Image).filter(Image.image_id == int(images[0].image_id)).update(
                 {"is_active": False}
             )
-            _mark_superseded(db, job)
+            if job.status == "running":
+                _mark_superseded(db, job)
+            else:
+                db.commit()
+            if operation != "generate":
+                image_service.delete_image_files(images)
             return
+
+        old_images: list[Image] = []
+        if operation != "generate":
+            candidate = db.get(Image, int(images[0].image_id))
+            if (
+                candidate is None
+                or int(candidate.game_id) != int(job.game_id)
+                or candidate.entity_key != "player_main"
+            ):
+                raise ImageServiceError("regeneration candidate is missing or invalid")
+            old_images = (
+                db.query(Image)
+                .filter(
+                    Image.game_id == job.game_id,
+                    Image.entity_key == "player_main",
+                    Image.is_active.is_(True),
+                    Image.image_id != candidate.image_id,
+                )
+                .all()
+            )
+            for old_image in old_images:
+                old_image.is_active = False
+            candidate.is_active = True
 
         job.image_id = int(images[0].image_id)
         job.status = "succeeded"
         db.commit()
+        if old_images:
+            image_service.delete_image_files(old_images)
         logger.info("portrait image job completed job_id=%s status=succeeded", job_id)
     except Exception as error:
         db.rollback()

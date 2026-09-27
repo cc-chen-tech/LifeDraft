@@ -63,6 +63,7 @@ class CharacterImageService:
         feedback: Optional[str] = None,
         reference_image_url: Optional[str] = None,
         keep_old_active: bool = False,
+        candidate_only: bool = False,
     ) -> List[ImageModel]:
         """
         生成人物全身像图片（保证人物一致性）
@@ -79,6 +80,7 @@ class CharacterImageService:
             feedback: 用户反馈
             reference_image_url: 参考图片URL
             keep_old_active: 是否保持旧图片活跃（用于重新生成时避免闪烁）
+            candidate_only: 保存未启用的候选图，等待后台任务确认后切换
 
         Returns:
             Image模型实例列表
@@ -89,7 +91,7 @@ class CharacterImageService:
 
         # ★ 修复：如果 keep_old_active=True，不在生成前停用旧图片
         # 这样可以避免图片生成过程中的"空窗期"
-        if not keep_old_active:
+        if not (keep_old_active or candidate_only):
             # 停用该实体的所有旧图片
             self.db.query(ImageModel).filter(
                 ImageModel.game_id == game_id,
@@ -174,7 +176,7 @@ class CharacterImageService:
                     storage_type=storage_type,
                     metadata_json=merged_metadata,
                     version=1,
-                    is_active=True,
+                    is_active=not candidate_only,
                     is_primary=is_primary,
                     primary_image_id=None,
                 )
@@ -219,6 +221,7 @@ class CharacterImageService:
         new_description: Optional[str] = None,
         build_description_func: Optional[Callable[[Dict[str, Any]], str]] = None,
         extract_era_func: Optional[Callable[[Dict[str, Any]], Optional[str]]] = None,
+        defer_activation: bool = False,
     ) -> List[ImageModel]:
         """
         重新生成图片（保持人物一致性）
@@ -281,7 +284,11 @@ class CharacterImageService:
                 feedback=feedback,
                 reference_image_url=reference_url,
                 keep_old_active=True,
+                candidate_only=defer_activation,
             )
+
+            if defer_activation:
+                return new_images
 
             # ★ 新图片生成成功后，停用旧图片
             new_image_ids = [img.image_id for img in new_images]
@@ -340,6 +347,7 @@ class CharacterImageService:
         build_description_func: Optional[Callable[[Dict[str, Any]], str]] = None,
         extract_era_func: Optional[Callable[[Dict[str, Any]], Optional[str]]] = None,
         use_deepseek_prompt: bool = True,
+        defer_activation: bool = False,
     ) -> List[ImageModel]:
         """
         完全重新生成图片（抛弃历史修改）
@@ -359,44 +367,6 @@ class CharacterImageService:
 
         if not original:
             raise ImageServiceError(f"图片不存在: {image_id}")
-
-        # ★ 修复：停用图片时需要同时匹配 entity_key 和 entity_name
-        # 如果 entity_key 是 NULL，只匹配 entity_key 会误伤其他人物
-        # 解决方案：同时使用 entity_name 作为过滤条件
-        if original.entity_key:
-            # entity_key 不为空，使用 entity_key 匹配
-            old_images = (
-                self.db.query(ImageModel)
-                .filter(
-                    ImageModel.game_id == original.game_id,
-                    ImageModel.entity_key == original.entity_key,
-                )
-                .all()
-            )
-            self.db.query(ImageModel).filter(
-                ImageModel.game_id == original.game_id,
-                ImageModel.entity_key == original.entity_key,
-            ).update({"is_active": False})
-        else:
-            # entity_key 为空，使用 entity_name + image_type 匹配，避免误伤其他人物
-            old_images = (
-                self.db.query(ImageModel)
-                .filter(
-                    ImageModel.game_id == original.game_id,
-                    ImageModel.image_type == original.image_type,
-                    ImageModel.entity_name == original.entity_name,
-                )
-                .all()
-            )
-            self.db.query(ImageModel).filter(
-                ImageModel.game_id == original.game_id,
-                ImageModel.image_type == original.image_type,
-                ImageModel.entity_name == original.entity_name,
-            ).update({"is_active": False})
-        self.db.commit()
-
-        # P3-存储修复：停用的旧图片不再被引用，删除其磁盘/OSS 文件。
-        self._delete_image_files(old_images)
 
         metadata: Dict[str, Any] = original.metadata_json or {}  # type: ignore[assignment]
         char_settings = metadata.get("characterSettings", {})
@@ -444,7 +414,31 @@ class CharacterImageService:
                 num_images=1,
                 feedback=None,
                 reference_image_url=None,
+                keep_old_active=True,
+                candidate_only=defer_activation,
             )
+
+            if defer_activation:
+                return new_images
+
+            new_image_ids = [img.image_id for img in new_images]
+            if original.entity_key:
+                old_query = self.db.query(ImageModel).filter(
+                    ImageModel.game_id == original.game_id,
+                    ImageModel.entity_key == original.entity_key,
+                    ImageModel.image_id.notin_(new_image_ids),
+                )
+            else:
+                old_query = self.db.query(ImageModel).filter(
+                    ImageModel.game_id == original.game_id,
+                    ImageModel.image_type == original.image_type,
+                    ImageModel.entity_name == original.entity_name,
+                    ImageModel.image_id.notin_(new_image_ids),
+                )
+            old_images = old_query.all()
+            old_query.update({"is_active": False})
+            self.db.commit()
+            self._delete_image_files(old_images)
 
             logger.info(f"Fresh images regenerated: {len(new_images)} new images")
             return new_images

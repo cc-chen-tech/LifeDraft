@@ -81,7 +81,7 @@ export function StepPortrait({
     <div className="space-y-4">
       {/* 图片展示区 */}
       <div className="w-full">
-        {isGeneratingImage ? (
+        {isGeneratingImage && playerImages.length === 0 ? (
           <div className="mx-auto flex aspect-[9/17] w-full max-w-sm items-center justify-center overflow-hidden rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)] px-4">
             <div className="flex flex-col items-center gap-2 text-[var(--text-secondary)]">
               <Loader2 className="w-8 h-8 animate-spin" />
@@ -98,7 +98,7 @@ export function StepPortrait({
               )}
             </div>
           </div>
-        ) : imageGenerationError ? (
+        ) : imageGenerationError && playerImages.length === 0 ? (
           <div className="mx-auto flex aspect-[9/17] w-full max-w-sm items-center justify-center overflow-hidden rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)] px-5">
             <div className="flex max-w-xs flex-col items-center gap-3 text-center text-[var(--text-secondary)]">
               <User className="h-10 w-10 opacity-60" />
@@ -185,6 +185,16 @@ export function StepPortrait({
           </div>
         )}
       </div>
+
+      {playerImages.length > 0 && isGeneratingImage && (
+        <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]" role="status">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          正在后台重新生成人物形象，完成后会自动更新。
+        </div>
+      )}
+      {playerImages.length > 0 && imageGenerationError && !isGeneratingImage && (
+        <p className="text-sm text-destructive" role="alert">{imageGenerationError}</p>
+      )}
       
       {/* 后台生成进度提示 */}
       {isBackgroundGenerating && playerImages.length > 0 && (
@@ -236,7 +246,6 @@ export function StepPortrait({
               ) {
                 try {
                   await onRegenerate();
-                  onFeedbackChange("");
                 } catch (err) {
                   console.error("[portrait] Failed to regenerate:", err);
                   showToast("error", String(err) || "重新生成失败");

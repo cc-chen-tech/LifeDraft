@@ -476,6 +476,7 @@ export interface ImageResponse {
   image_id: number;
   image_url: string;
   image_type?: string;
+  game_id?: number;
 }
 
 export interface OpeningIllustrationResponse {

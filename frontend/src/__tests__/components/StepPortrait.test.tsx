@@ -119,6 +119,20 @@ describe("StepPortrait", () => {
       expect(img?.getAttribute("src")).toBe("https://example.com/portrait1.jpg");
     });
 
+    it("keeps the old image visible during background regeneration", () => {
+      render(<StepPortrait {...baseProps} playerImages={images} isGeneratingImage />);
+
+      expect(screen.getByRole("img", { name: "TestPlayer" })).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("正在后台重新生成人物形象");
+    });
+
+    it("shows the error while retaining the old image after regeneration fails", () => {
+      render(<StepPortrait {...baseProps} playerImages={images} imageGenerationError="生成失败" />);
+
+      expect(screen.getByRole("img", { name: "TestPlayer" })).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent("生成失败");
+    });
+
     it("shows thumbnail selectors when multiple images", () => {
       render(<StepPortrait {...baseProps} playerImages={images} />);
 
@@ -268,6 +282,7 @@ describe("StepPortrait", () => {
 
     it("calls onRegenerate when clicking regenerate button with feedback", async () => {
       const onRegenerate = jest.fn().mockResolvedValue(undefined);
+      const onFeedbackChange = jest.fn();
       const user = userEvent.setup();
       render(
         <StepPortrait
@@ -275,6 +290,7 @@ describe("StepPortrait", () => {
           playerImages={images}
           imageFeedback="Test feedback"
           onRegenerate={onRegenerate}
+          onFeedbackChange={onFeedbackChange}
         />
       );
 
@@ -282,6 +298,7 @@ describe("StepPortrait", () => {
       await waitFor(() => {
         expect(onRegenerate).toHaveBeenCalled();
       });
+      expect(onFeedbackChange).not.toHaveBeenCalledWith("");
     });
 
     it("calls onRegenerateFresh when clicking fresh regenerate", async () => {

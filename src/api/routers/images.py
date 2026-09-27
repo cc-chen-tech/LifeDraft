@@ -388,6 +388,65 @@ async def enqueue_character_portrait(
     return _portrait_job_response(job)
 
 
+def _enqueue_main_portrait_regeneration(
+    db: Session,
+    user: int,
+    image_id: int,
+    operation: str,
+    feedback: Optional[str] = None,
+    new_description: Optional[str] = None,
+    use_deepseek_prompt: bool = True,
+) -> PortraitImageGenerationJobResponse:
+    source = verify_image_ownership(db, image_id, user)
+    if source.image_type != "character" or source.entity_key != "player_main" or not source.is_active:
+        raise HTTPException(status_code=422, detail="只能重新生成当前主角形象")
+    job, _ = PortraitImageJobService(db).enqueue(user, {
+        "game_id": int(source.game_id),
+        "entity_key": "player_main",
+        "operation": operation,
+        "source_image_id": int(source.image_id),
+        "feedback": feedback,
+        "new_description": new_description,
+        "use_deepseek_prompt": use_deepseek_prompt,
+    })
+    schedule_portrait_image_job(int(job.job_id))
+    return _portrait_job_response(job)
+
+
+@router.post(
+    "/character/regenerate-async",
+    response_model=PortraitImageGenerationJobResponse,
+    status_code=202,
+)
+async def enqueue_character_regeneration(
+    req: RegenerateImageRequest,
+    db: Session = Depends(get_session),
+    user: Optional[int] = Depends(get_current_user_optional),
+) -> PortraitImageGenerationJobResponse:
+    if user is None:
+        raise HTTPException(status_code=401, detail="未登录")
+    return _enqueue_main_portrait_regeneration(
+        db, user, req.image_id, "regenerate", req.feedback, req.new_description
+    )
+
+
+@router.post(
+    "/character/regenerate-fresh-async",
+    response_model=PortraitImageGenerationJobResponse,
+    status_code=202,
+)
+async def enqueue_character_fresh_regeneration(
+    req: RegenerateFreshImageRequest,
+    db: Session = Depends(get_session),
+    user: Optional[int] = Depends(get_current_user_optional),
+) -> PortraitImageGenerationJobResponse:
+    if user is None:
+        raise HTTPException(status_code=401, detail="未登录")
+    return _enqueue_main_portrait_regeneration(
+        db, user, req.image_id, "regenerate_fresh", use_deepseek_prompt=req.use_deepseek_prompt
+    )
+
+
 @router.get(
     "/character/jobs/latest",
     response_model=Optional[PortraitImageGenerationJobResponse],

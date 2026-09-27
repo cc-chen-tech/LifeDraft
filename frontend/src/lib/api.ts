@@ -107,6 +107,8 @@ function isImageGenerationMutation(url: string): boolean {
   return [
     '/images/generate',
     '/images/character/generate-async',
+    '/images/character/regenerate-async',
+    '/images/character/regenerate-fresh-async',
     '/images/player',
     '/images/regenerate',
     '/images/regenerate-fresh',
@@ -686,10 +688,20 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ image_id: imageId, ...data }),
       }),
+    enqueueCharacterRegeneration: (imageId: number, feedback: string) =>
+      fetchJson<PortraitImageGenerationJob>('/images/character/regenerate-async', {
+        method: 'POST',
+        body: JSON.stringify({ image_id: imageId, feedback }),
+      }),
     regenerateFresh: (imageId: number, data?: { prompt?: string }) =>
       fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>(`/images/regenerate-fresh`, {
         method: 'POST',
         body: JSON.stringify({ image_id: imageId, ...data }),
+      }),
+    enqueueCharacterFreshRegeneration: (imageId: number) =>
+      fetchJson<PortraitImageGenerationJob>('/images/character/regenerate-fresh-async', {
+        method: 'POST',
+        body: JSON.stringify({ image_id: imageId }),
       }),
     get: (imageId: number) =>
       fetchJson<{ image_id: number; image_url: string; image_type: string }>(`/images/${imageId}`),

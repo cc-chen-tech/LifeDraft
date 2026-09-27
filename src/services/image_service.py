@@ -119,12 +119,14 @@ class ImageService:
         image_id: int,
         feedback: Optional[str] = None,
         new_description: Optional[str] = None,
+        defer_activation: bool = False,
     ) -> List[ImageModel]:
         """重新生成图片（保持人物一致性）"""
         return self._character_service.regenerate_image(
             image_id=image_id,
             feedback=feedback,
             new_description=new_description,
+            defer_activation=defer_activation,
             build_description_func=self._build_description_from_settings,
             extract_era_func=self._extract_era_from_settings,
         )
@@ -133,14 +135,20 @@ class ImageService:
         self,
         image_id: int,
         use_deepseek_prompt: bool = True,
+        defer_activation: bool = False,
     ) -> List[ImageModel]:
         """完全重新生成图片（抛弃历史修改）"""
         return self._character_service.regenerate_fresh_image(
             image_id=image_id,
             use_deepseek_prompt=use_deepseek_prompt,
+            defer_activation=defer_activation,
             build_description_func=self._build_description_from_settings,
             extract_era_func=self._extract_era_from_settings,
         )
+
+    def delete_image_files(self, images: List[ImageModel]) -> None:
+        """Remove files only after their database images have been deactivated."""
+        self._character_service._delete_image_files(images)
 
     # ==================== 场景插画方法 ====================
 

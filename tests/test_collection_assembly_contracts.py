@@ -110,6 +110,7 @@ def test_collection_assembly_merges_entity_sources_cached_images_and_defaults() 
         "image_url": "/images/lin.png",
         "image_generated": True,
         "description_generated": True,
+        "can_delete": False,
     }
     assert characters["Noah"].role == "colleague"
     assert characters["Noah"].description == "project partner"

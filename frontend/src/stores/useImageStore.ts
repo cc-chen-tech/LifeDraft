@@ -239,6 +239,17 @@ export const useImageStore = create<ImageState>()(
         if (job.status === "succeeded") {
           clearPortraitJobPollTimer();
           await get().loadPlayerImages(gameId);
+          if (activePortraitJobGameId !== gameId) return;
+          if (!get().playerImages.some((image) => image.image_id === job.image_id)) {
+            set({ isGeneratingImage: true, imageGenerationError: null });
+            portraitJobPollTimer = setTimeout(() => {
+              portraitJobPollTimer = null;
+              if (activePortraitJobGameId === gameId) {
+                void get().refreshPortraitImageJob(gameId);
+              }
+            }, PORTRAIT_JOB_POLL_INTERVAL_MS);
+            return;
+          }
           set({ isGeneratingImage: false, imageGenerationError: null, imageFeedback: "" });
           return;
         }
@@ -287,24 +298,40 @@ export const useImageStore = create<ImageState>()(
         throw new Error("没有可重新生成的图片");
       }
 
+      const gameId = selectedImage.game_id;
+      if (!gameId) throw new Error("图片所属游戏不存在");
+      activePortraitJobGameId = gameId;
+      clearPortraitJobPollTimer();
+
       set({ isGeneratingImage: true, imageGenerationError: null, imageFeedback: feedback });
 
       try {
-        const result = await api.images.regenerate(selectedImage.image_id, {
-          feedback,
-        });
-
-        const newImages = result.images || [];
+        const job = await api.images.enqueueCharacterRegeneration(selectedImage.image_id, feedback);
+        if (activePortraitJobGameId !== gameId) return;
         set({
-          playerImages: newImages,
-          playerImage: newImages[0] || null,
-          selectedImageIndex: 0,
-          isGeneratingImage: false,
-          imageGenerationError: null,
-          imageFeedback: "",
+          portraitImageJob: job,
+          isGeneratingImage: job.status === "queued" || job.status === "running",
         });
+        if (job.status === "queued" || job.status === "running") {
+          portraitJobPollTimer = setTimeout(() => {
+            portraitJobPollTimer = null;
+            void get().refreshPortraitImageJob(gameId);
+          }, PORTRAIT_JOB_POLL_INTERVAL_MS);
+        } else {
+          await get().refreshPortraitImageJob(gameId);
+        }
       } catch (err) {
         console.error("[regeneratePlayerImage] Failed:", err);
+        if (activePortraitJobGameId !== gameId) return;
+        const recovered = await api.images.getLatestCharacterPortraitJob(gameId).catch(() => null);
+        if (recovered && (
+          recovered.status === "queued" || recovered.status === "running" ||
+          (recovered.status === "succeeded" && recovered.image_id !== selectedImage.image_id)
+        )) {
+          set({ portraitImageJob: recovered });
+          await get().refreshPortraitImageJob(gameId);
+          return;
+        }
         set({
           isGeneratingImage: false,
           imageGenerationError: getPlayerImageErrorMessage(err, "人物形象重新生成失败"),
@@ -321,21 +348,40 @@ export const useImageStore = create<ImageState>()(
         throw new Error("没有可重新生成的图片");
       }
 
+      const gameId = selectedImage.game_id;
+      if (!gameId) throw new Error("图片所属游戏不存在");
+      activePortraitJobGameId = gameId;
+      clearPortraitJobPollTimer();
+
       set({ isGeneratingImage: true, imageGenerationError: null });
 
       try {
-        const result = await api.images.regenerateFresh(selectedImage.image_id);
-        const newImages = result.images || [];
+        const job = await api.images.enqueueCharacterFreshRegeneration(selectedImage.image_id);
+        if (activePortraitJobGameId !== gameId) return;
         set({
-          playerImages: newImages,
-          playerImage: newImages[0] || null,
-          selectedImageIndex: 0,
-          isGeneratingImage: false,
-          imageGenerationError: null,
-          imageFeedback: "",
+          portraitImageJob: job,
+          isGeneratingImage: job.status === "queued" || job.status === "running",
         });
+        if (job.status === "queued" || job.status === "running") {
+          portraitJobPollTimer = setTimeout(() => {
+            portraitJobPollTimer = null;
+            void get().refreshPortraitImageJob(gameId);
+          }, PORTRAIT_JOB_POLL_INTERVAL_MS);
+        } else {
+          await get().refreshPortraitImageJob(gameId);
+        }
       } catch (err) {
         console.error("[regenerateFreshPlayerImage] Failed:", err);
+        if (activePortraitJobGameId !== gameId) return;
+        const recovered = await api.images.getLatestCharacterPortraitJob(gameId).catch(() => null);
+        if (recovered && (
+          recovered.status === "queued" || recovered.status === "running" ||
+          (recovered.status === "succeeded" && recovered.image_id !== selectedImage.image_id)
+        )) {
+          set({ portraitImageJob: recovered });
+          await get().refreshPortraitImageJob(gameId);
+          return;
+        }
         set({
           isGeneratingImage: false,
           imageGenerationError: getPlayerImageErrorMessage(err, "人物形象重新生成失败"),
