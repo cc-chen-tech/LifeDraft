@@ -69,6 +69,10 @@ def file_story_database(tmp_path, monkeypatch):
     from src.database import models, state_repository, game_repository, session_repository
     from src.database.db import GameDatabase
     from src.api.session_store import session_store
+    from src.ai.client import AIClient
+    # Restored API loops create their own clients for optional enrichment.
+    # Keep those workers offline as well as the explicit per-test generator.
+    monkeypatch.setattr(AIClient, 'call', lambda self, **kwargs: '{}')
     # Temporary databases reuse small integer IDs. Keep their restored API
     # sessions isolated from the process-wide cache for the normal test DB.
     monkeypatch.setattr(session_store, '_sessions', {})
@@ -88,6 +92,10 @@ def file_story_database(tmp_path, monkeypatch):
     finally:
         for session in list(session_store._sessions.values()):
             session.game_loop.shutdown()
+            # Production shutdown is deliberately non-blocking. Tests must
+            # drain writes before the next fixture rebinds SessionLocal and
+            # reuses game_id=1 in a different temporary database.
+            session.game_loop._daily_postprocessor.shutdown(wait=True, cancel_futures=True)
         session_store._sessions.clear()
         engine.dispose()
 
