@@ -9,6 +9,14 @@ async function createAncientGame(
       player_name: "李逍遥",
       life_vision: "成为一代大侠",
       character_settings: {
+        story_origin: {
+          revision: 1,
+          start_date: "1150-01-01",
+          starting_age: 22,
+          era_description: "南宋，古代中国",
+          life_stage_description: "青年江湖人士",
+          world_context: "南宋时期的江湖，无现代科技",
+        },
         era: {
           name: "南宋",
           period: "古代",
@@ -37,6 +45,8 @@ async function createAncientGame(
   }
 
   const game = await createResp.json();
+  expect(game.player_state.character_settings.era.year).toBe(1150);
+  expect(game.player_state.timeline.start_date).toBe("1150-01-01");
   return game.game_id;
 }
 
@@ -47,15 +57,17 @@ test.describe("古代背景时代验证器无 false positive", () => {
 
     await page.goto(`/play?gameId=${gameId}`);
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForTimeout(2000);
-
-    // 页面应加载成功，不应出现错误提示
-    const errorText = page.locator("text=出错了");
-    await expect(errorText).not.toBeVisible();
-
-    // 等待故事区域出现（说明后端生成成功）
-    const storyArea = page.locator(".prose-story").first();
+    await expect(page.getByRole('heading', { name: '听故事', exact: true })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: '查看故事正文', exact: true }).click();
+    const storyArea = page.getByRole('region', { name: '故事正文', exact: true });
     await expect(storyArea).toBeVisible({ timeout: 30000 });
+    await expect(storyArea).toContainText("李逍遥");
+    await expect(storyArea).toContainText("赵灵儿");
+    const stateResponse = await context.request.get(`${API_URL}/api/games/${gameId}`);
+    expect(stateResponse.status()).toBe(200);
+    const state = await stateResponse.json();
+    expect(state.current_event.options.length).toBeGreaterThan(0);
+    expect(state.player_state.character_settings.era.year).toBe(1150);
 
     // 页面不应包含"检测到现代元素"的验证误报提示
     const bodyText = await page.locator("body").textContent();
