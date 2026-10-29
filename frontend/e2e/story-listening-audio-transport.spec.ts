@@ -312,7 +312,32 @@ test.describe('StoryListeningExperience audio transport', () => {
     // Allow the 20s request deadline, the 15s hidden-page retry backoff, and
     // enough scheduler margin for a loaded full-suite run.
     await expect.poll(() => fixture.audioRequests.length, { timeout: 45_000 }).toBeGreaterThan(0);
+    const audio = page.locator('audio[data-active="true"]');
+    await expect(audio).toHaveAttribute('src', FIXTURE_AUDIO_PATH);
+    // Job recovery and autoplay permission are separate contracts. A delayed
+    // source can need the product's one-tap playback action on Mobile Safari.
+    // Do not turn arbitrary stalled playback into a passing recovery test:
+    // only accept real playback or the explicit autoplay-rejection prompt.
+    await expect.poll(() => page.evaluate(() => {
+      const media = document.querySelector<HTMLAudioElement>('audio[data-active="true"]');
+      const playing = media && !media.paused && media.currentTime > 0.05;
+      const prompted = [...document.querySelectorAll('[role="status"]')]
+        .some((element) => element.textContent === '点击播放，开启自动朗读');
+      return Boolean(playing || prompted);
+    }), { timeout: 15_000 }).toBe(true);
+    if (await page.getByText('点击播放，开启自动朗读', { exact: true }).isVisible()) {
+      try {
+        // Use a trusted browser interaction, not DOM click(), to grant user
+        // activation. The exact name must never target the Pause control.
+        await page.getByRole('button', { name: '播放朗读', exact: true }).click({ timeout: 2_000 });
+      } catch {
+        // Autoplay may resume before the click, removing the Play target.
+        // Only tolerate that race if real playback has actually started.
+        await expectRealPlayback(page);
+      }
+    }
     await expectRealPlayback(page);
+    await expect(page.getByText('点击播放，开启自动朗读')).toHaveCount(0);
     await expect(page.getByText('高质量语音暂时不可用，已切换浏览器朗读')).toHaveCount(0);
     expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));
   });
@@ -352,14 +377,16 @@ test.describe('StoryListeningExperience audio transport', () => {
     await expect(page.getByText('高质量语音暂时不可用，已切换浏览器朗读')).toHaveCount(0);
   });
 
-  test('autoplays generated WAV audio through the Range-aware fixture', async ({ page }) => {
+  test('autoplays generated WAV audio and preserves chapter continuity', async ({ page }) => {
     const fixture = await installFixture(page);
     await page.goto(`/play?gameId=${GAME_ID}`);
 
     await expect(page.getByRole('heading', { name: '听故事' })).toBeVisible();
     await expectRealPlayback(page);
     await expect.poll(() => fixture.audioRequests.length).toBeGreaterThan(0);
-    await expect.poll(() => fixture.rangeRequests.length).toBeGreaterThan(0);
+    // Native media loading may use a full 200 response or byte ranges. The
+    // production Range/206/416 contract is checked independently in
+    // tests/test_tts_audio_transport.py, not inferred from browser strategy.
     expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));
 
     const audio = page.locator('audio[data-active="true"]');
@@ -372,6 +399,10 @@ test.describe('StoryListeningExperience audio transport', () => {
     await expect(page.getByText('第 2 段', { exact: true })).toBeVisible();
     await expect(audio).toHaveAttribute('data-continuity-token', 'same-chapter-node');
     await expect(audio).toHaveAttribute('src', FIXTURE_AUDIO_PATH);
+    await expectRealPlayback(page);
+    await expect.poll(() => audio.evaluate((element) => (
+      (element as HTMLAudioElement).currentTime
+    ))).toBeGreaterThan(4.05);
     expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));
   });
 

@@ -311,7 +311,10 @@ class AIClient:
         """
         from src.ai.e2e_story_provider import deterministic_e2e_response
 
-        e2e_response = deterministic_e2e_response(system_prompt)
+        e2e_response = deterministic_e2e_response(
+            system_prompt, user_prompt=user_prompt,
+            narrative_budget=generation_tracker.budget if generation_tracker else None,
+        )
         if e2e_response is not None:
             if stream_callback is not None:
                 stream_callback(e2e_response)
