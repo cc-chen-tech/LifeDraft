@@ -254,12 +254,64 @@ def test_every_non_deploy_workflow_cancels_only_obsolete_pr_runs() -> None:
 
     for path in _non_deploy_workflows():
         workflow = _load_workflow(path)
-        concurrency = workflow.get("concurrency")
+        if path == E2E_WORKFLOW:
+            # Unrelated label events must be skipped before entering concurrency;
+            # otherwise a skipped run can cancel an active, useful E2E run.
+            assert "concurrency" not in workflow
+            jobs = workflow["jobs"]
+            assert isinstance(jobs, dict) and jobs
+            assert set(jobs) == {"e2e-tests"}
+            job = jobs["e2e-tests"]
+            assert isinstance(job, dict) and job
+            assert job.get("if") == (
+                "github.event.action != 'labeled' || "
+                "github.event.label.name == 'e2e-full'"
+            )
+            concurrency = job.get("concurrency")
+        else:
+            concurrency = workflow.get("concurrency")
         assert isinstance(concurrency, dict), path.name
         assert concurrency.get("group") == expected_group, path.name
         assert (
             concurrency.get("cancel-in-progress") == expected_cancel
         ), path.name
+
+
+def test_e2e_full_label_preserves_core_defaults_and_scheduled_mobile_coverage() -> None:
+    workflow = _load_workflow(E2E_WORKFLOW)
+    triggers = workflow["on"]
+    assert isinstance(triggers, dict)
+    assert set(triggers) == {"push", "pull_request", "schedule"}
+    assert triggers["push"] == {"branches": ["main"]}
+    assert triggers["pull_request"] == {
+        "branches": ["main"],
+        "types": ["opened", "synchronize", "reopened", "labeled"],
+    }
+    assert triggers["schedule"] == [{"cron": "0 18 * * *"}]
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    job = jobs["e2e-tests"]
+    assert isinstance(job, dict)
+    steps = job["steps"]
+    assert isinstance(steps, list) and steps
+    by_command = {
+        step["run"]: step
+        for step in steps
+        if isinstance(step, dict) and "run" in step
+    }
+    full_condition = (
+        "github.event_name == 'schedule' || "
+        "contains(github.event.pull_request.labels.*.name, 'e2e-full')"
+    )
+    assert by_command["npx playwright install --with-deps webkit"]["if"] == full_condition
+    full = by_command["./test.sh e2e-full"]
+    assert full["if"] == full_condition
+    assert full["env"]["E2E_INCLUDE_MOBILE"] == "1"
+    core = by_command["./test.sh e2e-core"]
+    assert core["if"] == (
+        "github.event_name != 'schedule' && "
+        "!contains(github.event.pull_request.labels.*.name, 'e2e-full')"
+    )
 
 
 def test_backend_ci_runs_full_discovery_and_regressions_are_in_quick_gate():
