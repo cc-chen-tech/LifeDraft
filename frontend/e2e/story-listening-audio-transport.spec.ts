@@ -23,6 +23,7 @@ type AudioFixture = {
   rangeRequests: string[];
   choiceRequests: number;
   diagnostics: AudioDiagnostic[];
+  playRejections: string[];
 };
 
 type FixtureOptions = {
@@ -117,7 +118,12 @@ function observeAudioDiagnostics(page: Page, fixture: AudioFixture): void {
   page.on('console', async (message) => {
     if (message.type() !== 'info' || message.args().length < 2) return;
     const [label, diagnostic] = message.args();
-    if (await label.jsonValue() !== '[StoryListeningExperience] audio') return;
+    const name = await label.jsonValue();
+    if (name === '[audio-play-rejected]') {
+      fixture.playRejections.push(await diagnostic.jsonValue() as string);
+      return;
+    }
+    if (name !== '[StoryListeningExperience] audio') return;
     const value = await diagnostic.jsonValue() as AudioDiagnostic;
     if (typeof value.mediaState === 'string') fixture.diagnostics.push(value);
   });
@@ -130,8 +136,18 @@ async function installFixture(page: Page, options: FixtureOptions = {}): Promise
     rangeRequests: [],
     choiceRequests: 0,
     diagnostics: [],
+    playRejections: [],
   };
   observeAudioDiagnostics(page, fixture);
+  // Observe the real browser promise without replacing its result or events.
+  await page.addInitScript(() => {
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      const result = play.call(this);
+      void result.catch((error: DOMException) => console.info('[audio-play-rejected]', error.name));
+      return result;
+    };
+  });
   const wav = createPlayableWav();
   let failNextAudioRequest = options.failFirstAudioRequest === true;
   const story = [
@@ -312,6 +328,14 @@ test.describe('StoryListeningExperience audio transport', () => {
     // Allow the 20s request deadline, the 15s hidden-page retry backoff, and
     // enough scheduler margin for a loaded full-suite run.
     await expect.poll(() => fixture.audioRequests.length, { timeout: 45_000 }).toBeGreaterThan(0);
+    await expect.poll(() => (
+      fixture.diagnostics.some((entry) => entry.mediaState === 'playing')
+      || fixture.playRejections.includes('NotAllowedError')
+    ), { timeout: 5_000 }).toBe(true);
+    if (fixture.playRejections.includes('NotAllowedError')) {
+      await expect(page.getByText('点击播放，开启自动朗读', { exact: true })).toBeVisible();
+      await page.getByRole('button', { name: '播放朗读', exact: true }).click();
+    }
     await expectRealPlayback(page);
     await expect(page.getByText('高质量语音暂时不可用，已切换浏览器朗读')).toHaveCount(0);
     expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));
@@ -359,7 +383,6 @@ test.describe('StoryListeningExperience audio transport', () => {
     await expect(page.getByRole('heading', { name: '听故事' })).toBeVisible();
     await expectRealPlayback(page);
     await expect.poll(() => fixture.audioRequests.length).toBeGreaterThan(0);
-    await expect.poll(() => fixture.rangeRequests.length).toBeGreaterThan(0);
     expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));
 
     const audio = page.locator('audio[data-active="true"]');
@@ -373,6 +396,35 @@ test.describe('StoryListeningExperience audio transport', () => {
     await expect(audio).toHaveAttribute('data-continuity-token', 'same-chapter-node');
     await expect(audio).toHaveAttribute('src', FIXTURE_AUDIO_PATH);
     expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));
+  });
+
+  test('audio fixture serves exact byte ranges and rejects unsatisfiable ranges', async ({ page }) => {
+    const fixture = await installFixture(page);
+    await page.goto(`/play?gameId=${GAME_ID}`);
+    await expectRealPlayback(page);
+    // Linux WebKit can fetch the full WAV with 200 and decode it correctly.
+    // Exercise Range explicitly so coverage does not depend on engine strategy.
+    const result = await page.evaluate(async (path) => {
+      const partial = await fetch(path, { headers: { Range: 'bytes=0-43' } });
+      const bytes = Array.from(new Uint8Array(await partial.arrayBuffer()));
+      const invalid = await fetch(path, { headers: { Range: 'bytes=999999-' } });
+      return {
+        status: partial.status,
+        range: partial.headers.get('content-range'),
+        accepts: partial.headers.get('accept-ranges'),
+        length: partial.headers.get('content-length'),
+        bytes,
+        invalidStatus: invalid.status,
+        invalidRange: invalid.headers.get('content-range'),
+      };
+    }, FIXTURE_AUDIO_PATH);
+    const wav = createPlayableWav();
+    expect(result).toEqual({
+      status: 206, range: `bytes 0-43/${wav.length}`, accepts: 'bytes', length: '44',
+      bytes: Array.from(wav.subarray(0, 44)),
+      invalidStatus: 416, invalidRange: `bytes */${wav.length}`,
+    });
+    expect(fixture.rangeRequests).toEqual(expect.arrayContaining(['bytes=0-43', 'bytes=999999-']));
   });
 
   test('offers a retry when real playback silently stops advancing', async ({ page }) => {

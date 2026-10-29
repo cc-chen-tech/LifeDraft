@@ -15,7 +15,7 @@
 import { test, expect, Page, BrowserContext } from '@playwright/test';
 import { ensureAuthenticated, API_URL } from './helpers/auth';
 import { startNetworkMonitoring, formatNetworkErrors } from './helpers/network-monitor';
-import { waitForNetworkIdle, waitForStableDOM } from './helpers/wait-helpers';
+import { waitForNetworkIdle } from './helpers/wait-helpers';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 /** SSE 事件收集器 */
@@ -84,8 +84,7 @@ async function waitForGameReady(page: Page): Promise<void> {
   await page.waitForLoadState('domcontentloaded');
   await waitForNetworkIdle(page);
 
-  // 等待 header 出现（游戏页面标志）
-  await page.waitForSelector('header', { timeout: 15000 }).catch(() => {});
+  await expect(page.getByRole('heading', { name: '听故事', exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 /**
@@ -122,39 +121,16 @@ async function createTestGame(context: BrowserContext): Promise<number> {
  * 导航到有效的游戏页面
  * 使用 API 预创建游戏，绕过 UI 创建流程和 AI 生成等待
  */
-async function navigateToGame(page: Page, context: BrowserContext): Promise<void> {
-  // 先检查是否已有活跃游戏
-  await page.goto(`${BASE_URL}/play`);
-  await waitForGameReady(page);
-
-  const hasHeader = await page.locator('header').isVisible().catch(() => false);
-  if (hasHeader) {
-    return;
-  }
-
-  // 通过 API 快速创建游戏，绕过 AI 生成等待
+async function navigateToGame(page: Page, context: BrowserContext): Promise<number> {
+  // A layout header also exists on the home page after /play redirects.
+  // Own an actual game in every test instead of accepting that header as setup.
   const gameId = await createTestGame(context);
 
   // 直接导航到游戏页面
   await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
   await waitForGameReady(page);
 
-  // 最终验证
-  const finalHasHeader = await page.locator('header').isVisible().catch(() => false);
-  expect(finalHasHeader).toBe(true);
-}
-
-async function waitForChoiceProgressionCheckpoint(
-  page: Page,
-  choiceResponse: Promise<unknown>
-): Promise<void> {
-  const stableMain = waitForStableDOM(page, 'main', { timeout: 10_000, stableTime: 1_000 }).catch(
-    () => null
-  );
-
-  await Promise.race([choiceResponse, page.waitForTimeout(45_000)]);
-
-  await stableMain;
+  return gameId;
 }
 
 test.describe('Claude Code Improvements - E2E Validation', () => {
@@ -348,108 +324,58 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
   });
 
   test('4. Long stories are complete without truncation', async ({ page, context }) => {
-    // Goal: Verify truncation recovery produces complete text
     const monitor = startNetworkMonitoring(page);
-    const { events, promise: ssePromise } = await interceptSSEEvents(page);
+    const gameId = await navigateToGame(page, context);
+    const response = await context.request.get(`${API_URL}/api/games/${gameId}`);
+    expect(response.status(), await response.text()).toBe(200);
+    const state = await response.json();
+    const story: string = state.current_event.event_description;
+    expect(story.length).toBeGreaterThan(100);
+    expect(story.trim()).toMatch(/[。！？….!?」）]$/);
+    expect(state.current_event.options.length).toBeGreaterThan(0);
 
-    // Navigate to game
-    await navigateToGame(page, context);
-
-    // Wait for generation to complete
-    await page.waitForTimeout(3000);
-    await waitForNetworkIdle(page);
-
-    // Wait for SSE to complete if in progress
-    await Promise.race([
-      ssePromise,
-      page.waitForTimeout(30000),
-    ]);
-
-    // Wait for story text to stabilize
-    await waitForStableDOM(page, 'main', { timeout: 15000, stableTime: 2000 }).catch(() => {});
-
-    // Get story text content from page
-    const storyText = await page.locator('main').textContent();
-    expect(storyText).toBeTruthy();
-
-    // Verify text length is substantial (> 100 chars)
-    // Filter out UI chrome text (buttons, labels, etc.)
-    const cleanText = (storyText || '').replace(/你的选择|返回当前|保存|历史回顾|收集/g, '').trim();
-    if (cleanText.length > 50) {
-      // Only check length for real story content
-      expect(cleanText.length).toBeGreaterThan(100);
-
-      // Verify text ends with valid sentence ending
-      // Chinese punctuation: 。！？… or western: . ! ? ...
-      const lastMeaningfulChar = cleanText.replace(/\s+$/, '').slice(-1);
-      const validEndings = ['。', '！', '？', '…', '.', '!', '?', '"', '"', '」', '）'];
-      // Story should end with proper punctuation (if long enough)
-      if (cleanText.length > 300) {
-        const endsWithValidPunctuation = validEndings.some(p => cleanText.trimEnd().endsWith(p));
-        // This is a soft check - some stories may end differently
-        if (!endsWithValidPunctuation) {
-          console.warn('Story may be truncated - does not end with expected punctuation:', lastMeaningfulChar);
-        }
-      }
-    }
-
-    // Verify no 5xx errors
+    await page.getByRole('button', { name: '查看故事正文', exact: true }).click();
+    const transcript = page.getByRole('region', { name: '故事正文', exact: true });
+    await expect(transcript).toBeVisible();
+    const paragraphs = transcript.getByRole('button', { name: /^从第 \d+ 段开始朗读$/ });
+    const expected = story.split(/\n\s*\n|\n/).map(text => text.trim()).filter(Boolean);
+    await expect(paragraphs).toHaveText(expected);
     expect(monitor.get5xxErrors()).toHaveLength(0);
   });
 
   test('5. Game progression works correctly after post-processing', async ({ page, context }) => {
-    // Goal: Verify parallel post-processing doesn't break game flow
     const monitor = startNetworkMonitoring(page);
+    const gameId = await navigateToGame(page, context);
+    const beforeResponse = await context.request.get(`${API_URL}/api/games/${gameId}/state`);
+    expect(beforeResponse.status()).toBe(200);
+    const before = await beforeResponse.json();
+    const nextDay = before.player_state.timeline.day_index + 1;
 
-    // Navigate to game
-    await navigateToGame(page, context);
+    // Select an actual story option, not an unrelated listening control.
+    const choice = page.getByRole('button', { name: /选择 1：/ });
+    await expect(choice).toBeEnabled();
+    const choiceResponse = page.waitForResponse(
+      response => new URL(response.url()).pathname === `/api/games/${gameId}/choice`,
+      { timeout: 45_000 },
+    );
+    await choice.click();
+    expect((await choiceResponse).status()).toBe(200);
 
-    // Wait for game to be in a stable state
-    await page.waitForTimeout(3000);
-    await waitForNetworkIdle(page);
-
-    // Capture initial status bar content
-    const initialStatusText = await page.locator('header').textContent().catch(() => '');
-
-    // Look for option cards (indicating options phase)
-    const optionButton = page.locator('button').filter({ hasText: /^(?!.*(?:保存|历史|返回|收集|设置)).{5,}/ }).first();
-    const hasOptions = await optionButton.isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (hasOptions) {
-      // Click the first option to make a choice
-      monitor.clear();
-      const choiceResponse = page.waitForResponse(
-        resp =>
-          resp.url().includes('/api/games/') &&
-          (resp.url().includes('/choice') || resp.url().includes('/custom-choice')),
-        { timeout: 45_000 }
-      ).catch(() => null);
-      await optionButton.click();
-      await waitForChoiceProgressionCheckpoint(page, choiceResponse);
-
-      // Verify status bar values may have updated
-      const updatedStatusText = await page.locator('header').textContent().catch(() => '');
-      // Status text exists (whether changed or not)
-      expect(updatedStatusText).toBeTruthy();
-
-      // Verify new story content appears (story continuity)
-      const storyText = await page.locator('main').textContent();
-      expect(storyText).toBeTruthy();
-      expect(storyText!.length).toBeGreaterThan(0);
-
-      // Check no 5xx errors during the whole flow
-      const serverErrors = monitor.get5xxErrors();
-      if (serverErrors.length > 0) {
-        console.error('Server errors during progression:', formatNetworkErrors(serverErrors));
-      }
-      expect(serverErrors).toHaveLength(0);
-    } else {
-      // No options available - generation might still be in progress
-      // Verify page is in a valid state
-      const mainContent = await page.locator('main').textContent();
-      expect(mainContent).toBeTruthy();
-      expect(monitor.get5xxErrors()).toHaveLength(0);
-    }
+    await expect.poll(async () => {
+      const response = await context.request.get(`${API_URL}/api/games/${gameId}/state`);
+      expect(response.status()).toBe(200);
+      const state = await response.json();
+      return state.player_state.timeline.day_index;
+    }, { timeout: 45_000 }).toBe(nextDay);
+    await expect(page.getByTestId('status-bar').first()).toContainText(`第 ${nextDay + 1} 天`);
+    await expect(page.getByRole('heading', { name: '听故事', exact: true })).toBeVisible();
+    await expect(choice).toBeEnabled({ timeout: 45_000 });
+    const afterResponse = await context.request.get(`${API_URL}/api/games/${gameId}`);
+    expect(afterResponse.status()).toBe(200);
+    const after = await afterResponse.json();
+    expect(after.current_event.story_date).toBe(after.player_state.timeline.current_date);
+    expect(after.current_event.event_description.length).toBeGreaterThan(100);
+    expect(monitor.get5xxErrors()).toHaveLength(0);
   });
 
   test('6. Long-running game does not fail from context overflow', async ({ page, context }) => {

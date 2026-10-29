@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { ensureAuthenticated, API_URL } from "./helpers/auth";
 
+type EventVersion = { event_id: string; revision: number };
+
 async function createTestGame(
   context: import("@playwright/test").BrowserContext
 ): Promise<number> {
@@ -33,21 +35,26 @@ async function createTestGame(
 async function seedEventForGame(
   context: import("@playwright/test").BrowserContext,
   gameId: number
-): Promise<void> {
+): Promise<EventVersion> {
   const eventResp = await context.request.post(`${API_URL}/api/games/${gameId}/event-sync`, {
     data: {},
   });
-  expect(eventResp.status()).toBe(200);
+  expect(eventResp.status(), await eventResp.text()).toBe(200);
+  const event = await eventResp.json();
+  expect(event.event_id).toEqual(expect.any(String));
+  expect(event.revision).toEqual(expect.any(Number));
+  return { event_id: event.event_id, revision: event.revision };
 }
 
 async function applyFirstChoiceForGame(
   context: import("@playwright/test").BrowserContext,
-  gameId: number
+  gameId: number,
+  event: EventVersion,
 ): Promise<Record<string, unknown>> {
   const choiceResp = await context.request.post(`${API_URL}/api/games/${gameId}/choice-sync`, {
-    data: { option_index: 0 },
+    data: { option_index: 0, ...event },
   });
-  expect(choiceResp.status()).toBe(200);
+  expect(choiceResp.status(), await choiceResp.text()).toBe(200);
   return await choiceResp.json();
 }
 
@@ -68,8 +75,8 @@ test.describe("选择影响资源隐藏", () => {
   test("选择后状态栏不显示资源变化", async ({ page, context }) => {
     await ensureAuthenticated(page, context);
     const gameId = await createTestGame(context);
-    await seedEventForGame(context, gameId);
-    const result = await applyFirstChoiceForGame(context, gameId);
+    const event = await seedEventForGame(context, gameId);
+    const result = await applyFirstChoiceForGame(context, gameId, event);
     expect(result).toHaveProperty("effects_applied");
     const savedPlayerState = await getSavedPlayerState(context, gameId);
     const savedEnergy = savedPlayerState.energy;
@@ -89,10 +96,10 @@ test.describe("选择影响资源隐藏", () => {
     const gameId = await createTestGame(context);
 
     // 先生成一个事件
-    await seedEventForGame(context, gameId);
+    const event = await seedEventForGame(context, gameId);
 
     // 做同步选择
-    const result = await applyFirstChoiceForGame(context, gameId);
+    const result = await applyFirstChoiceForGame(context, gameId, event);
     // 结果中应包含 effects_applied（即使是空对象）
     expect(result).toHaveProperty("effects_applied");
     expect(typeof result.effects_applied).toBe("object");
