@@ -495,13 +495,39 @@ def test_ai_heavy_progression_uses_bounded_choice_waits() -> None:
         encoding="utf-8"
     )
     progression_test = spec.split(
-        "test('5. Game progression works correctly after post-processing'"
+        "test('5. Daily choice commits and advances despite post-processing'"
     )[1].split("test('6. Long-running game does not fail from context overflow'")[0]
 
-    assert "waitForChoiceProgressionCheckpoint" in spec
-    assert "45_000" in spec
-    assert "await waitForNetworkIdle(page);\n      await page.waitForTimeout(3000);" not in progression_test
-    assert "await page.waitForTimeout(5000);\n      await waitForNetworkIdle(page);" not in progression_test
+    # Protect real daily settlement, not an obsolete helper name or a generic
+    # button click that could accidentally target narration controls.
+    assert "[data-slot=\"choice-branch-row\"]" in progression_test
+    assert "await firstChoice.click()" in progression_test
+    assert "page.waitForResponse" in progression_test
+    assert "`/api/games/${gameId}/choice`" in progression_test
+    assert "response.request().method() === 'POST'" in progression_test
+    assert "{ timeout: 45_000 }" in progression_test
+    assert "expect(choiceResponse.ok()).toBe(true)" in progression_test
+    assert "choiceResponse.request().postDataJSON()).toMatchObject" in progression_test
+    assert "option_index: 0" in progression_test
+    assert "event_id: initial.current_event.event_id" in progression_test
+    assert "revision: initial.current_event.revision" in progression_test
+    # CDP cannot reliably return consumed streaming response bodies. Require the
+    # real SSE response type and durable settlement below, not body retrieval.
+    assert (
+        "expect(choiceResponse.headers()['content-type']).toMatch(/^text\\/event-stream(?:;|$)/i)"
+        in progression_test
+    )
+    assert "await expect.poll" in progression_test
+    assert "context.request.get(`${API_URL}/api/games/${gameId}`)" in progression_test
+    assert ").toBe(initialDay + 1)" in progression_test
+    assert "settled!.player_state.day_history.filter" in progression_test
+    assert "record.event_id === initial.current_event.event_id" in progression_test
+    assert "record.revision === initial.current_event.revision" in progression_test
+    assert "expect(records).toHaveLength(1)" in progression_test
+    assert "choice_option_index: 0" in progression_test
+    assert "expect(records[0].effects_applied).toBeTruthy()" in progression_test
+    assert "waitForTimeout" not in progression_test
+    assert "waitForNetworkIdle" not in progression_test
 
 
 def test_choice_impact_ui_e2e_seeds_event_before_opening_play_page() -> None:

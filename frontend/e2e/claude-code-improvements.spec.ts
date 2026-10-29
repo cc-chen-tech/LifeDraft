@@ -366,6 +366,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     const choiceResponsePromise = page.waitForResponse(response =>
       new URL(response.url()).pathname === `/api/games/${gameId}/choice`
         && response.request().method() === 'POST',
+      { timeout: 45_000 },
     );
     await firstChoice.click();
     const choiceResponse = await choiceResponsePromise;
@@ -375,7 +376,10 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
       event_id: initial.current_event.event_id,
       revision: initial.current_event.revision,
     });
-    expect(await choiceResponse.text()).toContain('event: complete');
+    // Chromium may discard an SSE response body once the client cancels its
+    // reader. Verify the transport here and completion through the durable
+    // settlement receipt and next-day UI below, not CDP body retention.
+    expect(choiceResponse.headers()['content-type']).toMatch(/^text\/event-stream(?:;|$)/i);
 
     let settled: typeof initial;
     await expect.poll(async () => {
