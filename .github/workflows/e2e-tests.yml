@@ -9,14 +9,13 @@ on:
   schedule:
     - cron: '0 18 * * *'
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
   e2e-tests:
     # Opt in to full desktop + Mobile Safari coverage with the e2e-full PR label.
     if: github.event.action != 'labeled' || github.event.label.name == 'e2e-full'
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
