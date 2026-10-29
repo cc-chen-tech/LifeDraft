@@ -185,12 +185,20 @@ test.describe('SSE Timeout Sync E2E', () => {
     expect(streamCursors[0]).toBeUndefined();
     expect(streamCursors[1]).toBe('-1');
     await expect.poll(() => syncStateRequestCount).toBeGreaterThanOrEqual(2);
-    await expect(page.locator('article[data-slot="play-story"] .prose-story'))
-      .toHaveText('测试故事内容');
-    const options = page.getByTestId('play-options');
-    await expect(options).toBeVisible();
-    await expect(options.getByRole('button', { name: /选项A/ })).toBeEnabled();
-    await expect(options.getByRole('button', { name: /选项B/ })).toBeEnabled();
+    // The default play surface is listening-first; its transcript is collapsed
+    // until the user opens it. Validate the recovered story through that UI,
+    // not the legacy reading surface that is absent in this mode.
+    const experience = page.getByTestId('story-listening-experience');
+    await expect(experience).toBeVisible();
+    await experience.getByRole('button', { name: '查看故事正文', exact: true }).click();
+    const transcript = experience.getByRole('region', { name: '故事正文', exact: true });
+    await expect(transcript).toBeVisible();
+    await expect(transcript.getByRole('button')).toHaveText(['测试故事内容']);
+    for (const name of ['选择 1：选项A', '选择 2：选项B']) {
+      const option = experience.getByRole('button', { name, exact: true });
+      await expect(option).toBeVisible();
+      await expect(option).toBeEnabled();
+    }
   });
 
   test('no fatal errors during SSE disconnection and polling transition', async ({ page }) => {

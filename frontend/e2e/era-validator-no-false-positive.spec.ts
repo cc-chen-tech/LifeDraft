@@ -9,10 +9,13 @@ async function createAncientGame(
       player_name: "李逍遥",
       life_vision: "成为一代大侠",
       character_settings: {
-        era: {
-          name: "南宋",
-          period: "古代",
-          world_description: "中国历史上的南宋时期",
+        story_origin: {
+          revision: 1,
+          start_date: "1200-01-01",
+          starting_age: 22,
+          era_description: "南宋时期的江南城镇",
+          life_stage_description: "初入江湖的青年阶段",
+          world_context: "古代中国的江湖世界，驿路和坊市连接地方社会",
         },
         age: { age: 22, stage: "青年" },
         gender: { gender: "男", pronouns: "他" },
@@ -47,15 +50,23 @@ test.describe("古代背景时代验证器无 false positive", () => {
 
     await page.goto(`/play?gameId=${gameId}`);
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForTimeout(2000);
+    const listening = page.getByTestId("story-listening-experience");
+    await expect(listening.locator('[data-slot="choice-branch-row"]').first())
+      .toBeEnabled({ timeout: 90_000 });
 
-    // 页面应加载成功，不应出现错误提示
-    const errorText = page.locator("text=出错了");
-    await expect(errorText).not.toBeVisible();
+    const stateResponse = await context.request.get(`${API_URL}/api/games/${gameId}`);
+    expect(stateResponse.ok()).toBe(true);
+    const state = await stateResponse.json();
+    expect(state.player_state.timeline.current_date).toBe("1200-01-01");
+    expect(state.current_event.event_description.length).toBeGreaterThan(100);
+    await expect(page.getByTestId("status-bar")).toContainText("公元 1200 年");
 
-    // 等待故事区域出现（说明后端生成成功）
-    const storyArea = page.locator(".prose-story").first();
-    await expect(storyArea).toBeVisible({ timeout: 30000 });
+    await listening.getByRole("button", { name: "查看故事正文", exact: true }).click();
+    const transcript = listening.getByRole("region", { name: "故事正文", exact: true });
+    await expect(transcript).toBeVisible();
+    await expect(transcript.getByRole("button", { name: /^从第 \d+ 段开始朗读$/ }))
+      .toHaveText(state.current_event.event_description.split(/\n\s*\n/)
+        .map((text: string) => text.trim()).filter(Boolean));
 
     // 页面不应包含"检测到现代元素"的验证误报提示
     const bodyText = await page.locator("body").textContent();
