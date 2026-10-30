@@ -44,8 +44,26 @@ async function applyFirstChoiceForGame(
   context: import("@playwright/test").BrowserContext,
   gameId: number
 ): Promise<Record<string, unknown>> {
+  // Daily choices settle a specific persisted event revision. Read the same
+  // identity the browser receives rather than submitting an unversioned choice.
+  const stateResp = await context.request.get(`${API_URL}/api/games/${gameId}`);
+  expect(stateResp.status()).toBe(200);
+  const state = await stateResp.json();
+  expect(state.game_id).toBe(gameId);
+  const event = state.current_event;
+  expect(event).toBeTruthy();
+  expect(typeof event.event_id).toBe("string");
+  expect(event.event_id.length).toBeGreaterThan(0);
+  expect(Number.isInteger(event.revision)).toBe(true);
+  expect(event.revision).toBeGreaterThanOrEqual(1);
+  expect(event.options.length).toBeGreaterThan(0);
+
   const choiceResp = await context.request.post(`${API_URL}/api/games/${gameId}/choice-sync`, {
-    data: { option_index: 0 },
+    data: {
+      option_index: 0,
+      event_id: event.event_id,
+      revision: event.revision,
+    },
   });
   expect(choiceResp.status()).toBe(200);
   return await choiceResp.json();

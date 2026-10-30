@@ -7,7 +7,7 @@
  * 1. 故事生成阶段进度显示
  * 2. 重试状态透明处理
  * 3. 模型降级对用户透明
- * 4. 长故事完整性（无截断）
+ * 4. 已保存故事的正文完整显示
  * 5. 并行后处理不影响游戏流程
  * 6. 长时间游戏无上下文溢出
  */
@@ -15,7 +15,7 @@
 import { test, expect, Page, BrowserContext } from '@playwright/test';
 import { ensureAuthenticated, API_URL } from './helpers/auth';
 import { startNetworkMonitoring, formatNetworkErrors } from './helpers/network-monitor';
-import { waitForNetworkIdle, waitForStableDOM } from './helpers/wait-helpers';
+import { waitForNetworkIdle } from './helpers/wait-helpers';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 /** SSE 事件收集器 */
@@ -80,12 +80,8 @@ async function interceptSSEEvents(page: Page): Promise<{ events: SSEEvent[]; pro
  * 等待游戏页面加载并显示内容
  */
 async function waitForGameReady(page: Page): Promise<void> {
-  // 等待页面加载完成
   await page.waitForLoadState('domcontentloaded');
-  await waitForNetworkIdle(page);
-
-  // 等待 header 出现（游戏页面标志）
-  await page.waitForSelector('header', { timeout: 15000 }).catch(() => {});
+  await expect(page.getByTestId('play-reading-surface')).toBeVisible();
 }
 
 /**
@@ -122,39 +118,14 @@ async function createTestGame(context: BrowserContext): Promise<number> {
  * 导航到有效的游戏页面
  * 使用 API 预创建游戏，绕过 UI 创建流程和 AI 生成等待
  */
-async function navigateToGame(page: Page, context: BrowserContext): Promise<void> {
-  // 先检查是否已有活跃游戏
-  await page.goto(`${BASE_URL}/play`);
-  await waitForGameReady(page);
-
-  const hasHeader = await page.locator('header').isVisible().catch(() => false);
-  if (hasHeader) {
-    return;
-  }
-
-  // 通过 API 快速创建游戏，绕过 AI 生成等待
+async function navigateToGame(page: Page, context: BrowserContext): Promise<number> {
+  // A generic header can briefly exist before /play redirects home. Always use
+  // this test's newly created game, never an absent or unrelated active game.
   const gameId = await createTestGame(context);
-
-  // 直接导航到游戏页面
   await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
+  await expect(page).toHaveURL(`${BASE_URL}/play?gameId=${gameId}`);
   await waitForGameReady(page);
-
-  // 最终验证
-  const finalHasHeader = await page.locator('header').isVisible().catch(() => false);
-  expect(finalHasHeader).toBe(true);
-}
-
-async function waitForChoiceProgressionCheckpoint(
-  page: Page,
-  choiceResponse: Promise<unknown>
-): Promise<void> {
-  const stableMain = waitForStableDOM(page, 'main', { timeout: 10_000, stableTime: 1_000 }).catch(
-    () => null
-  );
-
-  await Promise.race([choiceResponse, page.waitForTimeout(45_000)]);
-
-  await stableMain;
+  return gameId;
 }
 
 test.describe('Claude Code Improvements - E2E Validation', () => {
@@ -347,109 +318,95 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     expect(modelErrors).toHaveLength(0);
   });
 
-  test('4. Long stories are complete without truncation', async ({ page, context }) => {
-    // Goal: Verify truncation recovery produces complete text
+  test('4. Persisted story is displayed completely', async ({ page, context }) => {
     const monitor = startNetworkMonitoring(page);
-    const { events, promise: ssePromise } = await interceptSSEEvents(page);
+    const gameId = await navigateToGame(page, context);
 
-    // Navigate to game
-    await navigateToGame(page, context);
+    // Options are rendered only after generation completes. Compare the actual
+    // story surface with the persisted event, not home-page or toolbar text.
+    // This proves display completeness, not recovery of model-truncated output;
+    // transport-level truncation recovery has separate backend contract tests.
+    const listening = page.getByTestId('story-listening-experience');
+    await expect(listening.locator('[data-slot="choice-branch-row"]').first())
+      .toBeEnabled({ timeout: 90_000 });
+    const stateResponse = await context.request.get(`${API_URL}/api/games/${gameId}`);
+    expect(stateResponse.ok()).toBe(true);
+    const state = await stateResponse.json();
+    expect(state.game_id).toBe(gameId);
+    const persistedStory = state.current_event?.event_description
+      ?? state.current_event?.story_text
+      ?? state.current_event?.story;
+    expect(typeof persistedStory).toBe('string');
+    expect(persistedStory.trim().length).toBeGreaterThan(100);
+    expect(state.current_event.options.length).toBeGreaterThan(0);
 
-    // Wait for generation to complete
-    await page.waitForTimeout(3000);
-    await waitForNetworkIdle(page);
-
-    // Wait for SSE to complete if in progress
-    await Promise.race([
-      ssePromise,
-      page.waitForTimeout(30000),
-    ]);
-
-    // Wait for story text to stabilize
-    await waitForStableDOM(page, 'main', { timeout: 15000, stableTime: 2000 }).catch(() => {});
-
-    // Get story text content from page
-    const storyText = await page.locator('main').textContent();
-    expect(storyText).toBeTruthy();
-
-    // Verify text length is substantial (> 100 chars)
-    // Filter out UI chrome text (buttons, labels, etc.)
-    const cleanText = (storyText || '').replace(/你的选择|返回当前|保存|历史回顾|收集/g, '').trim();
-    if (cleanText.length > 50) {
-      // Only check length for real story content
-      expect(cleanText.length).toBeGreaterThan(100);
-
-      // Verify text ends with valid sentence ending
-      // Chinese punctuation: 。！？… or western: . ! ? ...
-      const lastMeaningfulChar = cleanText.replace(/\s+$/, '').slice(-1);
-      const validEndings = ['。', '！', '？', '…', '.', '!', '?', '"', '"', '」', '）'];
-      // Story should end with proper punctuation (if long enough)
-      if (cleanText.length > 300) {
-        const endsWithValidPunctuation = validEndings.some(p => cleanText.trimEnd().endsWith(p));
-        // This is a soft check - some stories may end differently
-        if (!endsWithValidPunctuation) {
-          console.warn('Story may be truncated - does not end with expected punctuation:', lastMeaningfulChar);
-        }
-      }
-    }
-
-    // Verify no 5xx errors
+    await listening.getByRole('button', { name: '查看故事正文', exact: true }).click();
+    const transcript = listening.getByRole('region', { name: '故事正文', exact: true });
+    await expect(transcript).toBeVisible();
+    const paragraphs = transcript.getByRole('button', { name: /^从第 \d+ 段开始朗读$/ });
+    await expect(paragraphs).toHaveText(persistedStory.split(/\n\s*\n/).map((text: string) => text.trim()).filter(Boolean));
+    expect(persistedStory.trim()).toMatch(/[。！？….!?"」）]$/);
     expect(monitor.get5xxErrors()).toHaveLength(0);
   });
 
-  test('5. Game progression works correctly after post-processing', async ({ page, context }) => {
-    // Goal: Verify parallel post-processing doesn't break game flow
+  test('5. Daily choice commits and advances despite post-processing', async ({ page, context }) => {
     const monitor = startNetworkMonitoring(page);
+    const gameId = await navigateToGame(page, context);
+    const listening = page.getByTestId('story-listening-experience');
+    const firstChoice = listening.locator('[data-slot="choice-branch-row"]').first();
+    await expect(firstChoice).toBeEnabled({ timeout: 90_000 });
 
-    // Navigate to game
-    await navigateToGame(page, context);
+    const initialResponse = await context.request.get(`${API_URL}/api/games/${gameId}`);
+    expect(initialResponse.ok()).toBe(true);
+    const initial = await initialResponse.json();
+    expect(initial.current_event.event_id).toBeTruthy();
+    expect(initial.player_state.timeline.version).toBe(2);
+    const initialDay = initial.player_state.timeline.day_index;
 
-    // Wait for game to be in a stable state
-    await page.waitForTimeout(3000);
-    await waitForNetworkIdle(page);
+    // Click an actual choice, never the transcript/voice controls. Require a
+    // successful real SSE settlement and the exact persisted event receipt.
+    const choiceResponsePromise = page.waitForResponse(response =>
+      new URL(response.url()).pathname === `/api/games/${gameId}/choice`
+        && response.request().method() === 'POST',
+      { timeout: 45_000 },
+    );
+    await firstChoice.click();
+    const choiceResponse = await choiceResponsePromise;
+    expect(choiceResponse.ok()).toBe(true);
+    expect(choiceResponse.request().postDataJSON()).toMatchObject({
+      option_index: 0,
+      event_id: initial.current_event.event_id,
+      revision: initial.current_event.revision,
+    });
+    // Chromium may discard an SSE response body once the client cancels its
+    // reader. Verify the transport here and completion through the durable
+    // settlement receipt and next-day UI below, not CDP body retention.
+    expect(choiceResponse.headers()['content-type']).toMatch(/^text\/event-stream(?:;|$)/i);
 
-    // Capture initial status bar content
-    const initialStatusText = await page.locator('header').textContent().catch(() => '');
-
-    // Look for option cards (indicating options phase)
-    const optionButton = page.locator('button').filter({ hasText: /^(?!.*(?:保存|历史|返回|收集|设置)).{5,}/ }).first();
-    const hasOptions = await optionButton.isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (hasOptions) {
-      // Click the first option to make a choice
-      monitor.clear();
-      const choiceResponse = page.waitForResponse(
-        resp =>
-          resp.url().includes('/api/games/') &&
-          (resp.url().includes('/choice') || resp.url().includes('/custom-choice')),
-        { timeout: 45_000 }
-      ).catch(() => null);
-      await optionButton.click();
-      await waitForChoiceProgressionCheckpoint(page, choiceResponse);
-
-      // Verify status bar values may have updated
-      const updatedStatusText = await page.locator('header').textContent().catch(() => '');
-      // Status text exists (whether changed or not)
-      expect(updatedStatusText).toBeTruthy();
-
-      // Verify new story content appears (story continuity)
-      const storyText = await page.locator('main').textContent();
-      expect(storyText).toBeTruthy();
-      expect(storyText!.length).toBeGreaterThan(0);
-
-      // Check no 5xx errors during the whole flow
-      const serverErrors = monitor.get5xxErrors();
-      if (serverErrors.length > 0) {
-        console.error('Server errors during progression:', formatNetworkErrors(serverErrors));
-      }
-      expect(serverErrors).toHaveLength(0);
-    } else {
-      // No options available - generation might still be in progress
-      // Verify page is in a valid state
-      const mainContent = await page.locator('main').textContent();
-      expect(mainContent).toBeTruthy();
-      expect(monitor.get5xxErrors()).toHaveLength(0);
-    }
+    let settled: typeof initial;
+    await expect.poll(async () => {
+      const response = await context.request.get(`${API_URL}/api/games/${gameId}`);
+      expect(response.ok()).toBe(true);
+      settled = await response.json();
+      return settled.player_state.timeline.day_index;
+    }).toBe(initialDay + 1);
+    const records = settled!.player_state.day_history.filter(
+      (record: { event_id: string; revision: number }) =>
+        record.event_id === initial.current_event.event_id
+        && record.revision === initial.current_event.revision,
+    );
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      choice_option_index: 0,
+      event_description: initial.current_event.event_description,
+    });
+    expect(records[0].effects_applied).toBeTruthy();
+    // The next date is visible both during the real transition and once the
+    // next chapter opens; settlement does not require waiting for generation.
+    const [year, month, day] = settled!.player_state.timeline.current_date.split('-').map(Number);
+    await expect(page.getByTestId('play-reading-surface'))
+      .toContainText(`${year} 年 ${month} 月 ${day} 日`);
+    expect(monitor.get5xxErrors()).toHaveLength(0);
   });
 
   test('6. Long-running game does not fail from context overflow', async ({ page, context }) => {

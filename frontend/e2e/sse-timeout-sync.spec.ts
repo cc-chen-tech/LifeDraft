@@ -4,7 +4,7 @@
  * 验证关键契约：SSE 断开后前端 polling 能正确接管并最终拿到结果。
  * 防止"用户看到生成失败但后端还在工作"的问题。
  */
-import { test, expect, Page, BrowserContext } from '@playwright/test';
+import { test, expect, BrowserContext } from '@playwright/test';
 import { ensureAuthenticated, API_URL } from './helpers/auth';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
@@ -97,84 +97,53 @@ test.describe('SSE Timeout Sync E2E', () => {
     // 两者存在 120s 的安全余量
   });
 
-  test('frontend handles SSE error gracefully and enters polling', async ({ page, context }) => {
-    /**
-     * 验证前端在 SSE 返回 error 后能正确进入 polling 模式。
-     *
-     * 我们通过模拟 SSE 返回 error 事件，验证前端不会崩溃，
-     * 而是尝试通过 polling 恢复。
-     */
-    test.setTimeout(60000);
-
+  test('terminal generation failure stays failed instead of polling', async ({ page, context }) => {
     const gameId = await createTestGame(context);
-    let sseRequestCount = 0;
-
-    // 拦截 SSE 请求，第一次返回 error，后续正常处理
-    await page.route(`**/api/games/${gameId}/event`, async (route) => {
-      sseRequestCount++;
-
-      if (sseRequestCount === 1) {
-        // 模拟 SSE 返回 error 事件后断开
-        const sseError = 'event: error\ndata: {"error": "Simulated SSE timeout"}\n\n';
-        await route.fulfill({
-          status: 200,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-          },
-          body: sseError,
-        });
-      } else {
-        // 后续请求正常通过
-        await route.continue();
-      }
+    let eventRequests = 0;
+    let stateRequests = 0;
+    page.on('request', request => {
+      if (new URL(request.url()).pathname === `/api/games/${gameId}`
+        && request.method() === 'GET') stateRequests++;
     });
-
-    // 导航到游戏页面
+    await page.route(`**/api/games/${gameId}/event`, route => {
+      eventRequests++;
+      return route.fulfill({
+        contentType: 'text/event-stream',
+        body: 'event: error\ndata: {"error":"结构测试终止","summary":"结构测试终止","code":"INVALID_STORY_STRUCTURE","retryable":true}\n\n',
+      });
+    });
     await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // 等待一段时间让前端处理 SSE error 并可能进入 polling
-    await page.waitForTimeout(5000);
-
-    // 页面不应崩溃
-    const body = page.locator('body');
-    await expect(body).toBeVisible();
-
-    // 验证至少有一个 SSE 请求被拦截
-    expect(sseRequestCount).toBeGreaterThanOrEqual(1);
+    await expect(page.getByText('结构测试终止', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('play-options')).toHaveCount(0);
+    const requestsAtFailure = stateRequests;
+    // Observe beyond one real polling interval: terminal failures must not
+    // silently reconnect or repeatedly fetch state.
+    await page.waitForTimeout(6_000);
+    expect(eventRequests).toBe(1);
+    expect(stateRequests).toBe(requestsAtFailure);
   });
 
-  test('polling calls syncState to check backend status', async ({ page, context }) => {
-    /**
-     * 验证 polling 逻辑调用 syncState API 来获取后端状态。
-     *
-     * 我们通过拦截 /api/games/{id} 请求（syncState 的目标端点）
-     * 来验证 polling 确实在尝试同步状态。
-     *
-     * 为了测试能稳定完成，我们 mock syncState 响应使其包含选项，
-     * 这样 polling 会在一次请求后成功退出，不会无限循环。
-     */
+  test('interrupted SSE reconnects then polls persisted story and options', async ({ page, context }) => {
+    // Use the real persisted game response shape; only the transport and the
+    // moment at which its completed event becomes visible are controlled.
     test.setTimeout(60000);
 
     const gameId = await createTestGame(context);
+    const initialResponse = await context.request.get(`${API_URL}/api/games/${gameId}`);
+    expect(initialResponse.ok()).toBe(true);
+    const initialState = await initialResponse.json();
     let syncStateRequestCount = 0;
-    const consoleLogs: string[] = [];
+    const streamCursors: Array<string | undefined> = [];
 
-    page.on('console', (msg) => {
-      consoleLogs.push(msg.text());
-    });
-
-    // 拦截 SSE 请求，返回 error 触发 polling
+    // A clean EOF before a complete event is a real transport interruption.
+    // The first interruption reconnects; the second falls back to polling.
+    // A backend `event: error` is not interchangeable with a broken stream.
     await page.route(`**/api/games/${gameId}/event`, async (route) => {
-      const sseError = 'event: error\ndata: {"error": "Simulated SSE timeout"}\n\n';
+      streamCursors.push(route.request().headers()['last-event-id']);
       await route.fulfill({
         status: 200,
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-        },
-        body: sseError,
+        contentType: 'text/event-stream',
+        body: 'event: status\ndata: {"phase":"generating_story"}\n\n',
       });
     });
 
@@ -189,17 +158,7 @@ test.describe('SSE Timeout Sync E2E', () => {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            game_id: gameId,
-            player_state: {
-              player_name: 'SSE测试角色',
-              age: 22,
-              energy: 100,
-              mood: 100,
-              knowledge: 50,
-              wealth: 10000,
-            },
-            progress: { age: 22, week: 0, year: 0 },
-            round_info: { current_round: 0, game_over: false },
+            ...initialState,
             current_event: hasOptions
               ? {
                   event_description: '测试故事内容',
@@ -222,21 +181,24 @@ test.describe('SSE Timeout Sync E2E', () => {
     await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
     await page.waitForLoadState('domcontentloaded');
 
-    // 等待前端处理 SSE error、触发 polling、pollForCompletion 成功退出
-    await page.waitForTimeout(15000);
-
-    // 页面不应崩溃
-    const body = page.locator('body');
-    await expect(body).toBeVisible();
-
-    // 验证 syncState 被调用至少 2 次（初始化 1 次 + polling 至少 1 次）
-    expect(syncStateRequestCount).toBeGreaterThanOrEqual(2);
-
-    // 验证 console 中有 polling 相关日志
-    const hasPollingLog = consoleLogs.some(
-      (log) => log.includes('SSE failed, starting polling') || log.includes('Polling...')
-    );
-    expect(hasPollingLog).toBe(true);
+    await expect.poll(() => streamCursors.length).toBe(2);
+    expect(streamCursors[0]).toBeUndefined();
+    expect(streamCursors[1]).toBe('-1');
+    await expect.poll(() => syncStateRequestCount).toBeGreaterThanOrEqual(2);
+    // The default play surface is listening-first; its transcript is collapsed
+    // until the user opens it. Validate the recovered story through that UI,
+    // not the legacy reading surface that is absent in this mode.
+    const experience = page.getByTestId('story-listening-experience');
+    await expect(experience).toBeVisible();
+    await experience.getByRole('button', { name: '查看故事正文', exact: true }).click();
+    const transcript = experience.getByRole('region', { name: '故事正文', exact: true });
+    await expect(transcript).toBeVisible();
+    await expect(transcript.getByRole('button')).toHaveText(['测试故事内容']);
+    for (const name of ['选择 1：选项A', '选择 2：选项B']) {
+      const option = experience.getByRole('button', { name, exact: true });
+      await expect(option).toBeVisible();
+      await expect(option).toBeEnabled();
+    }
   });
 
   test('no fatal errors during SSE disconnection and polling transition', async ({ page }) => {

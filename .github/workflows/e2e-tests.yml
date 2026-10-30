@@ -5,15 +5,17 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: '0 18 * * *'
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
   e2e-tests:
+    # Opt in to full desktop + Mobile Safari coverage with the e2e-full PR label.
+    if: github.event.action != 'labeled' || github.event.label.name == 'e2e-full'
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
@@ -66,19 +68,19 @@ jobs:
         working-directory: frontend
         run: npx playwright install chromium
 
-      - name: Install Playwright WebKit for scheduled E2E
-        if: github.event_name == 'schedule'
+      - name: Install Playwright WebKit for full E2E
+        if: github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'e2e-full')
         working-directory: frontend
         run: npx playwright install --with-deps webkit
 
       - name: Run core E2E tests
-        if: github.event_name != 'schedule'
+        if: github.event_name != 'schedule' && !contains(github.event.pull_request.labels.*.name, 'e2e-full')
         run: ./test.sh e2e-core
         env:
           CI: true
 
       - name: Run full E2E tests
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'e2e-full')
         run: ./test.sh e2e-full
         env:
           CI: true
