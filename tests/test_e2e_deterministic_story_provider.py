@@ -58,7 +58,8 @@ def test_e2e_provider_streams_choice_continuation_without_openai_client(
 
 
 @pytest.mark.parametrize("quality", ["fast", "expert", "master"])
-def test_e2e_daily_prose_satisfies_active_strict_budget(monkeypatch, quality):
+@pytest.mark.parametrize("setting", ["现代", "南宋，李逍遥与赵灵儿"])
+def test_e2e_daily_prose_satisfies_active_strict_budget(monkeypatch, quality, setting):
     """The fixture must pass production shape checks, not disable them."""
     from src.ai.budgets import (
         GenerationCallTracker,
@@ -77,7 +78,7 @@ def test_e2e_daily_prose_satisfies_active_strict_budget(monkeypatch, quality):
     )
     story = client.call(
         system_prompt=get_system_prompt("story_novelist", "zh"),
-        user_prompt="南宋的李逍遥，成为一代大侠。",
+        user_prompt=f"请生成今日故事。{setting}",
         generation_tracker=GenerationCallTracker(budget),
     )
     assert not _localized_story_shape_issues(
@@ -168,13 +169,14 @@ def test_e2e_judge_fixture_does_not_accept_unrelated_prose_or_enable_in_producti
         is None
     )
     monkeypatch.delenv("E2E_DETERMINISTIC_STORY")
-    assert (
-        deterministic_e2e_response(
-            get_system_prompt("story_novelist", "zh"),
-            narrative_budget=budget,
+    for kind in ["story_novelist", "option_generator", "consistency_validator"]:
+        assert (
+            deterministic_e2e_response(
+                get_system_prompt(kind, "zh"),
+                narrative_budget=budget,
+            )
+            is None
         )
-        is None
-    )
 
 
 def test_e2e_judge_rejects_modified_fixture_prose(monkeypatch):
@@ -208,3 +210,31 @@ def test_e2e_judge_rejects_modified_fixture_prose(monkeypatch):
         )
         is None
     )
+
+
+@pytest.mark.parametrize("quality", ["fast", "expert", "master"])
+def test_daily_fixture_passes_real_era_validator_but_anachronism_does_not(
+    monkeypatch, quality
+):
+    """Neutral E2E prose must not hide a disabled production era validator."""
+    from src.ai.budgets import (
+        GenerationOperation,
+        NarrativeKind,
+        resolve_narrative_budget,
+    )
+    from src.ai.e2e_story_provider import deterministic_e2e_response
+    from src.ai.harness.era_validator import validate_era_consistency
+
+    monkeypatch.setenv("E2E_DETERMINISTIC_STORY", "1")
+    budget = resolve_narrative_budget(
+        NarrativeKind.ROUND, GenerationOperation.GENERATE, quality, "zh"
+    )
+    story = deterministic_e2e_response(
+        get_system_prompt("story_novelist", "zh"),
+        user_prompt="南宋，李逍遥与赵灵儿",
+        narrative_budget=budget,
+    )
+    assert story is not None
+    context = {"era": "南宋", "era_type": "ancient"}
+    assert validate_era_consistency(story, context)[0]
+    assert not validate_era_consistency(story + "李逍遥拿出手机拨打电话。", context)[0]

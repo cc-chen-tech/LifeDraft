@@ -7,8 +7,11 @@
  * 捕获所有API调用错误
  */
 
+import { createHash } from 'node:crypto';
+import { normalizeStoryVoiceTextForHash } from '../src/lib/storyVoiceTextHash';
+import { isExpectedMissingVoiceProgress } from './helpers/expected-voice-progress';
 import { test, expect } from '@playwright/test';
-import { ensureActiveGame, ensureAuthenticated } from './helpers/auth';
+import { API_URL, ensureActiveGame, ensureAuthenticated } from './helpers/auth';
 import { openPlayTools } from './helpers/play-tools';
 import { startNetworkMonitoring, waitForNetworkIdle, formatNetworkErrors } from './helpers/network-monitor';
 
@@ -157,12 +160,15 @@ test.describe('Full Game Flow - Game Loop', () => {
   });
 
   test('5. Verify all game page API endpoints', async ({ page, context }) => {
-    await ensureActiveGame(page, context, { player_name: '历史接口测试角色' });
+    const gameId = await ensureActiveGame(page, context, { player_name: '历史接口测试角色' });
     const monitor = startNetworkMonitoring(page);
 
     // 访问游戏页面
     await page.goto(`${BASE_URL}/play`);
     await waitForNetworkIdle(page);
+
+    await expect(page.getByTestId('story-listening-experience')
+      .locator('[data-slot="choice-branch-row"]').first()).toBeEnabled({ timeout: 90_000 });
 
     const tools = await openPlayTools(page);
     monitor.clear();
@@ -171,11 +177,26 @@ test.describe('Full Game Flow - Game Loop', () => {
     const history = page.getByRole('dialog', { name: '历史回顾', exact: true });
     await expect(history).toBeVisible({ timeout: 10000 });
 
-    const errors = monitor.get4xxErrors();
+    // Missing resume progress is expected only for this game's current chapter.
+    const stateResponse = await context.request.get(`${API_URL}/api/games/${gameId}`);
+    expect(stateResponse.ok()).toBe(true);
+    const state = await stateResponse.json();
+    expect(state.game_id).toBe(gameId);
+    const story = state.current_event?.event_description;
+    expect(typeof story).toBe('string');
+    expect(story.trim().length).toBeGreaterThan(0);
+    const scope = {
+      origin: new URL(BASE_URL).origin,
+      gameId,
+      dayIndex: state.player_state.timeline.day_index,
+      textHash: createHash('sha256').update(normalizeStoryVoiceTextForHash(story)).digest('hex'),
+    };
+    const errors = monitor.get4xxErrors().filter(error => !isExpectedMissingVoiceProgress(error, scope));
     if (errors.length > 0) {
       console.error('History panel errors:', formatNetworkErrors(errors));
     }
-    expect(monitor.get404Errors()).toHaveLength(0);
+    expect(errors).toHaveLength(0);
+    expect(monitor.get5xxErrors()).toHaveLength(0);
   });
 });
 
@@ -185,12 +206,15 @@ test.describe('Full Game Flow - Save and Load', () => {
   });
 
   test('6. Save game flow', async ({ page, context }) => {
-    await ensureActiveGame(page, context, { player_name: '存档接口测试角色' });
+    const gameId = await ensureActiveGame(page, context, { player_name: '存档接口测试角色' });
     const monitor = startNetworkMonitoring(page);
 
     // 进入游戏页面
     await page.goto(`${BASE_URL}/play`);
     await waitForNetworkIdle(page);
+
+    await expect(page.getByTestId('story-listening-experience')
+      .locator('[data-slot="choice-branch-row"]').first()).toBeEnabled({ timeout: 90_000 });
 
     const tools = await openPlayTools(page);
     monitor.clear();
@@ -203,11 +227,26 @@ test.describe('Full Game Flow - Save and Load', () => {
     await waitForNetworkIdle(page);
 
     expect(saveResponse.ok()).toBeTruthy();
-    const errors = monitor.get4xxErrors();
+    // Missing resume progress is expected only for this game's current chapter.
+    const stateResponse = await context.request.get(`${API_URL}/api/games/${gameId}`);
+    expect(stateResponse.ok()).toBe(true);
+    const state = await stateResponse.json();
+    expect(state.game_id).toBe(gameId);
+    const story = state.current_event?.event_description;
+    expect(typeof story).toBe('string');
+    expect(story.trim().length).toBeGreaterThan(0);
+    const scope = {
+      origin: new URL(BASE_URL).origin,
+      gameId,
+      dayIndex: state.player_state.timeline.day_index,
+      textHash: createHash('sha256').update(normalizeStoryVoiceTextForHash(story)).digest('hex'),
+    };
+    const errors = monitor.get4xxErrors().filter(error => !isExpectedMissingVoiceProgress(error, scope));
     if (errors.length > 0) {
       console.error('Save game errors:', formatNetworkErrors(errors));
     }
-    expect(monitor.get404Errors()).toHaveLength(0);
+    expect(errors).toHaveLength(0);
+    expect(monitor.get5xxErrors()).toHaveLength(0);
   });
 
   test('7. Load game from saves page', async ({ page }) => {

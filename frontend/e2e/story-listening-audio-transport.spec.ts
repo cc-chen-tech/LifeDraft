@@ -406,6 +406,35 @@ test.describe('StoryListeningExperience audio transport', () => {
     expect(new Set(fixture.audioRequests)).toEqual(new Set([FIXTURE_AUDIO_PATH]));
   });
 
+  test('audio fixture serves exact byte ranges and rejects unsatisfiable ranges', async ({ page }) => {
+    const fixture = await installFixture(page);
+    await page.goto(`/play?gameId=${GAME_ID}`);
+    // Check the browser fixture explicitly, independent of native autoplay or
+    // media-loader request strategy. This is not a production endpoint test:
+    // tests/test_tts_audio_transport.py owns the real HTTP Range contract.
+    const result = await page.evaluate(async (path) => {
+      const partial = await fetch(path, { headers: { Range: 'bytes=0-43' } });
+      const bytes = Array.from(new Uint8Array(await partial.arrayBuffer()));
+      const invalid = await fetch(path, { headers: { Range: 'bytes=999999-' } });
+      return {
+        status: partial.status,
+        range: partial.headers.get('content-range'),
+        accepts: partial.headers.get('accept-ranges'),
+        length: partial.headers.get('content-length'),
+        bytes,
+        invalidStatus: invalid.status,
+        invalidRange: invalid.headers.get('content-range'),
+      };
+    }, FIXTURE_AUDIO_PATH);
+    const wav = createPlayableWav();
+    expect(result).toEqual({
+      status: 206, range: `bytes 0-43/${wav.length}`, accepts: 'bytes', length: '44',
+      bytes: Array.from(wav.subarray(0, 44)),
+      invalidStatus: 416, invalidRange: `bytes */${wav.length}`,
+    });
+    expect(fixture.rangeRequests).toEqual(expect.arrayContaining(['bytes=0-43', 'bytes=999999-']));
+  });
+
   test('offers a retry when real playback silently stops advancing', async ({ page }) => {
     const fixture = await installFixture(page);
     await page.goto(`/play?gameId=${GAME_ID}`);
