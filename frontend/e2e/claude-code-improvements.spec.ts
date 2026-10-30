@@ -7,7 +7,7 @@
  * 1. 故事生成阶段进度显示
  * 2. 重试状态透明处理
  * 3. 模型降级对用户透明
- * 4. 长故事完整性（无截断）
+ * 4. 已保存故事的正文完整显示
  * 5. 并行后处理不影响游戏流程
  * 6. 长时间游戏无上下文溢出
  */
@@ -318,12 +318,14 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     expect(modelErrors).toHaveLength(0);
   });
 
-  test('4. Long stories are complete without truncation', async ({ page, context }) => {
+  test('4. Persisted story is displayed completely', async ({ page, context }) => {
     const monitor = startNetworkMonitoring(page);
     const gameId = await navigateToGame(page, context);
 
     // Options are rendered only after generation completes. Compare the actual
     // story surface with the persisted event, not home-page or toolbar text.
+    // This proves display completeness, not recovery of model-truncated output;
+    // transport-level truncation recovery has separate backend contract tests.
     const listening = page.getByTestId('story-listening-experience');
     await expect(listening.locator('[data-slot="choice-branch-row"]').first())
       .toBeEnabled({ timeout: 90_000 });

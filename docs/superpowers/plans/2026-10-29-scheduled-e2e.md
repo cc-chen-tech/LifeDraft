@@ -32,4 +32,4 @@ See `bug_fix_log/2026-10-29-scheduled-e2e-root-causes.md` for evidence, verifica
 
 ## Consolidation follow-through
 
-Retain PR #393 exact known-story judge guard and narrative_budget API. Preserve unique explicit browser-fixture Range coverage from PR #392. Classify only the documented missing-voice-progress404 in the two failing history/save scenarios; negative regressions must retain unexpected errors. Verify the integrated commit in full Actions, retaining unrelated flake evidence. Never merge or deploy as part of this plan.
+Retain PR #393 exact known-story judge guard and narrative_budget API. Preserve unique explicit browser-fixture Range coverage from PR #392. Establish a fresh absent progress record explicitly, save and read a nonzero checkpoint through the real API, then require exact persistence across history/save/reload under unfiltered HTTP error monitoring. Negative regressions must reject missing or reset saved progress. Verify the integrated commit in full Actions, retaining unrelated flake evidence. Never merge or deploy as part of this plan.
